@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build bundle
+        run: pnpm build
+
+      - name: Verify bundle
+        run: |
+          node dist/index.js --version
+          ls -lh dist/index.js
+
+      - name: Prepare release artifact
+        run: cp dist/index.js wtm
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "wtm v${{ steps.version.outputs.version }}"
+          body: |
+            ## Install
+
+            ```bash
+            bash <(gh api repos/iceglober/wtm/contents/install.sh --jq .content | base64 -d)
+            ```
+
+            ## Update
+
+            ```bash
+            wtm upgrade
+            ```
+          files: wtm
+          generate_release_notes: true
