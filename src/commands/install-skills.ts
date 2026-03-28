@@ -37,29 +37,39 @@ export const installSkills = command({
     }
 
     const names = Object.keys(SKILLS);
-    let installed = 0;
-    let skipped = 0;
+    let created = 0;
+    let updated = 0;
+    let upToDate = 0;
 
     for (const name of names) {
       const dest = path.join(baseDir, name);
       // Create subdirectories as needed (e.g., prod/)
       fs.mkdirSync(path.dirname(dest), { recursive: true });
 
-      if (fs.existsSync(dest) && !force) {
-        skipped++;
-        continue;
+      if (fs.existsSync(dest)) {
+        const existing = fs.readFileSync(dest, "utf-8");
+        if (existing === SKILLS[name] && !force) {
+          upToDate++;
+          continue;
+        }
+        fs.writeFileSync(dest, SKILLS[name]);
+        updated++;
+      } else {
+        fs.writeFileSync(dest, SKILLS[name]);
+        created++;
       }
-      fs.writeFileSync(dest, SKILLS[name]);
-      installed++;
     }
 
     const target = user ? "~/.claude/commands/" : ".claude/commands/";
 
-    if (installed > 0) {
-      ok(`installed ${installed} skills to ${target}`);
+    if (created > 0) {
+      ok(`created ${created} new skill${created === 1 ? "" : "s"} in ${target}`);
     }
-    if (skipped > 0) {
-      info(`skipped ${skipped} existing files (use --force to overwrite)`);
+    if (updated > 0) {
+      ok(`updated ${updated} skill${updated === 1 ? "" : "s"} in ${target}`);
+    }
+    if (upToDate > 0 && created === 0 && updated === 0) {
+      ok("all skills up to date");
     }
 
     // List what's available

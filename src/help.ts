@@ -65,6 +65,7 @@ ${bold("COMMANDS")}
         /prod:spec      Research to product spec
         /prod:enrich    Autonomous spec enrichment from codebase
         /prod:refine    Interactive spec refinement
+        /prod:review    Spec gap analysis after refinement
 
   hooks
       Create .aflow/hooks/ with a post_create template. The hook runs

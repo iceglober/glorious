@@ -205,5 +205,7 @@ export const upgrade = command({
     }
 
     ok(`updated to v${latest.version}`);
+    console.log("");
+    info("run `af skills` to update your Claude Code slash commands");
   },
 });

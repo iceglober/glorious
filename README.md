@@ -30,7 +30,7 @@ This gives you two skill pipelines:
 
 | Pipeline | Skills | Purpose |
 |----------|--------|---------|
-| **Product** | `/prod:research` → `/prod:spec` → `/prod:enrich` → `/prod:refine` | Idea → research → spec → refined spec |
+| **Product** | `/prod:research` → `/prod:spec` → `/prod:enrich` → `/prod:refine` → `/prod:review` | Idea → research → spec → refined spec → gap analysis |
 | **Engineering** | `/think` → `/work` → `/fix` → `/investigate` → `/qa` → `/review` → `/ship` | Spec → code → ship |
 
 ## Product Pipeline
@@ -81,14 +81,24 @@ Interactive walkthrough of remaining unknowns. Asks one question at a time, in p
 
 Run this as many times as needed. Each pass produces a new version (`v3`, `v4`...) with fewer unknowns. "Skip" or "don't know" is always valid — the unknown stays in the spec.
 
+### `/prod:review` — Gap Analysis
+
+After multiple rounds of enrichment and refinement, audits the spec with fresh eyes. Reads the full version history, checks for consistency issues (orphaned dependency tags, stale assumptions, requirement conflicts), completeness gaps (unaddressed edge cases, missing business rules), and opportunities (existing capabilities that simplify requirements).
+
+```
+/prod:review research/dental-claims/spec-submission-v4.md
+```
+
+Run this after a few rounds of enrich/refine to catch gaps that accumulate as unknowns get resolved. Produces a new versioned spec with fixes applied and a structured report of what was found.
+
 ### The Loop
 
 ```
-/prod:research  →  /prod:spec  →  /prod:enrich  →  /prod:refine × N
-   (web)          (structure)     (codebase)        (human)
+/prod:research  →  /prod:spec  →  /prod:enrich  →  /prod:refine × N  →  /prod:review
+   (web)          (structure)     (codebase)        (human)              (audit)
 ```
 
-Each step reduces ambiguity. Research gathers raw information. Spec structures it and surfaces what's missing. Enrich answers what the code can answer. Refine gets human answers for the rest. Repeat refine until the spec is buildable.
+Each step reduces ambiguity. Research gathers raw information. Spec structures it and surfaces what's missing. Enrich answers what the code can answer. Refine gets human answers for the rest. Review audits the accumulated changes for gaps and inconsistencies. Loop back to enrich/refine if review surfaces new unknowns.
 
 ## Engineering Pipeline
 
