@@ -122,6 +122,9 @@ export class Session extends EventEmitter {
     this.status = "working";
     this.emit("update");
 
+    // Prevent unhandled 'error' events from crashing the process
+    this.on("error", () => {});
+
     const gen = this.generateMessages();
 
     this.queryInstance = query({
@@ -210,13 +213,20 @@ export class Session extends EventEmitter {
           this.emit("update");
         }
       }
-    } catch (err) {
+    } catch (err: any) {
+      // EPIPE means the subprocess exited — not a fatal error for the TUI
+      const isEpipe = err?.code === "EPIPE" || (err instanceof Error && err.message.includes("EPIPE"));
       this.status = "failed";
       this.messages.push({
         role: "tool",
-        text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+        text: isEpipe
+          ? "Session subprocess exited unexpectedly"
+          : `Error: ${err instanceof Error ? err.message : String(err)}`,
         timestamp: Date.now(),
       });
+      // Clean up pending promises so the UI doesn't hang
+      if (this.pendingQuestion) { this.pendingQuestion.resolve({}); this.pendingQuestion = null; }
+      if (this.pendingTool) { this.pendingTool.resolve("deny"); this.pendingTool = null; }
       this.emit("update");
     }
   }
