@@ -155,7 +155,7 @@ The hook receives `WORKTREE_DIR`, `WORKTREE_NAME`, `BASE_BRANCH`, and `REPO_ROOT
 
 Tasks live in `.aflow/backlog.json`. Add tasks, start them (creates a worktree + Claude session), and monitor multiple sessions running concurrently. Auto-start mode fills available concurrency slots with the highest-priority pending tasks.
 
-<!-- screenshot placeholder -->
+![aflow TUI](assets/tui.png)
 
 ## License
 

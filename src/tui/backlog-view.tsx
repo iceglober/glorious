@@ -83,13 +83,13 @@ export function BacklogView({ backlog, rows, onStartTask, onRefresh, onModalChan
       if (idx >= 0) {
         const s = sessions[idx] as any;
         if (s.kill) s.kill();
-        tasks[cursor].status = "pending";
-        tasks[cursor].branch = null;
-        tasks[cursor].startedAt = null;
-        saveBacklog(backlog);
-        notify(`Killed: ${tasks[cursor].title}`);
-        onRefresh();
       }
+      tasks[cursor].status = "pending";
+      tasks[cursor].branch = null;
+      tasks[cursor].startedAt = null;
+      saveBacklog(backlog);
+      notify(`Killed: ${tasks[cursor].title}`);
+      onRefresh();
     }
 
     // Auto-start next pending task
@@ -173,12 +173,6 @@ export function BacklogView({ backlog, rows, onStartTask, onRefresh, onModalChan
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      {notification && (
-        <Box paddingX={2}>
-          <Text color="yellow">{notification}</Text>
-        </Box>
-      )}
-
       {/* Task list */}
       <Box flexDirection="column" flexGrow={1} paddingX={2} overflowY="hidden">
         {tasks.length === 0 ? (
@@ -202,6 +196,11 @@ export function BacklogView({ backlog, rows, onStartTask, onRefresh, onModalChan
             </Box>
           ))
         )}
+      </Box>
+
+      {/* Fixed-height notification slot — always takes 1 row so it doesn't shift layout */}
+      <Box paddingX={2} height={1}>
+        {notification ? <Text color="yellow">{notification}</Text> : null}
       </Box>
     </Box>
   );

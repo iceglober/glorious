@@ -297,7 +297,14 @@ function AppRoot() {
 
   // --- Start a task (shared logic) ---
   const startTask = useCallback((task: Task): Session | null => {
+    // Don't exceed concurrency limit
+    const running = sessionsRef.current.filter((s) => s.status !== "done" && s.status !== "failed");
+    if (running.length >= MAX_CONCURRENT) return null;
+
+    // Don't start a task that already has a session
     const slug = slugify(`${task.id}-${task.title}`);
+    if (sessionsRef.current.some((s) => s.name === slug)) return null;
+
     const wtPath = ensureWorktree(slug);
 
     task.status = "active";
@@ -319,17 +326,19 @@ function AppRoot() {
   // --- Auto-start: fill available concurrency ---
   useEffect(() => {
     if (!autoStart) return;
-    const activeSessions = sessionsRef.current.filter((s) => s.status !== "done" && s.status !== "failed").length;
-    if (activeSessions >= MAX_CONCURRENT) return;
 
-    const slotsAvailable = MAX_CONCURRENT - activeSessions;
-    let started = 0;
-    for (const task of backlog.tasks) {
-      if (started >= slotsAvailable) break;
-      if (task.status === "pending") {
-        startTask(task);
-        started++;
-      }
+    const allSessions = sessionsRef.current;
+    const runningSessions = allSessions.filter((s) => s.status !== "done" && s.status !== "failed");
+    if (runningSessions.length >= MAX_CONCURRENT) return;
+
+    // Don't start tasks that already have a session (any state — running, done, or failed).
+    // This prevents re-starting tasks whose sessions failed immediately.
+    const sessionSlugs = new Set(allSessions.map((s) => s.name));
+    const next = backlog.tasks.find(
+      (t) => t.status === "pending" && !sessionSlugs.has(slugify(`${t.id}-${t.title}`)),
+    );
+    if (next) {
+      startTask(next);
     }
   }, [autoStart, sessions, backlog, startTask]);
 
