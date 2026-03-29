@@ -17,6 +17,8 @@ export interface Task {
   status: TaskStatus;
   items: TaskItem[];
   acceptance: string[];
+  /** Task IDs that must be completed (merged/shipped) before this task can start. */
+  dependencies: string[];
   design: string | null;
   branch: string | null;
   pr: string | null;
@@ -43,7 +45,12 @@ export function loadBacklog(): Backlog {
   if (!fs.existsSync(p)) {
     return { project: path.basename(gitRoot()), tasks: [] };
   }
-  return JSON.parse(fs.readFileSync(p, "utf-8"));
+  const backlog: Backlog = JSON.parse(fs.readFileSync(p, "utf-8"));
+  // Backfill dependencies for existing backlogs created before this field existed
+  for (const task of backlog.tasks) {
+    if (!task.dependencies) task.dependencies = [];
+  }
+  return backlog;
 }
 
 export function saveBacklog(backlog: Backlog): void {
@@ -64,7 +71,7 @@ function nextId(tasks: Task[]): string {
 
 export function addTask(
   backlog: Backlog,
-  data: { title: string; description: string; items?: TaskItem[]; acceptance?: string[] },
+  data: { title: string; description: string; items?: TaskItem[]; acceptance?: string[]; dependencies?: string[] },
 ): Task {
   const task: Task = {
     id: nextId(backlog.tasks),
@@ -73,6 +80,7 @@ export function addTask(
     status: "pending",
     items: data.items ?? [],
     acceptance: data.acceptance ?? [],
+    dependencies: data.dependencies ?? [],
     design: null,
     branch: null,
     pr: null,
@@ -109,7 +117,17 @@ export function moveTaskDown(backlog: Backlog, index: number): void {
   saveBacklog(backlog);
 }
 
-/** Return the highest-priority pending task, or null if none. */
+/** Check whether all of a task's dependencies are satisfied (shipped or merged). */
+export function dependenciesMet(backlog: Backlog, task: Task): boolean {
+  if (task.dependencies.length === 0) return true;
+  const taskMap = new Map(backlog.tasks.map((t) => [t.id, t]));
+  return task.dependencies.every((depId) => {
+    const dep = taskMap.get(depId);
+    return dep && (dep.status === "shipped" || dep.status === "merged");
+  });
+}
+
+/** Return the highest-priority pending task whose dependencies are met, or null if none. */
 export function nextPendingTask(backlog: Backlog): Task | null {
-  return backlog.tasks.find((t) => t.status === "pending") ?? null;
+  return backlog.tasks.find((t) => t.status === "pending" && dependenciesMet(backlog, t)) ?? null;
 }

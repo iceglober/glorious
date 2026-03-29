@@ -8,6 +8,7 @@ import {
   moveTaskUp,
   moveTaskDown,
   nextPendingTask,
+  dependenciesMet,
   type Backlog,
   type Task,
   type TaskStatus,
@@ -62,7 +63,11 @@ export function BacklogView({ backlog, rows, onStartTask, onRefresh, onModalChan
     if (key.return && tasks[cursor]) {
       const task = tasks[cursor];
       if (task.status === "pending") {
-        onStartTask(task);
+        if (task.dependencies.length > 0 && !dependenciesMet(backlog, task)) {
+          notify(`Blocked by: ${task.dependencies.join(", ")}`);
+        } else {
+          onStartTask(task);
+        }
       } else if (task.status === "active" && task.branch) {
         const idx = sessions.findIndex((s) => s.name === task.branch);
         if (idx >= 0) onViewSession(idx);
@@ -161,7 +166,9 @@ export function BacklogView({ backlog, rows, onStartTask, onRefresh, onModalChan
 
   if (mode === "edit" && tasks[cursor]) {
     return <TaskForm initial={tasks[cursor]} onSave={(data) => {
-      Object.assign(tasks[cursor], data);
+      tasks[cursor].title = data.title;
+      tasks[cursor].description = data.description;
+      tasks[cursor].dependencies = data.dependencies ?? [];
       saveBacklog(backlog);
       setMode("list");
       notify(`Updated: ${data.title}`);
@@ -178,23 +185,29 @@ export function BacklogView({ backlog, rows, onStartTask, onRefresh, onModalChan
         {tasks.length === 0 ? (
           <Text dimColor>No tasks yet. Press [a] to add one.</Text>
         ) : (
-          tasks.map((task, i) => (
-            <Box key={task.id}>
-              <Text inverse={i === cursor} wrap="truncate">
-                {" "}
-                <Text color={statusColor(task.status)}>{statusIcon(task.status)}</Text>
-                {" "}
-                <Text dimColor>{task.id.padEnd(5)}</Text>
-                {task.title.padEnd(40)}
-                <Text dimColor>{task.status.padEnd(10)}</Text>
-                {task.items.length > 0 && (
-                  <Text dimColor>
-                    {task.items.filter((i) => i.done).length}/{task.items.length}
-                  </Text>
-                )}
-              </Text>
-            </Box>
-          ))
+          tasks.map((task, i) => {
+            const blocked = task.status === "pending" && task.dependencies.length > 0 && !dependenciesMet(backlog, task);
+            return (
+              <Box key={task.id}>
+                <Text inverse={i === cursor} wrap="truncate">
+                  {" "}
+                  <Text color={blocked ? "red" : statusColor(task.status)}>{blocked ? "⊘" : statusIcon(task.status)}</Text>
+                  {" "}
+                  <Text dimColor>{task.id.padEnd(5)}</Text>
+                  {task.title.padEnd(40)}
+                  <Text dimColor>{(blocked ? "blocked" : task.status).padEnd(10)}</Text>
+                  {task.items.length > 0 && (
+                    <Text dimColor>
+                      {task.items.filter((i) => i.done).length}/{task.items.length}
+                    </Text>
+                  )}
+                  {blocked && (
+                    <Text dimColor>  deps: {task.dependencies.join(", ")}</Text>
+                  )}
+                </Text>
+              </Box>
+            );
+          })
         )}
       </Box>
 

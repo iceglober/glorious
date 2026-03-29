@@ -21,7 +21,11 @@ export function generateSpec(backlog: Backlog): void {
   for (const task of backlog.tasks) {
     lines.push(`## ${task.id}: ${task.title}`);
     lines.push("");
-    lines.push(`**Status:** ${task.status}${task.branch ? `  |  **Branch:** ${task.branch}` : ""}${task.pr ? `  |  **PR:** ${task.pr}` : ""}`);
+    const meta = [`**Status:** ${task.status}`];
+    if (task.dependencies.length > 0) meta.push(`**Depends on:** ${task.dependencies.join(", ")}`);
+    if (task.branch) meta.push(`**Branch:** ${task.branch}`);
+    if (task.pr) meta.push(`**PR:** ${task.pr}`);
+    lines.push(meta.join("  |  "));
     lines.push("");
 
     if (task.description) {
