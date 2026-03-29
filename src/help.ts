@@ -52,13 +52,12 @@ ${bold("COMMANDS")}
       With --user, installs to ~/.claude/commands/ (available globally).
 
       Engineering skills (task workflow):
-        /think        Product strategy session before building
-        /work         Implement the task's unchecked items
-        /fix          Fix bugs, update task items if needed
-        /investigate  Root-cause debugging
-        /qa           QA the diff against acceptance criteria
-        /review       Pre-landing code review
-        /ship         Typecheck, review, commit, push, PR
+        /think          Product strategy session before building
+        /work           Implement a given task (no backlog required)
+        /work-backlog   Work through current task from the backlog
+        /fix            Fix bugs, update task items if needed
+        /qa             QA the diff against acceptance criteria
+        /ship           Typecheck, review, commit, push, PR
 
       Product skills (research & spec pipeline):
         /prod:research  Multi-agent research orchestrator

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { render, Box, Text, useInput, useStdout } from "ink";
 import { Session, type SessionStatus, type PendingQuestion, type PendingTool, type ConversationMessage } from "./session.js";
-import { loadBacklog, saveBacklog, nextPendingTask, type Backlog, type Task } from "./backlog.js";
+import { loadBacklog, saveBacklog, nextPendingTask, dependenciesMet, type Backlog, type Task } from "./backlog.js";
 import { BacklogView } from "./backlog-view.js";
 import { ensureWorktree } from "../lib/worktree.js";
 
@@ -333,9 +333,12 @@ function AppRoot() {
 
     // Don't start tasks that already have a session (any state — running, done, or failed).
     // This prevents re-starting tasks whose sessions failed immediately.
+    // Also skip tasks whose dependencies aren't met yet.
     const sessionSlugs = new Set(allSessions.map((s) => s.name));
     const next = backlog.tasks.find(
-      (t) => t.status === "pending" && !sessionSlugs.has(slugify(`${t.id}-${t.title}`)),
+      (t) => t.status === "pending"
+        && !sessionSlugs.has(slugify(`${t.id}-${t.title}`))
+        && dependenciesMet(backlog, t),
     );
     if (next) {
       startTask(next);
