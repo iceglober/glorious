@@ -1,0 +1,38 @@
+name: Auto-tag on merge
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from package.json
+        id: pkg
+        run: echo "version=v$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag already exists
+        id: check
+        run: |
+          if git rev-parse "${{ steps.pkg.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git tag "${{ steps.pkg.outputs.version }}"
+          git push origin "${{ steps.pkg.outputs.version }}"
