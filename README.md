@@ -5,7 +5,7 @@ AI workflows for product and engineering, powered by Claude Code slash commands.
 ## Getting Started
 
 ```bash
-# Install (requires Bun + GitHub CLI)
+# Install (requires Node.js 20+ and GitHub CLI)
 curl -fsSL https://raw.githubusercontent.com/iceglober/aflow/main/install.sh | bash
 
 # Add skills to your repo

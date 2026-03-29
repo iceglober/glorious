@@ -55,7 +55,7 @@ jobs:
       - name: Verify bundle
         if: steps.check.outputs.exists == 'false'
         run: |
-          bun dist/index.js --version
+          node dist/index.js --version
           ls -lh dist/index.js
 
       - name: Prepare release artifact
