@@ -19,7 +19,7 @@ const shimDevtools: BunPlugin = {
 const result = await Bun.build({
   entrypoints: ["src/index.ts"],
   outdir: "dist",
-  target: "bun",
+  target: "node",
   format: "esm",
   splitting: false,
   minify: false,
@@ -41,7 +41,7 @@ if (!result.success) {
 // Prepend shebang to the output
 const outPath = "dist/index.js";
 const content = await Bun.file(outPath).text();
-await Bun.write(outPath, `#!/usr/bin/env bun\n${content}`);
+await Bun.write(outPath, `#!/usr/bin/env node\n${content}`);
 
 const size = Bun.file(outPath).size;
 console.log(`dist/index.js ${(size / 1024 / 1024).toFixed(2)} MB`);

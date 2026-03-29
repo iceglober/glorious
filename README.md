@@ -1,201 +1,98 @@
 # aflow
 
-Structured AI workflows for product and engineering. Two skill pipelines — one for turning ideas into specs, one for turning specs into code — powered by Claude Code.
+AI workflows for product and engineering, powered by Claude Code slash commands.
 
 ## Getting Started
 
-### Install
-
-Requires [Bun](https://bun.sh) and the [GitHub CLI](https://cli.github.com).
-
 ```bash
+# Install (requires Node.js 20+ and GitHub CLI)
 curl -fsSL https://raw.githubusercontent.com/iceglober/aflow/main/install.sh | bash
-```
 
-### Initialize skills
-
-Install aflow skills as Claude Code slash commands in your repo:
-
-```bash
+# Add skills to your repo
 af skills
 ```
 
-Or install globally (available in every repo):
+### Example: idea to shipping code
 
 ```bash
-af skills --user
+# 1. Research the problem space
+/research-web Build a multi-tenant billing system with usage-based pricing
+
+# 2. Create a spec from the research
+/spec-make research/billing focused on metering and invoicing
+
+# 3. Enrich the spec from your codebase (autonomous)
+/spec-enrich research/billing/spec-metering.md
+
+# 4. Refine unknowns with the user (interactive, repeat as needed)
+/spec-refine research/billing/spec-metering-v2.md
+
+# 5. Implement it
+/work Add usage metering API per spec R-01 through R-05
+
+# 6. Ship it
+/ship
 ```
 
-This gives you two skill pipelines plus standalone research tools:
+## Skills
 
-| Pipeline | Skills | Purpose |
-|----------|--------|---------|
-| **Spec** | `/research-web` → `/spec-make` → `/spec-enrich` → `/spec-refine` → `/spec-review` → `/spec-lab` | Idea → research → spec → refined spec → validation |
-| **Engineering** | `/think` → `/work` → `/fix` → `/qa` → `/ship` | Spec → code → ship |
-| **Research** | `/research-auto` | Autonomous experimentation (think-test-reflect loop) |
+### Design pipeline
 
-## Spec Pipeline
-
-Turn an idea into a tight, actionable product spec with tracked unknowns.
-
-### `/research-web` — Web Research
-
-Decomposes a question into parallel agent workstreams. Each agent searches the web, writes findings to a markdown file, and a synthesis agent combines them.
-
-```
-/research-web Build an E2E dental claim submission solution on top of our existing platform
-```
-
-Produces a `research/` directory with one file per agent plus a synthesis.
-
-### `/spec-make` — Create Spec
-
-Creates a structured product spec from research output **or** a direct feature description. Strips narrative, defines terms, surfaces unknowns as first-class tracked items, questions KPIs.
-
-From research:
-```
-/spec-make research/dental-claims focused on submission only
-```
-
-From a description:
-```
-/spec-make A feature that lets users export their data as CSV with configurable column selection
-```
-
-Produces a spec file with:
-- **Unknowns register** — numbered items (U-01, U-02...) with assumptions, risks, and what blocks on them
-- **Requirements** — MUST/SHOULD/COULD with `[depends: U-xx]` tags
-- **Business rules** — IF/THEN/ELSE decision logic
-- **KPIs** — only what the spec's scope can actually influence
-
-### `/spec-enrich` — Enrich from Codebase
-
-Reads the spec's unknowns, searches the current repo to resolve what it can (schemas, types, configs, integrations), and produces an updated spec version. Fully autonomous — no user input.
-
-```
-/spec-enrich research/dental-claims/spec-submission.md
-```
-
-Resolves unknowns like "what does our encounter model look like?" by reading the actual schema. Cites every finding with `file:line` references. Anything it can't answer from code stays in the unknowns register for `/spec-refine`.
-
-### `/spec-refine` — Refine with User
-
-Interactive walkthrough of remaining unknowns. Asks one question at a time, in priority order (highest blast radius first). Integrates answers and produces a new versioned spec.
-
-```
-/spec-refine research/dental-claims/spec-submission-v2.md
-```
-
-Run this as many times as needed. Each pass produces a new version (`v3`, `v4`...) with fewer unknowns. "Skip" or "don't know" is always valid — the unknown stays in the spec.
-
-### `/spec-review` — Gap Analysis
-
-After multiple rounds of enrichment and refinement, audits the spec with fresh eyes. Reads the full version history, checks for consistency issues (orphaned dependency tags, stale assumptions, requirement conflicts), completeness gaps (unaddressed edge cases, missing business rules), and opportunities (existing capabilities that simplify requirements).
-
-```
-/spec-review research/dental-claims/spec-submission-v4.md
-```
-
-### `/spec-lab` — Validation Experiments
-
-Designs and runs binary yes/no experiments to validate spec unknowns through code. Triages unknowns, runs experiments in parallel, and updates the spec with results.
-
-```
-/spec-lab research/dental-claims/spec-submission-v3.md
-```
-
-For open-ended optimization or iteration, use `/research-auto` instead.
-
-### The Loop
+| Step | Skill | What it does |
+|------|-------|-------------|
+| Research | `/research-web` | Parallel web research agents → synthesis document |
+| Structure | `/spec-make` | Research dir or description → structured spec with tracked unknowns |
+| Enrich | `/spec-enrich` | Resolves unknowns from your codebase (autonomous) |
+| Refine | `/spec-refine` | Walks through unknowns one at a time with the user |
+| Audit | `/spec-review` | Gap analysis: consistency, completeness, opportunities |
+| Validate | `/spec-lab` | Binary yes/no experiments against unknowns |
 
 ```
 /research-web  →  /spec-make  →  /spec-enrich  →  /spec-refine × N  →  /spec-review
-     (web)            (structure)      (codebase)        (human)              (audit)
-                                                                                ↕
-                                                                           /spec-lab
-                                                                          (validation)
+    (web)        (structure)      (codebase)        (human)              (audit)
+                                                                           ↕
+                                                                       /spec-lab
+                                                                      (validate)
 ```
 
-Each step reduces ambiguity. Research gathers raw information. Spec structures it and surfaces what's missing. Enrich answers what the code can answer. Refine gets human answers for the rest. Lab validates experimentable unknowns through code. Review audits the accumulated changes for gaps. Loop back to enrich/refine if review or lab surfaces new unknowns.
-
-## Engineering Pipeline
-
-Ship features with structured Claude Code skills. Adapted from [gstack](https://github.com/garrytan/gstack).
-
-### `/think` — Plan Before Building
-
-Product strategy session. Forces you to think through what you're building and why. Asks forcing questions (who wants this? what's the smallest version that matters?) and challenges the premise before any code is written.
-
-### `/work` — Implement
-
-Implements a task from a description. Pulls the latest default branch, creates a working branch, then works through the task methodically using existing codebase patterns.
+`/spec-make` accepts either a research directory or a plain description:
 
 ```
-/work Add CSV export with configurable column selection
+/spec-make research/billing focused on metering and invoicing
+/spec-make A feature that lets users export data as CSV with column selection
 ```
 
-### `/work-backlog` — Implement from Backlog
+### Engineering pipeline
 
-Works through the current task's unchecked items from `.aflow/backlog.json`. Reads the task matched by branch name, implements each item in dependency order, marks items done as it goes.
+| Step | Skill | What it does |
+|------|-------|-------------|
+| Plan | `/think` | Strategy session — forces "why" before "how" |
+| Build | `/work` | Implement from a description (pulls latest, creates branch) |
+| Build | `/work-backlog` | Implement from `.aflow/backlog.json` checklist |
+| Fix | `/fix` | Bug fixes within the current task scope |
+| Test | `/qa` | Diff vs. acceptance criteria — PASS/FAIL per scenario |
+| Ship | `/ship` | Typecheck → review → commit → push → PR |
 
-### `/fix` — Fix Issues
+### Autonomous research
 
-Fix bugs or implement changes within the current task scope. Classifies each issue (bug, scope change, new work) and updates the task's items if behavior changes.
-
-### `/qa` — Quality Check
-
-QA the current diff against the task's acceptance criteria. Builds a test matrix, walks through each scenario tracing the full code path, and produces a report with PASS/FAIL per criterion.
-
-### `/ship` — Ship It
-
-End-to-end shipping pipeline: typecheck → review → commit → push → PR. Verifies task items, creates a PR with a summary tied to the task, and updates the task status.
-
-## Research
-
-### `/research-auto` — Autonomous Experimentation
-
-Based on [ResearcherSkill](https://github.com/krzysztofdudek/ResearcherSkill). An autonomous think-test-reflect loop for any domain where you can measure a result. The agent interviews you about the objective, sets up a `.lab/` directory for experiment tracking, then iterates freely — committing before each experiment, keeping what improves the metric, reverting what doesn't.
-
-Includes guardrails (discard streaks trigger mandatory reflection/forking), branching strategy for exploring divergent approaches, and a multi-evaluator protocol for qualitative metrics.
+`/research-auto` — think-test-reflect experimentation loop. Runs autonomously until a target metric is hit or you stop it. Based on [ResearcherSkill](https://github.com/krzysztofdudek/ResearcherSkill).
 
 ```
-/research-auto Optimize the p99 latency of the /api/encounters endpoint
+/research-auto Optimize p99 latency of /api/billing/usage endpoint
 ```
 
 ## Worktrees
 
-aflow makes git worktrees practical. Each feature gets its own directory with a shared `.git`.
-
 ```bash
-af wt create feature-auth          # new branch + worktree, opens a shell
-af wt create hotfix --from release  # fork from a specific branch
-af wt checkout feature-payments     # worktree from an existing remote branch
-af wt list                          # show all worktrees
-af wt delete feature-auth           # clean up
-af wt cleanup                       # batch-delete merged/stale worktrees
+af wt create feature-auth          # new branch + worktree
+af wt checkout feature-payments     # worktree from existing branch
+af wt list                          # show all
+af wt cleanup                       # delete merged/stale
 ```
-
-Set `AFLOW_DIR` to override where worktrees are stored.
-
-## Task Dependencies
-
-Tasks in `.aflow/backlog.json` support a `dependencies` field — an array of task IDs that must be completed (shipped/merged) before the task can start. The TUI shows blocked tasks and auto-start respects dependency ordering.
-
-## Hooks
-
-Run setup scripts automatically after creating a worktree:
-
-```bash
-af hooks   # creates .aflow/hooks/post_create template
-```
-
-The hook receives `WORKTREE_DIR`, `WORKTREE_NAME`, `BASE_BRANCH`, and `REPO_ROOT` as environment variables.
 
 ## Auto-Claude [Alpha]
 
-`af start` launches an interactive TUI that runs the engineering pipeline above across a backlog of tasks with parallel Claude Code sessions.
-
-Tasks live in `.aflow/backlog.json`. Add tasks, start them (creates a worktree + Claude session), and monitor multiple sessions running concurrently. Auto-start mode fills available concurrency slots with the highest-priority pending tasks whose dependencies are met.
+`af start` launches a TUI that runs engineering skills across a task backlog with parallel Claude sessions. Tasks support `dependencies` — blocked tasks won't auto-start until their deps ship.
 
 ![aflow TUI](assets/tui.png)
 
