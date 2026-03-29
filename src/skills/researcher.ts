@@ -1,6 +1,6 @@
 export function researcher(): string {
   return `---
-description: "Autonomous experimentation skill — agent interviews the user, sets up a lab, then explores freely (think, test, reflect) until stopped or a target is hit. Works for any domain where you can measure or evaluate a result. Based on ResearcherSkill v1.4.4 by krzysztofdudek."
+description: Autonomous experimentation skill — agent interviews the user, sets up a lab, then explores freely (think, test, reflect) until stopped or a target is hit. Works for any domain where you can measure or evaluate a result. Use when user says 'optimize this', 'experiment with', 'find the best approach', 'iterate on', 'research mode'. Do NOT use for binary validation tests (use /prod:lab instead). Based on ResearcherSkill v1.4.4 by krzysztofdudek.
 ---
 
 # Researcher — Autonomous Experimentation Skill

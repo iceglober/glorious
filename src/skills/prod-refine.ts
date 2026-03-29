@@ -1,6 +1,6 @@
 export function prodRefine(): string {
   return `---
-description: Interactive spec refinement. Walk through unknowns with the user, integrate answers, produce an updated spec with fewer unknowns. Provide the spec file path.
+description: Interactive spec refinement. Walk through unknowns with the user, integrate answers, produce an updated spec with fewer unknowns. Use when user says 'refine this spec', 'resolve the unknowns', 'walk me through the questions', 'lets fill in the gaps'. Provide the spec file path.
 ---
 
 # /prod:refine — Interactive Spec Refinement

@@ -1,6 +1,6 @@
 export function prodEnrich(): string {
   return `---
-description: Autonomous spec enrichment from codebase. Reads a product spec, researches the current repo to resolve unknowns, and produces an updated spec version — no user input needed. Provide the spec file path.
+description: Autonomous spec enrichment from codebase. Reads a product spec, researches the current repo to resolve unknowns, and produces an updated spec version — no user input needed. Use when user says 'enrich this spec from code', 'what can the codebase tell us', 'auto-resolve unknowns', 'research the repo for this spec'. Provide the spec file path.
 ---
 
 # /prod:enrich — Codebase-Driven Spec Enrichment

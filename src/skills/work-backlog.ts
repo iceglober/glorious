@@ -2,12 +2,20 @@ import { TASK_PREAMBLE } from "./preamble.js";
 
 export function workBacklog(): string {
   return `---
-description: Work through the current task from the aflow backlog. Reads the task from .aflow/backlog.json, works through unchecked items, checks them off as completed. Provide optional focus area.
+description: Work through the current task from the aflow backlog. Use when user says 'work on the current task', 'continue the backlog task', 'check off items', 'next item', or invokes from the aflow TUI. Reads task from .aflow/backlog.json, implements unchecked items, marks them done. Do NOT use for ad-hoc tasks without a backlog entry (use /work instead).
 ---
 
 # Work Backlog
 
 You are implementing the current aflow task from the backlog, working through its checklist items.
+
+## Critical Rules
+
+- **Mark items done one at a time** as you complete them, not all at the end.
+- **Read source files before editing them.**
+- **Do NOT mark items done that you didn't implement.**
+- **Do not modify other tasks** in the backlog.
+- If you discover work with no corresponding item, **add a new item** to the task's \`items\` array first, then implement it.
 
 ## Input
 
@@ -46,13 +54,5 @@ After completing items:
 3. Ensure every completed item is marked done in the backlog
 4. Do NOT mark items done that you didn't implement
 
-## Rules
-
-- The task's items are your checklist — work through them
-- Mark items done one at a time as you complete them, not all at the end
-- If you discover work that has no corresponding item, add a new item to the task's \`items\` array and implement it
-- Read source files before editing them
-- Use existing patterns in the codebase — match the style of adjacent code
-- Do not modify other tasks in the backlog
 `;
 }

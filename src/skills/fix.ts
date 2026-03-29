@@ -2,12 +2,19 @@ import { TASK_PREAMBLE } from "./preamble.js";
 
 export function fix(): string {
   return `---
-description: Fix bugs or implement changes for the current task. Updates the task's items if behavior changes. Provide the list of issues to address.
+description: Fix bugs or implement changes for the current aflow task. Use when user says 'fix this bug', 'this is broken', 'something's wrong with', 'patch this', or reports specific errors. Classifies issues as bug/scope-change/new-work, fixes code, updates backlog items if behavior changes.
 ---
 
 # Fix
 
 You are fixing issues or making changes within the scope of the current aflow task.
+
+## Critical Rules
+
+- **Implement code changes first**, then update the backlog.
+- **Read source files before editing them.**
+- The task's **acceptance criteria define what "correct" means**.
+- If a fix **contradicts the task's intent**, flag it to the user instead of proceeding.
 
 ## Input
 
@@ -45,11 +52,5 @@ Only update \`.aflow/backlog.json\` if an issue is a **scope change** or **new w
 - Each fix addresses the reported issue
 - Task items accurately reflect completed work
 
-## Rules
-
-- Implement code changes first, then update the backlog
-- Read source files before editing them
-- The task's acceptance criteria define what "correct" means
-- If a fix contradicts the task's intent, flag it to the user
 `;
 }

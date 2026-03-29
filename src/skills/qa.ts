@@ -2,12 +2,19 @@ import { TASK_PREAMBLE } from "./preamble.js";
 
 export function qa(): string {
   return `---
-description: QA the current diff against the task's acceptance criteria. Walks through each scenario, traces code paths. Provide optional focus area.
+description: QA the current diff against the task's acceptance criteria. Use when user says 'test this', 'QA the changes', 'check the diff', 'does this meet the criteria', 'verify the implementation'. Builds a test matrix, traces code paths per scenario, reports PASS/FAIL with file references.
 ---
 
 # QA
 
 You are performing quality assurance on the current diff for this task.
+
+## Critical Rules
+
+- **Acceptance criteria are your primary test cases.** Every one must be verified.
+- **Trace the full code path** — don't assume layers handle errors.
+- **Don't test code that didn't change.**
+- Think like a user: "What if I click this twice fast?"
 
 ## Input
 
@@ -97,11 +104,5 @@ If the user says "fix" or failures are critical:
 - Fix each gap, typecheck after
 - Mark any newly completed items in the backlog
 
-## Rules
-
-- Acceptance criteria are your primary test cases. Every one must be verified.
-- Think like a user. "What if I click this twice fast?"
-- Trace the full code path — don't assume layers handle errors.
-- Don't test code that didn't change.
 `;
 }

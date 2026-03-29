@@ -1,6 +1,6 @@
 export function prodResearch(): string {
   return `---
-description: Multi-agent research orchestrator. Decomposes a research question into parallel agent workstreams, launches them, monitors progress, and synthesizes results. Provide the research topic and context.
+description: Multi-agent research orchestrator. Decomposes a research question into parallel agent workstreams, launches them, monitors progress, and synthesizes results. Use when user says 'research this topic', 'I need to understand', 'deep dive into', 'investigate the market for', 'what do we know about'. Provide the research topic and context.
 ---
 
 # /prod:research — Multi-Agent Research Orchestrator
@@ -109,14 +109,13 @@ Once ALL research agents are complete:
 
 ---
 
-## Key Rules
+## Critical Rules
 
 1. **Never launch agents without user approval of the plan.**
-2. **Every agent gets the critical write protocol.** Non-negotiable.
-3. **Monitor proactively.** Don't wait for the user to ask.
-4. **Kill stuck agents immediately.** They do NOT self-correct.
-5. **Keep check-in reports concise.**
-6. **Source integrity.** Every number needs an inline URL.
-7. **Pre-load data on relaunch.** Don't re-research the same ground.
+2. **Every agent gets the critical write protocol.** Non-negotiable — agent MUST Edit after EVERY search. Never two searches without a write.
+3. **Kill stuck agents immediately.** They do NOT self-correct. Relaunch with pre-loaded data from prior search results.
+4. **Source integrity.** Every number needs an inline URL.
+5. **Monitor proactively** using escalating intervals. Don't wait for the user to ask.
+6. **Keep check-in reports concise.**
 `;
 }

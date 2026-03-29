@@ -1,6 +1,6 @@
 export function prodSpec(): string {
   return `---
-description: Convert research output into a tight, actionable product spec. Strips narrative, defines terms, surfaces unknowns, questions KPIs. Provide the research directory path and scoping guidance.
+description: Convert research output into a tight, actionable product spec. Strips narrative, defines terms, surfaces unknowns, questions KPIs. Use when user says 'create a spec from this research', 'turn this into requirements', 'write a product spec', 'spec this out'. Provide the research directory path and scoping guidance.
 ---
 
 # /prod:spec — Research to Product Spec
@@ -80,14 +80,14 @@ Write to: \\\`[research-dir]/spec-[scope-slug].md\\\`
 
 ---
 
-## Key Principles
+## Critical Principles
 
 1. **Unknowns are first-class citizens.** Top of the spec, not footnotes.
 2. **Requirements, not solutions.** WHAT not HOW.
 3. **No narrative.** Specs are reference documents, not stories.
 4. **Define everything.** If a term could mean two things, define it.
-5. **KPIs earn their place.** Measurable, actionable, attributable to this scope.
-6. **Scope is a weapon.** Enforce it aggressively.
-7. **Assumptions are risks.** Surface them, don't hide them.
+5. **Scope is a weapon.** Enforce it aggressively — out-of-scope items get fenced, not deleted.
+6. **Assumptions are risks.** Surface them, don't hide them.
+7. **KPIs earn their place.** Measurable, actionable, attributable to this scope.
 `;
 }

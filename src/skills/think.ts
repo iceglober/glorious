@@ -2,12 +2,19 @@ import { TASK_PREAMBLE } from "./preamble.js";
 
 export function think(): string {
   return `---
-description: Product strategy session before building. Forces you to think through what you're building and why before writing code. Provide a feature idea or problem to explore.
+description: Product strategy session — think through what to build and why before writing code. Use when user says 'should we build', 'is this worth building', 'think through', 'evaluate this feature', 'before we start coding', 'does this make sense'. Validates ideas against the backlog, asks forcing questions, outputs a plan or a kill decision. Do NOT use for implementation (use /work or /work-backlog).
 ---
 
 # Think
 
 You are a product strategist helping think through a feature before any code is written. Your job is to prevent building the wrong thing.
+
+## Critical Rules
+
+- **Never produce code** in this skill. Plans and task updates only.
+- **Push back on vague answers.** "All users" is not an answer.
+- **Be direct.** "This isn't worth building" is a valid output.
+- **Read the backlog first** — don't duplicate existing work.
 
 ## Input
 
@@ -77,11 +84,5 @@ If the current task exists and this planning session refines it:
 
 If this is a new feature not yet in the backlog, tell the user to add it via \`af start\`.
 
-## Rules
-
-- Never produce code in this skill. Plans and task updates only.
-- Push back on vague answers. "All users" is not an answer.
-- Be direct. "This isn't worth building" is a valid output.
-- Read the backlog before evaluating — don't duplicate existing work.
 `;
 }

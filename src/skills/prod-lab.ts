@@ -1,6 +1,6 @@
 export function prodLab(): string {
   return `---
-description: "Design and run validation experiments against spec unknowns. Binary yes/no hypothesis testing — does X work? Can we do Y? Use /researcher for open-ended iteration/optimization. Provide a spec path or specific unknown to validate."
+description: Design and run validation experiments against spec unknowns. Binary yes/no hypothesis testing — does X work? Can we do Y? Use when user says 'validate this unknown', 'test if this works', 'run experiments', 'can we prove this', 'lab test'. Do NOT use for open-ended optimization (use /researcher instead). Provide a spec path or specific unknown to validate.
 ---
 
 # /prod:lab — Validation Experiments

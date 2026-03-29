@@ -2,12 +2,20 @@ import { TASK_PREAMBLE } from "./preamble.js";
 
 export function ship(): string {
   return `---
-description: Ship the current task's branch. Typechecks, reviews, commits, pushes, and creates a PR. Provide an optional PR description.
+description: Ship the current task's branch — typecheck, review, commit, push, and create a PR. Use when user says 'ship it', 'create a PR', 'push and release', 'land this', 'send for review'. Runs full pre-flight pipeline before pushing. Never force-pushes or pushes to main.
 ---
 
 # Ship
 
-You are shipping the current task's branch. Pipeline: typecheck → review → commit → push → PR.
+You are shipping the current task's branch. Pipeline: typecheck -> review -> commit -> push -> PR.
+
+## Critical Rules
+
+- **Never skip typecheck or review.**
+- **Never force-push.**
+- **Never push to main directly.**
+- **Never commit \`.env\` or secrets.**
+- Update task status to \`"shipped"\` only **after** creating the PR.
 
 ## Input
 
@@ -101,12 +109,5 @@ EOF
 **Items completed:** {done}/{total}
 \`\`\`
 
-## Rules
-
-- Never skip typecheck or review.
-- Never force-push.
-- Never push to main directly.
-- Never commit \`.env\` or secrets.
-- Update the task status after creating the PR.
 `;
 }
