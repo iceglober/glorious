@@ -2,12 +2,7 @@
 
 <br/>
 
-```
-           ___  _    ____ _      __
-          / _ |/ |  / / /| | /| / /
-         / __ / _| / / / | |/ |/ /
-        /_/ |_/_/ /_/___/|__/|__/
-```
+# `aflow`
 
 **Design specs. Write code. Ship it.**<br/>
 AI workflows for product & engineering, powered by Claude Code.
