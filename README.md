@@ -121,20 +121,6 @@ af wt list                        # show all
 af wt cleanup                     # delete merged/stale
 ```
 
-<br/>
-
-## Auto-Claude <sup>alpha</sup>
-
-`af start` launches a TUI that runs engineering commands across a task backlog with parallel Claude sessions. Tasks support `dependencies` — blocked tasks wait for their deps to ship.
-
-<div align="center">
-
-![aflow TUI](assets/tui.png)
-
-</div>
-
-<br/>
-
 ---
 
 <div align="center">
