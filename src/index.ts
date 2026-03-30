@@ -10,6 +10,7 @@ import { upgrade } from "./commands/upgrade.js";
 import { installSkills } from "./commands/install-skills.js";
 import { HELP_TEXT } from "./help.js";
 import { VERSION } from "./lib/version.js";
+import { checkForUpdate } from "./lib/update-check.js";
 
 // Intercept --help / -h / no-args before cmd-ts to show our full manual
 const args = process.argv.slice(2);
@@ -21,6 +22,8 @@ if (args[0] === "--version" || args[0] === "-V") {
   console.log(`af ${VERSION}`);
   process.exit(0);
 }
+
+checkForUpdate();
 
 const wt = subcommands({
   name: "wt",

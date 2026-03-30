@@ -110,14 +110,5 @@ export const installSkills = command({
       }
     }
 
-    if (!user) {
-      // Check for .aflow/backlog.json
-      const root = gitRoot();
-      const backlogJson = path.join(root, ".aflow", "backlog.json");
-      if (!fs.existsSync(backlogJson)) {
-        console.log("");
-        info("run `af start` to create a backlog — skills read tasks from .aflow/backlog.json");
-      }
-    }
   },
 });

@@ -14,15 +14,20 @@ AI workflows for product & engineering, powered by Claude Code.
 
 </div>
 
-## Setup
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/iceglober/aflow/main/install.sh | bash
-af skills    # install slash commands in your repo
-```
+## Install
 
 > [!NOTE]
 > Requires Node.js 20+ and the [GitHub CLI](https://cli.github.com).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iceglober/aflow/main/install.sh | bash
+```
+
+Then add skills to your repo:
+
+```bash
+af skills
+```
 
 <br/>
 
@@ -34,11 +39,11 @@ af skills    # install slash commands in your repo
 # ── design ──────────────────────────────────────────
 /research-web  Build a multi-tenant billing system with usage-based pricing
 /spec-make     research/billing focused on metering and invoicing
-/spec-enrich   research/billing/spec-metering.md
-/spec-refine   research/billing/spec-metering-v2.md
+/spec-enrich
+/spec-refine
 
 # ── build ───────────────────────────────────────────
-/work  Add usage metering API per spec R-01 through R-05
+/work  billing system spec
 /qa
 /ship
 ```
