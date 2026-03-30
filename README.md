@@ -14,11 +14,16 @@ AI workflows for product & engineering, powered by Claude Code.
 
 </div>
 
-## Setup
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iceglober/aflow/main/install.sh | bash
-af skills    # install slash commands in your repo
+```
+
+Then add skills to your repo:
+
+```bash
+af skills
 ```
 
 > [!NOTE]
