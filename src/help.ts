@@ -41,6 +41,11 @@ ${bold("COMMANDS")}
 
   ${bold("Workflow")}
 
+  status [--verbose|-v]
+      Show current worktree status: branch, commit, dirty state, and
+      sync with the base branch. With --verbose, shows transition
+      history (commits since diverging from base) inline.
+
   start
       Launch the interactive TUI — manage your backlog, start tasks,
       and run parallel Claude Code sessions.

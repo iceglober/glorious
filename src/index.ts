@@ -8,6 +8,7 @@ import { initHooks } from "./commands/init-hooks.js";
 import { startWork } from "./commands/start-work.js";
 import { upgrade } from "./commands/upgrade.js";
 import { installSkills } from "./commands/install-skills.js";
+import { status } from "./commands/status.js";
 import { HELP_TEXT } from "./help.js";
 import { VERSION } from "./lib/version.js";
 import { checkForUpdate } from "./lib/update-check.js";
@@ -44,6 +45,7 @@ const cli = subcommands({
   cmds: {
     wt,
     start: startWork,
+    status,
     skills: installSkills,
     hooks: initHooks,
     upgrade,
