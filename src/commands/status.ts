@@ -60,6 +60,14 @@ function formatTask(task: Task, indent: number, allTasks: Task[], verbose: boole
       }
     }
 
+    // Show transition history in verbose mode
+    if (verbose && task.transitions.length > 0) {
+      for (const t of task.transitions) {
+        const ts = new Date(t.timestamp).toLocaleString();
+        console.log(`${prefix}  ${dim(ts)}  →  ${t.phase}  ${dim(`(${t.actor})`)}`);
+      }
+    }
+
     // Show resume hint for stalled tasks
     if (task.worktree) {
       console.log(`${prefix}  ${dim(`resume: cd ${task.worktree} && af start`)}`);
