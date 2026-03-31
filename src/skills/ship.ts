@@ -48,8 +48,8 @@ Review the current diff:
 
 ## Step 4: Task verification
 
-- Read the current task from \`.aflow/backlog.json\`
-- Are there unchecked items that this diff completes? Mark them done.
+- Read the current task from \`af state\`
+- Are there unchecked items that this diff completes? Mark them done via \`af state task update\`.
 - Do the acceptance criteria pass?
 
 ## Step 5: Commit
@@ -98,9 +98,9 @@ EOF
 
 ## Step 9: Update task
 
-- Set the task's \`status\` to \`"shipped"\` in \`.aflow/backlog.json\`
-- Set the task's \`pr\` field to the PR URL
-- Set \`shippedAt\` to the current ISO timestamp
+- Transition the task to shipped: \`af state task update --id <id> --status shipped\`
+- Set the task's PR field: \`af state task update --id <id> --pr '<url>'\`
+- Set shippedAt: \`af state task update --id <id> --shippedAt '<ISO timestamp>'\`
 
 ## Step 10: Report
 

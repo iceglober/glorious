@@ -65,7 +65,7 @@ For each scenario:
 
 ## Step 5: Check task items
 
-Compare checked items in the backlog against the actual implementation:
+Compare task items from \`af state\` against the actual implementation:
 - Items marked done but code doesn't fully implement them?
 - Code that completes items not yet marked done?
 
@@ -110,7 +110,7 @@ If the diff includes UI changes and the \\\`/browser\\\` skill is available, use
 
 If the user says "fix" or failures are critical:
 - Fix each gap, typecheck after
-- Mark any newly completed items in the backlog
+- Mark any newly completed items via \`af state task update --id <id> --items '<json>'\`
 
 `;
 }

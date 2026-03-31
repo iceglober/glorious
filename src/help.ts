@@ -13,16 +13,19 @@ ${bold("COMMANDS")}
 
   ${bold("Workflow")}
 
-  start ["description"] [--quick]
+  start ["description"] [--quick] [--id <task-id>]
       Start a new task pipeline or resume an existing one. Claude guides you
       through: understand → design → implement → verify → ship.
 
+      With no args, detects stalled tasks and offers to resume them.
+      With --id, resumes a specific task from any directory.
       With --quick, skips design phases for small bugs and features.
 
       Examples:
-        af start                           (prompts for description)
+        af start                           (find stalled tasks or prompt)
         af start "add user auth"           (starts full pipeline)
         af start --quick "fix login bug"   (skips design, straight to implement)
+        af start --id t1                   (resume task t1 from anywhere)
 
   status [--json]
       Show all tasks in a tree view with phases, branches, and progress.

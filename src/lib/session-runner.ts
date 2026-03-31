@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, spawn as nodeSpawn } from "node:child_process";
 
 /** Find the system-installed Claude Code CLI path. */
 function findClaudeCli(): string {
@@ -14,48 +14,76 @@ export interface RunSessionOpts {
   cwd: string;
   /** Prompt to send (e.g., `/spec-make <args>`) */
   prompt: string;
-  /** If true, inherit stdin/stdout for interactive sessions */
-  interactive?: boolean;
+}
+
+/** Sentinel error thrown when user ctrl+c's a session. */
+export class SessionInterrupted extends Error {
+  constructor() {
+    super("Session interrupted by user.");
+    this.name = "SessionInterrupted";
+  }
 }
 
 /**
  * Spawn a Claude Code session as a subprocess.
  *
- * Interactive sessions (understand, design) inherit stdin/stdout so the user
- * can converse with Claude. Autonomous sessions (implement, verify, ship) run
- * with output piped.
+ * Runs in print mode (-p) with dangerously-skip-permissions since sessions
+ * operate in isolated worktrees. Stdout is inherited so the user sees
+ * Claude's output. Stderr is piped so we can suppress it on interrupt.
  *
- * Returns the exit code.
+ * Returns the exit code. Throws SessionInterrupted on SIGINT.
  */
-export function runSession(opts: RunSessionOpts): number {
+export async function runSession(opts: RunSessionOpts): Promise<number> {
   const claude = findClaudeCli();
 
-  try {
-    if (opts.interactive) {
-      // Interactive: user converses with Claude directly (stdin/stdout inherited)
-      execSync(
-        `${JSON.stringify(claude)} --prompt ${JSON.stringify(opts.prompt)}`,
-        {
-          cwd: opts.cwd,
-          stdio: "inherit",
-          encoding: "utf-8",
-        },
-      );
-      return 0;
-    } else {
-      // Autonomous: non-interactive, pipe stdin, show stdout/stderr
-      execSync(
-        `${JSON.stringify(claude)} -p ${JSON.stringify(opts.prompt)}`,
-        {
-          cwd: opts.cwd,
-          stdio: ["pipe", "inherit", "inherit"],
-          encoding: "utf-8",
-        },
-      );
-      return 0;
-    }
-  } catch (e: any) {
-    // execSync throws on non-zero exit
-    return e.status ?? 1;
-  }
+  return new Promise<number>((resolve, reject) => {
+    const child = nodeSpawn(claude, [
+      "-p",
+      "--dangerously-skip-permissions",
+    ], {
+      cwd: opts.cwd,
+      stdio: ["pipe", "inherit", "pipe"],
+    });
+
+    // Pass prompt via stdin (avoids --allowedTools eating the positional arg)
+    child.stdin?.write(opts.prompt);
+    child.stdin?.end();
+
+    let interrupted = false;
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (!interrupted) {
+        process.stderr.write(chunk);
+      }
+    });
+
+    const sigHandler = () => {
+      if (interrupted) {
+        child.kill("SIGKILL");
+        return;
+      }
+      interrupted = true;
+      child.kill("SIGINT");
+      setTimeout(() => {
+        if (!child.killed) child.kill("SIGINT");
+      }, 100);
+    };
+    process.on("SIGINT", sigHandler);
+
+    child.on("close", (code, signal) => {
+      process.off("SIGINT", sigHandler);
+
+      if (interrupted || signal === "SIGINT" || signal === "SIGTERM" || code === 130) {
+        reject(new SessionInterrupted());
+        return;
+      }
+
+      resolve(code ?? 1);
+    });
+
+    child.on("error", (err) => {
+      process.off("SIGINT", sigHandler);
+      resolve(1);
+    });
+  });
 }

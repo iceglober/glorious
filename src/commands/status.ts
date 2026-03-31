@@ -1,5 +1,5 @@
 import { command, flag } from "cmd-ts";
-import { listTasks, deriveEpicPhase, dependenciesMet, isTerminal, type Task, type Phase } from "../lib/state.js";
+import { listTasks, deriveEpicPhase, dependenciesMet, isTerminal, loadPipeline, type Task, type Phase } from "../lib/state.js";
 import { bold, dim, cyan, green, yellow, red } from "../lib/fmt.js";
 
 const phaseColor: Record<Phase, (s: string) => string> = {
@@ -33,6 +33,30 @@ function formatTask(task: Task, indent: number, allTasks: Task[]): void {
   if (task.pr) line += ` ${dim(task.pr)}`;
   line += blocked;
   console.log(line);
+
+  // Show pipeline progress for non-terminal, non-epic tasks
+  if (!isTerminal(task.phase) && task.children.length === 0) {
+    const pipeline = loadPipeline(task.id);
+    if (pipeline) {
+      const completed = pipeline.completedSkills;
+      const next = pipeline.nextSkill;
+      if (completed.length > 0 || next) {
+        let detail = `${prefix}  `;
+        if (completed.length > 0) {
+          detail += dim(`done: ${completed.join(", ")}`);
+        }
+        if (next) {
+          detail += (completed.length > 0 ? dim("  ") : "") + yellow(`next: /${next}`);
+        }
+        console.log(detail);
+      }
+    }
+
+    // Show resume hint for stalled tasks
+    if (task.worktree) {
+      console.log(`${prefix}  ${dim(`resume: cd ${task.worktree} && af start`)}`);
+    }
+  }
 
   // Print children indented
   if (task.children.length > 0) {

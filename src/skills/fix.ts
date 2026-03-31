@@ -2,7 +2,7 @@ import { TASK_PREAMBLE } from "./preamble.js";
 
 export function fix(): string {
   return `---
-description: Fix bugs or implement changes for the current aflow task. Use when user says 'fix this bug', 'this is broken', 'something's wrong with', 'patch this', or reports specific errors. Classifies issues as bug/scope-change/new-work, fixes code, updates backlog items if behavior changes.
+description: Fix bugs or implement changes for the current aflow task. Use when user says 'fix this bug', 'this is broken', 'something's wrong with', 'patch this', or reports specific errors. Classifies issues as bug/scope-change/new-work, fixes code, updates task state if behavior changes.
 ---
 
 # Fix
@@ -11,7 +11,7 @@ You are fixing issues or making changes within the scope of the current aflow ta
 
 ## Critical Rules
 
-- **Implement code changes first**, then update the backlog.
+- **Implement code changes first**, then update the task.
 - **Read source files before editing them.**
 - The task's **acceptance criteria define what "correct" means**.
 - If a fix **contradicts the task's intent**, flag it to the user instead of proceeding.
@@ -40,10 +40,10 @@ For each issue:
 
 ### Step 3: Update the task (if needed)
 
-Only update \`.aflow/backlog.json\` if an issue is a **scope change** or **new work**:
-- Add new items for new work
-- Mark completed items as \`done: true\`
-- Update acceptance criteria if behavior changed
+Only update the task via \`af state task update\` if an issue is a **scope change** or **new work**:
+- Add new items for new work via \`af state task update --id <id> --items '<json>'\`
+- Mark completed items as done via \`af state task update --id <id> --items '<json>'\`
+- Update acceptance criteria if behavior changed via \`af state task update --id <id> --acceptance '<criteria>'\`
 - Leave unrelated items alone
 
 ### Step 4: Verify

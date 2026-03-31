@@ -7,36 +7,31 @@ import {
   type Phase,
   type PipelineState,
 } from "./state.js";
-import { runSession } from "./session-runner.js";
-import { gitRoot } from "./git.js";
+import { runSession, SessionInterrupted } from "./session-runner.js";
+import { gitRoot, gitSafe, gitInSafe } from "./git.js";
 import { ensureWorktree } from "./worktree.js";
 import { slugify } from "./slug.js";
-import { ok, info, warn, bold, dim } from "./fmt.js";
+import { ok, info, warn, bold, dim, red } from "./fmt.js";
 import * as readline from "node:readline";
 
 // ── Skill definitions per phase ──────────────────────────────────────
 
 const DESIGN_SKILLS = ["spec-make", "spec-enrich", "spec-refine", "spec-lab", "spec-review"];
 
-interface PhaseSkills {
-  skills: string[];
-  interactive: boolean;
-}
-
-function phaseSkills(phase: Phase): PhaseSkills {
+function phaseSkills(phase: Phase): string[] {
   switch (phase) {
     case "understand":
-      return { skills: ["think"], interactive: true };
+      return ["think"];
     case "design":
-      return { skills: DESIGN_SKILLS, interactive: true };
+      return DESIGN_SKILLS;
     case "implement":
-      return { skills: ["work"], interactive: false };
+      return ["work"];
     case "verify":
-      return { skills: ["qa"], interactive: false };
+      return ["qa"];
     case "ship":
-      return { skills: ["ship"], interactive: false };
+      return ["ship"];
     default:
-      return { skills: [], interactive: false };
+      return [];
   }
 }
 
@@ -60,18 +55,25 @@ async function confirm(question: string): Promise<boolean> {
 // ── Build the prompt for a skill session ─────────────────────────────
 
 function buildSkillPrompt(skill: string, task: Task): string {
-  const ctx = [
-    `Task ${task.id}: ${task.title}`,
-    task.description ? `Description: ${task.description}` : "",
-    task.spec ? `Spec: ${task.spec}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const lines: string[] = [];
 
-  // Map skill name to slash command
-  const cmd = `/${skill.replace("-", "-")}`;
+  // Inject task context directly into the prompt
+  lines.push(`## Task Context`);
+  lines.push(`- Task ID: ${task.id}`);
+  lines.push(`- Title: ${task.title}`);
+  if (task.description) lines.push(`- Description: ${task.description}`);
+  lines.push(`- Phase: ${task.phase}`);
+  if (task.branch) lines.push(`- Branch: ${task.branch}`);
+  if (task.worktree) lines.push(`- Worktree: ${task.worktree}`);
+  if (task.spec) lines.push(`- Spec file: ${task.spec}`);
+  if (task.pr) lines.push(`- PR: ${task.pr}`);
 
-  return `${ctx}\n\n${cmd} ${task.id}: ${task.title}`;
+  lines.push("");
+  lines.push(`Use \`af state task show --id ${task.id} --json\` for full task details. Use \`af state spec show --id ${task.id}\` to read the spec. Use \`af state task update --id ${task.id} --pr <url>\` to record a PR URL after creating one.`);
+  lines.push("");
+  lines.push(`/${skill} ${task.id}: ${task.title}`);
+
+  return lines.join("\n");
 }
 
 // ── Determine the working directory for a phase ──────────────────────
@@ -83,9 +85,33 @@ function sessionCwd(task: Task, phase: Phase): string {
   return gitRoot();
 }
 
+// ── Check if a worktree has commits ahead of main ────────────────────
+
+function hasCommitsAhead(worktree: string): boolean {
+  const log = gitInSafe(worktree, "log", "HEAD", "--not", "--remotes=origin/main", "--oneline");
+  // Also check for any diff against the base branch
+  if (log && log.trim().length > 0) return true;
+  const diff = gitInSafe(worktree, "diff", "--stat");
+  return diff !== null && diff.trim().length > 0;
+}
+
 // ── Pipeline orchestrator ────────────────────────────────────────────
 
 export async function runPipeline(task: Task): Promise<void> {
+  try {
+    await _runPipeline(task);
+  } catch (e) {
+    if (e instanceof SessionInterrupted) {
+      // Clear the ^C from the terminal line
+      process.stdout.write("\r\x1b[K");
+      warn(`pipeline interrupted. Run ${bold("af start")} to resume.`);
+      return;
+    }
+    throw e;
+  }
+}
+
+async function _runPipeline(task: Task): Promise<void> {
   info(`pipeline: ${bold(task.id)} — ${task.title}`);
 
   while (true) {
@@ -108,7 +134,7 @@ export async function runPipeline(task: Task): Promise<void> {
       return;
     }
 
-    const { skills, interactive } = phaseSkills(current.phase);
+    const skills = phaseSkills(current.phase);
     if (skills.length === 0) {
       ok(`no skills for phase "${current.phase}", advancing...`);
       advancePhase(current);
@@ -130,9 +156,11 @@ export async function runPipeline(task: Task): Promise<void> {
     }
 
     // Ensure worktree exists before implement phase
+    // Branch from current HEAD (not main) so worktree has the latest code
     if (current.phase === "implement" && !current.worktree) {
       const slug = slugify(`${current.id}-${current.title}`);
-      const wtPath = ensureWorktree(slug);
+      const currentBranch = gitSafe("rev-parse", "--abbrev-ref", "HEAD") ?? undefined;
+      const wtPath = ensureWorktree(slug, currentBranch);
       const { saveTask } = await import("./state.js");
       const t = loadTask(current.id)!;
       t.branch = slug;
@@ -140,41 +168,47 @@ export async function runPipeline(task: Task): Promise<void> {
       saveTask(t);
     }
 
-    // Run remaining skills
+    // Run remaining skills (with one retry on failure)
+    let phaseSucceeded = true;
     for (const skill of skills) {
       if (pipeline.completedSkills.includes(skill) || pipeline.skippedSkills.includes(skill)) {
         continue;
       }
 
-      info(`running /${bold(skill)} for ${current.id}...`);
-
-      const cwd = sessionCwd(current, current.phase);
-      const prompt = buildSkillPrompt(skill, current);
-      const exitCode = runSession({ cwd, prompt, interactive });
-
-      if (exitCode !== 0) {
-        warn(`/${skill} exited with code ${exitCode}. Session may have crashed.`);
-        warn(`run ${bold("af start")} to resume from this point.`);
-        return;
+      const succeeded = await runSkillWithRetry(skill, current, pipeline);
+      if (!succeeded) {
+        phaseSucceeded = false;
+        break;
       }
-
-      // Mark completed
-      pipeline.completedSkills.push(skill);
-      const nextIdx = skills.indexOf(skill) + 1;
-      pipeline.nextSkill = nextIdx < skills.length ? skills[nextIdx] : null;
-      savePipeline(pipeline);
 
       // Special: spec-refine can run multiple rounds (BR-11)
       if (skill === "spec-refine" && current.phase === "design") {
-        // After spec-refine, check if user wants another round
-        // (the skill itself handles the conversation; we just offer to re-run)
         const again = await confirm("Run another refinement round?");
         if (again) {
-          // Remove spec-refine from completed so it runs again
           pipeline.completedSkills = pipeline.completedSkills.filter((s) => s !== "spec-refine");
           pipeline.nextSkill = "spec-refine";
           savePipeline(pipeline);
         }
+      }
+    }
+
+    if (!phaseSucceeded) return;
+
+    // After implement: verify that work was actually produced
+    if (current.phase === "implement" && current.worktree) {
+      if (!hasCommitsAhead(current.worktree)) {
+        warn("implement phase produced no changes.");
+        warn(`task ${bold(current.id)} remains in implement. Run ${bold("af start")} to retry.`);
+        // Reset pipeline so /work runs again on next attempt
+        savePipeline({
+          taskId: current.id,
+          currentPhase: "implement",
+          completedSkills: [],
+          skippedSkills: [],
+          nextSkill: "work",
+          startedAt: new Date().toISOString(),
+        });
+        return;
       }
     }
 
@@ -196,7 +230,6 @@ export async function runPipeline(task: Task): Promise<void> {
         if (retry) {
           transitionTask(current.id, "implement", { force: true, actor: "orchestrator/qa-rework" });
           ok(`${bold(current.id)} → implement (rework)`);
-          // Reset pipeline state for implement phase
           savePipeline({
             taskId: current.id,
             currentPhase: "implement",
@@ -205,9 +238,47 @@ export async function runPipeline(task: Task): Promise<void> {
             nextSkill: "work",
             startedAt: new Date().toISOString(),
           });
-          continue; // re-enter the loop at implement phase
+          continue;
         }
         warn("Leaving task in verify for manual intervention.");
+        return;
+      }
+    }
+
+    // After ship: check if a PR exists (either via state or by checking git)
+    if (current.phase === "ship") {
+      const updated = loadTask(current.id)!;
+      if (!updated.pr && updated.branch) {
+        // Skill may have created a PR without updating state — check gh
+        const prUrl = gitInSafe(
+          updated.worktree ?? gitRoot(),
+          "ls-remote", "--get-url", "origin",
+        );
+        try {
+          const { execFileSync } = await import("node:child_process");
+          const ghResult = execFileSync("gh", ["pr", "view", updated.branch, "--json", "url", "-q", ".url"], {
+            encoding: "utf-8",
+            cwd: updated.worktree ?? gitRoot(),
+          }).trim();
+          if (ghResult) {
+            updated.pr = ghResult;
+            const { saveTask } = await import("./state.js");
+            saveTask(updated);
+            ok(`PR detected: ${ghResult}`);
+          }
+        } catch {}
+      }
+      if (!updated.pr) {
+        warn("ship phase did not produce a PR.");
+        warn(`task ${bold(current.id)} remains in ship. Run ${bold("af start")} to retry.`);
+        savePipeline({
+          taskId: current.id,
+          currentPhase: "ship",
+          completedSkills: [],
+          skippedSkills: [],
+          nextSkill: "ship",
+          startedAt: new Date().toISOString(),
+        });
         return;
       }
     }
@@ -215,6 +286,46 @@ export async function runPipeline(task: Task): Promise<void> {
     // Advance to next phase
     advancePhase(current);
   }
+}
+
+// ── Run a skill with one retry on failure ────────────────────────────
+
+async function runSkillWithRetry(
+  skill: string,
+  task: Task,
+  pipeline: PipelineState,
+): Promise<boolean> {
+  const skills = phaseSkills(task.phase);
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt === 2) {
+      info(`retrying /${bold(skill)} for ${task.id} (attempt 2/2)...`);
+    } else {
+      info(`running /${bold(skill)} for ${task.id}...`);
+    }
+
+    const cwd = sessionCwd(task, task.phase);
+    const prompt = buildSkillPrompt(skill, task);
+    const exitCode = await runSession({ cwd, prompt });
+
+    if (exitCode === 0) {
+      // Mark completed
+      pipeline.completedSkills.push(skill);
+      const nextIdx = skills.indexOf(skill) + 1;
+      pipeline.nextSkill = nextIdx < skills.length ? skills[nextIdx] : null;
+      savePipeline(pipeline);
+      return true;
+    }
+
+    if (attempt === 1) {
+      warn(`/${skill} failed (exit ${exitCode}). Retrying once...`);
+    }
+  }
+
+  // Both attempts failed
+  console.error(red(`/${skill} failed after 2 attempts. Pipeline stopped.`));
+  warn(`task ${bold(task.id)} remains in ${task.phase}. Run ${bold("af start")} to retry.`);
+  return false;
 }
 
 function advancePhase(task: Task): void {
@@ -245,7 +356,6 @@ async function runEpicChildren(epic: Task): Promise<void> {
       continue;
     }
 
-    // Check dependencies (BR-02)
     const { dependenciesMet } = await import("./state.js");
     if (!dependenciesMet(child)) {
       warn(`${childId} blocked by dependencies, skipping.`);
