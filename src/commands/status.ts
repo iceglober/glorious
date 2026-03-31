@@ -66,6 +66,14 @@ function formatTask(task: Task, indent: number, allTasks: Task[], verbose: boole
     }
   }
 
+  // Show transition history in verbose mode
+  if (verbose && task.transitions.length > 0) {
+    for (const t of task.transitions) {
+      const ts = new Date(t.timestamp).toLocaleString();
+      console.log(`${prefix}  ${dim(ts)}  →  ${bold(t.phase)}  ${dim(`(${t.actor})`)}`);
+    }
+  }
+
   // Print children indented
   if (task.children.length > 0) {
     for (const childId of task.children) {
