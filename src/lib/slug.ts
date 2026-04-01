@@ -3,7 +3,8 @@ export function slugify(text: string, maxLen = 50): string {
   const slug = text
     .toLowerCase()
     .replace(/[^a-z0-9.]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[-.]+|[-.]+$/g, "");
 
   if (slug.length <= maxLen) return slug;
 
