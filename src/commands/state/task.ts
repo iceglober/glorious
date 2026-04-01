@@ -1,6 +1,7 @@
 import { command, subcommands, positional, option, flag, optional, string } from "cmd-ts";
 import {
   createTask,
+  deleteTask,
   loadTask,
   listTasks,
   transitionTask,
@@ -170,6 +171,25 @@ const cancel = command({
         actor: args.actor ?? undefined,
       });
       ok(`${bold(task.id)} cancelled`);
+    } catch (e: any) {
+      console.error(e.message);
+      process.exit(1);
+    }
+  },
+});
+
+// ── af state task delete ─────────────────────────────────────────────
+
+const del = command({
+  name: "delete",
+  description: "Delete a task state file",
+  args: {
+    id: option({ type: string, long: "id", short: "i", description: "Task ID" }),
+  },
+  handler: (args) => {
+    try {
+      deleteTask(args.id);
+      ok(`deleted ${bold(args.id)}`);
     } catch (e: any) {
       console.error(e.message);
       process.exit(1);

@@ -161,6 +161,28 @@ export function listTasks(): Task[] {
   return tasks;
 }
 
+export function deleteTask(id: string): void {
+  const task = loadTask(id);
+  if (!task) throw new Error(`Task "${id}" not found.`);
+
+  // Remove from parent's children array
+  if (task.parent) {
+    const parent = loadTask(task.parent);
+    if (parent) {
+      parent.children = parent.children.filter((c) => c !== id);
+      saveTask(parent);
+    }
+  }
+
+  // Delete the task file
+  const p = taskPath(id);
+  fs.unlinkSync(p);
+
+  // Delete pipeline file if it exists
+  const pp = pipelinePath(id);
+  if (fs.existsSync(pp)) fs.unlinkSync(pp);
+}
+
 export function createTask(opts: {
   title: string;
   description?: string;
