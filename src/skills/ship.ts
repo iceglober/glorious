@@ -35,16 +35,28 @@ git diff main...HEAD --stat
 - HEAD equals main? Stop: "Nothing to ship."
 - On \`main\`? Stop: "Create a branch first."
 
-## Step 2: Typecheck
+## Step 2: Independent verification
 
-Run the project's typecheck command (see CLAUDE.md). Fix errors before proceeding.
+Do NOT trust prior sessions. Run fresh:
 
-## Step 3: Review
+\`\`\`bash
+bun run typecheck
+bun test
+bun run build
+\`\`\`
 
-Review the current diff:
-- **CRITICAL** — Bug, security hole, data loss. Fix immediately.
+Fix any failures. Do not ship broken code.
+
+## Step 3: Review the full diff
+
+\`\`\`bash
+git diff main...HEAD
+\`\`\`
+
+Read every line. Check for:
+- **CRITICAL** — Bug, duplicate code blocks, security hole, data loss. Fix immediately.
 - **ISSUE** — Real problem, not dangerous. Fix and explain.
-- **SUGGESTION** — Could be better, isn't broken. List and ask.
+- **SUGGESTION** — Could be better, isn't broken. Note for PR.
 
 ## Step 4: Task verification
 

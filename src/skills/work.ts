@@ -5,16 +5,24 @@ export function work(): string {
 description: Implement a given task using existing codebase patterns. Use when user says 'implement', 'build this', 'make this change', 'add this feature', 'code this up', or provides ad-hoc task instructions. Reads CLAUDE.md, follows dependency order, typechecks after changes.
 ---
 
-# Work
+# Work — Test-Driven Implementation
 
-You are implementing a task described by the user. Work through it methodically using the existing codebase patterns.
+Write the test first. Watch it fail. Write minimal code to pass.
 
-## Critical Rules
+If you didn't watch the test fail, you don't know if it tests the right thing.
 
-- **Read source files before editing them** — never edit blind.
-- **Match existing patterns** — use the style of adjacent code.
-- **Work in dependency order** — if B depends on A, complete A first.
-- **If the task is ambiguous**, state your interpretation and proceed.
+## The Iron Law
+
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+
+Write code before the test? Delete it. All of it. Start over with a test.
+
+No exceptions:
+- Don't keep it as "reference"
+- Don't "adapt" it while writing tests
+- Delete means delete
+
+Thinking "skip TDD just this once"? Stop. That's rationalization.
 
 ## Input
 
@@ -24,45 +32,111 @@ ${TASK_PREAMBLE}
 
 ## Setup
 
-Before making any changes:
-
-1. **Check for an active aflow task** by running the task lookup from the context section above. If a task is found, use its spec and description to guide implementation. If not, work from \`$ARGUMENTS\` directly.
-
-2. **If no working branch exists yet**, pull the latest default branch and create one:
+1. **Check for an active aflow task** by running the task lookup from the context section above.
+2. **If no working branch exists yet**:
    \`\`\`bash
    git fetch origin
    MAIN=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
    git checkout "$MAIN" && git pull origin "$MAIN"
    git checkout -b <slug>
    \`\`\`
-   Use a short, kebab-case slug (e.g., \`add-researcher-skill\`, \`fix-release-workflow\`).
+3. Read \`CLAUDE.md\` for project-specific commands.
+4. Read relevant source files to understand the current state.
 
-3. Read \`CLAUDE.md\` for project-specific commands (typecheck, build, lint, etc.).
+## Step 1: Plan
 
-## Process
+Break the task into small increments. For each increment, identify:
+- What behavior to add
+- What test to write for it (REQUIRED — every increment needs a test)
+- What file(s) to modify
 
-### Step 1: Understand the task
+Write the plan before touching any code:
 
-1. Parse \`$ARGUMENTS\` and/or the aflow task spec to understand what needs to be done
-2. Read \`CLAUDE.md\` to understand the project's architecture and conventions
-3. Read relevant source files to understand the current state
-4. Plan the implementation order: schema → API → client types → UI components
+\`\`\`
+## Plan
+1. Test: [describe what the test asserts] → File: [test file path]
+   Impl: [describe change] → File: [source file path]
+2. Test: [describe test] → File: [test file path]
+   Impl: [describe change] → File: [source file path]
+Verify: bun run typecheck && bun test
+\`\`\`
 
-### Step 2: Implement
+**Every plan item MUST have a Test line.** If no test file exists for the module you're changing, create one. Name it \`<module>.test.ts\` next to the source file.
 
-Work through the task methodically:
-1. Read relevant existing source files before writing code
-2. Implement each piece of the change
-3. Verify each change compiles before moving on
+**How to test things that seem hard to test:**
+- CLI commands that print output → import the function, capture or check return values
+- Functions that write to console → extract the logic into a testable pure function, test that
+- Flag/option parsing → test the behavior the flag enables, not the flag itself
+- If a function is truly untestable as-is, refactor it to be testable FIRST, then write the test
 
-Work in dependency order. If change B depends on change A, complete A first.
+## Step 2: Red-Green-Refactor (repeat for each increment)
 
-### Step 3: Verify
+### RED — Write a failing test
 
-After implementing:
-1. Run the project's typecheck command (from CLAUDE.md)
-2. Review the task description — verify the ask is fully met
-3. Run any relevant tests
+1. Write ONE test that describes the desired behavior for this increment
+2. Run the test suite:
+   \`\`\`bash
+   bun test
+   \`\`\`
+3. **Confirm: your new test FAILS.** Paste the failure output.
+   - If it passes immediately → your test doesn't test anything new. Rewrite it.
+   - If it errors (not fails) → fix the error, re-run until it fails correctly.
+
+### GREEN — Write minimal code to pass
+
+1. Write the **simplest code** that makes the failing test pass
+2. Don't add features beyond what the test requires
+3. Don't refactor yet
+4. Run the test suite:
+   \`\`\`bash
+   bun test
+   \`\`\`
+5. **Confirm: ALL tests pass** (new and existing). Paste the output.
+6. Run typecheck:
+   \`\`\`bash
+   bun run typecheck
+   \`\`\`
+7. **Confirm: zero errors.**
+
+### REFACTOR (only after green)
+
+- Remove duplication
+- Improve names
+- Extract helpers if needed
+- Keep all tests green — run them again if you change anything
+
+### REPEAT
+
+Move to the next increment. Write the next failing test.
+
+## Step 3: Final verification
+
+After all increments are done:
+
+1. \`bun run typecheck\` — zero errors
+2. \`bun test\` — ALL tests pass
+3. \`bun run build\` — succeeds
+4. Review the task description line by line — every requirement met?
+5. \`git diff\` — no debug code, no unused imports, no duplicate code blocks
+
+**Do not declare done until all 5 checks pass.**
+
+## Common rationalizations — all invalid
+
+| Excuse | Reality |
+|--------|---------|
+| "Too simple to test" | Simple code breaks. Testing takes seconds. Write the test. |
+| "I'll add tests after" | Tests-after pass immediately, proving nothing. Tests-first prove the feature works. |
+| "This is just a flag/config" | If it can break in production, it needs a test. |
+| "No existing tests for this area" | Then you're the one who improves it. Create the test file. |
+| "Manual testing is faster" | Manual tests can't be re-run, can't catch regressions, can't prove anything. |
+
+## Red flags — start over if you catch yourself
+
+- Writing implementation code before a test exists
+- A test passing immediately when you first write it
+- Saying "should work" or "looks correct" without running the test
+- Thinking "this case is different" — it's not
 
 `;
 }

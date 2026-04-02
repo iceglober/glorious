@@ -5,16 +5,18 @@ export function qa(): string {
 description: QA the current diff against the task's acceptance criteria. Use when user says 'test this', 'QA the changes', 'check the diff', 'does this meet the criteria', 'verify the implementation'. Builds a test matrix, traces code paths per scenario, reports PASS/FAIL with file references.
 ---
 
-# QA
+# QA — Verification Before Completion
 
-You are performing quality assurance on the current diff for this task.
+NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
+
+Before claiming anything passes, you MUST run the command and cite the output. "Should pass" is not evidence. "Probably fine" is not evidence. Run it, read it, then state the result.
 
 ## Critical Rules
 
-- **Acceptance criteria are your primary test cases.** Every one must be verified.
-- **Trace the full code path** — don't assume layers handle errors.
-- **Don't test code that didn't change.**
-- Think like a user: "What if I click this twice fast?"
+- **Run all verification commands fresh** — never rely on prior output.
+- **Read the actual diff** — do not trust the /work session's summary.
+- **Do not trust the implementer** — they finished suspiciously quickly. Verify everything independently.
+- **Duplicate code is a CRITICAL bug** — if the same block appears twice in the diff, that is a failure.
 
 ## Input
 
@@ -22,95 +24,94 @@ Optional focus area: \`$ARGUMENTS\`
 
 ${TASK_PREAMBLE}
 
-## Step 1: Understand the task
+## Step 1: Fresh build verification
 
-Read the current task's \`acceptance\` criteria — these are your primary test cases. Also read the \`items\` array to understand what was implemented.
-
-## Step 2: Scope the diff
+Run these commands RIGHT NOW and paste their output:
 
 \`\`\`bash
-git diff main...HEAD --stat
+bun run typecheck
+bun test
 \`\`\`
 
-Read every changed file. Classify each:
-- **UI change** — renders something the user sees
-- **API change** — affects data the UI consumes
-- **Schema change** — affects what's stored
-- **Config change** — affects system behavior
+Record the results. If either fails, that is an immediate QA failure.
 
-Ignore: refactors with no user-visible effect.
+## Step 2: Read the full diff
 
-## Step 3: Build the test matrix
+\`\`\`bash
+git diff main...HEAD
+\`\`\`
 
-For each acceptance criterion, plus general scenarios:
+Read EVERY line of the diff. Look specifically for:
+- **Duplicate code blocks** — same logic appearing in multiple places (CRITICAL)
+- **Unused imports** — imports that nothing references
+- **Debug code** — console.log, TODO comments left in
+- **Unrelated changes** — modifications outside the task scope
 
-| Scenario | Source | Risk |
-|----------|--------|------|
-| {acceptance criterion} | Task | High |
-| Happy path | General | Low |
-| Empty state — no data, first use | General | Medium |
-| Error state — API fails, bad input | General | High |
-| Boundary — very long text, many items, zero items | General | Medium |
-| Concurrency — rapid clicks, duplicates | General | High |
+## Step 3: Pass 1 — Spec compliance
 
-Only include scenarios relevant to the changes.
+For each requirement (from task title, description, or acceptance criteria):
+1. Find the code in the diff that addresses this requirement
+2. Read it — does it actually implement what's needed?
+3. Is there a test for this requirement?
+4. Verdict: PASS or FAIL with file:line reference
 
-## Step 4: Walk through each scenario
+## Step 4: Pass 2 — Code quality
 
-For each scenario:
-1. **Describe the user action**
-2. **Trace the code path** — component → API → database → response → render
-3. **Check each layer:** loading states, input validation, error handling, recovery, state consistency
-4. **Verdict:** PASS or FAIL with file:line reference
+| Check | What to look for |
+|-------|-----------------|
+| Duplication | Same code block appearing 2+ times — CRITICAL |
+| Error handling | Failure cases handled? |
+| Type safety | Proper types, no \`any\`? |
+| Edge cases | Empty arrays, null values, missing data? |
+| Style | Matches existing codebase patterns? |
 
-## Step 5: Check task items
+Severity:
+- **CRITICAL** — Must fix before shipping (bugs, duplicate code, security holes)
+- **IMPORTANT** — Should fix (real problems, not dangerous)
+- **MINOR** — Note for later (style, could be better)
 
-Compare task items from \`af state\` against the actual implementation:
-- Items marked done but code doesn't fully implement them?
-- Code that completes items not yet marked done?
-
-Flag mismatches.
-
-## Step 6: Report
+## Step 5: Report
 
 \`\`\`
 ## QA Report
 
 **Task:** {id}: {title}
 **Diff:** {N} files changed
-**Scenarios tested:** {count}
-**Passed:** {count}
-**Failed:** {count}
+**Typecheck:** PASS/FAIL (cite command output)
+**Tests:** {pass}/{total} (cite command output)
 
-### Acceptance Criteria
+### Pass 1: Spec Compliance
 
-| Criterion | Verdict | Notes |
-|-----------|---------|-------|
-| {criterion} | PASS/FAIL | {detail} |
+| Requirement | Verdict | Evidence |
+|-------------|---------|----------|
+| {requirement} | PASS/FAIL | {file:line or test output} |
+
+### Pass 2: Code Quality
+
+| # | Issue | Severity | File |
+|---|-------|----------|------|
+| 1 | {issue} | CRITICAL/IMPORTANT/MINOR | {file:line} |
 
 ### Failures
 
 | # | Scenario | Gap | Severity | File |
 |---|----------|-----|----------|------|
 | 1 | {scenario} | {what's missing} | {severity} | {file:line} |
-
-### Task Item Sync
-- {mismatches between items and implementation}
 \`\`\`
 
-## Step 7: Browser testing (if UI changes)
+## Step 6: Record result
 
-If the diff includes UI changes and the \\\`/browser\\\` skill is available, use it to verify visually:
-1. Navigate to the affected page
-2. Take a snapshot to confirm the UI renders correctly
-3. Walk through the key user flows (click, type, submit)
-4. Take a screenshot for the QA report
+\`\`\`bash
+af state qa --id <id> --status pass|fail --summary "<one-line summary>"
+\`\`\`
 
-## Step 8: Fix (if asked)
+## Step 7: Fix CRITICAL issues
 
-If the user says "fix" or failures are critical:
-- Fix each gap, typecheck after
-- Mark any newly completed items via \`af state task update --id <id> --items '<json>'\`
+If there are CRITICAL issues, fix them now:
+- Fix each one
+- Run typecheck + tests after each fix
+- Re-verify the fix didn't introduce new problems
+- Update the QA report
 
 `;
 }

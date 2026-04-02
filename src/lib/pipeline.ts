@@ -95,6 +95,33 @@ function hasCommitsAhead(worktree: string): boolean {
   return diff !== null && diff.trim().length > 0;
 }
 
+// ── Test-file gate ──────────────────────────────────────────────────
+
+function hasTestChanges(worktree: string): boolean {
+  const diff = gitInSafe(worktree, "diff", "--name-only", "origin/main...HEAD");
+  if (!diff) return false;
+  return diff.split("\n").some(f => f.includes(".test.") || f.includes(".spec.") || f.includes("__tests__"));
+}
+
+function buildTestRetryPrompt(task: Task): string {
+  const lines: string[] = [];
+  lines.push(`You already implemented the feature for this task. Now you need to add tests.`);
+  lines.push(``);
+  lines.push(`## Task: ${task.id}: ${task.title}`);
+  lines.push(``);
+  lines.push(`## What to do`);
+  lines.push(``);
+  lines.push(`1. Read the diff to understand what was implemented: \`git diff origin/main...HEAD\``);
+  lines.push(`2. Create a test file for the changed module(s)`);
+  lines.push(`3. Write tests that verify the new behavior works correctly`);
+  lines.push(`4. Run \`bun test\` to confirm all tests pass`);
+  lines.push(`5. Run \`bun run typecheck\` to confirm no errors`);
+  lines.push(``);
+  lines.push(`Do NOT modify the implementation — only add tests.`);
+  lines.push(`Name the test file \`<module>.test.ts\` next to the source file.`);
+  return lines.join("\n");
+}
+
 // ── Pipeline orchestrator ────────────────────────────────────────────
 
 export async function runPipeline(task: Task): Promise<void> {
@@ -199,7 +226,6 @@ async function _runPipeline(task: Task): Promise<void> {
       if (!hasCommitsAhead(current.worktree)) {
         warn("implement phase produced no changes.");
         warn(`task ${bold(current.id)} remains in implement. Run ${bold("af start")} to retry.`);
-        // Reset pipeline so /work runs again on next attempt
         savePipeline({
           taskId: current.id,
           currentPhase: "implement",
@@ -209,6 +235,24 @@ async function _runPipeline(task: Task): Promise<void> {
           startedAt: new Date().toISOString(),
         });
         return;
+      }
+
+      // Test-file gate: check if any test files were created or modified
+      if (!hasTestChanges(current.worktree) && !pipeline.completedSkills.includes("work-tests")) {
+        warn("no test files in diff. Running /work again to add tests...");
+        // Don't reset — run a targeted test-writing session on top of the existing implementation
+        pipeline.completedSkills = pipeline.completedSkills.filter(s => s !== "work");
+        pipeline.nextSkill = "work";
+        savePipeline(pipeline);
+        const testPrompt = buildTestRetryPrompt(current);
+        info("running /work (test pass) for " + current.id + "...");
+        const cwd = sessionCwd(current, current.phase);
+        const exitCode = await runSession({ cwd, prompt: testPrompt });
+        if (exitCode === 0) {
+          pipeline.completedSkills.push("work", "work-tests");
+          pipeline.nextSkill = null;
+          savePipeline(pipeline);
+        }
       }
     }
 
