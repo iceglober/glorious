@@ -26,6 +26,18 @@ import { productDiscoveryUser } from "./product-discovery-user.js";
 import { productPrdNew } from "./product-prd-new.js";
 import { productPrdRefine } from "./product-prd-refine.js";
 import { productPipeline } from "./product-pipeline.js";
+import { productManager } from "./product-manager.js";
+import { productAcceptance } from "./product-acceptance.js";
+import { productEvaluate } from "./product-evaluate.js";
+import { productEngineeringHandoff } from "./product-engineering-handoff.js";
+import { productInterview } from "./product-interview.js";
+import { productProblem } from "./product-problem.js";
+import { productRequirements } from "./product-requirements.js";
+import { productResearchBenchmarks } from "./product-research-benchmarks.js";
+import { productResearchCompetitive } from "./product-research-competitive.js";
+import { productResearchDomain } from "./product-research-domain.js";
+import { productResearchMarket } from "./product-research-market.js";
+import { productResearchTechnical } from "./product-research-technical.js";
 
 /** Slash commands — invoked explicitly via /name */
 export const COMMANDS: Record<string, string> = {
@@ -52,6 +64,20 @@ export const COMMANDS: Record<string, string> = {
   "product-prd-new.md": productPrdNew(),
   "product-prd-refine.md": productPrdRefine(),
   "product-pipeline.md": productPipeline(),
+
+  // Product management suite
+  "product-manager.md": productManager(),
+  "product-acceptance.md": productAcceptance(),
+  "product-evaluate.md": productEvaluate(),
+  "product-engineering-handoff.md": productEngineeringHandoff(),
+  "product-interview.md": productInterview(),
+  "product-problem.md": productProblem(),
+  "product-requirements.md": productRequirements(),
+  "product-research-benchmarks.md": productResearchBenchmarks(),
+  "product-research-competitive.md": productResearchCompetitive(),
+  "product-research-domain.md": productResearchDomain(),
+  "product-research-market.md": productResearchMarket(),
+  "product-research-technical.md": productResearchTechnical(),
 };
 
 /** Skills — activate automatically when relevant */
