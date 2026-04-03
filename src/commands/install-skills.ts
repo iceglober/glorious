@@ -90,19 +90,11 @@ function removeStaleFiles(
   return removed;
 }
 
-/** Transform `product-manager.md` → `product/manager.md` for hyphenated names */
-function prefixKeys(files: Record<string, string>): Record<string, string> {
+/** Nest all skill files under a `glorious/` subdirectory */
+function addGloriousPrefix(files: Record<string, string>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [name, content] of Object.entries(files)) {
-    const hyphenIdx = name.indexOf("-");
-    const dotIdx = name.lastIndexOf(".");
-    if (hyphenIdx > 0 && hyphenIdx < dotIdx) {
-      const prefix = name.slice(0, hyphenIdx);
-      const rest = name.slice(hyphenIdx + 1);
-      result[`${prefix}/${rest}`] = content;
-    } else {
-      result[name] = content;
-    }
+    result[`glorious/${name}`] = content;
   }
   return result;
 }
@@ -133,12 +125,6 @@ function findCollisions(
   return collisions;
 }
 
-/** Returns true if the name can be prefixed (has a hyphen before the extension) */
-function canPrefix(name: string): boolean {
-  const hyphenIdx = name.indexOf("-");
-  const dotIdx = name.lastIndexOf(".");
-  return hyphenIdx > 0 && hyphenIdx < dotIdx;
-}
 
 async function askYesNo(question: string): Promise<boolean> {
   if (!process.stdin.isTTY) return false;
@@ -170,7 +156,7 @@ export const installSkills = command({
     prefix: flag({
       long: "prefix",
       description:
-        "Organize skills into subdirectories by prefix (e.g. product-manager → product/manager)",
+        "Install all skills under a glorious/ subdirectory (e.g. work → glorious/work)",
     }),
   },
   handler: async ({ force, user, prefix }) => {
@@ -196,8 +182,8 @@ export const installSkills = command({
     // Check for collisions if --prefix wasn't specified
     let usePrefix = prefix;
     if (!usePrefix && !force) {
-      const cmdCollisions = findCollisions(COMMANDS, manifest.commands, commandsDir).filter(canPrefix);
-      const skillCollisions = findCollisions(SKILLS, manifest.skills, skillsDir).filter(canPrefix);
+      const cmdCollisions = findCollisions(COMMANDS, manifest.commands, commandsDir);
+      const skillCollisions = findCollisions(SKILLS, manifest.skills, skillsDir);
       const allCollisions = [
         ...cmdCollisions.map((n) => `commands/${n}`),
         ...skillCollisions.map((n) => `skills/${n}`),
@@ -218,8 +204,8 @@ export const installSkills = command({
       }
     }
 
-    const commands = usePrefix ? prefixKeys(COMMANDS) : COMMANDS;
-    const skills = usePrefix ? prefixKeys(SKILLS) : SKILLS;
+    const commands = usePrefix ? addGloriousPrefix(COMMANDS) : COMMANDS;
+    const skills = usePrefix ? addGloriousPrefix(SKILLS) : SKILLS;
 
     // Remove stale files from previous install
     const cmdRemoved = removeStaleFiles(commands, manifest.commands, commandsDir);
