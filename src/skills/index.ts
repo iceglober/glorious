@@ -20,13 +20,8 @@ import { specReview } from "./spec-review.js";
 import { specLab } from "./spec-lab.js";
 import { researchAuto } from "./research-auto.js";
 import { browser } from "./browser.js";
-import { productDiscoveryNew } from "./product-discovery-new.js";
-import { productDiscoveryRefine } from "./product-discovery-refine.js";
-import { productDiscoveryUser } from "./product-discovery-user.js";
-import { productPrdNew } from "./product-prd-new.js";
-import { productPrdRefine } from "./product-prd-refine.js";
-import { productPipeline } from "./product-pipeline.js";
 import { productManager } from "./product-manager.js";
+import { productBuild } from "./product-build.js";
 import { productAcceptance } from "./product-acceptance.js";
 import { productEvaluate } from "./product-evaluate.js";
 import { productEngineeringHandoff } from "./product-engineering-handoff.js";
@@ -58,16 +53,9 @@ export const COMMANDS: Record<string, string> = {
   "spec-review.md": specReview(),
   "spec-lab.md": specLab(),
 
-  // Product documentation pipeline
-  "product-discovery-new.md": productDiscoveryNew(),
-  "product-discovery-refine.md": productDiscoveryRefine(),
-  "product-discovery-user.md": productDiscoveryUser(),
-  "product-prd-new.md": productPrdNew(),
-  "product-prd-refine.md": productPrdRefine(),
-  "product-pipeline.md": productPipeline(),
-
   // Product management suite
   "product-manager.md": productManager(),
+  "product-build.md": productBuild(),
   "product-acceptance.md": productAcceptance(),
   "product-evaluate.md": productEvaluate(),
   "product-engineering-handoff.md": productEngineeringHandoff(),
