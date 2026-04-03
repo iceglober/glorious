@@ -92,7 +92,8 @@ src/
     ├── product-research-technical.ts     # /product-research-technical — codebase feasibility
     │
     │  # Auto-activated skills
-    └── browser.ts        # /browser (skill, not command)
+    ├── browser.ts        # /browser — browser automation via Playwright CLI
+    └── writing-skills.ts # /writing-skills — skill authoring guide (TDD, testing, persuasion)
 ```
 
 ## Key concepts

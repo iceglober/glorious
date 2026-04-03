@@ -38,6 +38,7 @@ import { productResearchCompetitive } from "./product-research-competitive.js";
 import { productResearchDomain } from "./product-research-domain.js";
 import { productResearchMarket } from "./product-research-market.js";
 import { productResearchTechnical } from "./product-research-technical.js";
+import { writingSkills } from "./writing-skills.js";
 
 /** Slash commands — invoked explicitly via /name */
 export const COMMANDS: Record<string, string> = {
@@ -83,4 +84,7 @@ export const COMMANDS: Record<string, string> = {
 /** Skills — activate automatically when relevant */
 export const SKILLS: Record<string, string> = {
   "browser.md": browser(),
+  ...Object.fromEntries(
+    Object.entries(writingSkills()).map(([f, c]) => [`writing-skills/${f}`, c]),
+  ),
 };
