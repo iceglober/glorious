@@ -60,25 +60,25 @@ jobs:
 
       - name: Prepare release artifact
         if: steps.check.outputs.exists == 'false'
-        run: cp dist/index.js af
+        run: cp dist/index.js gs
 
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.pkg.outputs.version }}
-          name: "aflow ${{ steps.pkg.outputs.version }}"
+          name: "glorious ${{ steps.pkg.outputs.version }}"
           body: |
             ## Install
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/iceglober/aflow/main/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/iceglober/glorious/main/install.sh | bash
             ```
 
             ## Update
 
             ```bash
-            af upgrade
+            gs upgrade
             ```
-          files: af
+          files: gs
           generate_release_notes: true
