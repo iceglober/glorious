@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { VERSION } from "./version.js";
-import { warn } from "./fmt.js";
+import { ok, info, warn } from "./fmt.js";
 
+const REPO = "iceglober/glorious";
 const CACHE_FILE = path.join(os.homedir(), ".cache", "glorious", "latest-version.json");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -38,7 +40,7 @@ function fetchLatestVersion(): string | null {
   try {
     const result = execaSync(
       "gh",
-      ["release", "list", "-R", "iceglober/glorious", "--json", "tagName", "-L", "10"],
+      ["release", "list", "-R", REPO, "--json", "tagName", "-L", "10"],
       { stderr: "pipe", timeout: 5000 },
     );
     const out = result.stdout.trim();
@@ -49,6 +51,11 @@ function fetchLatestVersion(): string | null {
   } catch {
     return null;
   }
+}
+
+function parseVersion(v: string): [number, number, number] {
+  const parts = v.split(".").map(Number);
+  return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
 }
 
 function compareVersions(a: string, b: string): number {
@@ -62,9 +69,38 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+function isMajorBump(current: string, latest: string): boolean {
+  const [curMajor] = parseVersion(current);
+  const [latMajor] = parseVersion(latest);
+  return latMajor > curMajor;
+}
+
+/** Attempt to download and replace the binary. Returns true on success. */
+function tryAutoUpgrade(tag: string): boolean {
+  try {
+    const scriptPath = fs.realpathSync(fileURLToPath(import.meta.url));
+    const installDir = path.dirname(scriptPath);
+
+    // Check write permission
+    fs.accessSync(installDir, fs.constants.W_OK);
+
+    const tmp = scriptPath + ".tmp";
+    execaSync(
+      "gh",
+      ["release", "download", tag, "-R", REPO, "-p", "gs", "-O", tmp],
+      { stderr: "pipe", timeout: 30_000 },
+    );
+    fs.chmodSync(tmp, 0o755);
+    fs.renameSync(tmp, scriptPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check if a newer version is available. Uses a 24h cache.
- * Prints a warning if behind, nothing if up-to-date.
+ * Auto-upgrades for minor/patch bumps. Warns for major bumps.
  * Never throws — all errors are silently swallowed.
  */
 export function checkForUpdate(): void {
@@ -79,7 +115,21 @@ export function checkForUpdate(): void {
       if (latest) writeCache(latest);
     }
 
-    if (latest && compareVersions(latest, VERSION) > 0) {
+    if (!latest || compareVersions(latest, VERSION) <= 0) return;
+
+    if (isMajorBump(VERSION, latest)) {
+      warn(`glorious v${latest} available (major update) — run \`gs upgrade\` to update`);
+      return;
+    }
+
+    // Auto-upgrade for minor/patch
+    info(`updating glorious v${VERSION} → v${latest}...`);
+    const tag = `v${latest}`;
+    if (tryAutoUpgrade(tag)) {
+      ok(`updated to v${latest} — changes take effect on next run`);
+      // Invalidate cache so we don't re-download
+      writeCache(latest);
+    } else {
       warn(`glorious v${latest} available (current: v${VERSION}) — run \`gs upgrade\``);
     }
   } catch {

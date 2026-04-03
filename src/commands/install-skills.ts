@@ -2,9 +2,33 @@ import { command, flag } from "cmd-ts";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import readline from "node:readline";
 import { COMMANDS, SKILLS } from "../skills/index.js";
-import { ok, info, warn } from "../lib/fmt.js";
+import { ok, info, warn, yellow } from "../lib/fmt.js";
 import { gitRoot } from "../lib/git.js";
+
+const MANIFEST_FILE = ".glorious-skills.json";
+
+interface Manifest {
+  commands: string[];
+  skills: string[];
+}
+
+function readManifest(claudeDir: string): Manifest {
+  const p = path.join(claudeDir, MANIFEST_FILE);
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf-8"));
+  } catch {
+    return { commands: [], skills: [] };
+  }
+}
+
+function writeManifest(claudeDir: string, manifest: Manifest): void {
+  fs.writeFileSync(
+    path.join(claudeDir, MANIFEST_FILE),
+    JSON.stringify(manifest, null, 2) + "\n",
+  );
+}
 
 function installFiles(
   files: Record<string, string>,
@@ -36,6 +60,100 @@ function installFiles(
   return { created, updated, upToDate };
 }
 
+/** Remove files from a previous install that are no longer in the current set */
+function removeStaleFiles(
+  currentFiles: Record<string, string>,
+  previousFiles: string[],
+  baseDir: string,
+): number {
+  const currentSet = new Set(Object.keys(currentFiles));
+  let removed = 0;
+
+  for (const name of previousFiles) {
+    if (currentSet.has(name)) continue;
+    const dest = path.join(baseDir, name);
+    if (fs.existsSync(dest)) {
+      fs.unlinkSync(dest);
+      removed++;
+      // Clean up empty parent dirs
+      const dir = path.dirname(dest);
+      try {
+        if (dir !== baseDir && fs.readdirSync(dir).length === 0) {
+          fs.rmdirSync(dir);
+        }
+      } catch {
+        // ignore — dir may not be empty or already gone
+      }
+    }
+  }
+
+  return removed;
+}
+
+/** Transform `product-manager.md` → `product/manager.md` for hyphenated names */
+function prefixKeys(files: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, content] of Object.entries(files)) {
+    const hyphenIdx = name.indexOf("-");
+    const dotIdx = name.lastIndexOf(".");
+    if (hyphenIdx > 0 && hyphenIdx < dotIdx) {
+      const prefix = name.slice(0, hyphenIdx);
+      const rest = name.slice(hyphenIdx + 1);
+      result[`${prefix}/${rest}`] = content;
+    } else {
+      result[name] = content;
+    }
+  }
+  return result;
+}
+
+/**
+ * Find files that would be overwritten and whose content doesn't match
+ * what glorious would install — these are potential collisions with
+ * user-created or third-party skill files.
+ */
+function findCollisions(
+  files: Record<string, string>,
+  previousFiles: string[],
+  baseDir: string,
+): string[] {
+  const previousSet = new Set(previousFiles);
+  const collisions: string[] = [];
+  for (const [name, content] of Object.entries(files)) {
+    // Skip files we previously installed — those are updates, not collisions
+    if (previousSet.has(name)) continue;
+    const dest = path.join(baseDir, name);
+    if (fs.existsSync(dest)) {
+      const existing = fs.readFileSync(dest, "utf-8");
+      if (existing !== content) {
+        collisions.push(name);
+      }
+    }
+  }
+  return collisions;
+}
+
+/** Returns true if the name can be prefixed (has a hyphen before the extension) */
+function canPrefix(name: string): boolean {
+  const hyphenIdx = name.indexOf("-");
+  const dotIdx = name.lastIndexOf(".");
+  return hyphenIdx > 0 && hyphenIdx < dotIdx;
+}
+
+async function askYesNo(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false;
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase().startsWith("y"));
+    });
+  });
+}
+
 export const installSkills = command({
   name: "skills",
   description:
@@ -49,8 +167,13 @@ export const installSkills = command({
       long: "user",
       description: "Install to ~/.claude/ (user-level) instead of the current project",
     }),
+    prefix: flag({
+      long: "prefix",
+      description:
+        "Organize skills into subdirectories by prefix (e.g. product-manager → product/manager)",
+    }),
   },
-  handler: async ({ force, user }) => {
+  handler: async ({ force, user, prefix }) => {
     let claudeDir: string;
 
     if (user) {
@@ -68,11 +191,51 @@ export const installSkills = command({
 
     const commandsDir = path.join(claudeDir, "commands");
     const skillsDir = path.join(claudeDir, "skills");
+    const manifest = readManifest(claudeDir);
+
+    // Check for collisions if --prefix wasn't specified
+    let usePrefix = prefix;
+    if (!usePrefix && !force) {
+      const cmdCollisions = findCollisions(COMMANDS, manifest.commands, commandsDir).filter(canPrefix);
+      const skillCollisions = findCollisions(SKILLS, manifest.skills, skillsDir).filter(canPrefix);
+      const allCollisions = [
+        ...cmdCollisions.map((n) => `commands/${n}`),
+        ...skillCollisions.map((n) => `skills/${n}`),
+      ];
+
+      if (allCollisions.length > 0) {
+        warn(`${allCollisions.length} file${allCollisions.length === 1 ? "" : "s"} would collide with existing files:`);
+        for (const c of allCollisions.slice(0, 5)) {
+          console.log(`  ${yellow(c)}`);
+        }
+        if (allCollisions.length > 5) {
+          console.log(`  ... and ${allCollisions.length - 5} more`);
+        }
+        console.log("");
+        usePrefix = await askYesNo(
+          "Use --prefix to organize into subdirectories and avoid collisions? [y/N] ",
+        );
+      }
+    }
+
+    const commands = usePrefix ? prefixKeys(COMMANDS) : COMMANDS;
+    const skills = usePrefix ? prefixKeys(SKILLS) : SKILLS;
+
+    // Remove stale files from previous install
+    const cmdRemoved = removeStaleFiles(commands, manifest.commands, commandsDir);
+    const skillRemoved = removeStaleFiles(skills, manifest.skills, skillsDir);
+    const totalRemoved = cmdRemoved + skillRemoved;
 
     // Install commands
-    const cmdResult = installFiles(COMMANDS, commandsDir, force);
+    const cmdResult = installFiles(commands, commandsDir, force);
     // Install skills
-    const skillResult = installFiles(SKILLS, skillsDir, force);
+    const skillResult = installFiles(skills, skillsDir, force);
+
+    // Update manifest
+    writeManifest(claudeDir, {
+      commands: Object.keys(commands),
+      skills: Object.keys(skills),
+    });
 
     const totalCreated = cmdResult.created + skillResult.created;
     const totalUpdated = cmdResult.updated + skillResult.updated;
@@ -86,12 +249,15 @@ export const installSkills = command({
     if (totalUpdated > 0) {
       ok(`updated ${totalUpdated} file${totalUpdated === 1 ? "" : "s"} in ${target}`);
     }
-    if (totalUpToDate > 0 && totalCreated === 0 && totalUpdated === 0) {
+    if (totalRemoved > 0) {
+      ok(`removed ${totalRemoved} stale file${totalRemoved === 1 ? "" : "s"} from ${target}`);
+    }
+    if (totalUpToDate > 0 && totalCreated === 0 && totalUpdated === 0 && totalRemoved === 0) {
       ok("all skills up to date");
     }
 
     // List commands
-    const commandNames = Object.keys(COMMANDS);
+    const commandNames = Object.keys(commands);
     console.log("");
     info("commands:");
     for (const name of commandNames) {
@@ -100,7 +266,7 @@ export const installSkills = command({
     }
 
     // List skills
-    const skillNames = Object.keys(SKILLS);
+    const skillNames = Object.keys(skills);
     if (skillNames.length > 0) {
       console.log("");
       info("skills:");

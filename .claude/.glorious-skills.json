@@ -1,0 +1,36 @@
+{
+  "commands": [
+    "think.md",
+    "work.md",
+    "fix.md",
+    "qa.md",
+    "ship.md",
+    "research-auto.md",
+    "research-web.md",
+    "spec-make.md",
+    "spec-refine.md",
+    "spec-enrich.md",
+    "spec-review.md",
+    "spec-lab.md",
+    "product-manager.md",
+    "product-build.md",
+    "product-acceptance.md",
+    "product-evaluate.md",
+    "product-engineering-handoff.md",
+    "product-interview.md",
+    "product-problem.md",
+    "product-requirements.md",
+    "product-research-benchmarks.md",
+    "product-research-competitive.md",
+    "product-research-domain.md",
+    "product-research-market.md",
+    "product-research-technical.md"
+  ],
+  "skills": [
+    "browser.md",
+    "writing-skills/SKILL.md",
+    "writing-skills/testing-skills-with-subagents.md",
+    "writing-skills/persuasion-principles.md",
+    "writing-skills/anthropic-best-practices.md"
+  ]
+}
