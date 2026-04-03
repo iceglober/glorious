@@ -22,7 +22,7 @@ Optional PR context: `$ARGUMENTS`
 
 Run \`gs state task list --json\` and find the task whose \`branch\` field matches the current branch (\`git branch --show-current\`). This is your **current task**.
 
-If no task matches, this branch isn't linked to an glorious task — operate in ad-hoc mode without state tracking.
+If no task matches, this branch isn't linked to a glorious task — operate in ad-hoc mode without state tracking.
 
 If a task is found, run \`gs state task show --id <id> --json\` to get full details. The task has:
 - \`id\` — task identifier (e.g. "t3")
@@ -86,16 +86,86 @@ Read every line. Check for:
 - Are there unchecked items that this diff completes? Mark them done via `gs state task update`.
 - Do the acceptance criteria pass?
 
-## Step 5: Commit
+## Step 5: Version bump (if applicable)
 
-If there are uncommitted changes:
+Check if this repo uses versioning:
+
+```bash
+# Check for package.json version field
+cat package.json 2>/dev/null | grep '"version"' || true
+```
+
+**If a version field exists**, analyze the diff from Step 3 and infer the appropriate semver bump:
+- **Patch** (0.0.x) — bug fixes, refactors, doc updates, dependency bumps
+- **Minor** (0.x.0) — new features, new commands, new skills, additive changes
+- **Major** (x.0.0) — breaking changes to CLI interface, removed commands, changed public behavior
+
+Apply the bump by updating the version in `package.json`. If there are other version files (e.g. `version.ts` with a hardcoded string), update those too — but only if they contain a literal version string, not if they read from `package.json` at build time.
+
+**If no version field exists**, skip this step and Steps 6-7 entirely.
+
+## Step 6: Release notes (if version bumped)
+
+Generate a release notes file at `releases/v{new_version}.md`:
+
+```markdown
+# v{new_version}
+
+Released: {YYYY-MM-DD}
+
+## Changes
+
+- {imperative description of each logical change, grouped by type}
+
+### New
+- {new features, commands, skills}
+
+### Changed
+- {modifications to existing behavior}
+
+### Fixed
+- {bug fixes}
+```
+
+Omit empty sections. Keep descriptions concise — one line per change. Base this on the full diff against main, not just the latest commit.
+
+Create the `releases/` directory if it doesn't exist.
+
+## Step 7: Update CLAUDE.md
+
+Read the current `CLAUDE.md` and refresh it against the actual codebase:
+
+1. **Architecture tree** — Scan `src/` recursively. Update the file tree to match reality:
+   - Add files that exist but aren't listed
+   - Remove files that are listed but no longer exist
+   - Update one-line descriptions if they're inaccurate
+   - Preserve the existing tree formatting style
+
+2. **Commands section** — Verify the listed commands still work. Add any new ones.
+
+3. **Key concepts** — Update if the implementation has changed the concepts described.
+
+4. **Leave prose sections alone** unless they are factually wrong. Do not rewrite style or tone.
+
+5. **Ensure a `## Recent changes` section exists** at the bottom, pointing to the release notes:
+   ```
+   ## Recent changes
+
+   See `releases/` for version history and changelogs.
+   ```
+
+Commit the CLAUDE.md changes together with the version bump and release notes.
+
+## Step 8: Commit
+
+If there are uncommitted changes (including version bump, release notes, CLAUDE.md updates):
 - Stage specific files — never `git add -A`
 - Exclude: `.env`, `.data/`, credentials, large binaries
 - Write a commit message:
   - First line: imperative, under 70 chars
   - End with `Co-Authored-By: Claude <noreply@anthropic.com>`
 
-## Step 6: Push
+## Step 9: Push
 
 ```bash
 git push -u origin HEAD
@@ -103,11 +173,11 @@ git push -u origin HEAD
 
 Never force-push.
 
-## Step 7: Screenshots (if UI changes)
+## Step 10: Screenshots (if UI changes)
 
 If the diff includes UI changes and the \`/browser\` skill is available, capture screenshots of the affected pages to include in the PR body. Save them to a temporary location and reference them in the PR.
 
-## Step 8: Create PR
+## Step 11: Create PR
 
 ```bash
 gh pr create --title "<title>" --body "$(cat <<'EOF'
@@ -121,6 +191,7 @@ gh pr create --title "<title>" --body "$(cat <<'EOF'
 ## Review
 - Typechecked: yes
 - Auto-review: <CLEAN | N issues fixed>
+- Version: {old_version} → {new_version} (or "N/A" if unversioned)
 
 ## Test plan
 - [ ] <verification steps>
@@ -130,13 +201,13 @@ EOF
 )"
 ```
 
-## Step 9: Update task
+## Step 12: Update task
 
 - Transition the task to shipped: `gs state task update --id <id> --status shipped`
 - Set the task's PR field: `gs state task update --id <id> --pr '<url>'`
 - Set shippedAt: `gs state task update --id <id> --shippedAt '<ISO timestamp>'`
 
-## Step 10: Report
+## Step 13: Report
 
 ```
 ## Shipped
@@ -144,6 +215,7 @@ EOF
 **Task:** {id}: {title}
 **Branch:** {branch}
 **PR:** {url}
+**Version:** {old} → {new} (or "unversioned")
 **Items completed:** {done}/{total}
 ```
 

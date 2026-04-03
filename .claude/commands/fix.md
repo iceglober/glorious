@@ -21,7 +21,7 @@ The user provides issues to address: `$ARGUMENTS`
 
 Run \`gs state task list --json\` and find the task whose \`branch\` field matches the current branch (\`git branch --show-current\`). This is your **current task**.
 
-If no task matches, this branch isn't linked to an glorious task — operate in ad-hoc mode without state tracking.
+If no task matches, this branch isn't linked to a glorious task — operate in ad-hoc mode without state tracking.
 
 If a task is found, run \`gs state task show --id <id> --json\` to get full details. The task has:
 - \`id\` — task identifier (e.g. "t3")

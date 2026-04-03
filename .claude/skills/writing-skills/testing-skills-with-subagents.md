@@ -58,6 +58,6 @@ it crystal clear that Option A was the only acceptable answer?
 ```
 
 Three responses:
-1. "Skill WAS clear, I chose to ignore it" → Need stronger foundational principle
-2. "Skill should have said X" → Add their suggestion
-3. "I didn't see section Y" → Make it more prominent
+1. "Skill WAS clear, I chose to ignore it" — Need stronger foundational principle
+2. "Skill should have said X" — Add their suggestion
+3. "I didn't see section Y" — Make it more prominent
