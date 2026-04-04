@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - package.json
+      - packages/agentic/package.json
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
 
       - name: Read version from package.json
         id: pkg
-        run: echo "version=v$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+        run: echo "version=v$(node -p 'require("./packages/agentic/package.json").version')" >> "$GITHUB_OUTPUT"
 
       - name: Check if tag already exists
         id: check
@@ -51,16 +51,18 @@ jobs:
       - name: Build bundle
         if: steps.check.outputs.exists == 'false'
         run: bun run build
+        working-directory: packages/agentic
 
       - name: Verify bundle
         if: steps.check.outputs.exists == 'false'
         run: |
           node dist/index.js --version
           ls -lh dist/index.js
+        working-directory: packages/agentic
 
       - name: Prepare release artifact
         if: steps.check.outputs.exists == 'false'
-        run: cp dist/index.js gs
+        run: cp packages/agentic/dist/index.js gs-agentic
 
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
@@ -72,13 +74,13 @@ jobs:
             ## Install
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/iceglober/glorious/main/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/iceglober/glorious/main/packages/agentic/install.sh | bash
             ```
 
             ## Update
 
             ```bash
-            gs upgrade
+            gs-agentic upgrade
             ```
-          files: gs
+          files: gs-agentic
           generate_release_notes: true
