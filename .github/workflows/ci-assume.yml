@@ -1,0 +1,27 @@
+name: CI glorious-assume
+
+on:
+  pull_request:
+    paths:
+      - packages/assume/**
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Check
+        working-directory: packages/assume
+        run: cargo check
+      - name: Clippy
+        working-directory: packages/assume
+        run: cargo clippy -- -D warnings
+      - name: Format
+        working-directory: packages/assume
+        run: cargo fmt --check
+      - name: Test
+        working-directory: packages/assume
+        run: cargo test

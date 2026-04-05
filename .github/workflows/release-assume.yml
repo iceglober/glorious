@@ -1,0 +1,99 @@
+name: Release glorious-assume
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - packages/assume/Cargo.toml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            binary: gs-assume-darwin-amd64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            binary: gs-assume-darwin-arm64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: gs-assume-linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: gs-assume-linux-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install cross-compilation toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
+          echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+      - name: Build
+        working-directory: packages/assume
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Rename binary
+        run: cp packages/assume/target/${{ matrix.target }}/release/gs-assume ${{ matrix.binary }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: ${{ matrix.binary }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read version
+        id: pkg
+        run: echo "version=assume-v$(grep '^version' packages/assume/Cargo.toml | head -1 | sed 's/.*= *\"//' | sed 's/\"//')" >> "$GITHUB_OUTPUT"
+      - name: Check if tag exists
+        id: check
+        run: |
+          if git rev-parse "${{ steps.pkg.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git tag "${{ steps.pkg.outputs.version }}"
+          git push origin "${{ steps.pkg.outputs.version }}"
+      - uses: actions/download-artifact@v4
+        if: steps.check.outputs.exists == 'false'
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.pkg.outputs.version }}
+          name: "glorious-assume ${{ steps.pkg.outputs.version }}"
+          body: |
+            ## Install
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/iceglober/glorious/main/packages/assume/install.sh | bash
+            ```
+
+            ## Update
+
+            ```bash
+            gs-assume upgrade
+            ```
+          files: |
+            gs-assume-darwin-amd64/gs-assume-darwin-amd64
+            gs-assume-darwin-arm64/gs-assume-darwin-arm64
+            gs-assume-linux-amd64/gs-assume-linux-amd64
+            gs-assume-linux-arm64/gs-assume-linux-arm64
+          generate_release_notes: true

@@ -10,3 +10,6 @@ run.log
 
 # glorious local state (per-engineer, not shared)
 .glorious/state/
+
+# Rust build artifacts
+target/
