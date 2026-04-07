@@ -57,7 +57,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Read version
         id: pkg
-        run: echo "version=assume-v$(grep '^version' packages/assume/Cargo.toml | head -1 | sed 's/.*= *\"//' | sed 's/\"//')" >> "$GITHUB_OUTPUT"
+        run: |
+          ver=$(grep '^version' packages/assume/Cargo.toml | head -1 | sed 's/.*= *\"//' | sed 's/\"//')
+          echo "version=assume-v${ver}" >> "$GITHUB_OUTPUT"
+          echo "raw_version=${ver}" >> "$GITHUB_OUTPUT"
       - name: Check if tag exists
         id: check
         run: |
@@ -78,7 +81,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.pkg.outputs.version }}
-          name: "glorious-assume ${{ steps.pkg.outputs.version }}"
+          name: "gs-assume v${{ steps.pkg.outputs.raw_version }}"
           body: |
             ## Install
 
