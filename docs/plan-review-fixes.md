@@ -148,7 +148,7 @@ Addresses 2 CRITICAL, 3 HIGH, and 2 MEDIUM issues from deep review.
 
 ## Step 5 — Make manifest write atomic (HIGH)
 
-- [ ] **5.1 — Write manifest to temp file then rename**
+- [x] **5.1 — Write manifest to temp file then rename**
 
   **What:** `packages/agentic/src/commands/install-skills.ts:39-44` writes the manifest with `fs.writeFileSync` directly. If the process crashes mid-write, the manifest is corrupted. Fix: write to a temp file in the same directory, then `fs.renameSync` to the final path. `rename` is atomic on POSIX when source and dest are on the same filesystem.
 
