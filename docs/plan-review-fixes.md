@@ -181,7 +181,7 @@ Addresses 2 CRITICAL, 3 HIGH, and 2 MEDIUM issues from deep review.
 
 ## Step 6 — Fix e2e repair test assertion (MEDIUM)
 
-- [ ] **6.1 — Assert repaired content matches source skill content**
+- [x] **6.1 — Assert repaired content matches source skill content**
 
   **What:** `packages/agentic/e2e/install-skills.e2e.test.ts:143-146` asserts `expect(content).not.toBe("corrupted content")` after repair. This only proves the content changed — it doesn't verify it was repaired to the correct value. Import `COMMANDS` from the skills index and assert the repaired content matches the expected source.
 
