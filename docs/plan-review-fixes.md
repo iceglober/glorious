@@ -82,7 +82,7 @@ Addresses 2 CRITICAL, 3 HIGH, and 2 MEDIUM issues from deep review.
 
 ## Step 3 — Close TOCTOU race on token read in credential endpoint
 
-- [ ] **3.1 — Re-validate tokens inside the fetch block**
+- [x] **3.1 — Re-validate tokens inside the fetch block**
 
   **What:** `packages/assume/src/core/daemon.rs:482-498` reads `tokens` and `ctx` from a read lock, drops the lock, then calls `provider.get_credentials(&tokens, &ctx)` at line 503. Between lock release and the `get_credentials` call, the refresh loop could update tokens (making the old ones invalid) or change the active context. Fix: this is acceptable for now because `get_credentials` uses `tokens` only for auth headers, and if they're stale the provider returns `AccessTokenExpired` which is already handled. Document this explicitly with a comment rather than restructuring the lock — restructuring would require holding a write lock during the network call, risking deadlock.
 
