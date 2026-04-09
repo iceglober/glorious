@@ -20,11 +20,11 @@ Optional PR context: `$ARGUMENTS`
 
 ## Context: Current task
 
-Run \`gs state task list --json\` and find the task whose \`branch\` field matches the current branch (\`git branch --show-current\`). This is your **current task**.
+Run \`gs-agentic state task list --json\` and find the task whose \`branch\` field matches the current branch (\`git branch --show-current\`). This is your **current task**.
 
 If no task matches, this branch isn't linked to a glorious task — operate in ad-hoc mode without state tracking.
 
-If a task is found, run \`gs state task show --id <id> --json\` to get full details. The task has:
+If a task is found, run \`gs-agentic state task show --id <id> --json\` to get full details. The task has:
 - \`id\` — task identifier (e.g. "t3")
 - \`title\` — short description
 - \`description\` — full context
@@ -35,15 +35,15 @@ If a task is found, run \`gs state task show --id <id> --json\` to get full deta
 - \`pr\` — PR URL if shipped
 - \`qaResult\` — latest QA result (if any)
 
-If the task has a spec, run \`gs state spec show --id <id>\` to read it.
+If the task has a spec, run \`gs-agentic state spec show --id <id>\` to read it.
 
 Also read \`CLAUDE.md\` for project-specific commands (typecheck, build, lint, etc.).
 
-**State mutations:** Use \`gs state\` commands for all changes:
-- \`gs state task update --id <id> --field value\` — update metadata
-- \`gs state task transition --id <id> --phase <phase>\` — advance phase
-- \`gs state spec set --id <id> --file <path>\` — save spec content
-- \`gs state qa --id <id> --status pass|fail --summary "..."\` — record QA result
+**State mutations:** Use \`gs-agentic state\` commands for all changes:
+- \`gs-agentic state task update --id <id> --field value\` — update metadata
+- \`gs-agentic state task transition --id <id> --phase <phase>\` — advance phase
+- \`gs-agentic state spec set --id <id> --file <path>\` — save spec content
+- \`gs-agentic state qa --id <id> --status pass|fail --summary "..."\` — record QA result
 
 ## Step 1: Pre-flight
 
@@ -82,8 +82,8 @@ Read every line. Check for:
 
 ## Step 4: Task verification
 
-- Read the current task from `gs state`
-- Are there unchecked items that this diff completes? Mark them done via `gs state task update`.
+- Read the current task from `gs-agentic state`
+- Are there unchecked items that this diff completes? Mark them done via `gs-agentic state task update`.
 - Do the acceptance criteria pass?
 
 ## Step 5: Version bump (if applicable)
@@ -201,13 +201,32 @@ EOF
 )"
 ```
 
-## Step 12: Update task
+## Step 12: Monitor PR checks
 
-- Transition the task to shipped: `gs state task update --id <id> --status shipped`
-- Set the task's PR field: `gs state task update --id <id> --pr '<url>'`
-- Set shippedAt: `gs state task update --id <id> --shippedAt '<ISO timestamp>'`
+After PR creation, monitor CI checks until they all pass or one fails:
 
-## Step 13: Report
+```bash
+gh pr checks <pr_number> --watch --fail-fast
+```
+
+**If all checks pass:** Report success and continue to Step 13.
+
+**If a check fails:**
+1. Run `gh pr checks <pr_number>` to see which check failed
+2. Run `gh api repos/{owner}/{repo}/actions/runs/{run_id}/jobs` or `gh run view <run_id> --log-failed` to get the failure logs
+3. Read the failure output and diagnose the issue
+4. Fix the code, commit, and push — the checks will re-run automatically
+5. Return to the top of this step and watch again
+
+Repeat until all checks are green. Do NOT leave a PR with failing checks.
+
+## Step 13: Update task
+
+- Transition the task to shipped: `gs-agentic state task update --id <id> --status shipped`
+- Set the task's PR field: `gs-agentic state task update --id <id> --pr '<url>'`
+- Set shippedAt: `gs-agentic state task update --id <id> --shippedAt '<ISO timestamp>'`
+
+## Step 14: Report
 
 ```
 ## Shipped
@@ -215,6 +234,7 @@ EOF
 **Task:** {id}: {title}
 **Branch:** {branch}
 **PR:** {url}
+**Checks:** all green
 **Version:** {old} → {new} (or "unversioned")
 **Items completed:** {done}/{total}
 ```
