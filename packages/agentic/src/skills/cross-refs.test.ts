@@ -111,6 +111,48 @@ describe("cross-references use canonical names", () => {
     }
   });
 
+  test("AskUserQuestion option labels match dispatch keys", () => {
+    const skills = [
+      { name: "gs-build-loop", fn: gsBuildLoop },
+      { name: "gs-build", fn: gsBuild },
+      { name: "gs-deep-plan", fn: gsDeepPlan },
+      { name: "gs-deep-review", fn: gsDeepReview },
+      { name: "gs-quick-review", fn: gsQuickReview },
+    ];
+
+    for (const { name, fn } of skills) {
+      const output = fn();
+
+      // Split into AskUserQuestion blocks (each starts with a question: line and ends before the next heading or AskUserQuestion)
+      const blocks = output.split(/Based on the user's response:/);
+      // First element is before any dispatch section, skip it
+      if (blocks.length <= 1) continue;
+
+      for (let i = 1; i < blocks.length; i++) {
+        const dispatchBlock = blocks[i];
+        // Find the preceding block to extract option labels
+        const precedingText = blocks.slice(0, i).join("Based on the user's response:");
+        // Get the last set of options before this dispatch block
+        const optionLabels = [...precedingText.matchAll(/label: "([^"]+)"/g)].map(m => m[1]);
+        // Get the last N options (matching the count of dispatch keys in this block)
+        const dispatchKeys = [...dispatchBlock.matchAll(/- \*\*([^*]+)\*\*/g)].map(m => m[1]);
+
+        // Filter to only check option-derived keys (skip "Other (free text)" which has no option label)
+        const nonOtherKeys = dispatchKeys.filter(k => !k.startsWith("Other"));
+
+        for (const key of nonOtherKeys) {
+          const hasMatchingLabel = optionLabels.some(label => label === key);
+          if (!hasMatchingLabel) {
+            throw new Error(
+              `${name}: dispatch key "**${key}**" has no matching option label. ` +
+              `Available labels: ${optionLabels.map(l => `"${l}"`).join(", ")}`
+            );
+          }
+        }
+      }
+    }
+  });
+
   test("no skill file contains /gs- slash command references (except gs-agentic CLI)", () => {
     const skills = [gs, gsThink, gsDeepPlan, gsDeepReview, gsQuickReview, gsBuild, gsBuildLoop, gsAddressFeedback, gsQa, gsFix, gsWork, gsShip];
     for (const skill of skills) {
