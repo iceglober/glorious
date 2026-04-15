@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CI Report — iceglober/glorious</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --text2: #8b949e; --green: #3fb950;
+  --red: #f85149; --blue: #58a6ff; --orange: #d29922;
+  --purple: #bc8cff; --hover: #1c2129;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg); color: var(--text); padding: 2rem 2.5rem; line-height: 1.5;
+  max-width: 1100px; margin: 0 auto; }
+
+/* Header */
+.header { margin-bottom: 2rem; }
+.header h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.15rem; }
+.header .subtitle { color: var(--text2); font-size: 0.82rem; }
+
+/* Health verdict */
+.verdict { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.5rem 1.75rem; margin-bottom: 1.5rem; }
+.verdict-top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+.health-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.health-label { font-size: 1.1rem; font-weight: 600; }
+
+.kpi-row { display: flex; gap: 2rem; flex-wrap: wrap; }
+.kpi { }
+.kpi-value { font-size: 1.35rem; font-weight: 600; }
+.kpi-label { font-size: 0.72rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Callouts */
+.callout { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+.callout-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+.callout-subtitle { font-size: 0.78rem; color: var(--text2); margin-bottom: 0.75rem; }
+.callout-count { background: var(--border); padding: 0.1rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: 500; }
+.callout-note { font-size: 0.78rem; color: var(--text2); margin-top: 0.5rem; }
+
+.failure-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.3rem 0; font-size: 0.82rem; }
+.failure-wf { font-weight: 500; min-width: 120px; }
+.failure-branch { color: var(--text2); font-family: monospace; font-size: 0.78rem; }
+.failure-time { color: var(--text2); font-size: 0.78rem; }
+
+.badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 10px; font-size: 0.7rem; font-weight: 500; }
+.badge.resolved { background: rgba(63,185,80,0.12); color: var(--green); }
+.badge.unresolved { background: rgba(248,81,73,0.12); color: var(--red); }
+.badge.success { background: rgba(63,185,80,0.12); color: var(--green); }
+.badge.failure { background: rgba(248,81,73,0.12); color: var(--red); }
+
+/* Sections */
+.section { margin-bottom: 2rem; }
+.section h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+.mini-table { background: transparent; }
+.mini-table th, .mini-table td { padding: 0.4rem 0.6rem; font-size: 0.8rem;
+  border-bottom: 1px solid var(--border); text-align: left; }
+.mini-table th { color: var(--text2); font-weight: 500; text-transform: uppercase;
+  font-size: 0.68rem; letter-spacing: 0.04em; }
+.mini-table tr:last-child td { border-bottom: none; }
+
+/* Workflow table */
+.wf-table { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.wf-table th, .wf-table td { padding: 0.65rem 0.9rem; font-size: 0.84rem;
+  border-bottom: 1px solid var(--border); text-align: left; }
+.wf-table th { color: var(--text2); font-weight: 500; text-transform: uppercase;
+  font-size: 0.68rem; letter-spacing: 0.04em; }
+.wf-row { cursor: pointer; transition: background 0.12s; }
+.wf-row:hover { background: var(--hover); }
+.wf-row td:first-child { font-weight: 600; }
+.wf-chevron { display: inline-block; transition: transform 0.2s; margin-right: 0.4rem;
+  color: var(--text2); font-size: 0.65rem; }
+.wf-row.open .wf-chevron { transform: rotate(90deg); }
+.wf-detail { display: none; }
+.wf-detail.open { display: table-row; }
+.wf-detail-inner { padding: 1.25rem; background: var(--bg); }
+.wf-detail-inner .detail-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+.wf-detail-inner .chart-box { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1rem; }
+.wf-detail-inner .chart-box h4 { font-size: 0.78rem; color: var(--text2); margin-bottom: 0.5rem; font-weight: 500; }
+
+/* Small multiples */
+.sm-section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.25rem 1.5rem; }
+.sm-header { display: grid; grid-template-columns: 140px 1fr 1fr; gap: 0.5rem;
+  padding-bottom: 0.5rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--border); }
+.sm-header span { font-size: 0.68rem; color: var(--text2); text-transform: uppercase;
+  letter-spacing: 0.04em; font-weight: 500; }
+.sm-row { display: grid; grid-template-columns: 140px 1fr 1fr; gap: 0.5rem;
+  align-items: center; padding: 0.4rem 0; }
+.sm-label { font-size: 0.82rem; font-weight: 500; padding-left: 0.5rem; }
+.sm-chart { display: flex; align-items: center; gap: 0.5rem; }
+.sm-chart svg { flex-shrink: 0; }
+.sm-value { font-size: 0.78rem; color: var(--text2); font-weight: 500; min-width: 36px; }
+
+/* Daily charts */
+.daily-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem; }
+.daily-chart-box { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1.25rem; }
+.daily-chart-box h3 { font-size: 0.82rem; color: var(--text2); margin-bottom: 0.75rem; font-weight: 500; }
+
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.green { color: var(--green); } .red { color: var(--red); } .blue { color: var(--blue); }
+
+@media (max-width: 768px) {
+  body { padding: 1rem; }
+  .daily-charts, .wf-detail-inner .detail-charts { grid-template-columns: 1fr; }
+  .kpi-row { gap: 1rem; }
+  .sm-header, .sm-row { grid-template-columns: 100px 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>iceglober/glorious</h1>
+  <div class="subtitle">CI Report &middot; Last 30 days &middot; Generated 2026-04-06</div>
+</div>
+
+<!-- Health Verdict -->
+<div class="verdict">
+  <div class="verdict-top">
+    <div class="health-dot" style="background:var(--red)"></div>
+    <div class="health-label" style="color:var(--red)">Failing</div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-value">55.6% <span style="color:var(--text2)">—</span></div>
+      <div class="kpi-label">Success Rate</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">55.6%</div>
+      <div class="kpi-label">1st Attempt Pass</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">1m 4s <span style="color:var(--text2)">—</span></div>
+      <div class="kpi-label">Avg Duration</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value red">19</div>
+      <div class="kpi-label">Failures (7d)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">3</div>
+      <div class="kpi-label">Flaky Pipelines</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">2m 37s</div>
+      <div class="kpi-label">Median TTM</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value blue">45</div>
+      <div class="kpi-label">Total Runs</div>
+    </div>
+  </div>
+</div>
+
+<!-- Failures callout -->
+<div class="callout failures-callout">
+      <div class="callout-title">Recent Failures</div>
+      <div class="failure-row">
+              <span class="failure-wf">CI glorious-assume</span>
+              <span class="failure-branch">update-readmes</span>
+              <span class="badge resolved">resolved</span>
+              <span class="failure-time">1d ago</span>
+              <a href="https://github.com/iceglober/glorious/actions/runs/23992778376" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">CI glorious-assume</span>
+              <span class="failure-branch">update-readmes</span>
+              <span class="badge resolved">resolved</span>
+              <span class="failure-time">1d ago</span>
+              <a href="https://github.com/iceglober/glorious/actions/runs/23992662041" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">CI glorious-assume</span>
+              <span class="failure-branch">monorepo-restructure</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">1d ago</span>
+              <a href="https://github.com/iceglober/glorious/actions/runs/23992590107" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">CI glorious-assume</span>
+              <span class="failure-branch">monorepo-restructure</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">1d ago</span>
+              <a href="https://github.com/iceglober/glorious/actions/runs/23992545929" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">CI glorious-assume</span>
+              <span class="failure-branch">monorepo-restructure</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">1d ago</span>
+              <a href="https://github.com/iceglober/glorious/actions/runs/23992489489" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">CI glorious-assume</span>
+              <span class="failure-branch">monorepo-restructure</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">1d ago</span>
+              <a href="https://github.com/iceglober/glorious/actions/runs/23992324474" target="_blank">View</a>
+            </div>
+    </div>
+
+<!-- Flaky callout -->
+<div class="callout flaky-callout">
+      <div class="callout-title">Flaky Pipelines <span class="callout-count">3</span></div>
+      <div class="callout-subtitle">Branches with mixed pass/fail results or retries on the same workflow</div>
+      <table class="mini-table">
+        <thead><tr><th>Workflow</th><th>Branch</th><th>Runs</th><th>Failures</th><th>Retries</th><th>Flake Rate</th></tr></thead>
+        <tbody><tr><td>CI glorious-assume</td><td>monorepo-restructure</td><td>19</td><td class="red">17</td><td>—</td><td>89.5%</td></tr><tr><td>CI glorious-assume</td><td>update-readmes</td><td>3</td><td class="red">2</td><td>—</td><td>66.7%</td></tr><tr><td>Release</td><td>v0.3.0</td><td>2</td><td class="red">1</td><td>—</td><td>50%</td></tr></tbody>
+      </table>
+    </div>
+
+<!-- Daily charts -->
+<div class="daily-charts">
+  <div class="daily-chart-box">
+    <h3>Daily Runs</h3>
+    <canvas id="dailyChart" height="160"></canvas>
+  </div>
+  <div class="daily-chart-box">
+    <h3>Daily Avg Duration</h3>
+    <canvas id="durationChart" height="160"></canvas>
+  </div>
+</div>
+
+<!-- Workflows -->
+<div class="section">
+  <h2>Workflows</h2>
+  <table class="wf-table">
+    <thead>
+      <tr><th>Workflow</th><th>Runs</th><th>Success Rate</th><th></th><th>Avg Duration</th><th></th></tr>
+    </thead>
+    <tbody><tr class="wf-row" data-idx="0">
+        <td><span class="wf-chevron">&#9654;</span>CI glorious-assume</td>
+        <td>23</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--red);font-weight:600;min-width:42px">17.4%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:17.4%;height:100%;background:var(--red);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>1m 31s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-0"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-0"></div></td></tr><tr class="wf-row" data-idx="1">
+        <td><span class="wf-chevron">&#9654;</span>Release</td>
+        <td>18</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--orange);font-weight:600;min-width:42px">94.4%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:94.4%;height:100%;background:var(--orange);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>16s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-1"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-1"></div></td></tr><tr class="wf-row" data-idx="2">
+        <td><span class="wf-chevron">&#9654;</span>Release glorious-assume</td>
+        <td>2</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">100%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:100%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>3m 51s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-2"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-2"></div></td></tr><tr class="wf-row" data-idx="3">
+        <td><span class="wf-chevron">&#9654;</span>CI</td>
+        <td>1</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">100%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:100%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>10s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-3"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-3"></div></td></tr><tr class="wf-row" data-idx="4">
+        <td><span class="wf-chevron">&#9654;</span>Auto-tag on merge</td>
+        <td>1</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">100%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:100%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>10s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-4"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-4"></div></td></tr></tbody>
+  </table>
+</div>
+
+<!-- Trends (small multiples) -->
+<div class="section">
+  <h2>Trends</h2>
+  <div class="sm-section">
+    <div class="sm-header">
+      <span>Workflow</span>
+      <span>Success Rate (2026-W13 → 2026-W15)</span>
+      <span>Avg Duration</span>
+    </div>
+    <div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #58a6ff">CI glorious-assume</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 100,38.3 198,46" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#58a6ff"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 100,28.6 198,46" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#58a6ff"/></svg>
+        <span class="sm-value">0m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #3fb950">Release</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,10.8 100,2 198,2" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="2" r="2.5" fill="#3fb950"/></svg>
+        <span class="sm-value">100%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,42.5 100,42.5 198,42.5" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="42.5" r="2.5" fill="#3fb950"/></svg>
+        <span class="sm-value">0.3m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #d29922">Release glorious-assume</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 100,2 198,46" fill="none" stroke="#d29922" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#d29922"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 100,2 198,46" fill="none" stroke="#d29922" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#d29922"/></svg>
+        <span class="sm-value">0m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #f85149">CI</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 100,2 198,46" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#f85149"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 100,43.7 198,46" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#f85149"/></svg>
+        <span class="sm-value">0m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #bc8cff">Auto-tag on merge</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,2 100,46 198,46" fill="none" stroke="#bc8cff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#bc8cff"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,43.7 100,46 198,46" fill="none" stroke="#bc8cff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#bc8cff"/></svg>
+        <span class="sm-value">0m</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Time-to-Merge -->
+<div class="section">
+      <h2>Time-to-Merge</h2>
+      <div class="kpi-row" style="margin-bottom:1.25rem;">
+        <div class="kpi"><div class="kpi-value">4h 1m</div><div class="kpi-label">Avg</div></div>
+        <div class="kpi"><div class="kpi-value">2m 37s</div><div class="kpi-label">Median</div></div>
+        <div class="kpi"><div class="kpi-value">40h 38m</div><div class="kpi-label">P95</div></div>
+        <div class="kpi">
+          <div class="kpi-value"><span style="color:var(--text2)">—</span></div>
+          <div class="kpi-label">Trend</div>
+        </div>
+      </div>
+      <table class="mini-table">
+        <thead><tr><th>PR</th><th>Title</th><th>Time to Merge</th><th>Merged</th></tr></thead>
+        <tbody><tr><td>#44</td><td>Add global worktree management with interactive picker</td><td>36s</td><td>4h ago</td></tr><tr><td>#43</td><td>Fix install self-copy bug that zeroes binary</td><td>36m 48s</td><td>13h ago</td></tr><tr><td>#42</td><td>Add root README, update package READMEs, standardize tag convention</td><td>2h 21m</td><td>1d ago</td></tr><tr><td>#41</td><td>Monorepo restructure, add gs-assume credential manager</td><td>19h 58m</td><td>1d ago</td></tr><tr><td>#40</td><td>Fix gs skills --prefix: nest all skills under glorious/ folder</td><td>2m 17s</td><td>2d ago</td></tr><tr><td>#39</td><td>Fix install.sh: remove gh CLI requirement for public repos</td><td>27s</td><td>2d ago</td></tr><tr><td>#38</td><td>Fix release workflow: binary name af → gs</td><td>11m 3s</td><td>3d ago</td></tr><tr><td>#37</td><td>Add --prefix flag to gs skills, stale cleanup, and auto-upgrade</td><td>6m 57s</td><td>3d ago</td></tr><tr><td>#36</td><td>Rename aflow → glorious, af → gs</td><td>2m 37s</td><td>3d ago</td></tr><tr><td>#35</td><td>Refactor product skills: build + manager router</td><td>5m 13s</td><td>3d ago</td></tr></tbody>
+      </table>
+    </div>
+
+<script>
+// ---------- Data for drill-ins ----------
+const WF_DATA = [{"name":"CI glorious-assume","total":23,"successes":4,"failures":19,"rate":17.4,"avgDur":"1m 31s","recentRate":17.391304347826086,"priorRate":0,"recentDur":91.21739130434783,"priorDur":0,"recentN":23,"priorN":0,"jobs":[{"name":"check","total":23,"successes":4,"failures":19,"avg":"1m 28s","median":"1m 17s","p95":"2m 22s"}],"weekly":[{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":23,"successes":4,"successRate":17.4,"avgDurMin":1.5},{"week":"2026-W15","total":0,"successes":0,"successRate":0,"avgDurMin":0}],"daily":[{"date":"2026-04-04","total":10,"successes":2,"avgDurSec":91},{"date":"2026-04-05","total":13,"successes":2,"avgDurSec":91}],"runs":[{"date":"2026-04-05","branch":"fix-install-self-copy","conclusion":"success","duration":"2m 25s","url":"https://github.com/iceglober/glorious/actions/runs/24007160796"},{"date":"2026-04-05","branch":"update-readmes","conclusion":"success","duration":"2m 29s","url":"https://github.com/iceglober/glorious/actions/runs/23994614287"},{"date":"2026-04-05","branch":"update-readmes","conclusion":"failure","duration":"1m 22s","url":"https://github.com/iceglober/glorious/actions/runs/23992778376"},{"date":"2026-04-05","branch":"update-readmes","conclusion":"failure","duration":"1m 23s","url":"https://github.com/iceglober/glorious/actions/runs/23992662041"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 19s","url":"https://github.com/iceglober/glorious/actions/runs/23992590107"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 17s","url":"https://github.com/iceglober/glorious/actions/runs/23992545929"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 16s","url":"https://github.com/iceglober/glorious/actions/runs/23992489489"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 20s","url":"https://github.com/iceglober/glorious/actions/runs/23992324474"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 22s","url":"https://github.com/iceglober/glorious/actions/runs/23991590637"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 22s","url":"https://github.com/iceglober/glorious/actions/runs/23990988933"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 22s","url":"https://github.com/iceglober/glorious/actions/runs/23990855904"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 28s","url":"https://github.com/iceglober/glorious/actions/runs/23990808068"},{"date":"2026-04-05","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 21s","url":"https://github.com/iceglober/glorious/actions/runs/23990620991"},{"date":"2026-04-04","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 21s","url":"https://github.com/iceglober/glorious/actions/runs/23988753232"},{"date":"2026-04-04","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 22s","url":"https://github.com/iceglober/glorious/actions/runs/23988617934"},{"date":"2026-04-04","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 24s","url":"https://github.com/iceglober/glorious/actions/runs/23988547472"},{"date":"2026-04-04","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 20s","url":"https://github.com/iceglober/glorious/actions/runs/23988433815"},{"date":"2026-04-04","branch":"monorepo-restructure","conclusion":"failure","duration":"1m 12s","url":"https://github.com/iceglober/glorious/actions/runs/23988287907"},{"date":"2026-04-04","branch":"monorepo-restructure","conclusion":"success","duration":"2m 23s","url":"https://github.com/iceglober/glorious/actions/runs/23986398918"},{"date":"2026-04-04","branch":"monorepo-restructure","conclusion":"success","duration":"2m 25s","url":"https://github.com/iceglober/glorious/actions/runs/23973689360"}],"color":"#58a6ff"},{"name":"Release","total":18,"successes":17,"failures":1,"rate":94.4,"avgDur":"16s","recentRate":94.44444444444444,"priorRate":0,"recentDur":16,"priorDur":0,"recentN":18,"priorN":0,"jobs":[{"name":"release","total":18,"successes":17,"failures":1,"avg":"12s","median":"13s","p95":"19s"}],"weekly":[{"week":"2026-W13","total":5,"successes":4,"successRate":80,"avgDurMin":0.3},{"week":"2026-W14","total":12,"successes":12,"successRate":100,"avgDurMin":0.3},{"week":"2026-W15","total":1,"successes":1,"successRate":100,"avgDurMin":0.3}],"daily":[{"date":"2026-03-28","total":2,"successes":1,"avgDurSec":15},{"date":"2026-03-29","total":3,"successes":3,"avgDurSec":17},{"date":"2026-03-30","total":1,"successes":1,"avgDurSec":16},{"date":"2026-03-31","total":1,"successes":1,"avgDurSec":20},{"date":"2026-04-02","total":3,"successes":3,"avgDurSec":14},{"date":"2026-04-03","total":6,"successes":6,"avgDurSec":16},{"date":"2026-04-05","total":1,"successes":1,"avgDurSec":14},{"date":"2026-04-06","total":1,"successes":1,"avgDurSec":19}],"runs":[{"date":"2026-04-06","branch":"main","conclusion":"success","duration":"19s","url":"https://github.com/iceglober/glorious/actions/runs/24017901396"},{"date":"2026-04-05","branch":"main","conclusion":"success","duration":"14s","url":"https://github.com/iceglober/glorious/actions/runs/23992599191"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"18s","url":"https://github.com/iceglober/glorious/actions/runs/23963987969"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"16s","url":"https://github.com/iceglober/glorious/actions/runs/23963808795"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"18s","url":"https://github.com/iceglober/glorious/actions/runs/23959163540"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"19s","url":"https://github.com/iceglober/glorious/actions/runs/23958747512"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"11s","url":"https://github.com/iceglober/glorious/actions/runs/23957606374"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"15s","url":"https://github.com/iceglober/glorious/actions/runs/23956687097"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"18s","url":"https://github.com/iceglober/glorious/actions/runs/23916856403"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"15s","url":"https://github.com/iceglober/glorious/actions/runs/23916307003"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"8s","url":"https://github.com/iceglober/glorious/actions/runs/23916117788"},{"date":"2026-03-31","branch":"main","conclusion":"success","duration":"20s","url":"https://github.com/iceglober/glorious/actions/runs/23812502361"},{"date":"2026-03-30","branch":"main","conclusion":"success","duration":"16s","url":"https://github.com/iceglober/glorious/actions/runs/23722715432"},{"date":"2026-03-29","branch":"main","conclusion":"success","duration":"20s","url":"https://github.com/iceglober/glorious/actions/runs/23722045244"},{"date":"2026-03-29","branch":"main","conclusion":"success","duration":"8s","url":"https://github.com/iceglober/glorious/actions/runs/23721081462"},{"date":"2026-03-29","branch":"main","conclusion":"success","duration":"23s","url":"https://github.com/iceglober/glorious/actions/runs/23720639507"},{"date":"2026-03-28","branch":"v0.3.0","conclusion":"success","duration":"21s","url":"https://github.com/iceglober/glorious/actions/runs/23694412255"},{"date":"2026-03-28","branch":"v0.3.0","conclusion":"failure","duration":"9s","url":"https://github.com/iceglober/glorious/actions/runs/23694371632"}],"color":"#3fb950"},{"name":"Release glorious-assume","total":2,"successes":2,"failures":0,"rate":100,"avgDur":"3m 51s","recentRate":100,"priorRate":0,"recentDur":230.5,"priorDur":0,"recentN":2,"priorN":0,"jobs":[{"name":"build (x86_64-unknown-linux-gnu, ubuntu-latest, gs-assume-linux-amd64)","total":2,"successes":2,"failures":0,"avg":"2m 54s","median":"2m 54s","p95":"2m 58s"},{"name":"build (x86_64-apple-darwin, macos-latest, gs-assume-darwin-amd64)","total":2,"successes":2,"failures":0,"avg":"2m 56s","median":"2m 56s","p95":"3m 19s"},{"name":"build (aarch64-apple-darwin, macos-latest, gs-assume-darwin-arm64)","total":2,"successes":2,"failures":0,"avg":"3m 6s","median":"3m 6s","p95":"3m 34s"},{"name":"build (aarch64-unknown-linux-gnu, ubuntu-latest, gs-assume-linux-arm64)","total":2,"successes":2,"failures":0,"avg":"3m 23s","median":"3m 23s","p95":"3m 30s"},{"name":"release","total":2,"successes":2,"failures":0,"avg":"11s","median":"11s","p95":"11s"}],"weekly":[{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":2,"successes":2,"successRate":100,"avgDurMin":3.8},{"week":"2026-W15","total":0,"successes":0,"successRate":0,"avgDurMin":0}],"daily":[{"date":"2026-04-05","total":2,"successes":2,"avgDurSec":231}],"runs":[{"date":"2026-04-05","branch":"main","conclusion":"success","duration":"3m 52s","url":"https://github.com/iceglober/glorious/actions/runs/24007799631"},{"date":"2026-04-05","branch":"main","conclusion":"success","duration":"3m 49s","url":"https://github.com/iceglober/glorious/actions/runs/23992599199"}],"color":"#d29922"},{"name":"CI","total":1,"successes":1,"failures":0,"rate":100,"avgDur":"10s","recentRate":100,"priorRate":0,"recentDur":10,"priorDur":0,"recentN":1,"priorN":0,"jobs":[{"name":"test","total":1,"successes":1,"failures":0,"avg":"6s","median":"6s","p95":"6s"}],"weekly":[{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":1,"successes":1,"successRate":100,"avgDurMin":0.2},{"week":"2026-W15","total":0,"successes":0,"successRate":0,"avgDurMin":0}],"daily":[{"date":"2026-03-31","total":1,"successes":1,"avgDurSec":10}],"runs":[{"date":"2026-03-31","branch":"t8-adopt-a-hexagonal-architecture-ports-and","conclusion":"success","duration":"10s","url":"https://github.com/iceglober/glorious/actions/runs/23808573846"}],"color":"#f85149"},{"name":"Auto-tag on merge","total":1,"successes":1,"failures":0,"rate":100,"avgDur":"10s","recentRate":100,"priorRate":0,"recentDur":10,"priorDur":0,"recentN":1,"priorN":0,"jobs":[{"name":"tag","total":1,"successes":1,"failures":0,"avg":"7s","median":"7s","p95":"7s"}],"weekly":[{"week":"2026-W13","total":1,"successes":1,"successRate":100,"avgDurMin":0.2},{"week":"2026-W14","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W15","total":0,"successes":0,"successRate":0,"avgDurMin":0}],"daily":[{"date":"2026-03-29","total":1,"successes":1,"avgDurSec":10}],"runs":[{"date":"2026-03-29","branch":"main","conclusion":"success","duration":"10s","url":"https://github.com/iceglober/glorious/actions/runs/23720317808"}],"color":"#bc8cff"}];
+
+// ---------- Chart config ----------
+const CD = {
+  responsive: true,
+  plugins: { legend: { labels: { color: '#8b949e', boxWidth: 12, padding: 12 } } },
+  scales: {
+    x: { ticks: { color: '#8b949e', maxRotation: 45, font: { size: 10 } }, grid: { color: '#21262d' } },
+    y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' }, beginAtZero: true }
+  }
+};
+
+// ---------- Daily charts ----------
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: {
+    labels: ["2026-03-28","2026-03-29","2026-03-30","2026-03-31","2026-04-02","2026-04-03","2026-04-04","2026-04-05","2026-04-06"],
+    datasets: [
+      { label: 'Pass', data: [1,4,1,2,3,6,2,5,1], backgroundColor: '#238636', borderRadius: 2, order: 2 },
+      { label: 'Fail', data: [1,0,0,0,0,0,8,11,0], backgroundColor: '#da3633', borderRadius: 2, order: 1 },
+    ]
+  },
+  options: { ...CD, scales: {
+    x: { ...CD.scales.x, stacked: true }, y: { ...CD.scales.y, stacked: true }
+  }}
+});
+
+new Chart(document.getElementById('durationChart'), {
+  type: 'line',
+  data: {
+    labels: ["2026-03-28","2026-03-29","2026-03-30","2026-03-31","2026-04-02","2026-04-03","2026-04-04","2026-04-05","2026-04-06"],
+    datasets: [{
+      label: 'Avg (s)', data: [15,15,16,15,14,16,91,104,19],
+      borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.06)',
+      fill: true, tension: 0.3, pointRadius: 2, borderWidth: 1.5
+    }]
+  },
+  options: CD
+});
+
+// ---------- Workflow drill-in ----------
+const detailCharts = {};
+
+document.querySelectorAll('.wf-row').forEach(row => {
+  row.addEventListener('click', () => {
+    const i = parseInt(row.dataset.idx);
+    const detail = document.getElementById('wf-detail-' + i);
+    const isOpen = detail.classList.contains('open');
+
+    if (isOpen) {
+      detail.classList.remove('open');
+      row.classList.remove('open');
+      if (detailCharts[i]) { detailCharts[i].forEach(c => c.destroy()); delete detailCharts[i]; }
+      return;
+    }
+
+    detail.classList.add('open');
+    row.classList.add('open');
+    const wf = WF_DATA[i];
+    const inner = document.getElementById('wf-inner-' + i);
+
+    inner.innerHTML =
+      '<table class="mini-table"><thead><tr><th>Job</th><th>Runs</th><th>Success Rate</th><th>Avg</th><th>Median</th><th>P95</th></tr></thead><tbody>' +
+      wf.jobs.map(j => {
+        const jr = j.total ? Math.round(j.successes / j.total * 1000) / 10 : 0;
+        const jc = jr >= 95 ? 'green' : jr >= 80 ? 'orange' : 'red';
+        return '<tr><td>' + esc(j.name) + '</td><td>' + j.total + '</td><td class="' + jc + '">' + jr + '%</td>' +
+          '<td>' + j.avg + '</td><td>' + j.median + '</td><td>' + j.p95 + '</td></tr>';
+      }).join('') +
+      '</tbody></table>' +
+      '<div class="chart-box" style="margin:1rem 0;"><h4>Daily Avg Duration (seconds)</h4><canvas id="wf-daily-' + i + '"></canvas></div>' +
+      '<div class="detail-charts">' +
+        '<div class="chart-box"><h4>Weekly Success Rate</h4><canvas id="wf-sr-' + i + '"></canvas></div>' +
+        '<div class="chart-box"><h4>Weekly Avg Duration (min)</h4><canvas id="wf-dur-' + i + '"></canvas></div>' +
+      '</div>' +
+      '<table class="mini-table"><thead><tr><th>Date</th><th>Branch</th><th>Status</th><th>Duration</th><th></th></tr></thead><tbody>' +
+      wf.runs.map(r =>
+        '<tr><td>' + r.date + '</td><td style="font-family:monospace;font-size:0.78rem;color:var(--text2)">' + esc(r.branch) + '</td>' +
+        '<td><span class="badge ' + r.conclusion + '">' + r.conclusion + '</span></td>' +
+        '<td>' + r.duration + '</td>' +
+        '<td><a href="' + r.url + '" target="_blank">View</a></td></tr>'
+      ).join('') +
+      '</tbody></table>';
+
+    const miniCD = {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' }, beginAtZero: true }
+      }
+    };
+
+    const dailyChart = new Chart(document.getElementById('wf-daily-' + i), {
+      type: 'bar',
+      data: {
+        labels: wf.daily.map(d => d.date),
+        datasets: [{
+          label: 'Avg Duration (s)',
+          data: wf.daily.map(d => d.avgDurSec),
+          backgroundColor: wf.color + '66',
+          borderColor: wf.color,
+          borderWidth: 1,
+          borderRadius: 2,
+        }]
+      },
+      options: miniCD
+    });
+    const srChart = new Chart(document.getElementById('wf-sr-' + i), {
+      type: 'line',
+      data: {
+        labels: wf.weekly.map(w => w.week),
+        datasets: [{
+          data: wf.weekly.map(w => w.successRate),
+          borderColor: wf.color, pointRadius: 3, tension: 0.3, fill: false, borderWidth: 1.5
+        }]
+      },
+      options: { ...miniCD, scales: { ...miniCD.scales, y: { ...miniCD.scales.y, min: 0, max: 100 } } }
+    });
+    const durChart = new Chart(document.getElementById('wf-dur-' + i), {
+      type: 'line',
+      data: {
+        labels: wf.weekly.map(w => w.week),
+        datasets: [{
+          data: wf.weekly.map(w => w.avgDurMin),
+          borderColor: wf.color, pointRadius: 3, tension: 0.3, fill: false, borderWidth: 1.5
+        }]
+      },
+      options: miniCD
+    });
+    detailCharts[i] = [dailyChart, srChart, durChart];
+  });
+});
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

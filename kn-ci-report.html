@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CI Report — kn-eng/kn-eng</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --text2: #8b949e; --green: #3fb950;
+  --red: #f85149; --blue: #58a6ff; --orange: #d29922;
+  --purple: #bc8cff; --hover: #1c2129;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg); color: var(--text); padding: 2rem 2.5rem; line-height: 1.5;
+  max-width: 1100px; margin: 0 auto; }
+
+/* Header */
+.header { margin-bottom: 2rem; }
+.header h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.15rem; }
+.header .subtitle { color: var(--text2); font-size: 0.82rem; }
+
+/* Health verdict */
+.verdict { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.5rem 1.75rem; margin-bottom: 1.5rem; }
+.verdict-top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+.health-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.health-label { font-size: 1.1rem; font-weight: 600; }
+
+.kpi-row { display: flex; gap: 2rem; flex-wrap: wrap; }
+.kpi { }
+.kpi-value { font-size: 1.35rem; font-weight: 600; }
+.kpi-label { font-size: 0.72rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Callouts */
+.callout { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+.callout-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+.callout-subtitle { font-size: 0.78rem; color: var(--text2); margin-bottom: 0.75rem; }
+.callout-count { background: var(--border); padding: 0.1rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: 500; }
+.callout-note { font-size: 0.78rem; color: var(--text2); margin-top: 0.5rem; }
+
+.failure-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.3rem 0; font-size: 0.82rem; }
+.failure-wf { font-weight: 500; min-width: 120px; }
+.failure-branch { color: var(--text2); font-family: monospace; font-size: 0.78rem; }
+.failure-time { color: var(--text2); font-size: 0.78rem; }
+
+.badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 10px; font-size: 0.7rem; font-weight: 500; }
+.badge.resolved { background: rgba(63,185,80,0.12); color: var(--green); }
+.badge.unresolved { background: rgba(248,81,73,0.12); color: var(--red); }
+.badge.success { background: rgba(63,185,80,0.12); color: var(--green); }
+.badge.failure { background: rgba(248,81,73,0.12); color: var(--red); }
+
+/* Sections */
+.section { margin-bottom: 2rem; }
+.section h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+.mini-table { background: transparent; }
+.mini-table th, .mini-table td { padding: 0.4rem 0.6rem; font-size: 0.8rem;
+  border-bottom: 1px solid var(--border); text-align: left; }
+.mini-table th { color: var(--text2); font-weight: 500; text-transform: uppercase;
+  font-size: 0.68rem; letter-spacing: 0.04em; }
+.mini-table tr:last-child td { border-bottom: none; }
+
+/* Workflow table */
+.wf-table { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.wf-table th, .wf-table td { padding: 0.65rem 0.9rem; font-size: 0.84rem;
+  border-bottom: 1px solid var(--border); text-align: left; }
+.wf-table th { color: var(--text2); font-weight: 500; text-transform: uppercase;
+  font-size: 0.68rem; letter-spacing: 0.04em; }
+.wf-row { cursor: pointer; transition: background 0.12s; }
+.wf-row:hover { background: var(--hover); }
+.wf-row td:first-child { font-weight: 600; }
+.wf-chevron { display: inline-block; transition: transform 0.2s; margin-right: 0.4rem;
+  color: var(--text2); font-size: 0.65rem; }
+.wf-row.open .wf-chevron { transform: rotate(90deg); }
+.wf-detail { display: none; }
+.wf-detail.open { display: table-row; }
+.wf-detail-inner { padding: 1.25rem; background: var(--bg); }
+.wf-detail-inner .detail-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+.wf-detail-inner .chart-box { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1rem; }
+.wf-detail-inner .chart-box h4 { font-size: 0.78rem; color: var(--text2); margin-bottom: 0.5rem; font-weight: 500; }
+
+/* Small multiples */
+.sm-section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.25rem 1.5rem; }
+.sm-header { display: grid; grid-template-columns: 140px 1fr 1fr; gap: 0.5rem;
+  padding-bottom: 0.5rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--border); }
+.sm-header span { font-size: 0.68rem; color: var(--text2); text-transform: uppercase;
+  letter-spacing: 0.04em; font-weight: 500; }
+.sm-row { display: grid; grid-template-columns: 140px 1fr 1fr; gap: 0.5rem;
+  align-items: center; padding: 0.4rem 0; }
+.sm-label { font-size: 0.82rem; font-weight: 500; padding-left: 0.5rem; }
+.sm-chart { display: flex; align-items: center; gap: 0.5rem; }
+.sm-chart svg { flex-shrink: 0; }
+.sm-value { font-size: 0.78rem; color: var(--text2); font-weight: 500; min-width: 36px; }
+
+/* Daily charts */
+.daily-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem; }
+.daily-chart-box { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1.25rem; }
+.daily-chart-box h3 { font-size: 0.82rem; color: var(--text2); margin-bottom: 0.75rem; font-weight: 500; }
+
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.green { color: var(--green); } .red { color: var(--red); } .blue { color: var(--blue); }
+
+@media (max-width: 768px) {
+  body { padding: 1rem; }
+  .daily-charts, .wf-detail-inner .detail-charts { grid-template-columns: 1fr; }
+  .kpi-row { gap: 1rem; }
+  .sm-header, .sm-row { grid-template-columns: 100px 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>kn-eng/kn-eng</h1>
+  <div class="subtitle">CI Report &middot; Last 30 days &middot; Generated 2026-04-06</div>
+</div>
+
+<!-- Health Verdict -->
+<div class="verdict">
+  <div class="verdict-top">
+    <div class="health-dot" style="background:var(--orange)"></div>
+    <div class="health-label" style="color:var(--orange)">Needs Attention</div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-value">98.7% <span style="color:var(--red)">↓2%</span></div>
+      <div class="kpi-label">Success Rate</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">98.7%</div>
+      <div class="kpi-label">1st Attempt Pass</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">14m 25s <span style="color:var(--red)">↑27%</span></div>
+      <div class="kpi-label">Avg Duration</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value red">14</div>
+      <div class="kpi-label">Failures (7d)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">11 <span style="font-size:0.75em;color:var(--text2)">(25 retries)</span></div>
+      <div class="kpi-label">Flaky Pipelines</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">10m 12s</div>
+      <div class="kpi-label">Median TTM</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value blue">1090</div>
+      <div class="kpi-label">Total Runs</div>
+    </div>
+  </div>
+</div>
+
+<!-- Failures callout -->
+<div class="callout failures-callout">
+      <div class="callout-title">Recent Failures</div>
+      <div class="failure-row">
+              <span class="failure-wf">Deploy</span>
+              <span class="failure-branch">main</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">2h ago</span>
+              <a href="https://github.com/kn-eng/kn-eng/actions/runs/24019915880" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">Deploy</span>
+              <span class="failure-branch">main</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">2h ago</span>
+              <a href="https://github.com/kn-eng/kn-eng/actions/runs/24019691159" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">Preflight: sbx @ 0bfcd310ba828d0003767ba01763942232421f6e</span>
+              <span class="failure-branch">main</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">3h ago</span>
+              <a href="https://github.com/kn-eng/kn-eng/actions/runs/24019348231" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">Deploy</span>
+              <span class="failure-branch">main</span>
+              <span class="badge unresolved">unresolved</span>
+              <span class="failure-time">3h ago</span>
+              <a href="https://github.com/kn-eng/kn-eng/actions/runs/24019256911" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">PR Checks</span>
+              <span class="failure-branch">feat/rpa-workflow-explicit-json-migration</span>
+              <span class="badge resolved">resolved</span>
+              <span class="failure-time">3h ago</span>
+              <a href="https://github.com/kn-eng/kn-eng/actions/runs/24019202002" target="_blank">View</a>
+            </div><div class="failure-row">
+              <span class="failure-wf">PR Checks</span>
+              <span class="failure-branch">feat/rpa-workflow-explicit-json-migration</span>
+              <span class="badge resolved">resolved</span>
+              <span class="failure-time">3h ago</span>
+              <a href="https://github.com/kn-eng/kn-eng/actions/runs/24019181631" target="_blank">View</a>
+            </div>
+    </div>
+
+<!-- Flaky callout -->
+<div class="callout flaky-callout">
+      <div class="callout-title">Flaky Pipelines <span class="callout-count">11</span></div>
+      <div class="callout-subtitle">Branches with mixed pass/fail results or retries on the same workflow &middot; 25 total retries</div>
+      <table class="mini-table">
+        <thead><tr><th>Workflow</th><th>Branch</th><th>Runs</th><th>Failures</th><th>Retries</th><th>Flake Rate</th></tr></thead>
+        <tbody><tr><td>Deploy</td><td>main</td><td>292</td><td class="red">4</td><td>10</td><td>4.6%</td></tr><tr><td>Release Deploy (Sandbox/Production)</td><td>main</td><td>142</td><td class="red">0</td><td>8</td><td>5.3%</td></tr><tr><td>PR Checks</td><td>iceglobe-credential-health-checks</td><td>4</td><td class="red">3</td><td>1</td><td>80%</td></tr><tr><td>PR Checks</td><td>feat/rpa-workflow-explicit-json-migration</td><td>5</td><td class="red">2</td><td>1</td><td>50%</td></tr><tr><td>PR Checks</td><td>feat/edi-pdf-remaining</td><td>2</td><td class="red">0</td><td>1</td><td>33.3%</td></tr><tr><td>PR Checks</td><td>feat/sso-upsert-script</td><td>2</td><td class="red">0</td><td>1</td><td>33.3%</td></tr><tr><td>PR Checks</td><td>fix/gh-actions-node24</td><td>3</td><td class="red">0</td><td>1</td><td>25%</td></tr><tr><td>PR Checks</td><td>fix/portal-payer-mappings</td><td>3</td><td class="red">0</td><td>1</td><td>25%</td></tr><tr><td>PR Checks</td><td>iceglobe-fumadocs</td><td>12</td><td class="red">1</td><td>—</td><td>8.3%</td></tr><tr><td>PR Checks</td><td>fix/preflight-env-scoping</td><td>2</td><td class="red">1</td><td>—</td><td>50%</td></tr></tbody>
+      </table>
+    </div>
+
+<!-- Daily charts -->
+<div class="daily-charts">
+  <div class="daily-chart-box">
+    <h3>Daily Runs</h3>
+    <canvas id="dailyChart" height="160"></canvas>
+  </div>
+  <div class="daily-chart-box">
+    <h3>Daily Avg Duration</h3>
+    <canvas id="durationChart" height="160"></canvas>
+  </div>
+</div>
+
+<!-- Workflows -->
+<div class="section">
+  <h2>Workflows</h2>
+  <table class="wf-table">
+    <thead>
+      <tr><th>Workflow</th><th>Runs</th><th>Success Rate</th><th></th><th>Avg Duration</th><th></th></tr>
+    </thead>
+    <tbody><tr class="wf-row" data-idx="0">
+        <td><span class="wf-chevron">&#9654;</span>Preflight: sbx @ 0bfcd310ba828d0003767ba01763942232421f6e</td>
+        <td>1</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--red);font-weight:600;min-width:42px">0%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:0%;height:100%;background:var(--red);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>9m 54s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-0"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-0"></div></td></tr><tr class="wf-row" data-idx="1">
+        <td><span class="wf-chevron">&#9654;</span>Preflight: sbx @ b9eef11f8bba0b3dbf15430ee07d46b847570363</td>
+        <td>1</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--red);font-weight:600;min-width:42px">0%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:0%;height:100%;background:var(--red);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>11m 33s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-1"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-1"></div></td></tr><tr class="wf-row" data-idx="2">
+        <td><span class="wf-chevron">&#9654;</span>Preflight: sbx @ 3e00775fa0252d7b8dae198bf67278749d574f5b</td>
+        <td>1</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--red);font-weight:600;min-width:42px">0%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:0%;height:100%;background:var(--red);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>53s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-2"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-2"></div></td></tr><tr class="wf-row" data-idx="3">
+        <td><span class="wf-chevron">&#9654;</span>Deploy</td>
+        <td>292</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">98.6%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:98.6%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--red)">↓3%</span></td>
+        <td>30m 44s</td>
+        <td><span style="color:var(--red)">↑38%</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-3"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-3"></div></td></tr><tr class="wf-row" data-idx="4">
+        <td><span class="wf-chevron">&#9654;</span>PR Checks</td>
+        <td>648</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">98.9%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:98.9%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--red)">↓2%</span></td>
+        <td>5m 15s</td>
+        <td><span style="color:var(--red)">↑31%</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-4"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-4"></div></td></tr><tr class="wf-row" data-idx="5">
+        <td><span class="wf-chevron">&#9654;</span>Release Deploy (Sandbox/Production)</td>
+        <td>142</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">100%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:100%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">→</span></td>
+        <td>23m 15s</td>
+        <td><span style="color:var(--red)">↑45%</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-5"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-5"></div></td></tr><tr class="wf-row" data-idx="6">
+        <td><span class="wf-chevron">&#9654;</span>Pulumi State Refresh</td>
+        <td>3</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">100%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:100%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>1m 33s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-6"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-6"></div></td></tr><tr class="wf-row" data-idx="7">
+        <td><span class="wf-chevron">&#9654;</span>Preflight: sbx @ c929c85433ea62995dc0b20cbf5e86074a8b0877</td>
+        <td>1</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">100%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:100%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>9m 14s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-7"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-7"></div></td></tr><tr class="wf-row" data-idx="8">
+        <td><span class="wf-chevron">&#9654;</span>Mirror Temporal Images to ECR</td>
+        <td>1</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--green);font-weight:600;min-width:42px">100%</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;min-width:60px;max-width:120px;"><div style="width:100%;height:100%;background:var(--green);border-radius:3px;"></div></div></div></td>
+        <td><span style="color:var(--text2)">—</span></td>
+        <td>17s</td>
+        <td><span style="color:var(--text2)">—</span></td>
+      </tr>
+      <tr class="wf-detail" id="wf-detail-8"><td colspan="6"><div class="wf-detail-inner" id="wf-inner-8"></div></td></tr></tbody>
+  </table>
+</div>
+
+<!-- Trends (small multiples) -->
+<div class="section">
+  <h2>Trends</h2>
+  <div class="sm-section">
+    <div class="sm-header">
+      <span>Workflow</span>
+      <span>Success Rate (2026-W11 → 2026-W15)</span>
+      <span>Avg Duration</span>
+    </div>
+    <div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #58a6ff">Preflight: sbx @ 0bfcd310ba828d0003767ba01763942232421f6e</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,46" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#58a6ff"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,34.3" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="34.3" r="2.5" fill="#58a6ff"/></svg>
+        <span class="sm-value">9.9m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #3fb950">Preflight: sbx @ b9eef11f8bba0b3dbf15430ee07d46b847570363</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,46" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#3fb950"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,32.2" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="32.2" r="2.5" fill="#3fb950"/></svg>
+        <span class="sm-value">11.6m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #d29922">Preflight: sbx @ 3e00775fa0252d7b8dae198bf67278749d574f5b</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,46" fill="none" stroke="#d29922" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#d29922"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,44.9" fill="none" stroke="#d29922" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="44.9" r="2.5" fill="#d29922"/></svg>
+        <span class="sm-value">0.9m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #f85149">Deploy</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,2 51,2 100,2 149,2 198,37.2" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="37.2" r="2.5" fill="#f85149"/></svg>
+        <span class="sm-value">20%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,19 51,12.3 100,5.2 149,2 198,12.9" fill="none" stroke="#f85149" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="12.9" r="2.5" fill="#f85149"/></svg>
+        <span class="sm-value">27.9m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #bc8cff">PR Checks</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,2 51,2 100,2 149,2.2 198,16.7" fill="none" stroke="#bc8cff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="16.7" r="2.5" fill="#bc8cff"/></svg>
+        <span class="sm-value">66.7%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,41.6 51,39.6 100,38.4 149,39.6 198,40.7" fill="none" stroke="#bc8cff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="40.7" r="2.5" fill="#bc8cff"/></svg>
+        <span class="sm-value">4.5m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #f0883e">Release Deploy (Sandbox/Production)</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,2 51,2 100,2 149,2 198,46" fill="none" stroke="#f0883e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#f0883e"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,25.1 51,19 100,13.3 149,13 198,46" fill="none" stroke="#f0883e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#f0883e"/></svg>
+        <span class="sm-value">0m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #56d4dd">Pulumi State Refresh</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,2 198,2" fill="none" stroke="#56d4dd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="2" r="2.5" fill="#56d4dd"/></svg>
+        <span class="sm-value">100%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,44.1 198,44.2" fill="none" stroke="#56d4dd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="44.2" r="2.5" fill="#56d4dd"/></svg>
+        <span class="sm-value">1.5m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #db61a2">Preflight: sbx @ c929c85433ea62995dc0b20cbf5e86074a8b0877</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,2" fill="none" stroke="#db61a2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="2" r="2.5" fill="#db61a2"/></svg>
+        <span class="sm-value">100%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,46 198,35.1" fill="none" stroke="#db61a2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="35.1" r="2.5" fill="#db61a2"/></svg>
+        <span class="sm-value">9.2m</span></div>
+    </div><div class="sm-row">
+      <div class="sm-label" style="border-left:3px solid #58a6ff">Mirror Temporal Images to ECR</div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,2 198,46" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#58a6ff"/></svg>
+        <span class="sm-value">0%</span></div>
+      <div class="sm-chart"><svg width="200" height="48" viewBox="0 0 200 48"><polyline points="2,46 51,46 100,46 149,45.6 198,46" fill="none" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="198" cy="46" r="2.5" fill="#58a6ff"/></svg>
+        <span class="sm-value">0m</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Time-to-Merge -->
+<div class="section">
+      <h2>Time-to-Merge</h2>
+      <div class="kpi-row" style="margin-bottom:1.25rem;">
+        <div class="kpi"><div class="kpi-value">54m 17s</div><div class="kpi-label">Avg</div></div>
+        <div class="kpi"><div class="kpi-value">10m 12s</div><div class="kpi-label">Median</div></div>
+        <div class="kpi"><div class="kpi-value">3h 52m</div><div class="kpi-label">P95</div></div>
+        <div class="kpi">
+          <div class="kpi-value"><span style="color:var(--green)">↓4%</span></div>
+          <div class="kpi-label">Trend</div>
+        </div>
+      </div>
+      <table class="mini-table">
+        <thead><tr><th>PR</th><th>Title</th><th>Time to Merge</th><th>Merged</th></tr></thead>
+        <tbody><tr><td>#947</td><td>fix(ci): use correct Kysely migration table name in preflight</td><td>9m 38s</td><td>2h ago</td></tr><tr><td>#945</td><td>feat(rpa): export portal workflow configs to JSON for database migration</td><td>1h 3m</td><td>2h ago</td></tr><tr><td>#946</td><td>fix(ci): add environment scoping to preflight AWS jobs, fix smoke test</td><td>12m 36s</td><td>3h ago</td></tr><tr><td>#942</td><td>feat: credential health checks with ticket-based auth</td><td>6h 40m</td><td>3h ago</td></tr><tr><td>#944</td><td>feat(ci): release preflight validation workflow</td><td>10m 57s</td><td>3h ago</td></tr><tr><td>#941</td><td>fix(ci): explicitly set Node 24 in setup action</td><td>1h 38m</td><td>10h ago</td></tr><tr><td>#940</td><td>fix(ci): resolve dpkg lock race and cache path errors</td><td>10m 25s</td><td>12h ago</td></tr><tr><td>#938</td><td>feat(mcp-server): add 16 diagnostic tools for eligibility request analysis</td><td>14h 42m</td><td>14h ago</td></tr><tr><td>#939</td><td>fix(ci): resolve cache path and Pulumi input errors</td><td>1m 37s</td><td>14h ago</td></tr><tr><td>#937</td><td>fix: upgrade GitHub Actions to Node.js 24 and fix cache path error</td><td>9m 6s</td><td>1d ago</td></tr></tbody>
+      </table>
+    </div>
+
+<script>
+// ---------- Data for drill-ins ----------
+const WF_DATA = [{"name":"Preflight: sbx @ 0bfcd310ba828d0003767ba01763942232421f6e","total":1,"successes":0,"failures":1,"rate":0,"avgDur":"9m 54s","recentRate":0,"priorRate":0,"recentDur":594,"priorDur":0,"recentN":1,"priorN":0,"jobs":[{"name":"validate","total":1,"successes":1,"failures":0,"avg":"9s","median":"9s","p95":"9s"},{"name":"docker-build-smoke","total":1,"successes":1,"failures":0,"avg":"9m 31s","median":"9m 31s","p95":"9m 31s"},{"name":"infra-preview","total":1,"successes":1,"failures":0,"avg":"2m 16s","median":"2m 16s","p95":"2m 16s"},{"name":"migration-dry-run","total":1,"successes":0,"failures":1,"avg":"1m 20s","median":"1m 20s","p95":"1m 20s"},{"name":"config-parity","total":1,"successes":1,"failures":0,"avg":"55s","median":"55s","p95":"55s"},{"name":"summary","total":1,"successes":0,"failures":1,"avg":"2s","median":"2s","p95":"2s"}],"weekly":[{"week":"2026-W11","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W12","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W15","total":1,"successes":0,"successRate":0,"avgDurMin":9.9}],"runs":[{"date":"2026-04-06","branch":"main","conclusion":"failure","duration":"9m 54s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019348231"}],"color":"#58a6ff"},{"name":"Preflight: sbx @ b9eef11f8bba0b3dbf15430ee07d46b847570363","total":1,"successes":0,"failures":1,"rate":0,"avgDur":"11m 33s","recentRate":0,"priorRate":0,"recentDur":693,"priorDur":0,"recentN":1,"priorN":0,"jobs":[{"name":"validate","total":1,"successes":1,"failures":0,"avg":"9s","median":"9s","p95":"9s"},{"name":"infra-preview","total":1,"successes":0,"failures":1,"avg":"8s","median":"8s","p95":"8s"},{"name":"config-parity","total":1,"successes":1,"failures":0,"avg":"56s","median":"56s","p95":"56s"},{"name":"migration-dry-run","total":1,"successes":0,"failures":1,"avg":"9s","median":"9s","p95":"9s"},{"name":"docker-build-smoke","total":1,"successes":0,"failures":1,"avg":"11m 12s","median":"11m 12s","p95":"11m 12s"},{"name":"summary","total":1,"successes":0,"failures":1,"avg":"3s","median":"3s","p95":"3s"}],"weekly":[{"week":"2026-W11","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W12","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W15","total":1,"successes":0,"successRate":0,"avgDurMin":11.6}],"runs":[{"date":"2026-04-06","branch":"main","conclusion":"failure","duration":"11m 33s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018458230"}],"color":"#3fb950"},{"name":"Preflight: sbx @ 3e00775fa0252d7b8dae198bf67278749d574f5b","total":1,"successes":0,"failures":1,"rate":0,"avgDur":"53s","recentRate":0,"priorRate":0,"recentDur":53,"priorDur":0,"recentN":1,"priorN":0,"jobs":[{"name":"validate","total":1,"successes":0,"failures":1,"avg":"39s","median":"39s","p95":"39s"},{"name":"infra-preview","total":1,"successes":0,"failures":1,"avg":"0s","median":"0s","p95":"0s"},{"name":"summary","total":1,"successes":0,"failures":1,"avg":"3s","median":"3s","p95":"3s"},{"name":"config-parity","total":1,"successes":0,"failures":1,"avg":"0s","median":"0s","p95":"0s"},{"name":"docker-build-smoke","total":1,"successes":0,"failures":1,"avg":"0s","median":"0s","p95":"0s"},{"name":"migration-dry-run","total":1,"successes":0,"failures":1,"avg":"0s","median":"0s","p95":"0s"}],"weekly":[{"week":"2026-W11","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W12","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W15","total":1,"successes":0,"successRate":0,"avgDurMin":0.9}],"runs":[{"date":"2026-04-06","branch":"main","conclusion":"failure","duration":"53s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018434191"}],"color":"#d29922"},{"name":"Deploy","total":292,"successes":288,"failures":4,"rate":98.6,"avgDur":"30m 44s","recentRate":97.45222929936305,"priorRate":100,"recentDur":2113.936305732484,"priorDur":1529.9851851851852,"recentN":157,"priorN":135,"jobs":[{"name":"unit-tests","total":291,"successes":291,"failures":0,"avg":"5m 44s","median":"5m 53s","p95":"8m 17s"},{"name":"detect-changes","total":291,"successes":291,"failures":0,"avg":"7s","median":"7s","p95":"9s"},{"name":"deploy-dev","total":291,"successes":287,"failures":4,"avg":"17m 27s","median":"20m 9s","p95":"28m 45s"},{"name":"deploy-emails","total":291,"successes":0,"failures":291,"avg":"-45s","median":"0s","p95":"0s"},{"name":"mark-dev-deployed","total":291,"successes":287,"failures":4,"avg":"8s","median":"7s","p95":"18s"},{"name":"runner-config","total":9,"successes":9,"failures":0,"avg":"3s","median":"3s","p95":"4s"},{"name":"start-runner / start","total":8,"successes":8,"failures":0,"avg":"1m 6s","median":"1m 5s","p95":"1m 9s"},{"name":"stop-runner / stop","total":8,"successes":8,"failures":0,"avg":"10s","median":"10s","p95":"14s"},{"name":"start-runner","total":1,"successes":0,"failures":1,"avg":"-1s","median":"-1s","p95":"-1s"},{"name":"stop-runner","total":1,"successes":0,"failures":1,"avg":"-1s","median":"-1s","p95":"-1s"}],"weekly":[{"week":"2026-W11","total":69,"successes":69,"successRate":100,"avgDurMin":22.8},{"week":"2026-W12","total":68,"successes":68,"successRate":100,"avgDurMin":28.4},{"week":"2026-W13","total":86,"successes":86,"successRate":100,"avgDurMin":34.4},{"week":"2026-W14","total":64,"successes":64,"successRate":100,"avgDurMin":37.1},{"week":"2026-W15","total":5,"successes":1,"successRate":20,"avgDurMin":27.9}],"runs":[{"date":"2026-04-06","branch":"main","conclusion":"failure","duration":"35m 35s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019915880"},{"date":"2026-04-06","branch":"main","conclusion":"cancelled","duration":"9m 57s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019691159"},{"date":"2026-04-06","branch":"main","conclusion":"failure","duration":"34m","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019256911"},{"date":"2026-04-06","branch":"main","conclusion":"failure","duration":"27m 42s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019033816"},{"date":"2026-04-06","branch":"main","conclusion":"success","duration":"32m 19s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018317506"},{"date":"2026-04-05","branch":"main","conclusion":"success","duration":"24m 5s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24010768210"},{"date":"2026-04-05","branch":"main","conclusion":"success","duration":"29m 34s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24008524575"},{"date":"2026-04-04","branch":"main","conclusion":"success","duration":"14m 23s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23972251266"},{"date":"2026-04-04","branch":"main","conclusion":"success","duration":"18m 19s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23972045455"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"5m 47s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23957659254"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"11m 37s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23938504522"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"47m 25s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23937236646"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"37m 51s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23937177956"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"37m 4s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23934492256"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"53m 57s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23928406853"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"33m 37s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23927634522"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"20m 13s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23926972481"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"47m 57s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23925806890"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"35m 24s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23925766690"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"45m 40s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23921872323"}],"color":"#f85149"},{"name":"PR Checks","total":648,"successes":641,"failures":7,"rate":98.9,"avgDur":"5m 15s","recentRate":98.11827956989248,"priorRate":100,"recentDur":350.502688172043,"priorDur":268.0507246376812,"recentN":372,"priorN":276,"jobs":[{"name":"changes","total":648,"successes":648,"failures":0,"avg":"8s","median":"7s","p95":"10s"},{"name":"test","total":648,"successes":360,"failures":288,"avg":"3m 36s","median":"3m 43s","p95":"8m 58s"},{"name":"migrations-check","total":648,"successes":366,"failures":282,"avg":"33s","median":"44s","p95":"1m 13s"},{"name":"lint-and-typecheck","total":648,"successes":361,"failures":287,"avg":"1m 23s","median":"48s","p95":"4m 13s"},{"name":"smoke-test","total":648,"successes":185,"failures":463,"avg":"2m 58s","median":"0s","p95":"14m 30s"},{"name":"infra-preview","total":85,"successes":53,"failures":32,"avg":"1m 22s","median":"1m 41s","p95":"4m 7s"},{"name":"runner-config","total":83,"successes":83,"failures":0,"avg":"3s","median":"3s","p95":"4s"},{"name":"start-runner-smoke","total":49,"successes":0,"failures":49,"avg":"0s","median":"0s","p95":"0s"},{"name":"stop-runner-smoke","total":49,"successes":0,"failures":49,"avg":"0s","median":"0s","p95":"0s"},{"name":"start-runner-test / start","total":46,"successes":45,"failures":1,"avg":"1m 7s","median":"1m 8s","p95":"1m 10s"},{"name":"start-runner-lint / start","total":46,"successes":44,"failures":2,"avg":"1m 5s","median":"1m 6s","p95":"1m 11s"},{"name":"stop-runner-test / stop","total":45,"successes":45,"failures":0,"avg":"11s","median":"11s","p95":"13s"},{"name":"stop-runner-lint / stop","total":44,"successes":44,"failures":0,"avg":"11s","median":"11s","p95":"15s"},{"name":"stop-runner-lint","total":23,"successes":0,"failures":23,"avg":"0s","median":"0s","p95":"0s"},{"name":"stop-runner-test","total":22,"successes":0,"failures":22,"avg":"0s","median":"0s","p95":"0s"},{"name":"start-runner-test","total":21,"successes":0,"failures":21,"avg":"0s","median":"0s","p95":"0s"},{"name":"start-runner-lint","total":21,"successes":0,"failures":21,"avg":"0s","median":"0s","p95":"0s"},{"name":"start-runner-smoke / start","total":18,"successes":18,"failures":0,"avg":"1m 6s","median":"1m 6s","p95":"1m 10s"},{"name":"stop-runner-smoke / stop","total":18,"successes":18,"failures":0,"avg":"12s","median":"12s","p95":"15s"},{"name":"start-runner","total":16,"successes":0,"failures":16,"avg":"0s","median":"0s","p95":"0s"},{"name":"stop-runner","total":16,"successes":0,"failures":16,"avg":"0s","median":"0s","p95":"0s"}],"weekly":[{"week":"2026-W11","total":144,"successes":144,"successRate":100,"avgDurMin":3.7},{"week":"2026-W12","total":135,"successes":135,"successRate":100,"avgDurMin":5.4},{"week":"2026-W13","total":156,"successes":156,"successRate":100,"avgDurMin":6.4},{"week":"2026-W14","total":195,"successes":194,"successRate":99.5,"avgDurMin":5.4},{"week":"2026-W15","total":18,"successes":12,"successRate":66.7,"avgDurMin":4.5}],"runs":[{"date":"2026-04-06","branch":"iceglobe-fumadocs","conclusion":"success","duration":"6m 7s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24020823319"},{"date":"2026-04-06","branch":"fix/preflight-migration-table-name","conclusion":"success","duration":"1m 41s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019747438"},{"date":"2026-04-06","branch":"fix/preflight-migration-table-name","conclusion":"success","duration":"1m 50s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019697764"},{"date":"2026-04-06","branch":"iceglobe-fumadocs","conclusion":"success","duration":"6m 4s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019295384"},{"date":"2026-04-06","branch":"feat/rpa-workflow-explicit-json-migration","conclusion":"success","duration":"3m 19s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019268697"},{"date":"2026-04-06","branch":"feat/rpa-workflow-explicit-json-migration","conclusion":"cancelled","duration":"3m 28s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019202002"},{"date":"2026-04-06","branch":"feat/rpa-workflow-explicit-json-migration","conclusion":"cancelled","duration":"1m","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019181631"},{"date":"2026-04-06","branch":"iceglobe-fumadocs","conclusion":"success","duration":"7m 5s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019118187"},{"date":"2026-04-06","branch":"fix/preflight-env-scoping","conclusion":"success","duration":"6m 30s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019080579"},{"date":"2026-04-06","branch":"fix/preflight-env-scoping","conclusion":"cancelled","duration":"5m 8s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018978849"},{"date":"2026-04-06","branch":"feat/rpa-workflow-explicit-json-migration","conclusion":"success","duration":"5m 50s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018642513"},{"date":"2026-04-06","branch":"iceglobe-credential-health-checks","conclusion":"success","duration":"3m 2s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018357074"},{"date":"2026-04-06","branch":"iceglobe-credential-health-checks","conclusion":"cancelled","duration":"2m 31s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018312590"},{"date":"2026-04-06","branch":"feat/rpa-workflow-explicit-json-migration","conclusion":"success","duration":"6m 19s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018304388"},{"date":"2026-04-06","branch":"iceglobe-credential-health-checks","conclusion":"cancelled","duration":"6m 54s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018180086"},{"date":"2026-04-06","branch":"feat/release-preflight-validation","conclusion":"success","duration":"6m 53s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24018088466"},{"date":"2026-04-06","branch":"iceglobe-fumadocs","conclusion":"success","duration":"3m 18s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24017749879"},{"date":"2026-04-06","branch":"iceglobe-credential-health-checks","conclusion":"failure","duration":"3m 18s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24017480158"},{"date":"2026-04-05","branch":"iceglobe-fumadocs","conclusion":"success","duration":"3m 9s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24012145507"},{"date":"2026-04-05","branch":"iceglobe-fumadocs","conclusion":"success","duration":"3m 17s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24011883193"}],"color":"#bc8cff"},{"name":"Release Deploy (Sandbox/Production)","total":142,"successes":142,"failures":0,"rate":100,"avgDur":"23m 15s","recentRate":100,"priorRate":100,"recentDur":1662.9117647058824,"priorDur":1147.8648648648648,"recentN":68,"priorN":74,"jobs":[{"name":"detect-release","total":142,"successes":142,"failures":0,"avg":"11s","median":"9s","p95":"12s"},{"name":"deploy","total":142,"successes":139,"failures":3,"avg":"22m 35s","median":"24m 56s","p95":"31m 28s"},{"name":"tag-release","total":142,"successes":139,"failures":3,"avg":"13s","median":"11s","p95":"24s"}],"weekly":[{"week":"2026-W11","total":52,"successes":52,"successRate":100,"avgDurMin":17.6},{"week":"2026-W12","total":22,"successes":22,"successRate":100,"avgDurMin":22.8},{"week":"2026-W13","total":33,"successes":33,"successRate":100,"avgDurMin":27.6},{"week":"2026-W14","total":35,"successes":35,"successRate":100,"avgDurMin":27.8},{"week":"2026-W15","total":0,"successes":0,"successRate":0,"avgDurMin":0}],"runs":[{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"31m 18s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23963439039"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"32m 16s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23951134254"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"18m 55s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23938504495"},{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"30m 36s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23928406792"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"30m 15s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23926972478"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"29m 25s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23925806888"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"29m 34s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23921872238"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"30m 33s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23919229664"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"26m 43s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23913893767"},{"date":"2026-04-02","branch":"main","conclusion":"success","duration":"28m 44s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23886558112"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"30m 39s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23874462968"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"31m 55s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23873052042"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"27m 9s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23864829414"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"6m 36s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23864781349"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"29m 53s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23863231625"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"29m 50s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23863176864"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"33m 43s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23860419707"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"29m 46s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23859168017"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"28m 53s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23836193777"},{"date":"2026-04-01","branch":"main","conclusion":"success","duration":"29m 36s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23829954037"}],"color":"#f0883e"},{"name":"Pulumi State Refresh","total":3,"successes":3,"failures":0,"rate":100,"avgDur":"1m 33s","recentRate":100,"priorRate":0,"recentDur":93.33333333333333,"priorDur":0,"recentN":3,"priorN":0,"jobs":[{"name":"refresh-dev","total":3,"successes":3,"failures":0,"avg":"1m 29s","median":"1m 27s","p95":"1m 34s"}],"weekly":[{"week":"2026-W11","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W12","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":2,"successes":2,"successRate":100,"avgDurMin":1.6},{"week":"2026-W15","total":1,"successes":1,"successRate":100,"avgDurMin":1.5}],"runs":[{"date":"2026-04-06","branch":"main","conclusion":"success","duration":"1m 32s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24021961474"},{"date":"2026-04-05","branch":"main","conclusion":"success","duration":"1m 31s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23996006152"},{"date":"2026-04-04","branch":"main","conclusion":"success","duration":"1m 37s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23973203098"}],"color":"#56d4dd"},{"name":"Preflight: sbx @ c929c85433ea62995dc0b20cbf5e86074a8b0877","total":1,"successes":1,"failures":0,"rate":100,"avgDur":"9m 14s","recentRate":100,"priorRate":0,"recentDur":554,"priorDur":0,"recentN":1,"priorN":0,"jobs":[{"name":"validate","total":1,"successes":1,"failures":0,"avg":"9s","median":"9s","p95":"9s"},{"name":"infra-preview","total":1,"successes":1,"failures":0,"avg":"2m","median":"2m","p95":"2m"},{"name":"docker-build-smoke","total":1,"successes":1,"failures":0,"avg":"8m 50s","median":"8m 50s","p95":"8m 50s"},{"name":"migration-dry-run","total":1,"successes":1,"failures":0,"avg":"1m 31s","median":"1m 31s","p95":"1m 31s"},{"name":"config-parity","total":1,"successes":1,"failures":0,"avg":"51s","median":"51s","p95":"51s"},{"name":"summary","total":1,"successes":1,"failures":0,"avg":"4s","median":"4s","p95":"4s"}],"weekly":[{"week":"2026-W11","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W12","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W15","total":1,"successes":1,"successRate":100,"avgDurMin":9.2}],"runs":[{"date":"2026-04-06","branch":"main","conclusion":"success","duration":"9m 14s","url":"https://github.com/kn-eng/kn-eng/actions/runs/24019928702"}],"color":"#db61a2"},{"name":"Mirror Temporal Images to ECR","total":1,"successes":1,"failures":0,"rate":100,"avgDur":"17s","recentRate":100,"priorRate":0,"recentDur":17,"priorDur":0,"recentN":1,"priorN":0,"jobs":[{"name":"mirror (production)","total":1,"successes":1,"failures":0,"avg":"11s","median":"11s","p95":"11s"},{"name":"mirror (sandbox)","total":1,"successes":1,"failures":0,"avg":"13s","median":"13s","p95":"13s"},{"name":"mirror (development)","total":1,"successes":1,"failures":0,"avg":"12s","median":"12s","p95":"12s"}],"weekly":[{"week":"2026-W11","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W12","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W13","total":0,"successes":0,"successRate":0,"avgDurMin":0},{"week":"2026-W14","total":1,"successes":1,"successRate":100,"avgDurMin":0.3},{"week":"2026-W15","total":0,"successes":0,"successRate":0,"avgDurMin":0}],"runs":[{"date":"2026-04-03","branch":"main","conclusion":"success","duration":"17s","url":"https://github.com/kn-eng/kn-eng/actions/runs/23952753474"}],"color":"#58a6ff"}];
+
+// ---------- Chart config ----------
+const CD = {
+  responsive: true,
+  plugins: { legend: { labels: { color: '#8b949e', boxWidth: 12, padding: 12 } } },
+  scales: {
+    x: { ticks: { color: '#8b949e', maxRotation: 45, font: { size: 10 } }, grid: { color: '#21262d' } },
+    y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' }, beginAtZero: true }
+  }
+};
+
+// ---------- Daily charts ----------
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: {
+    labels: ["2026-03-09","2026-03-10","2026-03-11","2026-03-12","2026-03-13","2026-03-14","2026-03-16","2026-03-17","2026-03-18","2026-03-19","2026-03-20","2026-03-21","2026-03-22","2026-03-23","2026-03-24","2026-03-25","2026-03-26","2026-03-27","2026-03-28","2026-03-29","2026-03-30","2026-03-31","2026-04-01","2026-04-02","2026-04-03","2026-04-04","2026-04-05","2026-04-06"],
+    datasets: [
+      { label: 'Pass', data: [20,50,35,35,84,41,33,53,20,47,51,1,20,50,53,63,34,17,39,19,35,63,63,35,53,32,15,15], backgroundColor: '#238636', borderRadius: 2, order: 2 },
+      { label: 'Fail', data: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,13], backgroundColor: '#da3633', borderRadius: 2, order: 1 },
+    ]
+  },
+  options: { ...CD, scales: {
+    x: { ...CD.scales.x, stacked: true }, y: { ...CD.scales.y, stacked: true }
+  }}
+});
+
+new Chart(document.getElementById('durationChart'), {
+  type: 'line',
+  data: {
+    labels: ["2026-03-09","2026-03-10","2026-03-11","2026-03-12","2026-03-13","2026-03-14","2026-03-16","2026-03-17","2026-03-18","2026-03-19","2026-03-20","2026-03-21","2026-03-22","2026-03-23","2026-03-24","2026-03-25","2026-03-26","2026-03-27","2026-03-28","2026-03-29","2026-03-30","2026-03-31","2026-04-01","2026-04-02","2026-04-03","2026-04-04","2026-04-05","2026-04-06"],
+    datasets: [{
+      label: 'Avg (s)', data: [842,719,870,791,608,473,957,791,791,816,804,428,1044,905,1161,1049,1036,1078,1156,1076,1013,974,1177,1174,651,346,437,542],
+      borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.06)',
+      fill: true, tension: 0.3, pointRadius: 2, borderWidth: 1.5
+    }]
+  },
+  options: CD
+});
+
+// ---------- Workflow drill-in ----------
+const detailCharts = {};
+
+document.querySelectorAll('.wf-row').forEach(row => {
+  row.addEventListener('click', () => {
+    const i = parseInt(row.dataset.idx);
+    const detail = document.getElementById('wf-detail-' + i);
+    const isOpen = detail.classList.contains('open');
+
+    if (isOpen) {
+      detail.classList.remove('open');
+      row.classList.remove('open');
+      if (detailCharts[i]) { detailCharts[i].forEach(c => c.destroy()); delete detailCharts[i]; }
+      return;
+    }
+
+    detail.classList.add('open');
+    row.classList.add('open');
+    const wf = WF_DATA[i];
+    const inner = document.getElementById('wf-inner-' + i);
+
+    inner.innerHTML =
+      '<table class="mini-table"><thead><tr><th>Job</th><th>Runs</th><th>Success Rate</th><th>Avg</th><th>Median</th><th>P95</th></tr></thead><tbody>' +
+      wf.jobs.map(j => {
+        const jr = j.total ? Math.round(j.successes / j.total * 1000) / 10 : 0;
+        const jc = jr >= 95 ? 'green' : jr >= 80 ? 'orange' : 'red';
+        return '<tr><td>' + esc(j.name) + '</td><td>' + j.total + '</td><td class="' + jc + '">' + jr + '%</td>' +
+          '<td>' + j.avg + '</td><td>' + j.median + '</td><td>' + j.p95 + '</td></tr>';
+      }).join('') +
+      '</tbody></table>' +
+      '<div class="detail-charts">' +
+        '<div class="chart-box"><h4>Weekly Success Rate</h4><canvas id="wf-sr-' + i + '"></canvas></div>' +
+        '<div class="chart-box"><h4>Weekly Avg Duration (min)</h4><canvas id="wf-dur-' + i + '"></canvas></div>' +
+      '</div>' +
+      '<table class="mini-table"><thead><tr><th>Date</th><th>Branch</th><th>Status</th><th>Duration</th><th></th></tr></thead><tbody>' +
+      wf.runs.map(r =>
+        '<tr><td>' + r.date + '</td><td style="font-family:monospace;font-size:0.78rem;color:var(--text2)">' + esc(r.branch) + '</td>' +
+        '<td><span class="badge ' + r.conclusion + '">' + r.conclusion + '</span></td>' +
+        '<td>' + r.duration + '</td>' +
+        '<td><a href="' + r.url + '" target="_blank">View</a></td></tr>'
+      ).join('') +
+      '</tbody></table>';
+
+    const miniCD = {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' }, beginAtZero: true }
+      }
+    };
+
+    const srChart = new Chart(document.getElementById('wf-sr-' + i), {
+      type: 'line',
+      data: {
+        labels: wf.weekly.map(w => w.week),
+        datasets: [{
+          data: wf.weekly.map(w => w.successRate),
+          borderColor: wf.color, pointRadius: 3, tension: 0.3, fill: false, borderWidth: 1.5
+        }]
+      },
+      options: { ...miniCD, scales: { ...miniCD.scales, y: { ...miniCD.scales.y, min: 0, max: 100 } } }
+    });
+    const durChart = new Chart(document.getElementById('wf-dur-' + i), {
+      type: 'line',
+      data: {
+        labels: wf.weekly.map(w => w.week),
+        datasets: [{
+          data: wf.weekly.map(w => w.avgDurMin),
+          borderColor: wf.color, pointRadius: 3, tension: 0.3, fill: false, borderWidth: 1.5
+        }]
+      },
+      options: miniCD
+    });
+    detailCharts[i] = [srChart, durChart];
+  });
+});
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>
