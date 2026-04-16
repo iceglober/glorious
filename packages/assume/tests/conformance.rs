@@ -215,7 +215,10 @@ mod gcp_conformance {
         use std::collections::HashMap;
 
         let tmp = tempfile::tempdir().unwrap();
-        let adc_path = tmp.path().join("gcloud").join("application_default_credentials.json");
+        let adc_path = tmp
+            .path()
+            .join("gcloud")
+            .join("application_default_credentials.json");
 
         let mut secrets = HashMap::new();
         secrets.insert("client_id".into(), "test-client-id".into());

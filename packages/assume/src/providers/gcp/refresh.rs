@@ -98,9 +98,7 @@ pub async fn refresh(tokens: &AuthTokens) -> Result<AuthTokens, ProviderError> {
 
     match err.error.as_str() {
         "invalid_grant" => match err.error_subtype.as_deref() {
-            Some("invalid_rapt") | Some("rapt_required") => {
-                Err(ProviderError::RaptReauthRequired)
-            }
+            Some("invalid_rapt") | Some("rapt_required") => Err(ProviderError::RaptReauthRequired),
             _ => Err(ProviderError::RefreshTokenExpired),
         },
         other => {
