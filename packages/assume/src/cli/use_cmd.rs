@@ -393,6 +393,10 @@ pub async fn run(args: UseArgs, registry: &PluginRegistry, cfg: &config::Config)
 
             crate::core::daemon::restart_daemon();
             std::thread::sleep(std::time::Duration::from_secs(3));
+            let retry = crate::core::daemon::validate_gcp_credential_endpoint(port);
+            if retry != crate::core::daemon::EndpointStatus::Ok {
+                eprintln!("Warning: GCP credentials still unavailable after login");
+            }
         }
     }
 
