@@ -899,6 +899,76 @@ mod tests {
         let result = try_credential_fetch(&url, "Bearer test-token");
         assert_eq!(result, EndpointStatus::Unreachable);
     }
+
+    // ── GCP metadata fetch tests ───────────────────────────────────
+
+    /// Spin up a one-shot HTTP server for try_gcp_credential_fetch tests.
+    fn fetch_gcp_against_server(status_code: u16) -> EndpointStatus {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let url = format!(
+            "http://127.0.0.1:{port}{}",
+            crate::providers::gcp::endpoint::TOKEN_PATH
+        );
+
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf);
+            let body = format!("{{\"status\":{status_code}}}");
+            let response = format!(
+                "HTTP/1.1 {status_code} X\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let result = try_gcp_credential_fetch(&url);
+        handle.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn gcp_fetch_200_returns_ok() {
+        assert_eq!(fetch_gcp_against_server(200), EndpointStatus::Ok);
+    }
+
+    #[test]
+    fn gcp_fetch_503_returns_needs_login() {
+        assert_eq!(fetch_gcp_against_server(503), EndpointStatus::NeedsLogin);
+    }
+
+    #[test]
+    fn gcp_fetch_401_returns_needs_login() {
+        assert_eq!(fetch_gcp_against_server(401), EndpointStatus::NeedsLogin);
+    }
+
+    #[test]
+    fn gcp_fetch_connection_refused_returns_unreachable() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let url = format!(
+            "http://127.0.0.1:{port}{}",
+            crate::providers::gcp::endpoint::TOKEN_PATH
+        );
+        let result = try_gcp_credential_fetch(&url);
+        assert_eq!(result, EndpointStatus::Unreachable);
+    }
+
+    #[test]
+    fn gcp_endpoint_path_is_correct() {
+        assert_eq!(
+            crate::providers::gcp::endpoint::TOKEN_PATH,
+            "/computeMetadata/v1/instance/service-accounts/default/token"
+        );
+    }
 }
 
 /// Stop ALL running daemon processes, not just the PID file process.
