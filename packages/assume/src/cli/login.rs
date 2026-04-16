@@ -170,6 +170,12 @@ pub async fn run(args: LoginArgs, registry: &PluginRegistry, cfg: &config::Confi
     // Store tokens (encrypted at rest)
     keychain::store_tokens(&provider_id, &tokens)?;
 
+    // Write baseline ADC so gcloud/SDKs work even if discovery fails.
+    // This is overwritten with quota_project_id after successful discovery.
+    if provider_id == "gcp" {
+        crate::providers::gcp::adc::write_adc(&tokens, None);
+    }
+
     // Discover available contexts
     eprintln!("Discovering available contexts...");
     match provider.list_contexts(&tokens).await {
@@ -257,6 +263,12 @@ pub async fn run(args: LoginArgs, registry: &PluginRegistry, cfg: &config::Confi
                         if let Err(e) = crate::core::cache::save_contexts(&provider_id, &contexts) {
                             tracing::warn!("Failed to cache contexts: {e}");
                         }
+                        // Overwrite ADC with quota_project_id from new project
+                        let first_project_id = contexts
+                            .first()
+                            .and_then(|c| c.metadata.get("project_id"))
+                            .map(|s| s.as_str());
+                        crate::providers::gcp::adc::write_adc(&tokens, first_project_id);
                         if contexts.len() == 1 {
                             let selected = &contexts[0];
                             eprintln!(
