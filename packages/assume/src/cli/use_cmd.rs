@@ -192,11 +192,18 @@ pub fn print_context_exports(selected: &Context, cfg: &config::Config) {
             .unwrap_or(crate::providers::gcp::endpoint::DEFAULT_PORT);
         println!("export GCE_METADATA_HOST=\"localhost:{}\"", port);
 
-        // Export access token so gcloud CLI works without separate auth
+        // Export access token so gcloud CLI and SDK tools work without separate auth.
+        // CLOUDSDK_AUTH_ACCESS_TOKEN: used by gcloud CLI
+        // GOOGLE_OAUTH_ACCESS_TOKEN: used by Terraform/Pulumi Google providers,
+        //   bypasses ADC entirely (prevents RAPT refresh failures)
         if let Ok(Some(tokens)) = crate::core::keychain::load_tokens("gcp") {
             if let Some(access_token) = tokens.secrets.get("access_token") {
                 println!(
                     "export CLOUDSDK_AUTH_ACCESS_TOKEN=\"{}\"",
+                    shell_escape(access_token)
+                );
+                println!(
+                    "export GOOGLE_OAUTH_ACCESS_TOKEN=\"{}\"",
                     shell_escape(access_token)
                 );
             }
