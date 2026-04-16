@@ -205,7 +205,15 @@ pub fn print_context_exports(selected: &Context, cfg: &config::Config) {
 }
 
 pub async fn run(args: UseArgs, registry: &PluginRegistry, cfg: &config::Config) -> Result<()> {
-    let provider_id = &args.provider;
+    // Support "gcp:ragentic" colon syntax — split into provider + profile
+    let (provider_id, profile_override) = if let Some((prov, pat)) = args.provider.split_once(':') {
+        let pat = if pat.is_empty() { None } else { Some(pat.to_string()) };
+        (prov.to_string(), pat)
+    } else {
+        (args.provider.clone(), None)
+    };
+    let profile = profile_override.or(args.profile.clone());
+    let provider_id = &provider_id;
 
     // Validate provider exists
     if registry.get(provider_id).is_none() {
@@ -237,7 +245,7 @@ pub async fn run(args: UseArgs, registry: &PluginRegistry, cfg: &config::Config)
         bail!("No contexts available for {provider_id}. Run: gsa login {provider_id}");
     }
 
-    let selected = match args.profile {
+    let selected = match profile {
         Some(ref pattern) => {
             let matches = fuzzy::match_contexts(pattern, &contexts);
             match matches.len() {
