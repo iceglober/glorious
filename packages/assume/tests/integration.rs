@@ -271,3 +271,30 @@ fn test_use_colon_syntax_gcp_no_contexts() {
         "colon syntax should parse 'gcp' as provider, not 'gcp:nonexistent-12345', got stderr: {stderr}"
     );
 }
+
+#[test]
+fn test_use_empty_provider_colon_syntax() {
+    // `:foo` should report "Provider name cannot be empty", not "Unknown provider: "
+    let output = gs_assume()
+        .args(["use", ":foo"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Provider name cannot be empty"),
+        "empty provider from colon syntax should give clear error, got stderr: {stderr}"
+    );
+}
+
+#[test]
+fn test_use_bare_colon() {
+    let output = gs_assume()
+        .args(["use", ":"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Provider name cannot be empty"),
+        "bare colon should give clear error, got stderr: {stderr}"
+    );
+}

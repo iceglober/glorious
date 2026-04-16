@@ -214,6 +214,9 @@ pub fn print_context_exports(selected: &Context, cfg: &config::Config) {
 pub async fn run(args: UseArgs, registry: &PluginRegistry, cfg: &config::Config) -> Result<()> {
     // Support "gcp:ragentic" colon syntax — split into provider + profile
     let (provider_id, profile_override) = if let Some((prov, pat)) = args.provider.split_once(':') {
+        if prov.is_empty() {
+            bail!("Provider name cannot be empty. Usage: gsa use <provider>[:<profile>]");
+        }
         let pat = if pat.is_empty() { None } else { Some(pat.to_string()) };
         (prov.to_string(), pat)
     } else {
