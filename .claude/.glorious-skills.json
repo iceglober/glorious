@@ -1,5 +1,5 @@
 {
-  "version": "3.0.1",
+  "version": "4.1.0",
   "prefix": "",
   "format": "skills",
   "commands": [],
@@ -19,6 +19,8 @@
     "deep-review/references/agent-prompts.md",
     "quick-review/SKILL.md",
     "address-feedback/SKILL.md",
+    "plan-loop/SKILL.md",
+    "auto-loop/SKILL.md",
     "research/SKILL.md",
     "research-local/SKILL.md",
     "research-auto/SKILL.md",
