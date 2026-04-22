@@ -235,7 +235,8 @@ async fn refresh_provider(state: &SharedDaemonState, provider_id: &str) -> Resul
                 Ok(Err(ProviderError::AccessTokenExpired)) => {
                     // Fall through to session refresh below
                 }
-                Ok(Err(ProviderError::RefreshTokenExpired)) => {
+                Ok(Err(ProviderError::RefreshTokenExpired))
+                | Ok(Err(ProviderError::RaptReauthRequired)) => {
                     let display_name = provider.display_name().to_string();
                     {
                         let mut s = state.write().await;
@@ -283,8 +284,9 @@ async fn refresh_provider(state: &SharedDaemonState, provider_id: &str) -> Resul
                 }
                 tracing::info!("Session refreshed for {provider_id}");
             }
-            Ok(Err(ProviderError::RefreshTokenExpired)) => {
-                tracing::warn!("Refresh token expired for {provider_id}");
+            Ok(Err(ProviderError::RefreshTokenExpired))
+            | Ok(Err(ProviderError::RaptReauthRequired)) => {
+                tracing::warn!("Session expired for {provider_id} — re-authentication required");
                 let display_name = provider.display_name().to_string();
                 {
                     let mut s = state.write().await;
@@ -600,14 +602,19 @@ pub fn ensure_daemon_running() {
     start_daemon_background();
 }
 
-/// Check if the daemon is actually responding on its port.
+/// Check if the daemon is actually responding on any of its provider ports.
 fn is_daemon_healthy() -> bool {
-    let port = 9911u16; // DEFAULT_PORT
-    std::net::TcpStream::connect_timeout(
-        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
-        std::time::Duration::from_millis(500),
-    )
-    .is_ok()
+    let ports = [
+        crate::providers::aws::endpoint::DEFAULT_PORT,
+        crate::providers::gcp::endpoint::DEFAULT_PORT,
+    ];
+    ports.iter().any(|&port| {
+        std::net::TcpStream::connect_timeout(
+            &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+            std::time::Duration::from_millis(500),
+        )
+        .is_ok()
+    })
 }
 
 /// Restart the daemon. Kills the running instance (if any) and starts fresh.
@@ -696,6 +703,59 @@ fn try_credential_fetch(url: &str, auth: &str) -> EndpointStatus {
             "10",
             "-H",
             &format!("Authorization: {auth}"),
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            url,
+        ])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    match output {
+        Ok(o) => {
+            let code = String::from_utf8_lossy(&o.stdout);
+            classify_http_status(&code)
+        }
+        Err(_) => EndpointStatus::Unreachable,
+    }
+}
+
+/// Validate the GCP metadata server credential endpoint is responding.
+/// Uses the Metadata-Flavor: Google header instead of Bearer auth.
+pub fn validate_gcp_credential_endpoint(port: u16) -> EndpointStatus {
+    let url = format!(
+        "http://localhost:{port}{}",
+        crate::providers::gcp::endpoint::TOKEN_PATH
+    );
+    let status = try_gcp_credential_fetch(&url);
+    match status {
+        EndpointStatus::Ok => EndpointStatus::Ok,
+        EndpointStatus::NeedsLogin => EndpointStatus::NeedsLogin,
+        EndpointStatus::Unreachable => {
+            eprintln!("GCP credential endpoint not responding, restarting daemon...");
+            restart_daemon();
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            let retry = try_gcp_credential_fetch(&url);
+            if retry == EndpointStatus::Unreachable {
+                eprintln!(
+                    "Warning: GCP credential endpoint still not responding after daemon restart"
+                );
+            }
+            retry
+        }
+    }
+}
+
+fn try_gcp_credential_fetch(url: &str) -> EndpointStatus {
+    let output = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "--max-time",
+            "10",
+            "-H",
+            "Metadata-Flavor: Google",
             "-o",
             "/dev/null",
             "-w",
@@ -828,6 +888,76 @@ mod tests {
         let url = format!("http://127.0.0.1:{port}/credentials/test-ctx");
         let result = try_credential_fetch(&url, "Bearer test-token");
         assert_eq!(result, EndpointStatus::Unreachable);
+    }
+
+    // ── GCP metadata fetch tests ───────────────────────────────────
+
+    /// Spin up a one-shot HTTP server for try_gcp_credential_fetch tests.
+    fn fetch_gcp_against_server(status_code: u16) -> EndpointStatus {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let url = format!(
+            "http://127.0.0.1:{port}{}",
+            crate::providers::gcp::endpoint::TOKEN_PATH
+        );
+
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf);
+            let body = format!("{{\"status\":{status_code}}}");
+            let response = format!(
+                "HTTP/1.1 {status_code} X\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let result = try_gcp_credential_fetch(&url);
+        handle.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn gcp_fetch_200_returns_ok() {
+        assert_eq!(fetch_gcp_against_server(200), EndpointStatus::Ok);
+    }
+
+    #[test]
+    fn gcp_fetch_503_returns_needs_login() {
+        assert_eq!(fetch_gcp_against_server(503), EndpointStatus::NeedsLogin);
+    }
+
+    #[test]
+    fn gcp_fetch_401_returns_needs_login() {
+        assert_eq!(fetch_gcp_against_server(401), EndpointStatus::NeedsLogin);
+    }
+
+    #[test]
+    fn gcp_fetch_connection_refused_returns_unreachable() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let url = format!(
+            "http://127.0.0.1:{port}{}",
+            crate::providers::gcp::endpoint::TOKEN_PATH
+        );
+        let result = try_gcp_credential_fetch(&url);
+        assert_eq!(result, EndpointStatus::Unreachable);
+    }
+
+    #[test]
+    fn gcp_endpoint_path_is_correct() {
+        assert_eq!(
+            crate::providers::gcp::endpoint::TOKEN_PATH,
+            "/computeMetadata/v1/instance/service-accounts/default/token"
+        );
     }
 }
 

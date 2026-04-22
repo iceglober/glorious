@@ -194,11 +194,12 @@ async fn run_exec(
             env_vars.push(("AWS_DEFAULT_REGION".into(), context.region.clone()));
         }
     } else if context.provider_id == "gcp" {
-        // Inject access token for gcloud CLI + project env vars
+        // Inject access token for gcloud CLI + Terraform/Pulumi
         let tokens = keychain::load_tokens("gcp")?
             .ok_or_else(|| anyhow::anyhow!("Not authenticated for GCP. Run: gsa login gcp"))?;
         if let Some(access_token) = tokens.secrets.get("access_token") {
             env_vars.push(("CLOUDSDK_AUTH_ACCESS_TOKEN".into(), access_token.clone()));
+            env_vars.push(("GOOGLE_OAUTH_ACCESS_TOKEN".into(), access_token.clone()));
         }
         let project_id = context
             .metadata
@@ -207,6 +208,13 @@ async fn run_exec(
             .clone();
         env_vars.push(("GOOGLE_CLOUD_PROJECT".into(), project_id.clone()));
         env_vars.push(("CLOUDSDK_CORE_PROJECT".into(), project_id));
+        // Metadata server so GCP SDKs can refresh tokens via daemon
+        let port = cfg
+            .providers
+            .get("gcp")
+            .and_then(|p| p.port)
+            .unwrap_or(crate::providers::gcp::endpoint::DEFAULT_PORT);
+        env_vars.push(("GCE_METADATA_HOST".into(), format!("localhost:{port}")));
     }
 
     // Common env vars
@@ -224,10 +232,13 @@ async fn run_exec(
     let program = &args.command[0];
     let cmd_args = &args.command[1..];
 
-    let status = std::process::Command::new(program)
-        .args(cmd_args)
-        .envs(env_vars)
-        .status()?;
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(cmd_args).envs(env_vars);
+    // Clear conflicting credential env vars so SDKs use our injected credentials
+    if context.provider_id == "gcp" {
+        cmd.env_remove("GOOGLE_APPLICATION_CREDENTIALS");
+    }
+    let status = cmd.status()?;
 
     audit::log_event(
         audit::AuditEvent::CredentialFetch,

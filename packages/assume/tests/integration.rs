@@ -238,3 +238,57 @@ fn test_use_outputs_credential_uri_with_context_id() {
         "failed `use` must not output export lines, got: {stdout}"
     );
 }
+
+// -- Colon syntax tests --
+
+#[test]
+fn test_use_colon_syntax_splits_provider() {
+    // `gsa use nonexistent:foo` should report "Unknown provider: nonexistent"
+    // NOT "Unknown provider: nonexistent:foo"
+    let output = gs_assume()
+        .args(["use", "nonexistent:foo"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Unknown provider: nonexistent")
+            && !stderr.contains("Unknown provider: nonexistent:foo"),
+        "colon syntax should split provider from profile, got stderr: {stderr}"
+    );
+}
+
+#[test]
+fn test_use_colon_syntax_gcp_no_contexts() {
+    // `gsa use gcp:nonexistent-12345` should NOT fail with "Unknown provider: gcp:nonexistent-12345"
+    // It should fail with a context-related error (no session, no contexts, etc.)
+    let output = gs_assume()
+        .args(["use", "gcp:nonexistent-12345"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Unknown provider: gcp:nonexistent-12345"),
+        "colon syntax should parse 'gcp' as provider, not 'gcp:nonexistent-12345', got stderr: {stderr}"
+    );
+}
+
+#[test]
+fn test_use_empty_provider_colon_syntax() {
+    // `:foo` should report "Provider name cannot be empty", not "Unknown provider: "
+    let output = gs_assume().args(["use", ":foo"]).output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Provider name cannot be empty"),
+        "empty provider from colon syntax should give clear error, got stderr: {stderr}"
+    );
+}
+
+#[test]
+fn test_use_bare_colon() {
+    let output = gs_assume().args(["use", ":"]).output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Provider name cannot be empty"),
+        "bare colon should give clear error, got stderr: {stderr}"
+    );
+}

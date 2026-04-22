@@ -95,6 +95,8 @@ pub enum ProviderError {
     LoginFailed(String),
     #[error("refresh token expired — re-authentication required")]
     RefreshTokenExpired,
+    #[error("re-authentication required by organization policy (RAPT)")]
+    RaptReauthRequired,
     #[error("access token expired")]
     AccessTokenExpired,
     #[error("context not found: {0}")]

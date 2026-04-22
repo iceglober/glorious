@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use clap::Args;
 use std::process::Command;
 
-pub const REQUIREMENT: DaemonRequirement = DaemonRequirement::None;
+pub const REQUIREMENT: DaemonRequirement = DaemonRequirement::Daemon;
 
 #[derive(Args, Debug)]
 pub struct ExecArgs {
@@ -22,7 +22,7 @@ pub struct ExecArgs {
     pub command: Vec<String>,
 }
 
-pub async fn run(args: ExecArgs, registry: &PluginRegistry, _cfg: &config::Config) -> Result<()> {
+pub async fn run(args: ExecArgs, registry: &PluginRegistry, cfg: &config::Config) -> Result<()> {
     if args.command.is_empty() {
         bail!("No command specified. Usage: gsa exec [-p <pattern>] -- <command>");
     }
@@ -120,9 +120,10 @@ pub async fn run(args: ExecArgs, registry: &PluginRegistry, _cfg: &config::Confi
             "AWS_CONTAINER_AUTHORIZATION_TOKEN",
         ]);
     } else if context.provider_id == "gcp" {
-        // Access token for gcloud CLI
+        // Access token for gcloud CLI + Terraform/Pulumi
         if let Some(access_token) = tokens.secrets.get("access_token") {
             env_vars.push(("CLOUDSDK_AUTH_ACCESS_TOKEN".into(), access_token.clone()));
+            env_vars.push(("GOOGLE_OAUTH_ACCESS_TOKEN".into(), access_token.clone()));
         }
         // Project env vars
         let project_id = context
@@ -132,6 +133,16 @@ pub async fn run(args: ExecArgs, registry: &PluginRegistry, _cfg: &config::Confi
             .clone();
         env_vars.push(("GOOGLE_CLOUD_PROJECT".into(), project_id.clone()));
         env_vars.push(("CLOUDSDK_CORE_PROJECT".into(), project_id));
+        // Metadata server so GCP SDKs can refresh tokens via daemon
+        let port = cfg
+            .providers
+            .get("gcp")
+            .and_then(|p| p.port)
+            .unwrap_or(crate::providers::gcp::endpoint::DEFAULT_PORT);
+        env_vars.push(("GCE_METADATA_HOST".into(), format!("localhost:{port}")));
+        // Clear GOOGLE_APPLICATION_CREDENTIALS so the SDK uses our injected
+        // credentials instead of a pre-existing service account key file
+        remove_vars.push("GOOGLE_APPLICATION_CREDENTIALS");
     }
 
     // Run the command

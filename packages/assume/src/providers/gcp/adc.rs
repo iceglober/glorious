@@ -15,12 +15,12 @@ fn adc_path() -> PathBuf {
 
 /// Write ADC file with the given tokens' refresh credentials.
 /// This is the same format `gcloud auth application-default login` produces.
-pub fn write_adc(tokens: &AuthTokens) {
-    write_adc_to_path(tokens, &adc_path());
+pub fn write_adc(tokens: &AuthTokens, project_id: Option<&str>) {
+    write_adc_to_path(tokens, project_id, &adc_path());
 }
 
 /// Write ADC file to a specific path. Extracted for testability.
-pub fn write_adc_to_path(tokens: &AuthTokens, path: &std::path::Path) {
+pub fn write_adc_to_path(tokens: &AuthTokens, project_id: Option<&str>, path: &std::path::Path) {
     let client_id = match tokens.secrets.get("client_id") {
         Some(id) => id,
         None => return,
@@ -34,12 +34,17 @@ pub fn write_adc_to_path(tokens: &AuthTokens, path: &std::path::Path) {
         None => return,
     };
 
-    let adc = serde_json::json!({
+    let mut adc = serde_json::json!({
         "type": "authorized_user",
         "client_id": client_id,
         "client_secret": client_secret,
         "refresh_token": refresh_token
     });
+    if let Some(pid) = project_id {
+        adc.as_object_mut()
+            .unwrap()
+            .insert("quota_project_id".to_string(), serde_json::json!(pid));
+    }
 
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);

@@ -18,6 +18,8 @@ struct ErrorResponse {
     error: String,
     #[allow(dead_code)]
     error_description: Option<String>,
+    /// Distinguishes RAPT re-auth ("invalid_rapt", "rapt_required") from truly expired tokens
+    error_subtype: Option<String>,
 }
 
 /// Refresh the Google OAuth access token using the refresh token.
@@ -95,7 +97,10 @@ pub async fn refresh(tokens: &AuthTokens) -> Result<AuthTokens, ProviderError> {
     })?;
 
     match err.error.as_str() {
-        "invalid_grant" => Err(ProviderError::RefreshTokenExpired),
+        "invalid_grant" => match err.error_subtype.as_deref() {
+            Some("invalid_rapt") | Some("rapt_required") => Err(ProviderError::RaptReauthRequired),
+            _ => Err(ProviderError::RefreshTokenExpired),
+        },
         other => {
             if other.contains("timeout") || other.contains("connection") {
                 Err(ProviderError::NetworkError(format!(
@@ -107,5 +112,58 @@ pub async fn refresh(tokens: &AuthTokens) -> Result<AuthTokens, ProviderError> {
                 )))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_response_parses_invalid_rapt() {
+        let json = r#"{"error":"invalid_grant","error_subtype":"invalid_rapt"}"#;
+        let err: ErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "invalid_grant");
+        assert_eq!(err.error_subtype.as_deref(), Some("invalid_rapt"));
+    }
+
+    #[test]
+    fn error_response_parses_rapt_required() {
+        let json = r#"{"error":"invalid_grant","error_subtype":"rapt_required"}"#;
+        let err: ErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "invalid_grant");
+        assert_eq!(err.error_subtype.as_deref(), Some("rapt_required"));
+    }
+
+    #[test]
+    fn error_response_without_subtype() {
+        let json = r#"{"error":"invalid_grant"}"#;
+        let err: ErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "invalid_grant");
+        assert!(err.error_subtype.is_none());
+    }
+
+    #[test]
+    fn error_response_unknown_subtype() {
+        let json = r#"{"error":"invalid_grant","error_subtype":"unknown_thing"}"#;
+        let err: ErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error_subtype.as_deref(), Some("unknown_thing"));
+    }
+
+    #[test]
+    fn error_response_with_description_and_subtype() {
+        let json = r#"{"error":"invalid_grant","error_description":"reauth related","error_subtype":"invalid_rapt"}"#;
+        let err: ErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "invalid_grant");
+        assert_eq!(err.error_description.as_deref(), Some("reauth related"));
+        assert_eq!(err.error_subtype.as_deref(), Some("invalid_rapt"));
+    }
+
+    #[test]
+    fn error_response_non_grant_error() {
+        let json = r#"{"error":"invalid_client"}"#;
+        let err: ErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "invalid_client");
+        assert!(err.error_subtype.is_none());
     }
 }

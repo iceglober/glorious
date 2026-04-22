@@ -57,12 +57,19 @@ pub async fn run(
         // Auto-tag dangerous contexts
         if provider_id == "aws" {
             crate::providers::aws::contexts::auto_tag_dangerous(&mut contexts);
+        } else if provider_id == "gcp" {
+            crate::providers::gcp::contexts::auto_tag_dangerous(&mut contexts);
         }
 
         // Merge profile configs
         if let Some(provider_cfg) = cfg.providers.get(&provider_id) {
             if provider_id == "aws" {
                 crate::providers::aws::contexts::merge_profile_configs(
+                    &mut contexts,
+                    &provider_cfg.profiles,
+                );
+            } else if provider_id == "gcp" {
+                crate::providers::gcp::contexts::merge_profile_configs(
                     &mut contexts,
                     &provider_cfg.profiles,
                 );
