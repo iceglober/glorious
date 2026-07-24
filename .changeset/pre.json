@@ -5,9 +5,18 @@
     "@glrs-dev/glorious": "0.0.0"
   },
   "changesets": [
+    "assistant-response-marker",
+    "cloud-auth-connect",
     "config-tui",
+    "ctrl-c-exit-hint",
+    "gemini-prompt-addendum",
     "initial-release",
     "permissions-acl",
-    "plan-build-and-models"
+    "picker-provider-catalog",
+    "plan-build-and-models",
+    "remove-ansi-renderer",
+    "remove-completion-grounding",
+    "surface-intermediate-text",
+    "tui-progress-animations"
   ]
 }
