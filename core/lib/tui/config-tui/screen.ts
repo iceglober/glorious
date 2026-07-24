@@ -4,6 +4,7 @@ import { createOpenTuiStyledText } from "../opentui-styled-text";
 import type { UiLine, UiSpan } from "../styles";
 import {
   type ConfigEffect,
+  type ConfigOverlayColumn,
   type ConfigOverlayView,
   type ConfigTuiData,
   type ConfigView,
@@ -27,6 +28,13 @@ export interface ConfigTuiScreenOptions {
   stdout?: NodeJS.WriteStream;
   /** Reuse an existing renderer (in-chat `/config`); otherwise one is created + owned. */
   renderer?: CliRenderer;
+  /** Run an interactive command (the vendor login CLI) with the terminal handed
+   *  to it — the renderer is suspended around this. Returns the exit code. When
+   *  omitted, a runLogin effect just surfaces the command as a toast. */
+  runCommand?: (argv: string[]) => Promise<number>;
+  /** Probe a provider's live session before entering its models. Omitted → the
+   *  model treats every provider as valid (no pre-select check). */
+  validateSession?: (provider: string) => Promise<"valid" | "stale" | "missing">;
 }
 
 export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promise<void> {
@@ -78,9 +86,8 @@ export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promi
     wrapMode: "word",
     width: "100%",
   });
-  // Footer: the write scope, then the target file below it, then the key legend.
-  const scopeText = new opentui.TextRenderable(renderer, { content: "", width: "100%" });
-  const pathText = new opentui.TextRenderable(renderer, { content: "", width: "100%" });
+  // Footer: just the key legend. The save layer is chosen per-change in the
+  // scope prompt, so no persistent scope readout is shown here.
   const keysText = new opentui.TextRenderable(renderer, { content: "", width: "100%" });
 
   const overlayBox = new opentui.BoxRenderable(renderer, {
@@ -90,7 +97,7 @@ export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promi
     borderStyle: "double",
     top: 2,
     left: 8,
-    minWidth: 40,
+    minWidth: 64,
     padding: 1,
     flexDirection: "column",
     ...(colorEnabled ? { backgroundColor: opentui.RGBA.fromHex("#0d1117") } : {}),
@@ -104,8 +111,6 @@ export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promi
   root.add(gapText);
   root.add(bodyText);
   root.add(hintText);
-  root.add(scopeText);
-  root.add(pathText);
   root.add(keysText);
   root.add(overlayBox);
   renderer.root.add(root);
@@ -118,11 +123,6 @@ export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promi
   const hr = (): UiLine => [{ text: "─".repeat(contentWidth()), tone: "muted" }];
 
   // ---- view → styled lines ----
-  // Keep the meaningful tail (filename, parent dirs) and drop the head with a
-  // leading ellipsis, so a deep path never wraps its line.
-  const truncateStart = (s: string, max: number): string =>
-    s.length <= max ? s : `…${s.slice(s.length - max + 1)}`;
-
   const pad = (col: number, at: number): string => " ".repeat(Math.max(1, at - col));
 
   const rowLine = (r: ConfigViewRow): UiLine => {
@@ -183,7 +183,86 @@ export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promi
     return lines;
   };
 
+  // Miller-column layout: header row · search row · aligned item rows.
+  const COL_WIDTHS = [17, 26, 14];
+  const spanW = (spans: UiSpan[]): number => spans.reduce((n, s) => n + s.text.length, 0);
+  const padCell = (
+    spans: UiSpan[],
+    width: number,
+    bg?: UiSpan["background"],
+    last = false,
+  ): UiSpan[] => {
+    const gap = Math.max(0, width - spanW(spans));
+    return [
+      ...spans,
+      ...(gap ? [{ text: " ".repeat(gap), background: bg } as UiSpan] : []),
+      ...(last ? [] : [{ text: "  " } as UiSpan]),
+    ];
+  };
+  const columnLines = (cols: ConfigOverlayColumn[]): UiLine[] => {
+    const w = (i: number): number => COL_WIDTHS[i] ?? 16;
+    const last = (i: number): boolean => i === cols.length - 1;
+    const rowCount = Math.max(1, ...cols.map((c) => c.items.length));
+    const lines: UiLine[] = [];
+    lines.push(
+      cols.flatMap((c, i) =>
+        padCell(
+          [{ text: c.title, tone: c.active ? "accent" : "muted", bold: c.active }],
+          w(i),
+          undefined,
+          last(i),
+        ),
+      ),
+    );
+    lines.push(
+      cols.flatMap((c, i) => {
+        const s: UiSpan[] =
+          c.active && c.search !== undefined && c.search.length > 0
+            ? [
+                { text: `/${c.search}`, tone: "accent" },
+                { text: "▏", tone: "accent" },
+              ]
+            : [{ text: "" }];
+        return padCell(s, w(i), undefined, last(i));
+      }),
+    );
+    for (let r = 0; r < rowCount; r += 1) {
+      lines.push(
+        cols.flatMap((c, i) => {
+          const it = c.items[r];
+          if (!it) return padCell([{ text: "" }], w(i), undefined, last(i));
+          const bg: UiSpan["background"] = it.cursor && c.active ? "muted" : undefined;
+          const tone: UiSpan["tone"] =
+            it.cursor && !c.active ? "accent" : it.muted ? "muted" : undefined;
+          return padCell(
+            [
+              {
+                text: `${it.cursor ? "▸ " : "  "}${it.label}`,
+                background: bg,
+                tone,
+                bold: it.cursor,
+              },
+            ],
+            w(i),
+            bg,
+            last(i),
+          );
+        }),
+      );
+    }
+    return lines;
+  };
+
   const overlayLines = (o: ConfigOverlayView): UiLine[] => {
+    if (o.columns) {
+      return [
+        [{ text: o.title, bold: true, tone: "accent" }],
+        [{ text: "" }],
+        ...columnLines(o.columns),
+        [{ text: "" }],
+        keyLine(o.keys),
+      ];
+    }
     const lines: UiLine[] = [[{ text: o.title, bold: true, tone: "accent" }]];
     if (o.control) {
       // The ←→-cycled value sits by the title, its value highlighted as the
@@ -228,17 +307,6 @@ export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promi
         : v.hint
           ? [{ text: ` ${v.hint}`, tone: "muted" } as UiSpan]
           : [{ text: "" } as UiSpan],
-    ]);
-    // Footer: scope (green), the target file below it (truncated from the start
-    // so a deep path never wraps), then the key legend.
-    scopeText.content = styled.toStyledText([
-      [
-        { text: " scope: ", tone: "success" },
-        { text: v.scopeLabel, tone: "success", bold: true },
-      ],
-    ]);
-    pathText.content = styled.toStyledText([
-      [{ text: ` ${truncateStart(v.scopePath, Math.max(12, contentWidth() - 2))}`, tone: "muted" }],
     ]);
     keysText.content = styled.toStyledText([[{ text: " " } as UiSpan, ...keyLine(v.keys)]]);
     if (v.overlay) {
@@ -285,6 +353,34 @@ export async function runConfigTuiScreen(options: ConfigTuiScreenOptions): Promi
           if (effect.kind === "quit") {
             finish();
             return;
+          }
+          if (effect.kind === "checkSession") {
+            // Validate the session live (network); show the "checking…" frame
+            // first, then report the result back to the model.
+            render();
+            const result = options.validateSession
+              ? await options.validateSession(effect.provider)
+              : "valid";
+            model.reportSessionCheck(effect.provider, result);
+            render();
+            continue;
+          }
+          if (effect.kind === "runLogin") {
+            // Hand the terminal to the interactive login CLI, then take it back.
+            const cmd = effect.argv.join(" ");
+            if (!options.runCommand) {
+              model.toast(`run this, then re-open: ${cmd}`);
+              continue;
+            }
+            renderer.suspend();
+            let code = -1;
+            try {
+              code = await options.runCommand(effect.argv);
+            } finally {
+              renderer.resume();
+            }
+            model.toast(code === 0 ? `✓ ${cmd}` : `login exited ${code} · ${cmd}`);
+            continue;
           }
           const toast = await options.applyEffect(effect, model.scope());
           if (toast) model.toast(toast);

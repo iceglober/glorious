@@ -35,3 +35,9 @@ run.log
 # eval harness run artifacts (traj dumps + result rows)
 core/eval/results/
 core/eval/traj/
+
+# glorious's own runtime config while dogfooding itself — transient per-user
+# model/scope selections, not a shared project default. Skills/extensions under
+# .glorious/ stay tracked; only the config files are ignored.
+/.glorious/config.json
+/.glorious/config.local.json

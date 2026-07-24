@@ -76,6 +76,56 @@ describe("createChatSession", () => {
     });
   });
 
+  test("streams each step's assistant text (intermediate prose isn't dropped)", async () => {
+    await withLog(async (log) => {
+      const events: ChatEvent[] = [];
+      const session = createChatSession({
+        agentFor: async () =>
+          makeAgent(async (_p, opts) => {
+            // An intermediate step: the model explains, then calls a tool.
+            opts?.onStep?.({
+              text: "AgentJ is a terminal coding agent.",
+              toolCalls: [{ name: "bash", input: {} }],
+              toolResults: [{ name: "bash", output: "ok" }],
+            });
+            // The final step: a short closing message (also RunResult.text).
+            opts?.onStep?.({ text: "Done — I started a job.", toolCalls: [], toolResults: [] });
+            return result("Done — I started a job.");
+          }),
+        log,
+        onEvent: (event) => {
+          events.push(event);
+        },
+      });
+      await session.send("what does agentj do");
+      // Both the intermediate explanation and the final message surface, and the
+      // final isn't duplicated (it was already streamed as the last step).
+      const texts = events
+        .filter((e): e is Extract<ChatEvent, { type: "assistant" }> => e.type === "assistant")
+        .map((e) => e.text);
+      expect(texts).toEqual(["AgentJ is a terminal coding agent.", "Done — I started a job."]);
+    });
+  });
+
+  test("a text-only turn emits the assistant text exactly once (no duplicate)", async () => {
+    await withLog(async (log) => {
+      const events: ChatEvent[] = [];
+      const session = createChatSession({
+        agentFor: async () =>
+          makeAgent(async (_p, opts) => {
+            opts?.onStep?.({ text: "Just an answer.", toolCalls: [], toolResults: [] });
+            return result("Just an answer.");
+          }),
+        log,
+        onEvent: (event) => {
+          events.push(event);
+        },
+      });
+      await session.send("hi");
+      expect(events.filter((e) => e.type === "assistant")).toHaveLength(1);
+    });
+  });
+
   test("plan→build handoff: tracks task+plan, and a fresh-context turn resets the continuation", async () => {
     await withLog(async (log) => {
       const calls: Array<{ mode: string; messages?: unknown[] }> = [];
@@ -183,6 +233,32 @@ describe("createChatSession", () => {
       const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
       expect(loaded?.turns.map((turn) => turn.user)).toEqual(["fresh request"]);
       expect(loaded?.state?.messages).toEqual([{ prompt: "fresh request" }]);
+    });
+  });
+
+  test("a cloud-auth failure surfaces a humanized error + the raw for detection", async () => {
+    await withLog(async (log) => {
+      const events: ChatEvent[] = [];
+      const raw = `{"error":"invalid_grant","error_description":"reauth related error (invalid_rapt)"}`;
+      const session = createChatSession({
+        agentFor: async () =>
+          makeAgent(async () => {
+            throw new Error(raw);
+          }),
+        log,
+        onEvent: (event) => {
+          events.push(event);
+        },
+      });
+      await session.send("what does this do");
+      const err = events.find((e) => e.type === "turn-error");
+      // Displayed message is actionable; rawError keeps the vendor blob so the
+      // loop can recognize it and run the login.
+      expect(err).toMatchObject({ type: "turn-error" });
+      if (err?.type === "turn-error") {
+        expect(err.error).toContain("gcloud auth application-default login");
+        expect(err.rawError).toBe(raw);
+      }
     });
   });
 

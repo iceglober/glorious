@@ -43,7 +43,9 @@ export type ChatEvent =
   | { type: "assistant"; mode: ChatMode; text: string; stepLimitReached?: boolean }
   | { type: "turn-abort-requested" }
   | { type: "turn-aborted" }
-  | { type: "turn-error"; error: string }
+  // `error` is display-ready (auth blobs are humanized); `rawError` carries the
+  // original when it differs, so the loop can detect a re-auth failure.
+  | { type: "turn-error"; error: string; rawError?: string }
   | { type: "turn-finished" }
   /** A submitted foreground turn has settled. */
   | { type: "submission-finished" }

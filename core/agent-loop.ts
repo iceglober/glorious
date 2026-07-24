@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { stderr as processStderr, stdout as processStdout } from "node:process";
@@ -67,7 +68,18 @@ import {
 } from "./lib/config";
 import { createConfigCliHandlers, LLM_MODEL_KEY, SUBAGENT_LLM_MODEL_KEY } from "./lib/config-cli";
 import { createEvalCliHandlers, type EvalCliHandlers } from "./lib/eval-cli";
-import { providerNames, type RunStep } from "./lib/llm";
+import {
+  type CloudAuthProvider,
+  describeAuthError,
+  detectCloudAuth,
+  type ImageAttachment,
+  isCloudAuthProvider,
+  loadModelCatalog,
+  type ProviderName,
+  providerNames,
+  type RunStep,
+  validateVertexSession,
+} from "./lib/llm";
 import type { McpPromptCatalogEntry, McpPromptResult } from "./lib/mcp";
 import {
   connectModelContextProtocolServer,
@@ -89,7 +101,11 @@ import {
   AZURE_API_KEY_ACCOUNT,
   AZURE_SECRET_SERVICE,
   hasAzureApiKey,
+  hasProviderKey,
+  providerKeyAccount,
   resolveAzureApiKey,
+  resolveProviderKey,
+  SECRET_SERVICE,
   type SecretStore,
 } from "./lib/secrets";
 import { createKeyringSecretStore } from "./lib/secrets/keyring-adapter";
@@ -108,13 +124,12 @@ import {
 import { createSpillSink } from "./lib/tools/spill";
 import { createExaWebSearch } from "./lib/tools/web/exa-adapter";
 import { createHttpWebFetch } from "./lib/tools/web/http-adapter";
-import { createAnsiLiveRegionAdapter } from "./lib/tui/ansi-live-region-adapter";
 import {
   formatChatEvent,
   presentActivityLine,
   truncateLineWithNotice,
 } from "./lib/tui/chat-event-format";
-import { type ChatScreen, createChatScreen } from "./lib/tui/chat-screen";
+import type { ChatScreen } from "./lib/tui/chat-screen-types";
 import { ClipboardAttachmentsUnavailableError } from "./lib/tui/clipboard";
 import { type ConfigTuiHost, createConfigTuiHost } from "./lib/tui/config-tui/host";
 import { runConfigTuiScreen } from "./lib/tui/config-tui/screen";
@@ -184,6 +199,77 @@ function baseConfigPath(): string {
   return new URL("./glorious.ts", import.meta.url).pathname;
 }
 
+/**
+ * The active provider's API key. Azure (the default) keeps its env fallback and,
+ * when required, hard-fails with a fix-it message; every other provider uses its
+ * keychain key when present, else the AI SDK reads the provider's own env var.
+ */
+async function resolveActiveProviderKey(
+  provider: ProviderName,
+  store: SecretStore,
+  options: { require?: boolean } = {},
+): Promise<string | undefined> {
+  if (provider === "azure") {
+    const key = await resolveAzureApiKey({ store });
+    if (key.status === "resolved") return key.apiKey;
+    if (options.require)
+      throw new Error(
+        "Azure API key missing; run: glorious config set --secret providers.azure.api_key",
+      );
+    return undefined;
+  }
+  return resolveProviderKey(provider, store);
+}
+
+/** Every provider's keychain key, so any tier's provider has its credentials. */
+async function resolveAllProviderKeys(store: SecretStore): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const provider of providerNames) {
+    const key = await resolveActiveProviderKey(provider, store);
+    if (key) out[provider] = key;
+  }
+  return out;
+}
+
+/** Inject each resolved key into its provider slot, leaving other config intact. */
+function withProviderKeys(
+  llm: AgentConfig["llm"],
+  keys: Record<string, string>,
+): AgentConfig["llm"] {
+  const providers: Record<string, unknown> = { ...llm.providers };
+  for (const [provider, apiKey] of Object.entries(keys)) {
+    providers[provider] = { ...(providers[provider] as object), apiKey };
+  }
+  return { ...llm, providers: providers as AgentConfig["llm"]["providers"] };
+}
+
+/** Run an interactive command with the terminal handed to it (inherited stdio),
+ *  used for the cloud-auth login CLIs (`aws sso login`, `gcloud …`). The caller
+ *  suspends the renderer around this. Returns the exit code (127 if the binary
+ *  is missing or spawn fails). */
+async function runInteractiveCommand(argv: string[]): Promise<number> {
+  const [cmd, ...args] = argv;
+  if (!cmd) return 1;
+  try {
+    const child = Bun.spawn([cmd, ...args], {
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    return await child.exited;
+  } catch {
+    return 127;
+  }
+}
+
+/** The live environment for cloud-auth detection (env vars, files, CLIs). */
+const cloudAuthEnv = () => ({
+  env: process.env,
+  fileExists: (p: string) => existsSync(p),
+  which: (c: string) => Bun.which(c) != null,
+  home: homedir(),
+});
+
 /** The interactive config-TUI host for a project, wired to the real config
  *  layers and keychain. Shared by `glorious config` and in-chat `/config`. */
 function createProjectConfigTuiHost(
@@ -203,7 +289,26 @@ function createProjectConfigTuiHost(
     loadConfig: () => loadConfig(undefined, configOptions),
     loadLayers: () => readConfigLayers(configOptions),
     mutate: (layer, mutations) => mutateConfigLayer(layer, mutations, configOptions),
-    hasKey: async () => Boolean(await secretStore.get(AZURE_SECRET_SERVICE, AZURE_API_KEY_ACCOUNT)),
+    hasProviderKey: (provider) => hasProviderKey(provider, secretStore),
+    setProviderKey: (provider, apiKey) =>
+      secretStore.set(SECRET_SERVICE, providerKeyAccount(provider), apiKey),
+    removeProviderKey: async (provider) => {
+      await secretStore.delete(SECRET_SERVICE, providerKeyAccount(provider));
+    },
+    loadProviderModels: loadModelCatalog,
+    detectCloudAuth: (provider: CloudAuthProvider) => detectCloudAuth(provider, cloudAuthEnv()),
+    validateSession: async (provider) => {
+      // Vertex: fetch a live token (catches a stale/expired ADC session).
+      if (provider === "vertex") {
+        const cfg = await loadConfig(undefined, configOptions);
+        return validateVertexSession(cfg.agent.llm.providers?.vertex);
+      }
+      // Bedrock: creds-present is the bar (deep SSO validation is a follow-up);
+      // the turn-time auto-reauth backstops an expired session.
+      if (provider === "bedrock")
+        return detectCloudAuth("bedrock", cloudAuthEnv()).credsPresent ? "valid" : "missing";
+      return "valid";
+    },
     layerPaths: {
       global: displayPath("global"),
       project: displayPath("project"),
@@ -239,7 +344,12 @@ function createProductionConfigUi(): () => Promise<number> {
       projectRoot: process.cwd(),
     });
     try {
-      await runConfigTuiScreen({ loadData: host.loadData, applyEffect: host.applyEffect });
+      await runConfigTuiScreen({
+        loadData: host.loadData,
+        applyEffect: host.applyEffect,
+        validateSession: host.validateSession,
+        runCommand: runInteractiveCommand,
+      });
       return EXIT_SUCCESS;
     } catch (error) {
       processStderr.write(
@@ -352,8 +462,6 @@ interface ChatComposition {
   modelFor(mode: ChatMode): ModelSelection;
   /** The configured context soft limit (agent.context.softLimit), if any. */
   contextSoftLimit: number | undefined;
-  /** The selected terminal renderer (opentui default, ansi opt-out). */
-  tuiRenderer: "opentui" | "ansi";
   /** The eval $/Mtok map, reused by /cost for terminal pricing. */
   evalPrices: Readonly<Record<string, { in: number; out: number }>>;
   agentFor(mode: ChatMode): Promise<Agent>;
@@ -418,11 +526,11 @@ async function composeChat(
   const loadedConfig = await loadChatConfig(undefined, configLoadOptions);
   const config = loadedConfig.config;
   const secretStore = createKeyringSecretStore({});
-  const key = await resolveAzureApiKey({ store: secretStore });
-  if (key.status !== "resolved") {
-    throw new Error(
-      "Azure API key missing; run: glorious config set --secret providers.azure.api_key",
-    );
+  const providerKeys = await resolveAllProviderKeys(secretStore);
+  // The default provider must be reachable at startup; azure hard-fails with a
+  // fix-it message (its env vars are also checked by resolveActiveProviderKey).
+  if (config.agent.llm.provider === "azure" && !providerKeys.azure) {
+    await resolveActiveProviderKey("azure", secretStore, { require: true });
   }
   const mcpOAuth = createKeyringMcpOAuthStorage(secretStore);
   // Config-first with the historical env var kept as a fallback enable. The
@@ -461,13 +569,7 @@ async function composeChat(
   const agentConfig: AgentConfig = {
     ...config.agent,
     rules: [agentsMd, config.agent.rules, skillsSection].filter(Boolean).join("\n\n"),
-    llm: {
-      ...config.agent.llm,
-      providers: {
-        ...config.agent.llm.providers,
-        azure: { ...config.agent.llm.providers?.azure, apiKey: key.apiKey },
-      },
-    },
+    llm: withProviderKeys(config.agent.llm, providerKeys),
   };
   const ctx: PromptContext = {
     cwd: root,
@@ -759,7 +861,6 @@ async function composeChat(
       return { provider: active.provider, model: active.model };
     },
     contextSoftLimit: config.agent.context.softLimit,
-    tuiRenderer: config.tui.renderer,
     evalPrices: config.eval.prices,
     agentFor,
     runBuildJob,
@@ -782,15 +883,12 @@ async function composeChat(
       // must not disturb the session.
       if (JSON.stringify(latest.config.agent.llm) !== JSON.stringify(config.agent.llm)) {
         config.agent.llm = latest.config.agent.llm;
+        // Providers/tiers may have changed in the editor — re-resolve keys for
+        // every provider so whichever tier runs has its credentials.
+        const nextKeys = await resolveAllProviderKeys(secretStore);
         modelRouting.reload({
           ...agentConfig,
-          llm: {
-            ...latest.config.agent.llm,
-            providers: {
-              ...latest.config.agent.llm.providers,
-              azure: { ...latest.config.agent.llm.providers?.azure, apiKey: key.apiKey },
-            },
-          },
+          llm: withProviderKeys(latest.config.agent.llm, nextKeys),
         });
       }
       // Reconnecting MCP servers is disruptive, so only reconcile when the mcp
@@ -897,7 +995,9 @@ export async function runGloriousChat(
         activeTools,
         dagBlocks: dagBlockLines(),
         queued: queuedLines(),
-        spinnerFrame,
+        // The tool sweep rides the fast frame; the nested DAG stays on the calm
+        // spinnerFrame (rendered inside dagBlockLines).
+        frame: vuFrame,
       }).map(presentActivityLine),
     );
   };
@@ -1132,7 +1232,53 @@ export async function runGloriousChat(
     };
     const orderedEvents = createChatEventOrderer(render);
     emitChatEvent = (event) => orderedEvents.emit(event);
-    const emit = (event: ChatEvent): void => emitChatEvent?.(event);
+
+    // When a turn dies on a cloud provider's stale credentials, run its login
+    // CLI for the user (terminal handed over via the renderer) and retry the
+    // message once — rather than making them copy a command out of the error.
+    let lastUserSend: { text: string; images?: readonly ImageAttachment[] } | null = null;
+    let reauthRetried = false;
+    const maybeReauth = async (rawError: string): Promise<void> => {
+      if (reauthRetried) return; // one auto-attempt per user message
+      if (!describeAuthError(rawError)) return;
+      const { provider } = composition.modelFor(chat.pendingMode);
+      if (!isCloudAuthProvider(provider)) return;
+      const status = detectCloudAuth(provider, cloudAuthEnv());
+      // Without the CLI (or a full-screen renderer to lend it) we can't run the
+      // login; the humanized error already told the user what to type.
+      if (!status.cliAvailable || !status.loginArgv.length || !screen?.runModalScreen) return;
+      reauthRetried = true;
+      emit({
+        type: "notice",
+        text: `Re-authenticating ${provider} · ${status.loginArgv.join(" ")}…`,
+      });
+      let code = 1;
+      await screen.runModalScreen(async (renderer) => {
+        renderer.suspend();
+        try {
+          code = await runInteractiveCommand(status.loginArgv);
+        } finally {
+          renderer.resume();
+        }
+      });
+      if (code !== 0) {
+        emit({ type: "notice", text: `Login did not complete (exit ${code}).` });
+        return;
+      }
+      await composition.reloadSessionConfig();
+      if (lastUserSend) {
+        emit({ type: "notice", text: "Re-authenticated · retrying your message…" });
+        void chat.send(
+          lastUserSend.text,
+          lastUserSend.images ? { images: lastUserSend.images } : {},
+        );
+      }
+    };
+
+    const emit = (event: ChatEvent): void => {
+      if (event.type === "turn-error" && event.rawError) void maybeReauth(event.rawError);
+      emitChatEvent?.(event);
+    };
 
     const guidedInput = {
       askInput: (inputOptions: Parameters<ChatScreen["askInput"]>[0]) =>
@@ -1216,7 +1362,7 @@ export async function runGloriousChat(
               composition.modelFor(chat.pendingMode),
             ),
             mode: chat.pendingMode,
-            spinnerFrame,
+            frame: vuFrame, // job clock rides the fast frame
             usage: turnTokens,
             contextSoftLimit: composition.contextSoftLimit,
             jobs: jobRunner
@@ -1234,17 +1380,16 @@ export async function runGloriousChat(
       );
     };
 
-    // Animate the busy meter on a fast frame for a fluid hum; advance the
-    // calmer spinner/clock frame every third tick. The screen skips repaints
-    // when a section is unchanged, so idle ticks cost one comparison.
+    // The tool sweep, job clock, and busy meter animate on the fast frame
+    // (vuFrame) for snappy motion; the nested subagent DAG stays calmer on
+    // spinnerFrame (every third tick). The screen skips repaints when a section
+    // is unchanged, so idle ticks cost one comparison.
     let animationTick = 0;
     ticker = setInterval(() => {
       animationTick += 1;
       vuFrame += 1;
-      if (animationTick % 3 === 0) {
-        spinnerFrame += 1;
-        if (dagTrackers.size > 0 || activeTools.size > 0) refreshProgress();
-      }
+      if (animationTick % 3 === 0) spinnerFrame += 1;
+      if (dagTrackers.size > 0 || activeTools.size > 0) refreshProgress();
       updateStatus();
     }, 90);
 
@@ -1290,6 +1435,8 @@ export async function runGloriousChat(
             renderer,
             loadData: configHost.loadData,
             applyEffect: configHost.applyEffect,
+            validateSession: configHost.validateSession,
+            runCommand: runInteractiveCommand,
           }),
         );
         // Apply anything the editor changed to the running session.
@@ -1378,6 +1525,10 @@ export async function runGloriousChat(
           }
           void expandFileAttachments(parsed.text, root).then((expanded) => {
             const images = [...pastedImages.resolve(parsed.text), ...expanded.images];
+            // Remember this message so an auto re-auth can retry it; a fresh
+            // send re-arms the one-shot retry guard.
+            lastUserSend = { text: expanded.text, ...(images.length > 0 ? { images } : {}) };
+            reauthRetried = false;
             void chat.send(expanded.text, {
               restoreText: parsed.text,
               ...(images.length > 0 ? { images } : {}),
@@ -1428,16 +1579,8 @@ export async function runGloriousChat(
         onQuit: () => quitResolve?.(),
       },
     };
-    // OpenTUI is the default full-screen surface; `tui.renderer: ansi` (or
-    // GLORIOUS_TUI=ansi for a one-off) opts into the live-region renderer.
-    const tuiRenderer = process.env.GLORIOUS_TUI ?? composition.tuiRenderer;
-    screen =
-      tuiRenderer === "ansi"
-        ? createChatScreen({
-            liveRegion: createAnsiLiveRegionAdapter({ stdout: processStdout }),
-            ...sharedScreenOptions,
-          })
-        : await createOpenTuiChatScreen({ stdout: processStdout, ...sharedScreenOptions });
+    // OpenTUI is the only chat surface — a full-screen retained-mode renderer.
+    screen = await createOpenTuiChatScreen({ stdout: processStdout, ...sharedScreenOptions });
 
     screen.start();
     refreshProgress();

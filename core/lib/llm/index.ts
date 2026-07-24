@@ -2,8 +2,21 @@ import z from "zod";
 import type { MetricsSink } from "../metrics";
 import type { SpillWriter } from "../truncation";
 import { createAiSdkRuntime, providerNames } from "./ai-sdk-adapter";
-import { azureModelConfigSchema } from "./azure-adapter";
+import { type ProviderName, providersConfigSchema } from "./providers";
 
+export { type CatalogEntry, fetchModelCatalog, loadModelCatalog } from "./catalog";
+export {
+  CLOUD_AUTH_PROVIDERS,
+  type CloudAuthEnv,
+  type CloudAuthParam,
+  type CloudAuthProvider,
+  type CloudAuthStatus,
+  type CloudSessionResult,
+  describeAuthError,
+  detectCloudAuth,
+  isCloudAuthProvider,
+} from "./cloud-auth";
+export { KEY_PROVIDERS, type ProviderName, validateVertexSession } from "./providers";
 export { providerNames };
 
 /**
@@ -43,6 +56,11 @@ export interface TokenUsage {
 }
 
 export interface RunStep {
+  /** The assistant text generated in this step (empty/absent when the step is
+   *  only tool calls). Intermediate steps' text is otherwise lost — only the
+   *  final step's text survives in RunResult.text. Real adapters always set it;
+   *  optional so terse test fixtures need not. */
+  text?: string;
   toolCalls: { name: string; input: unknown }[];
   toolResults: { name: string; output: unknown; isError?: boolean }[];
   /** This step's request usage: inputTokens is the request's full context
@@ -171,14 +189,29 @@ export const llmConfigSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   /** Call setting; nucleus sampling (0–1). Forwarded like temperature. */
   topP: z.number().min(0).max(1).optional(),
-  providers: z
-    .object({
-      azure: azureModelConfigSchema.optional(),
-    })
-    .optional(),
+  providers: providersConfigSchema.optional(),
 });
 
 export type LlmConfig = z.infer<typeof llmConfigSchema>;
+
+/**
+ * Split a `provider/model` reference. A recognized provider prefix wins;
+ * anything else (including a model id that happens to contain a slash) is the
+ * model under `defaultProvider`, so bare model ids stay backward-compatible.
+ */
+export const parseModelRef = (
+  ref: string,
+  defaultProvider: ProviderName,
+): { provider: ProviderName; model: string } => {
+  const slash = ref.indexOf("/");
+  if (slash > 0) {
+    const prefix = ref.slice(0, slash);
+    if ((providerNames as readonly string[]).includes(prefix)) {
+      return { provider: prefix as ProviderName, model: ref.slice(slash + 1) };
+    }
+  }
+  return { provider: defaultProvider, model: ref };
+};
 
 /**
  * Resolve a tier index against the ladder. Out-of-range indices clamp to the
@@ -189,6 +222,17 @@ export const resolveTierModel = (llm: LlmConfig, tier: number): string => {
   const last = llm.tiers.length - 1;
   return last < 0 ? llm.model : (llm.tiers[Math.min(Math.max(tier, 0), last)] as string);
 };
+
+/**
+ * Resolve a tier to its provider and model. Each ladder entry is a
+ * `provider/model` string, so different tiers (plan vs build) can run on
+ * different providers; a bare entry uses the config's default provider.
+ */
+export const resolveTier = (
+  llm: LlmConfig,
+  tier: number,
+): { provider: ProviderName; model: string } =>
+  parseModelRef(resolveTierModel(llm, tier), llm.provider);
 
 /**
  * The explicit variant override for a tier, or undefined when none is set (the

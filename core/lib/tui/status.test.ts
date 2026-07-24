@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { composeStatusSection, formatClock, formatVuMeter } from "./status";
+import { composeStatusSection, formatClock, formatSpinnerClock, formatVuMeter } from "./status";
 import { displayWidth } from "./terminal-editor";
 
 const base = {
@@ -8,7 +8,7 @@ const base = {
   root: "~/repos/glorious",
   model: "azure/gpt-5.6-sol",
   mode: "plan" as const,
-  spinnerFrame: 0,
+  frame: 0,
   usage: { in: 12_400, out: 3_100, ctx: 8_700 },
   sessionStartedAt: 0,
   jobs: [],
@@ -88,10 +88,27 @@ describe("composeStatusSection", () => {
       90,
     );
 
+    const c = formatSpinnerClock(0);
     expect(lines.slice(2)).toEqual([
-      "  ▏ [j1] build: Run the test suite  24s",
-      "  ▏ [j2] plan: Investigate the failure  14s",
+      `  ${c} [j1] build: Run the test suite  24s`,
+      `  ${c} [j2] plan: Investigate the failure  14s`,
     ]);
+  });
+});
+
+describe("formatSpinnerClock", () => {
+  test("cycles a quadrant dial clockwise, single-width plain glyphs", () => {
+    expect(formatSpinnerClock(0)).toBe("◴");
+    expect(formatSpinnerClock(1)).toBe("◷");
+    expect(formatSpinnerClock(2)).toBe("◶");
+    expect(formatSpinnerClock(3)).toBe("◵");
+    // single display cell, not a 2-wide emoji
+    expect([...formatSpinnerClock(0)]).toHaveLength(1);
+  });
+
+  test("wraps every 4 frames and tolerates negatives", () => {
+    expect(formatSpinnerClock(4)).toBe(formatSpinnerClock(0));
+    expect(formatSpinnerClock(-4)).toBe(formatSpinnerClock(0));
   });
 });
 

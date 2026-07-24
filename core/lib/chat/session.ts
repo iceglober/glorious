@@ -1,5 +1,5 @@
 import type { Agent } from "../agent";
-import type { ImageAttachment } from "../llm";
+import { describeAuthError, type ImageAttachment } from "../llm";
 import type { ChatLog, ChatMode } from "../session/log";
 import type { UndoStack } from "../session/undo";
 import type { ChatEvent } from "./events";
@@ -156,9 +156,18 @@ export function createChatSession(
     try {
       if (mode === "build") await deps.undo?.snapshot("pre-turn");
       const agent = await deps.agentFor(mode);
+      // Stream each step's assistant text as it lands so intermediate prose (the
+      // model talking between tool calls) is shown, not dropped in favour of only
+      // the final text. `lastStreamed` dedups the final emit below.
+      let lastStreamed = "";
       const result = await agent.generate(content, {
         abortSignal: abort.signal,
         onStep: (step) => {
+          const stepText = step.text ?? "";
+          if (stepText.trim().length > 0) {
+            emit({ type: "assistant", mode, text: stepText });
+            lastStreamed = stepText;
+          }
           for (const call of step.toolCalls) emit({ type: "tool-call", call });
           for (const toolResult of step.toolResults)
             emit({ type: "tool-result", result: toolResult });
@@ -170,12 +179,17 @@ export function createChatSession(
       messages = result.messages ?? messages;
       // Remember the latest plan so /build can hand it to the builder.
       if (mode === "plan") lastPlan = result.text;
-      emit({
-        type: "assistant",
-        mode,
-        text: result.text,
-        ...(result.stepLimitReached ? { stepLimitReached: true } : {}),
-      });
+      // The final text is normally the last step's — already streamed above, so
+      // don't repeat it. Emit only to carry the step-limit notice, to show a
+      // final text that wasn't streamed, or to surface an empty response.
+      if (result.stepLimitReached) {
+        const body = result.text.trim() && result.text !== lastStreamed ? result.text : "";
+        emit({ type: "assistant", mode, text: body, stepLimitReached: true });
+      } else if (result.text.trim() && result.text !== lastStreamed) {
+        emit({ type: "assistant", mode, text: result.text });
+      } else if (lastStreamed.trim().length === 0 && result.text.trim().length === 0) {
+        emit({ type: "assistant", mode, text: "" });
+      }
       if (result.stepLimitReached)
         notices.push("[note] The previous turn stopped at the step limit before finishing.");
       await deps.log.append({
@@ -208,8 +222,12 @@ export function createChatSession(
         emit({ type: "turn-aborted" });
         notices.push(`[note] The previous turn ("${text.slice(0, 60)}") was interrupted.`);
       } else {
-        const message = error instanceof Error ? error.message : String(error);
-        emit({ type: "turn-error", error: message });
+        const raw = error instanceof Error ? error.message : String(error);
+        // Rewrite opaque provider auth blobs (e.g. Google's invalid_rapt JSON)
+        // into a one-line fix; keep the original so the loop can detect re-auth.
+        const hint = describeAuthError(raw);
+        const message = hint ?? raw;
+        emit({ type: "turn-error", error: message, ...(hint ? { rawError: raw } : {}) });
         notices.push(
           `[note] The previous turn failed (${message.slice(0, 200)}) before completing. Its request was: "${text.slice(0, 2_000)}". If the user asks to retry or continue, act on that request.`,
         );

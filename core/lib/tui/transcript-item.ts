@@ -144,6 +144,17 @@ export const renderCompletionReportBlock = (report: CompletionReport): UiBlock =
 const flatten = (value: string): string => value.replace(/\r\n?|\n/gu, " ");
 
 /**
+ * Anchor a model response with a leading marker on its first line, the way user
+ * turns lead with `❯` and tool rows with `✓` — so the assistant's prose reads as
+ * a distinct block, not loose text between the activity rows.
+ */
+const ASSISTANT_MARKER: UiSpan = { text: "● ", tone: "accent" };
+const anchorAssistant = (block: UiBlock): UiBlock => {
+  const [first, ...rest] = block;
+  return [[ASSISTANT_MARKER, ...(first ?? [])], ...rest];
+};
+
+/**
  * The shared tool-row shape. `live:true` is the running spinner form for the
  * progress region; `live:false` freezes it into the transcript. Only the
  * leading glyph carries tone — the tool name is default weight and the detail
@@ -265,11 +276,15 @@ export const renderTranscriptItem = (item: TranscriptItem, width: number): Rende
         spacing: "turn",
       };
     case "assistant": {
-      if (item.report) return { block: renderCompletionReportBlock(item.report), spacing: "turn" };
+      if (item.report)
+        return {
+          block: anchorAssistant(renderCompletionReportBlock(item.report)),
+          spacing: "turn",
+        };
       const text = item.stepLimitReached
         ? `${item.body.length > 0 ? `${item.body}\n` : ""}${STEP_LIMIT_NOTICE}`
         : item.body;
-      return { block: renderMarkdownLite(text), spacing: "turn" };
+      return { block: anchorAssistant(renderMarkdownLite(text)), spacing: "turn" };
     }
     case "empty":
       return { block: [[{ text: EMPTY_RESPONSE_NOTICE, tone: "muted" }]], spacing: "turn" };
@@ -281,13 +296,19 @@ export const renderTranscriptItem = (item: TranscriptItem, width: number): Rende
       return { block, spacing: "none" };
     }
     case "job": {
-      const tone = STATUS_TONE[item.status];
       const [head, ...rest] = item.text.split("\n");
+      // "Started" is pure activity — indent + mute it so it groups under the
+      // turn with the tool rows, leaving the assistant's prose flush-left as the
+      // primary content. Finish/fail lines keep their status tone (they carry
+      // the job's result below them).
+      if (item.status === "started")
+        return { block: [[{ text: `  ${head ?? ""}`, tone: "muted" }]], spacing: "none" };
+      const tone = STATUS_TONE[item.status];
       const block: UiLine[] = [
         [{ text: head ?? "", tone }],
         ...rest.map((line) => [{ text: line }]),
       ];
-      return { block, spacing: "none" };
+      return { block, spacing: "turn" };
     }
     default: {
       const tone = item.tone;

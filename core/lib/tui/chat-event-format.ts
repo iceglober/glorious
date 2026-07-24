@@ -88,6 +88,7 @@ export const presentActivityLine = (text: string): UiTextLine => {
           : trimmed.startsWith("↳ queued")
             ? "warning"
             : trimmed.startsWith("In progress") ||
+                trimmed.startsWith("█") || // the running-tool sweep
                 trimmed.startsWith("◐") ||
                 trimmed.startsWith("◓") ||
                 trimmed.startsWith("◑") ||

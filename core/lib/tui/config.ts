@@ -1,11 +1,7 @@
 import z from "zod";
 
-/** Terminal UI settings. The renderer defaults to the full-screen OpenTUI
- *  surface; `ansi` opts into the lighter live-region renderer. The
- *  `GLORIOUS_TUI` env var overrides this for a one-off session. */
-export const tuiConfigSchema = z
-  .object({
-    renderer: z.enum(["opentui", "ansi"]).default("opentui"),
-  })
-  .prefault({});
+/** Terminal UI settings. The chat surface is the full-screen OpenTUI renderer
+ *  (the only one); this namespace is kept for future TUI settings. A legacy
+ *  `renderer` key from older configs is ignored. */
+export const tuiConfigSchema = z.object({}).prefault({});
 export type TuiConfig = z.infer<typeof tuiConfigSchema>;

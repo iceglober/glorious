@@ -9,6 +9,33 @@ import { truncateWithNotice } from "../truncation";
 
 const SPINNER = ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎"];
 
+/**
+ * The running-tool sweep: a short bar that grows from the left to full, then
+ * empties from the left (sliding the fill to the right), then grows from the
+ * right and empties from the right — a side-to-side wipe rather than a single
+ * cell growing and shrinking in place. Never fully empty, so it never blinks.
+ */
+const TOOL_SWEEP = [
+  "█    ",
+  "██   ",
+  "███  ",
+  "████ ",
+  "█████",
+  " ████",
+  "  ███",
+  "   ██",
+  "    █",
+  "   ██",
+  "  ███",
+  " ████",
+  "█████",
+  "████ ",
+  "███  ",
+  "██   ",
+];
+export const formatToolSweep = (frame: number): string =>
+  TOOL_SWEEP[((frame % TOOL_SWEEP.length) + TOOL_SWEEP.length) % TOOL_SWEEP.length] ?? "█████";
+
 const truncateLine = (value: string, maxLength: number): string =>
   truncateWithNotice(value.replace(/\r\n?|\n/gu, " "), maxLength);
 
@@ -212,10 +239,11 @@ export const composeProgressLines = (state: {
   activeTools: Iterable<[number, ActiveToolActivity]>;
   dagBlocks: ReadonlyMap<number, string[]>;
   queued: string[];
-  spinnerFrame: number;
+  /** Animation frame for the running-tool sweep (advances on the fast tick). */
+  frame: number;
   now?: number;
 }): string[] => {
-  const frame = SPINNER[state.spinnerFrame % SPINNER.length] ?? "◐";
+  const sweep = formatToolSweep(state.frame);
   const now = state.now ?? Date.now();
   const activeEntries = [...state.activeTools];
   const activeIds = new Set(activeEntries.map(([id]) => id));
@@ -224,7 +252,7 @@ export const composeProgressLines = (state: {
   for (const [id, activity] of activeEntries) {
     if (!isToolActivityVisible(activity, now)) continue;
     const { tool, detail } = activity;
-    toolRows.push(`  ${frame} ${formatToolActivityLabel(tool, detail, 80)}`);
+    toolRows.push(`  ${sweep} ${formatToolActivityLabel(tool, detail, 80)}`);
     const block = state.dagBlocks.get(id);
     if (block) {
       owned.add(id);

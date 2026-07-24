@@ -21,6 +21,7 @@ const emptyLayers = (): Record<ConfigLayer, ConfigObject> => ({
 
 function makeHost(opts: { cfg?: Config; layers?: Record<ConfigLayer, ConfigObject> }) {
   const writes: Array<{ layer: WritableConfigLayer; mutations: GlobalConfigMutation[] }> = [];
+  const keys = new Map<string, string>();
   const host = createConfigTuiHost({
     loadConfig: async () => opts.cfg ?? config(),
     loadLayers: async () => opts.layers ?? emptyLayers(),
@@ -28,14 +29,52 @@ function makeHost(opts: { cfg?: Config; layers?: Record<ConfigLayer, ConfigObjec
       writes.push({ layer, mutations: [...mutations] });
       return true;
     },
-    hasKey: async () => true,
+    hasProviderKey: async (provider) => keys.has(provider),
+    setProviderKey: async (provider, apiKey) => {
+      keys.set(provider, apiKey);
+    },
+    removeProviderKey: async (provider) => {
+      keys.delete(provider);
+    },
+    loadProviderModels: async () => ({
+      azure: [
+        { id: "gpt-5.6-sol", reasoning: true },
+        { id: "gpt-5.6-luna", reasoning: true },
+      ],
+      openai: [
+        { id: "gpt-4o", reasoning: false },
+        { id: "gpt-4o-mini", reasoning: false },
+      ],
+    }),
+    validateSession: async (provider) => (provider === "vertex" ? "valid" : "valid"),
+    detectCloudAuth: (provider) => ({
+      credsPresent: provider === "vertex", // vertex logged in; bedrock not
+      cliAvailable: true,
+      loginArgv:
+        provider === "vertex"
+          ? ["gcloud", "auth", "application-default", "login"]
+          : ["aws", "sso", "login"],
+      detail: "",
+      params:
+        provider === "vertex"
+          ? [
+              { key: "project", label: "project", placeholder: "my-gcp-project", value: "" },
+              {
+                key: "location",
+                label: "location",
+                placeholder: "us-central1",
+                value: "us-central1",
+              },
+            ]
+          : [{ key: "region", label: "region", placeholder: "us-east-1", value: "us-east-1" }],
+    }),
     layerPaths: {
       global: "~/.config/glorious/config.json",
       project: ".glorious/config.json",
       local: ".glorious/config.local.json",
     },
   });
-  return { host, writes };
+  return { host, writes, keys };
 }
 
 describe("config TUI host", () => {
@@ -102,13 +141,14 @@ describe("config TUI host", () => {
         },
       }),
     });
-    // Change only the build model + variant; plan's variant override is preserved.
+    // Change only the build model + variant; plan's variant override is preserved
+    // and its tier canonicalizes to a full provider/model ref.
     await host.applyEffect(
-      { kind: "setModel", role: "build", model: "c", variant: "xhigh" },
+      { kind: "setModel", role: "build", model: "openai/gpt-4o", variant: "xhigh" },
       "global",
     );
     expect(writes[0]?.mutations).toEqual([
-      { type: "set", path: ["agent", "llm", "tiers"], value: ["a", "c"] },
+      { type: "set", path: ["agent", "llm", "tiers"], value: ["azure/a", "openai/gpt-4o"] },
       { type: "set", path: ["agent", "llm", "variants"], value: ["high", "xhigh"] },
       { type: "set", path: ["agent", "llm", "modes", "plan"], value: 0 },
       { type: "set", path: ["agent", "llm", "modes", "build"], value: 1 },
@@ -123,6 +163,70 @@ describe("config TUI host", () => {
     );
     // gpt-5.6-sol's profile default is "high"; build falls back to its default too.
     expect(variants).toMatchObject({ value: ["high", "medium"] });
+  });
+
+  test("connect/disconnect store and remove a provider's keychain key", async () => {
+    const { host, keys } = makeHost({});
+    await host.applyEffect(
+      { kind: "connectProvider", provider: "openai", apiKey: "sk-1" },
+      "global",
+    );
+    expect(keys.get("openai")).toBe("sk-1");
+    await host.applyEffect({ kind: "disconnectProvider", provider: "openai" }, "global");
+    expect(keys.has("openai")).toBe(false);
+  });
+
+  test("loadData lists every provider with connection status; keyless use the cloud chain", async () => {
+    const { host, keys } = makeHost({});
+    keys.set("anthropic", "sk-a");
+    const data = await host.loadData();
+    const byName = Object.fromEntries(data.providers.map((p) => [p.name, p]));
+    expect(byName.anthropic).toMatchObject({ connected: true, keyless: false });
+    expect(byName.openai).toMatchObject({ connected: false, keyless: false });
+    expect(byName.bedrock).toMatchObject({ keyless: true });
+    expect(byName.vertex).toMatchObject({ keyless: true });
+    expect(data.connectableProviders).toContain("openai");
+    expect(data.connectableProviders).not.toContain("bedrock");
+  });
+
+  test("keyless connected status follows detected creds; cloudAuth is exposed", async () => {
+    const { host } = makeHost({});
+    const data = await host.loadData();
+    const byName = Object.fromEntries(data.providers.map((p) => [p.name, p]));
+    // The stub reports vertex logged in, bedrock not.
+    expect(byName.vertex).toMatchObject({ keyless: true, connected: true });
+    expect(byName.bedrock).toMatchObject({ keyless: true, connected: false });
+    expect(data.cloudAuth.bedrock?.loginArgv).toEqual(["aws", "sso", "login"]);
+    expect(data.cloudAuth.vertex?.params.map((p) => p.key)).toEqual(["project", "location"]);
+    // The picker's provider column offers only connected providers (vertex has
+    // detected creds) plus the current role's provider; unconnected ones
+    // (anthropic, bedrock) live in the catalog, not this list.
+    expect(data.modelProviders).toContain("vertex");
+    expect(data.modelProviders).not.toContain("bedrock");
+    expect(data.modelProviders).not.toContain("anthropic");
+  });
+
+  test("setProviderConfig writes each cloud param under agent.llm.providers.<p>", async () => {
+    const { host, writes } = makeHost({});
+    await host.applyEffect(
+      {
+        kind: "setProviderConfig",
+        provider: "vertex",
+        config: { project: "acme", location: "us-central1" },
+      },
+      "global",
+    );
+    expect(writes[0]).toEqual({
+      layer: "global",
+      mutations: [
+        { type: "set", path: ["agent", "llm", "providers", "vertex", "project"], value: "acme" },
+        {
+          type: "set",
+          path: ["agent", "llm", "providers", "vertex", "location"],
+          value: "us-central1",
+        },
+      ],
+    });
   });
 
   test("loadData tags each value with the highest writable layer that set it", async () => {

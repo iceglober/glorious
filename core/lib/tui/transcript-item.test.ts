@@ -46,7 +46,11 @@ describe("renderTranscriptItem spacing + block per kind", () => {
     };
     const { block, spacing } = renderTranscriptItem({ kind: "assistant", body: "", report }, WIDTH);
     expect(spacing).toBe("turn");
-    expect(block[0]).toEqual([{ text: "Done — shipped", tone: "success" }]);
+    // The response is anchored with a leading marker, then the toned status.
+    expect(block[0]).toEqual([
+      { text: "● ", tone: "accent" },
+      { text: "Done — shipped", tone: "success" },
+    ]);
   });
 
   test("empty response is a single muted notice line", () => {
