@@ -37,3 +37,21 @@ jobs:
           publish: bun publish --access public --tag next
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+      # While in pre-release mode we only publish under `next`, so npm `latest`
+      # goes stale and `npm i` / `bun update -g` (which follow `latest`) fetch an
+      # old build. Keep `latest` pointed at the newest `next` prerelease. Skipped
+      # once pre mode is exited (pre.json gone) so a future stable release owns
+      # `latest`. Idempotent + self-healing: runs every push, no-op when in sync.
+      - name: Track npm `latest` to the newest `next` prerelease
+        if: hashFiles('.changeset/pre.json') != ''
+        run: |
+          set -e
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          next=$(npm view @glrs-dev/glorious dist-tags.next 2>/dev/null || true)
+          latest=$(npm view @glrs-dev/glorious dist-tags.latest 2>/dev/null || true)
+          echo "next=$next latest=$latest"
+          if [ -n "$next" ] && [ "$next" != "$latest" ]; then
+            npm dist-tag add "@glrs-dev/glorious@$next" latest
+          fi
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
