@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import z from "zod";
+import { modelAddendum } from "./addenda";
 import { BASE_TEMPLATE } from "./base";
 import {
   type ModelParams,
@@ -62,6 +63,9 @@ export interface PromptContext {
 /** Session-stable inputs a caller (a future `agent` module) supplies. */
 export interface PromptInputs {
   model: string;
+  /** The provider backing `model`; combined into the full ref for model-family
+   *  prompt addenda (profiles still match the bare `model`). */
+  provider?: string;
   agentName: string;
   role: "primary" | "delegate";
   /** Capability mode: plan (read-only) or build (full). Default build. */
@@ -94,6 +98,14 @@ const DEFAULT_FLAGS: RenderFlags = {
 };
 
 const DEFAULT_OUTPUT_SCHEMA = "{status, changes[], evidence[], open_questions[]}";
+
+/** Insert a block just before the `# Environment` footer (or append if absent),
+ *  keeping it inside the version-hashed body. */
+const insertBeforeEnvironment = (text: string, block: string): string => {
+  const marker = "\n# Environment";
+  const idx = text.indexOf(marker);
+  return idx >= 0 ? `${text.slice(0, idx)}\n\n${block}${text.slice(idx)}` : `${text}\n\n${block}`;
+};
 
 /**
  * Assemble the system prompt. Pure — no IO. Resolution order:
@@ -151,7 +163,12 @@ export function composePrompt(
     BUILDER: isBuild,
   };
 
-  const instructions = renderTemplate(template, vars, templateFlags);
+  const rendered = renderTemplate(template, vars, templateFlags);
+  // Model-family addenda match the COMPLETE provider/model ref. Insert before the
+  // volatile `# Environment` footer so the addendum is part of the version hash.
+  const modelRef = inputs.provider ? `${inputs.provider}/${inputs.model}` : inputs.model;
+  const addendum = modelAddendum(modelRef);
+  const instructions = addendum ? insertBeforeEnvironment(rendered, addendum) : rendered;
   const params: ModelParams = profile?.params ?? {};
 
   // Version identifies the prompt CONTENT (template + flags + delta + rules +

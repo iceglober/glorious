@@ -6,6 +6,7 @@ import {
   providerNames,
   type RunResult,
   type RunStep,
+  resolveTier,
   resolveTierModel,
   resolveTierVariant,
   type ToolSet,
@@ -31,7 +32,6 @@ import {
   createBackgroundJobTool,
   createCheckJobTool,
 } from "./background-jobs";
-import { generateWithGroundedCompletion } from "./completion-grounding";
 import { instructionsConfigSchema, loadInstructionExtensions } from "./instructions";
 import {
   resolveToolTarget,
@@ -319,16 +319,13 @@ export function createAgentModelRouting(
 
   return {
     config: () => config,
-    configFor: (mode) =>
-      primaryOverride
-        ? config
-        : {
-            ...config,
-            llm: {
-              ...config.llm,
-              model: resolveTierModel(config.llm, config.llm.modes[mode]),
-            },
-          },
+    configFor: (mode) => {
+      if (primaryOverride) return config;
+      // Each tier carries its own provider/model, so a mode can run on a
+      // different provider than its sibling (plan on azure, build on vertex).
+      const { provider, model } = resolveTier(config.llm, config.llm.modes[mode]);
+      return { ...config, llm: { ...config.llm, provider, model } };
+    },
     selections: () => {
       const child = childAgentConfig(config, "delegate");
       const overridden =
@@ -627,6 +624,7 @@ export async function createAgent(
     config.prompt,
     {
       model: config.llm.model,
+      provider: config.llm.provider,
       agentName: config.name,
       role: config.role,
       rules: composeInstructionRules(
@@ -676,7 +674,7 @@ export async function createAgent(
         abortSignal: generateOpts?.abortSignal,
         onStep: generateOpts?.onStep,
       };
-      return generateWithGroundedCompletion(runtime, request, { todos: opts.todos });
+      return runtime.generate(request);
     },
   };
 }

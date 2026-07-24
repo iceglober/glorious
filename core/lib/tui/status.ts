@@ -2,7 +2,12 @@ import type { ChatMode } from "../session/log";
 import { splitGraphemes } from "./editor";
 import { displayWidth, graphemeWidth, truncateToDisplayWidth } from "./terminal-editor";
 
-const SPINNER = ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎"];
+/** A spinning dial for background-job rows: a filled quadrant sweeping clockwise
+ *  (upper-left → upper-right → lower-right → lower-left). Plain single-width
+ *  glyphs, not emoji, so job rows stay aligned. */
+const CLOCK_FRAMES = ["◴", "◷", "◶", "◵"];
+export const formatSpinnerClock = (frame: number): string =>
+  CLOCK_FRAMES[((frame % CLOCK_FRAMES.length) + CLOCK_FRAMES.length) % CLOCK_FRAMES.length] ?? "◴";
 
 const VU_BLOCKS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
 
@@ -81,7 +86,8 @@ export interface StatusSectionState {
   /** Provider/model label, e.g. "azure/gpt-5.6-sol". */
   model: string;
   mode: ChatMode;
-  spinnerFrame: number;
+  /** Animation frame for the job clock (advances on the fast tick). */
+  frame: number;
   /** Latest request's context size. */
   usage: { ctx: number };
   /** When set, ctx displays against this soft limit (for example, 8.7k/8.0k). */
@@ -115,7 +121,7 @@ export const composeStatusSection = (
 ): string[] => {
   const width = normalizedWidth(requestedWidth);
   const now = state.now ?? Date.now();
-  const frame = SPINNER[state.spinnerFrame % SPINNER.length] ?? "◐";
+  const frame = formatSpinnerClock(state.frame);
   const context =
     state.contextSoftLimit === undefined
       ? formatStatusTokens(state.usage.ctx)

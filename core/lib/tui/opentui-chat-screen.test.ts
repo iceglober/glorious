@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createTestRenderer } from "@opentui/core/testing";
-import type { ChatScreenCallbacks } from "./chat-screen";
+import type { ChatScreenCallbacks } from "./chat-screen-types";
 import {
   type CreateOpenTuiChatScreenOptions,
   createOpenTuiChatScreen,
@@ -15,6 +15,9 @@ const setup = async (overrides: Overrides = {}) => {
     width: 80,
     height: 24,
     screenMode: "alternate-screen",
+    // The real screen owns its renderer with exitOnCtrlC:false so Ctrl+C reaches
+    // the key handler; mirror that for the injected test renderer.
+    exitOnCtrlC: false,
   });
   const submitted: string[] = [];
   const { callbacks: callbackOverrides, ...rest } = overrides;
@@ -108,6 +111,28 @@ describe("createOpenTuiChatScreen", () => {
     expect(lines.some((line) => line.includes("/model"))).toBe(true);
     // ...and the composer input line is NOT pushed off-screen by the overlay.
     expect(lines.some((line) => line.includes("›") && line.endsWith("/m"))).toBe(true);
+    screen.stop();
+    renderer.destroy();
+  });
+
+  test("first Ctrl+C shows an 'again to exit' hint, dismissed by another key", async () => {
+    const quits: number[] = [];
+    const { renderer, screen, mockInput, renderOnce, captureCharFrame } = await setup({
+      callbacks: { onQuit: () => quits.push(1) },
+    });
+    renderer.start();
+    screen.start();
+    screen.setStatusLines([[{ text: "~/repo · model · ctx 0" }]]);
+    await renderOnce();
+
+    mockInput.pressKey("c", { ctrl: true }); // empty composer → arm + hint
+    await waitUntil(() => captureCharFrame().includes("Ctrl+C again to exit"));
+    expect(captureCharFrame()).toContain("Ctrl+C again to exit");
+    expect(quits).toHaveLength(0); // one press does not quit
+
+    await mockInput.typeText("x"); // any other key breaks the sequence
+    await renderOnce();
+    expect(captureCharFrame()).not.toContain("Ctrl+C again to exit");
     screen.stop();
     renderer.destroy();
   });

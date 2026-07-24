@@ -9,7 +9,6 @@ import {
 } from "ai";
 import { type MetricsSink, recordModelUsage } from "../metrics";
 import { truncateUnknownWithSpill } from "../truncation";
-import { type AzureModelConfig, createAzureModelProvider } from "./azure-adapter";
 import type {
   AgentRuntime,
   GenerateRequest,
@@ -20,30 +19,16 @@ import type {
   ToolDef,
   ToolSet,
 } from "./index";
+import {
+  llmProviders,
+  type ModelFactory,
+  type ProviderConfigs,
+  type ProviderName,
+  providerNames,
+} from "./providers";
 
-/** A model constructor bound to one provider's auth; adapters return these. */
-export type ModelFactory = (modelId: string) => LanguageModel;
-
-/**
- * Per-provider connection/auth settings. Every provider needs its own props
- * (azure: resourceName; vertex: project/location; ...), so each vendor-auth
- * adapter exports its own schema and gets a block here.
- */
-export interface ProviderConfigs {
-  azure: AzureModelConfig;
-}
-
-export type ProviderName = keyof ProviderConfigs;
-
-/** Registry keyed by config value (`llm.provider`). Internal to this adapter. */
-const llmProviders: {
-  [K in ProviderName]: (config?: ProviderConfigs[K]) => ModelFactory;
-} = {
-  azure: createAzureModelProvider,
-};
-
-/** Provider names, exported so the port schema derives its enum from here. */
-export const providerNames = Object.keys(llmProviders) as [ProviderName, ...ProviderName[]];
+export type { ModelFactory, ProviderConfigs, ProviderName };
+export { providerNames };
 
 /** Maximum retries for retryable model responses such as rate limits and 5xx errors. */
 export const LLM_MAX_RETRIES = 5;
@@ -60,6 +45,7 @@ const createModel = (config: LlmConfig): LanguageModel => {
 
 /** Minimal structural view of an ai StepResult; decouples us from ai generics. */
 interface AiStepLike {
+  text?: string;
   toolCalls: readonly { toolName: string; input: unknown }[];
   toolResults: readonly { toolName: string; output?: unknown }[];
 }
@@ -134,6 +120,7 @@ const sanitizeHistory = (messages: unknown[], req: GenerateRequest): unknown[] =
 
 const mapStep = (step: AiStepLike, req?: GenerateRequest): RunStep => ({
   ...mapStepUsage(step),
+  text: step.text ?? "",
   toolCalls: step.toolCalls.map((c) => ({ name: c.toolName, input: c.input })),
   toolResults: step.toolResults.map((tr) => {
     const output = req ? boundOutput(tr.output, req, `tool-${tr.toolName}`) : tr.output;

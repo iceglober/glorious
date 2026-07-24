@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { tuiConfigSchema } from "./config";
 
 describe("tuiConfigSchema", () => {
-  test("defaults the renderer to opentui", () => {
-    expect(tuiConfigSchema.parse({})).toEqual({ renderer: "opentui" });
+  test("parses to an empty object and fills a missing tui block", () => {
+    expect(tuiConfigSchema.parse({})).toEqual({});
+    expect(tuiConfigSchema.parse(undefined)).toEqual({});
   });
-  test("accepts the ansi renderer", () => {
-    expect(tuiConfigSchema.parse({ renderer: "ansi" })).toEqual({ renderer: "ansi" });
-  });
-  test("rejects an unknown renderer", () => {
-    expect(tuiConfigSchema.safeParse({ renderer: "fancy" }).success).toBe(false);
+  test("ignores a legacy renderer key rather than rejecting it", () => {
+    // Old configs may still carry `tui.renderer: ansi`; it's stripped, not an error.
+    const parsed = tuiConfigSchema.safeParse({ renderer: "ansi" });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data).toEqual({});
   });
 });

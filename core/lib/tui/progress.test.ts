@@ -7,7 +7,32 @@ import {
   createProgressTracker,
   formatDuration,
   formatToolActivityLabel,
+  formatToolSweep,
 } from "./progress";
+
+/** The computed running-tool row prefix at frame 0 (a sweep, not a spinner). */
+const t = (label: string): string => `  ${formatToolSweep(0)} ${label}`;
+
+describe("formatToolSweep", () => {
+  test("is a fixed 5-wide bar that never fully empties (never blinks)", () => {
+    for (let f = 0; f < 40; f += 1) {
+      const s = formatToolSweep(f);
+      expect(s.length).toBe(5);
+      expect(s).toContain("█"); // always at least one filled cell
+    }
+  });
+
+  test("sweeps side to side: grows from the left, then slides right", () => {
+    expect(formatToolSweep(0)).toBe("█    ");
+    expect(formatToolSweep(4)).toBe("█████");
+    expect(formatToolSweep(8)).toBe("    █"); // fill has slid fully to the right
+  });
+
+  test("wraps cleanly and tolerates negative frames", () => {
+    expect(formatToolSweep(16)).toBe(formatToolSweep(0));
+    expect(formatToolSweep(-16)).toBe(formatToolSweep(0));
+  });
+});
 
 const apply = (tracker: ReturnType<typeof createProgressTracker>, event: SubagentProgressEvent) =>
   applyProgressEvent(tracker, event);
@@ -198,10 +223,10 @@ describe("tool activity", () => {
           [2, ["    ▏ slow child"]],
         ]),
         queued: [],
-        spinnerFrame: 0,
+        frame: 0,
         now,
       }),
-    ).toEqual(["  ▏ readFile slow", "    ▏ slow child"]);
+    ).toEqual([t("readFile slow"), "    ▏ slow child"]);
     expect(countVisibleToolActivities(activeTools, now)).toBe(1);
   });
 
@@ -213,11 +238,11 @@ describe("tool activity", () => {
       ]),
       dagBlocks: new Map([[2, ["    ▏ t1 Map modules"]]]),
       queued: [],
-      spinnerFrame: 0,
+      frame: 0,
     });
     expect(lines).toEqual([
-      "  ▏ bash git status --short",
-      "  ▏ run_subagents 3 tasks",
+      t("bash git status --short"),
+      t("run_subagents 3 tasks"),
       "    ▏ t1 Map modules",
     ]);
   });
@@ -234,13 +259,13 @@ describe("tool activity", () => {
         [1, ["    ▏ x1 Early"]],
       ]),
       queued: [],
-      spinnerFrame: 0,
+      frame: 0,
     });
     expect(lines).toEqual([
-      "  ▏ run_subagents 2 tasks",
+      t("run_subagents 2 tasks"),
       "    ▏ x1 Early",
-      "  ▏ readFile a.ts",
-      "  ▏ run_subagents 1 task",
+      t("readFile a.ts"),
+      t("run_subagents 1 task"),
       "    ▏ y1 Late",
     ]);
   });
@@ -251,9 +276,9 @@ describe("tool activity", () => {
         activeTools: tools([[5, "bash", "ls"]]),
         dagBlocks: new Map([[-1, ["  ▏ t1 Orphan"]]]),
         queued: [],
-        spinnerFrame: 0,
+        frame: 0,
       }),
-    ).toEqual(["  ▏ t1 Orphan", "  ▏ bash ls"]);
+    ).toEqual(["  ▏ t1 Orphan", t("bash ls")]);
   });
 
   test("separates the todo panel from live activity only when both exist", () => {
@@ -261,27 +286,22 @@ describe("tool activity", () => {
       activeTools: tools([[1, "bash", "git status --short"]]),
       dagBlocks: new Map<number, string[]>(),
       queued: [],
-      spinnerFrame: 0,
+      frame: 0,
     };
     expect(
       composeProgressLines({
         ...base,
         todos: ["  ╭─ Todos 0/1 done", "  ╰────────────────────"],
       }),
-    ).toEqual([
-      "  ▏ bash git status --short",
-      "",
-      "  ╭─ Todos 0/1 done",
-      "  ╰────────────────────",
-    ]);
-    expect(composeProgressLines({ ...base, todos: [] })).toEqual(["  ▏ bash git status --short"]);
+    ).toEqual([t("bash git status --short"), "", "  ╭─ Todos 0/1 done", "  ╰────────────────────"]);
+    expect(composeProgressLines({ ...base, todos: [] })).toEqual([t("bash git status --short")]);
     expect(
       composeProgressLines({
         todos: ["  ╭─ Todos 0/1 done", "  ╰────────────────────"],
         activeTools: [],
         dagBlocks: new Map(),
         queued: [],
-        spinnerFrame: 0,
+        frame: 0,
       }),
     ).toEqual(["  ╭─ Todos 0/1 done", "  ╰────────────────────"]);
   });

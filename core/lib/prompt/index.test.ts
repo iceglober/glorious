@@ -40,6 +40,25 @@ describe("composePrompt", () => {
     expect(build.instructions).toContain("run_subagents for several tasks");
   });
 
+  test("appends the Gemini addendum by the complete provider/model ref", () => {
+    const gemini = composePrompt(
+      AUTO,
+      inputs({ provider: "vertex", model: "gemini-3.1-pro-preview" }),
+      CTX,
+    );
+    const other = composePrompt(AUTO, inputs({ provider: "azure", model: "gpt-5.6-luna" }), CTX);
+    expect(gemini.instructions).toContain("You may start a background job on your own");
+    // Points at subagents for in-turn work (also nudges subagent use).
+    expect(gemini.instructions).toContain("run_one_subagent or run_subagents");
+    expect(other.instructions).not.toContain("You may start a background job on your own");
+    // The addendum lives in the version-hashed body, above `# Environment`.
+    const [body] = gemini.instructions.split("\n# Environment");
+    expect(body).toContain("You may start a background job on your own");
+    // It changes the prompt content, so the version differs from the same model
+    // without a matching addendum.
+    expect(gemini.version).not.toBe(other.version);
+  });
+
   test("1. deterministic: same inputs → identical instructions + version", () => {
     const a = composePrompt(AUTO, inputs({ model: "gpt-5.6-sol" }), CTX);
     const b = composePrompt(AUTO, inputs({ model: "gpt-5.6-sol" }), CTX);

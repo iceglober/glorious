@@ -6,7 +6,19 @@ import {
   valueAtConfigPath,
   type WritableConfigLayer,
 } from "../../config";
-import { MODEL_VARIANTS, resolveTierVariant } from "../../llm";
+import {
+  type CatalogEntry,
+  type CloudAuthProvider,
+  type CloudAuthStatus,
+  type CloudSessionResult,
+  isCloudAuthProvider,
+  KEY_PROVIDERS,
+  MODEL_VARIANTS,
+  parseModelRef,
+  providerNames,
+  resolveTier,
+  resolveTierVariant,
+} from "../../llm";
 import { defaultModelVariant } from "../../prompt/profiles";
 import type { ConfigEffect, ConfigTuiData } from "./model";
 
@@ -27,31 +39,46 @@ export interface ConfigTuiHostDeps {
     layer: WritableConfigLayer,
     mutations: readonly GlobalConfigMutation[],
   ) => Promise<boolean>;
-  /** Whether the Azure API key is present in the keychain. */
-  hasKey: () => Promise<boolean>;
+  /** Whether a provider has an API key in the keychain. */
+  hasProviderKey: (provider: string) => Promise<boolean>;
+  /** Store a provider's API key in the keychain. */
+  setProviderKey: (provider: string, apiKey: string) => Promise<void>;
+  /** Remove a provider's API key from the keychain. */
+  removeProviderKey: (provider: string) => Promise<void>;
+  /** Model catalog per provider (id + reasoning support); memoized upstream. */
+  loadProviderModels: () => Promise<Record<string, CatalogEntry[]>>;
+  /** Ambient cloud-auth status for a keyless provider (creds present, CLI, params). */
+  detectCloudAuth: (provider: CloudAuthProvider) => CloudAuthStatus;
+  /** Probe a provider's live session (Vertex fetches a token); non-cloud → valid. */
+  validateSession: (provider: string) => Promise<CloudSessionResult>;
   /** Display path of each writable layer's file (static for the session). */
   layerPaths: Record<WritableConfigLayer, string>;
 }
 
-/** Models offered in the picker for the (only wired) Azure provider. */
-const AZURE_MODELS = ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.4", "gpt-5.4-nano"];
+const KEYLESS_PROVIDERS = providerNames.filter((p) => !KEY_PROVIDERS.includes(p));
 
 export interface ConfigTuiHost {
   loadData: () => Promise<ConfigTuiData>;
   applyEffect: (effect: ConfigEffect, scope: WritableConfigLayer) => Promise<string | undefined>;
+  /** Probe a provider's live session (used before entering its models). */
+  validateSession: (provider: string) => Promise<CloudSessionResult>;
+}
+
+interface RoleModelData {
+  provider: string;
+  model: string;
+  ref: string;
+  variant: string;
 }
 
 export function createConfigTuiHost(deps: ConfigTuiHostDeps): ConfigTuiHost {
-  const roleModels = (cfg: Config): { plan: string; build: string } => {
-    const llm = cfg.agent.llm;
-    const tier = (i: number): string => llm.tiers[i] ?? llm.model;
-    return { plan: tier(llm.modes.plan), build: tier(llm.modes.build) };
+  // A role's provider/model (resolved from its tier) with the effective variant.
+  const roleModel = (cfg: Config, role: "plan" | "build"): RoleModelData => {
+    const { provider, model } = resolveTier(cfg.agent.llm, cfg.agent.llm.modes[role]);
+    const variant =
+      resolveTierVariant(cfg.agent.llm, cfg.agent.llm.modes[role]) ?? defaultModelVariant(model);
+    return { provider, model, ref: `${provider}/${model}`, variant };
   };
-
-  // Effective variant for a role: the config override for its tier, else the
-  // model profile's default.
-  const roleVariant = (cfg: Config, role: "plan" | "build", model: string): string =>
-    resolveTierVariant(cfg.agent.llm, cfg.agent.llm.modes[role]) ?? defaultModelVariant(model);
 
   const loadData = async (): Promise<ConfigTuiData> => {
     const cfg = await deps.loadConfig();
@@ -65,19 +92,72 @@ export function createConfigTuiHost(deps: ConfigTuiHostDeps): ConfigTuiHost {
       return "base";
     };
     const modelLayer = source(["agent", "llm", "tiers"], ["agent", "llm", "model"]);
-    const { plan, build } = roleModels(cfg);
+    const plan = roleModel(cfg, "plan");
+    const build = roleModel(cfg, "build");
+    // Cloud-auth status for the keyless providers; a keyless provider counts as
+    // "connected" only when its ambient credentials are actually detected.
+    const cloudAuth: Record<string, CloudAuthStatus> = {};
+    for (const name of providerNames) {
+      if (isCloudAuthProvider(name)) cloudAuth[name] = deps.detectCloudAuth(name);
+    }
+    const providerStatuses = await Promise.all(
+      providerNames.map(async (name) => {
+        const keyless = KEYLESS_PROVIDERS.includes(name);
+        return {
+          name,
+          keyless,
+          connected: keyless
+            ? (cloudAuth[name]?.credsPresent ?? false)
+            : await deps.hasProviderKey(name),
+        };
+      }),
+    );
+    // The picker's provider column offers only providers you can actually use
+    // (a connected key, or detected cloud credentials), plus whichever a role
+    // already points at (so the current selection always shows, even if it went
+    // stale). Connecting new providers happens in the picker's catalog (`n`).
+    const modelProviders = Array.from(
+      new Set([
+        ...providerStatuses.filter((p) => p.connected).map((p) => p.name),
+        plan.provider,
+        build.provider,
+      ]),
+    );
+    // Model suggestions from the models.dev catalog; ensure each role's current
+    // model appears even if the catalog omits it.
+    const catalog = await deps.loadProviderModels();
+    const providerModels: Record<string, string[]> = {};
+    const reasoningModels: Record<string, string[]> = {};
+    for (const [provider, entries] of Object.entries(catalog)) {
+      providerModels[provider] = entries.map((e) => e.id);
+      reasoningModels[provider] = entries.filter((e) => e.reasoning).map((e) => e.id);
+    }
+    for (const rm of [plan, build]) {
+      const list = providerModels[rm.provider] ?? [];
+      providerModels[rm.provider] = list.includes(rm.model) ? list : [rm.model, ...list];
+    }
     return {
       models: {
-        plan,
-        build,
-        planLayer: modelLayer,
-        buildLayer: modelLayer,
-        planVariant: roleVariant(cfg, "plan", plan),
-        buildVariant: roleVariant(cfg, "build", build),
+        plan: { ...plan, layer: modelLayer },
+        build: { ...build, layer: modelLayer },
       },
-      availableModels: Array.from(new Set([...AZURE_MODELS, plan, build])),
+      modelProviders,
+      providerModels,
+      reasoningModels,
       availableVariants: [...MODEL_VARIANTS],
-      providers: { connected: ["azure"], keySet: await deps.hasKey() },
+      providers: providerStatuses,
+      connectableProviders: [...KEY_PROVIDERS],
+      cloudAuth: Object.fromEntries(
+        Object.entries(cloudAuth).map(([name, s]) => [
+          name,
+          {
+            credsPresent: s.credsPresent,
+            cliAvailable: s.cliAvailable,
+            loginArgv: s.loginArgv,
+            params: s.params,
+          },
+        ]),
+      ),
       trust: {
         uncaged: cfg.permissions.uncaged,
         uncagedLayer: source(["permissions", "uncaged"]),
@@ -112,20 +192,28 @@ export function createConfigTuiHost(deps: ConfigTuiHostDeps): ConfigTuiHost {
     const where = ` · ${scope}`;
     switch (effect.kind) {
       case "setModel": {
-        // Named roles compile to a two-rung tier ladder: plan=tier 0, build=tier 1.
-        // Variants ride alongside in a parallel array; both are pinned to their
+        // Named roles compile to a two-rung tier ladder (plan=0, build=1) of
+        // `provider/model` refs; variants ride alongside, both pinned to their
         // effective value so config always matches what the editor shows.
         const cfg = await deps.loadConfig();
-        const { plan, build } = roleModels(cfg);
-        const nextPlan = effect.role === "plan" ? effect.model : plan;
-        const nextBuild = effect.role === "build" ? effect.model : build;
-        const variantFor = (role: "plan" | "build", model: string): string =>
-          effect.role === role && effect.variant ? effect.variant : roleVariant(cfg, role, model);
+        const plan = roleModel(cfg, "plan");
+        const build = roleModel(cfg, "build");
+        const nextPlan = effect.role === "plan" ? effect.model : plan.ref;
+        const nextBuild = effect.role === "build" ? effect.model : build.ref;
+        // Touched role takes the picked variant (or the new model's default when
+        // none was given); the other role keeps its current effective variant.
+        const variantFor = (role: "plan" | "build", ref: string, current: string): string => {
+          if (effect.role !== role) return current;
+          return effect.variant ?? defaultModelVariant(parseModelRef(ref, "azure").model);
+        };
         await deps.mutate(scope, [
           set(["agent", "llm", "tiers"], [nextPlan, nextBuild]),
           set(
             ["agent", "llm", "variants"],
-            [variantFor("plan", nextPlan), variantFor("build", nextBuild)],
+            [
+              variantFor("plan", nextPlan, plan.variant),
+              variantFor("build", nextBuild, build.variant),
+            ],
           ),
           set(["agent", "llm", "modes", "plan"], 0),
           set(["agent", "llm", "modes", "build"], 1),
@@ -161,13 +249,35 @@ export function createConfigTuiHost(deps: ConfigTuiHostDeps): ConfigTuiHost {
       case "reloadMcp":
         return "↻ reloaded MCP servers";
       case "connectProvider":
-        return "azure is the only wired provider — key: config set --secret providers.azure.api_key";
+        await deps.setProviderKey(effect.provider, effect.apiKey);
+        return `connected ${effect.provider} · set its models in Models`;
       case "disconnectProvider":
-        return "azure is the only wired provider";
+        await deps.removeProviderKey(effect.provider);
+        return `disconnected ${effect.provider}`;
+      case "setProviderConfig": {
+        // Non-secret cloud params → agent.llm.providers.<provider>.<key>, one
+        // mutation per key so unrelated keys on that provider are left intact.
+        const entries = Object.entries(effect.config);
+        await deps.mutate(
+          scope,
+          entries.map(([key, value]) =>
+            set(["agent", "llm", "providers", effect.provider, key], value),
+          ),
+        );
+        return `${effect.provider} params saved${where}`;
+      }
+      case "runLogin":
+        // Imperative — the screen suspends the renderer and runs it. If it ever
+        // reaches the host (no renderer to lend), there's nothing to persist.
+        return undefined;
+      case "checkSession":
+        // Async — the screen validates and reports back to the model; the host
+        // only exposes the probe via validateSession.
+        return undefined;
       case "quit":
         return undefined;
     }
   };
 
-  return { loadData, applyEffect };
+  return { loadData, applyEffect, validateSession: deps.validateSession };
 }
