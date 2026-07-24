@@ -34,17 +34,11 @@ jobs:
       - uses: changesets/action@v1
         with:
           version: bunx changeset version
-          # When there are no changesets, the action still runs `publish` to catch
-          # unpublished versions. `bun publish` isn't idempotent, so a no-changeset
-          # push (e.g. a workflow edit) 403s on the already-published version and
-          # fails the run. Skip when the current version is already on npm.
-          publish: |
-            v="$(node -p 'require("./package.json").version')"
-            if npm view "@glrs-dev/glorious@$v" version > /dev/null 2>&1; then
-              echo "@glrs-dev/glorious@$v already on npm — nothing to publish"
-            else
-              bun publish --access public --tag next
-            fi
+          # Idempotent publish — the action runs this on every push (to catch
+          # unpublished versions) and passes it to exec as command+args, not a
+          # shell, so the guard lives in a script. Skips an already-published
+          # version instead of 403ing; publishes new versions under `next`.
+          publish: bash scripts/release-publish.sh
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
       # While in pre-release mode we only publish under `next`, so npm `latest`
