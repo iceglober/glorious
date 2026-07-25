@@ -21,7 +21,7 @@ git clone git@github.com:iceglober/glorious.git && cd glorious  # or develop fro
 ```
 
 ```sh
-export AZURE_FOUNDRY_API_KEY=…   # or AZURE_API_KEY
+export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource
 glorious                         # open a chat session in this repo
 bun run glorious                 # same, from a source checkout
@@ -29,7 +29,7 @@ bun run glorious                 # same, from a source checkout
 
 Environment:
 
-- `AZURE_FOUNDRY_API_KEY` / `AZURE_API_KEY` — the model key (required)
+- `AZURE_FOUNDRY_API_KEY` / `AZURE_API_KEY` / `AZURE_OPENAI_API_KEY` — the model key (required)
 - `AZURE_RESOURCE_NAME` — the Azure AI Foundry resource
 - `GLORIOUS_MODEL` — model override (default `gpt-5.6-luna`)
 - `GLORIOUS_CONTEXT_SOFT_LIMIT` — optional request-context ceiling in tokens;
@@ -58,8 +58,8 @@ Keys:
 
 - **bash** — runs in the project root on your machine.
 - **read / search** — ripgrep-powered, confined to the project root.
-- **edit** — string replacement; strategy set by `agent.tools.edit.mode`
-  (`exact`, `batch` (default), `hash`).
+- **edit** — atomic batch string replacement, paired with a line-prefixed
+  `readFile`.
 
 Tool output over 30k chars is truncated for the model; the full value spills to
 a session temp file the agent can read back in slices.

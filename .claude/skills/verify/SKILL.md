@@ -8,10 +8,11 @@ description: Drive the glorious TUI end-to-end and capture what it paints — bu
 ## Launch
 
 - The only command is the chat TUI: `bun <repo>/core/agent-loop.ts` from inside any git repo.
-- Credentials come from env: `AZURE_FOUNDRY_API_KEY` (or `AZURE_API_KEY`) and `AZURE_RESOURCE_NAME`.
-  On this machine the key lives in the keychain from an older build:
-  `export AZURE_FOUNDRY_API_KEY=$(security find-generic-password -s glorious -a azure-api-key -w)`;
-  `AZURE_RESOURCE_NAME` is already exported in the login environment.
+- Credentials come from env: `AZURE_FOUNDRY_API_KEY` / `AZURE_API_KEY` / `AZURE_OPENAI_API_KEY`
+  (first set wins) and `AZURE_RESOURCE_NAME`. On this machine `AZURE_OPENAI_API_KEY` and
+  `AZURE_RESOURCE_NAME` are already in the login environment, so no setup is needed; a keychain
+  copy also exists from an older build
+  (`security find-generic-password -s glorious -a azure-api-key -w`).
 - `GLORIOUS_MODEL` overrides the model (default `gpt-5.6-luna`).
 - Make a throwaway target repo in the scratchpad (`git init` + a couple of files) so chat sessions don't pollute a real project.
 - A missing key fails fast with a one-line error before the alternate screen opens — that itself is a testable path.

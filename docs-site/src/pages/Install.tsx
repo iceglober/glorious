@@ -41,7 +41,7 @@ export function Install() {
 
       <pre>
         <code>
-          export AZURE_FOUNDRY_API_KEY=…{"\n"}
+          export AZURE_OPENAI_API_KEY=…{"\n"}
           export AZURE_RESOURCE_NAME=…{"\n"}
           glorious
         </code>

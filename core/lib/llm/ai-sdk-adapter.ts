@@ -23,8 +23,7 @@ import type {
 /** Maximum retries for retryable model responses such as rate limits and 5xx errors. */
 export const LLM_MAX_RETRIES = 5;
 
-const createModel = (config: LlmConfig): LanguageModel =>
-  createAzureModelProvider(config.azure)(config.model);
+const createModel = (config: LlmConfig): LanguageModel => createAzureModelProvider()(config.model);
 
 /** Minimal structural view of an ai StepResult; decouples us from ai generics. */
 interface AiStepLike {

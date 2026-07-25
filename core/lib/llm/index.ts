@@ -1,7 +1,6 @@
 import z from "zod";
 import type { SpillWriter } from "../truncation";
 import { createAiSdkRuntime } from "./ai-sdk-adapter";
-import { azureModelConfigSchema } from "./azure-adapter";
 
 /**
  * A tool the agent can call. Our own vendor-free shape, structurally close to
@@ -99,8 +98,9 @@ export interface AgentRuntime {
 
 /**
  * Serializable model selection; the `llm.*` section of the agent config.
- * Azure is the only provider: `azure.*` is config-first with env fallback
- * (AZURE_FOUNDRY_API_KEY / AZURE_API_KEY, AZURE_RESOURCE_NAME).
+ * Azure is the only provider, and its credentials come from the environment
+ * alone (AZURE_FOUNDRY_API_KEY / AZURE_API_KEY / AZURE_OPENAI_API_KEY, plus
+ * AZURE_RESOURCE_NAME) — there is no config path for them.
  */
 export const llmConfigSchema = z.object({
   model: z.string().default("gpt-5.6-luna"),
@@ -108,7 +108,6 @@ export const llmConfigSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   /** Call setting; nucleus sampling (0–1). Forwarded like temperature. */
   topP: z.number().min(0).max(1).optional(),
-  azure: azureModelConfigSchema.prefault({}),
 });
 
 export type LlmConfig = z.infer<typeof llmConfigSchema>;

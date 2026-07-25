@@ -46,10 +46,10 @@ describe("formatChatEvent", () => {
 
   test("a step-limited turn is announced instead of ending silently", () => {
     expect(formatChatEvent({ type: "assistant", text: "", stepLimitReached: true })).toBe(
-      '(step limit reached — turn stopped mid-work; send "continue" to resume, or raise agent.steps)',
+      '(step limit reached — turn stopped mid-work; send "continue" to resume)',
     );
     expect(formatChatEvent({ type: "assistant", text: "partial\n", stepLimitReached: true })).toBe(
-      'partial\n(step limit reached — turn stopped mid-work; send "continue" to resume, or raise agent.steps)',
+      'partial\n(step limit reached — turn stopped mid-work; send "continue" to resume)',
     );
   });
 

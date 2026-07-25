@@ -13,8 +13,7 @@ import { formatUserTurnBlock } from "./transcript";
  * an outcome glyph, a status color — instead of coloring whole rows.
  */
 
-const STEP_LIMIT_NOTICE =
-  '(step limit reached — turn stopped mid-work; send "continue" to resume, or raise agent.steps)';
+const STEP_LIMIT_NOTICE = '(step limit reached — turn stopped mid-work; send "continue" to resume)';
 const EMPTY_RESPONSE_NOTICE = "(no response — the model returned nothing; try again)";
 
 /** Outcome tone for a tool row. `running` is the live-region spinner state. */

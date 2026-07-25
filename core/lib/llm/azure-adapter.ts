@@ -1,18 +1,15 @@
 import { createAzure } from "@ai-sdk/azure";
 import type { LanguageModel } from "ai";
-import z from "zod";
 
 /** Binds a provider once; yields models by id. */
 export type ModelFactory = (modelId: string) => LanguageModel;
 
-export const azureModelConfigSchema = z.object({
-  /** Falls back to AZURE_FOUNDRY_API_KEY, then AZURE_API_KEY (SDK default). */
-  apiKey: z.string().optional(),
-  /** Falls back to AZURE_RESOURCE_NAME (SDK default). */
-  resourceName: z.string().optional(),
-});
-
-export type AzureModelConfig = z.infer<typeof azureModelConfigSchema>;
+/** Accepted API-key variables, in precedence order. Env is the only config. */
+const AZURE_KEY_ENV_VARS = [
+  "AZURE_FOUNDRY_API_KEY",
+  "AZURE_API_KEY",
+  "AZURE_OPENAI_API_KEY",
+] as const;
 
 /**
  * Deadline for one model HTTP request. Long reasoning turns legitimately run
@@ -78,16 +75,17 @@ export const fetchWithRequestDeadline = async (
   }
 };
 
-export const createAzureModelProvider = (config: AzureModelConfig = {}): ModelFactory => {
-  const apiKey = config.apiKey ?? process.env.AZURE_FOUNDRY_API_KEY;
-  if (!apiKey && !process.env.AZURE_API_KEY)
+export const createAzureModelProvider = (): ModelFactory => {
+  const apiKey = AZURE_KEY_ENV_VARS.map((name) => process.env[name]).find(Boolean);
+  if (!apiKey)
     throw new Error(
-      "Azure API key missing: set llm.apiKey in config, or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY in the environment.",
+      "Azure API key missing: set AZURE_FOUNDRY_API_KEY, AZURE_API_KEY, or AZURE_OPENAI_API_KEY in the environment.",
     );
   return (modelId) =>
     createAzure({
       apiKey,
-      resourceName: config.resourceName,
+      // The resource name comes from AZURE_RESOURCE_NAME, the SDK's own env
+      // fallback — passing nothing keeps env the single source of truth.
       // Bun's fetch type adds `preconnect`, which the wrapper has no use for;
       // assert at this vendor boundary rather than emulating runtime extras.
       fetch: fetchWithRequestDeadline as unknown as typeof fetch,

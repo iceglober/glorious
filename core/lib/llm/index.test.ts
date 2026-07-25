@@ -6,20 +6,16 @@ describe("llmConfigSchema", () => {
   test("defaults: the Azure-deployed primary model, credentials left to the environment", () => {
     const llm = llmConfigSchema.parse({});
     expect(llm.model).toBe("gpt-5.6-luna");
-    expect(llm.azure).toEqual({});
     // Call settings are unset by default so the prompt profile's recommendation
     // is what reaches the model.
     expect(llm.temperature).toBeUndefined();
     expect(llm.topP).toBeUndefined();
   });
 
-  test("azure credentials are config-first", () => {
-    const llm = llmConfigSchema.parse({
-      model: "gpt-5.6-sol",
-      azure: { apiKey: "secret", resourceName: "my-resource" },
-    });
-    expect(llm.model).toBe("gpt-5.6-sol");
-    expect(llm.azure).toEqual({ apiKey: "secret", resourceName: "my-resource" });
+  test("credentials have no config path — the schema carries model and call settings only", () => {
+    // An `azure` block is not part of the schema; it is stripped, never stored.
+    expect(llmConfigSchema.parse({ azure: { apiKey: "secret" } })).not.toHaveProperty("azure");
+    expect(llmConfigSchema.parse({ model: "gpt-5.6-sol" }).model).toBe("gpt-5.6-sol");
   });
 
   test("call settings are held to the ranges providers accept", () => {

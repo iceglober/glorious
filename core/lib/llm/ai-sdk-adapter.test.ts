@@ -32,9 +32,10 @@ mock.module("ai", () => ({
 
 const { createAiSdkRuntime, LLM_MAX_RETRIES } = await import("./ai-sdk-adapter");
 
-// The model is built from config.azure; a literal key keeps provider
-// construction offline (nothing here ever reaches the network).
-const config = { model: "test-model", azure: { apiKey: "test-api-key" } } as LlmConfig;
+// Credentials are env-only; a test key keeps provider construction offline
+// (nothing here ever reaches the network).
+process.env.AZURE_API_KEY ??= "test-api-key";
+const config = { model: "test-model" } as LlmConfig;
 const prompt = "prompt text";
 const output = "output text";
 

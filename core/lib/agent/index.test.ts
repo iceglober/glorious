@@ -58,12 +58,11 @@ const baseOptions: CreateAgentOptions = {
   },
 };
 
+// Credentials are env-only; a test key keeps model construction offline.
+process.env.AZURE_API_KEY ??= "test-key";
+
 /** A parsed config that can build a model without touching the network. */
-const config = (over: Record<string, unknown> = {}): AgentConfig =>
-  agentConfigSchema.parse({
-    ...over,
-    llm: { azure: { apiKey: "test-key" }, ...((over.llm as object) ?? {}) },
-  });
+const config = (over: Record<string, unknown> = {}): AgentConfig => agentConfigSchema.parse(over);
 
 const reset = () => {
   constructedAgents.length = 0;

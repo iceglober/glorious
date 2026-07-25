@@ -20,7 +20,7 @@ export const formatChatEvent = (event: ChatEvent): string | null => {
     case "assistant": {
       const body = event.text.trim();
       if (event.stepLimitReached)
-        return `${body.length > 0 ? `${body}\n` : ""}(step limit reached — turn stopped mid-work; send "continue" to resume, or raise agent.steps)`;
+        return `${body.length > 0 ? `${body}\n` : ""}(step limit reached — turn stopped mid-work; send "continue" to resume)`;
       return body.length > 0 ? body : null;
     }
     case "turn-aborted":

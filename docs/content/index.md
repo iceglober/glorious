@@ -12,7 +12,7 @@ the environment:
 
 ```
 bun add --global @glrs-dev/glorious@next
-export AZURE_FOUNDRY_API_KEY=…   # or AZURE_API_KEY
+export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource
 ```
 
