@@ -19,7 +19,6 @@ const CTX: PromptContext = {
 const inputs = (over: Partial<PromptInputs> = {}): PromptInputs => ({
   model: "claude-x",
   agentName: "glorious",
-  role: "primary",
   rules: "- be nice",
   ...over,
 });
@@ -30,35 +29,6 @@ const AUTO: PromptConfig = { profile: "auto" };
 const prefix = (s: string) => s.slice(0, s.indexOf("# Project rules"));
 
 describe("composePrompt", () => {
-  test("guides primary agents toward bounded and DAG delegation", () => {
-    const plan = composePrompt(AUTO, inputs({ mode: "plan" }), CTX);
-    const build = composePrompt(AUTO, inputs({ mode: "build" }), CTX);
-
-    expect(plan.instructions).toContain("run_one_subagent for one bounded question");
-    expect(plan.instructions).toContain("run_subagents for a\nDAG");
-    expect(build.instructions).toContain("run_one_subagent for one bounded task");
-    expect(build.instructions).toContain("run_subagents for several tasks");
-  });
-
-  test("appends the Gemini addendum by the complete provider/model ref", () => {
-    const gemini = composePrompt(
-      AUTO,
-      inputs({ provider: "vertex", model: "gemini-3.1-pro-preview" }),
-      CTX,
-    );
-    const other = composePrompt(AUTO, inputs({ provider: "azure", model: "gpt-5.6-luna" }), CTX);
-    expect(gemini.instructions).toContain("You may start a background job on your own");
-    // Points at subagents for in-turn work (also nudges subagent use).
-    expect(gemini.instructions).toContain("run_one_subagent or run_subagents");
-    expect(other.instructions).not.toContain("You may start a background job on your own");
-    // The addendum lives in the version-hashed body, above `# Environment`.
-    const [body] = gemini.instructions.split("\n# Environment");
-    expect(body).toContain("You may start a background job on your own");
-    // It changes the prompt content, so the version differs from the same model
-    // without a matching addendum.
-    expect(gemini.version).not.toBe(other.version);
-  });
-
   test("1. deterministic: same inputs → identical instructions + version", () => {
     const a = composePrompt(AUTO, inputs({ model: "gpt-5.6-sol" }), CTX);
     const b = composePrompt(AUTO, inputs({ model: "gpt-5.6-sol" }), CTX);
@@ -86,9 +56,11 @@ describe("composePrompt", () => {
     expect(ruled.version).not.toBe(base.version);
   });
 
-  test("3. auto-resolution maps model ids to profiles", () => {
+  test("3. auto-resolution maps model ids to profiles; a miss falls back to default", () => {
     expect(resolveProfile("gpt-5.6-sol")).toBe("gpt-5.6-sol");
     expect(resolveProfile("gpt-5.6-sol-2")).toBe("gpt-5.6-sol");
+    expect(resolveProfile("gpt-5.6-terra")).toBe("gpt-5.6-terra");
+    expect(resolveProfile("gpt-5.6-luna")).toBe("gpt-5.6-luna");
     expect(resolveProfile("gpt-5.4-nano")).toBe("gpt-5.4-nano");
     expect(resolveProfile("gpt-5.4-turbo")).toBe("gpt-5.4");
     expect(resolveProfile("deepseek-v4-pro")).toBe("deepseek-v4-pro");
@@ -96,13 +68,21 @@ describe("composePrompt", () => {
 
     const fallback = composePrompt(AUTO, inputs({ model: "claude-x" }), CTX);
     expect(fallback.profile).toBe("default");
+    expect(fallback.params).toEqual({});
     expect(fallback.instructions).toContain("You are glorious");
     expect(fallback.instructions).not.toContain("{{");
   });
 
-  test("4. flag precedence: config overrides profile", () => {
+  test("3b. a named profile overrides what the model id would resolve to", () => {
+    const named = composePrompt({ profile: "gpt-5.6-sol" }, inputs({ model: "claude-x" }), CTX);
+    expect(named.profile).toBe("gpt-5.6-sol");
+    expect(named.instructions).toContain("# Goal");
+  });
+
+  test("4. flag precedence: defaults ← profile ← defined-only config flags", () => {
     const on = composePrompt(AUTO, inputs({ model: "gpt-5.4-nano" }), CTX);
     expect(on.flags.planning).toBe(true);
+    expect(on.flags.smallModel).toBe(true);
     expect(on.instructions).toContain("2. Plan:");
 
     const off = composePrompt(
@@ -112,22 +92,27 @@ describe("composePrompt", () => {
     );
     expect(off.flags.planning).toBe(false);
     expect(off.instructions).not.toContain("2. Plan:");
+    // An undefined flag leaves the profile's choice alone.
+    expect(off.flags.smallModel).toBe(true);
   });
 
-  test("5. subagent contract swaps out the comms/stop rules", () => {
-    const on = composePrompt(
-      { profile: "auto", flags: { subagentContract: true } },
-      inputs({ model: "claude-x" }),
-      CTX,
+  test("5. template selection: a profile's `primary` replaces the base template", () => {
+    const compact = composePrompt(AUTO, inputs({ model: "gpt-5.6-luna" }), CTX);
+    expect(compact.instructions.startsWith("You are glorious, a software-engineering agent")).toBe(
+      true,
     );
-    expect(on.instructions).toContain("# Subagent contract");
-    expect(on.instructions).not.toContain("# Communication");
-    expect(on.instructions).not.toContain("# Stop rules");
+    expect(compact.instructions).toContain("# Mandates");
+    expect(compact.instructions).toContain("# Approval");
+    // The compact primary drops the base template's long-form sections.
+    expect(compact.instructions).not.toContain("# Core mandates");
+    expect(compact.instructions).not.toContain("# Writing style");
+    expect(compact.instructions).not.toContain("# Communication");
 
-    const off = composePrompt(AUTO, inputs({ model: "claude-x" }), CTX);
-    expect(off.instructions).toContain("# Communication");
-    expect(off.instructions).toContain("# Stop rules");
-    expect(off.instructions).not.toContain("# Subagent contract");
+    const base = composePrompt(AUTO, inputs({ model: "gpt-5.4" }), CTX);
+    expect(base.instructions).toContain("# Core mandates");
+    expect(base.instructions).toContain("# Writing style");
+    expect(base.instructions).toContain("# Communication");
+    expect(base.instructions).toContain("# Stop rules");
   });
 
   test("6. sol variant is outcome-first but keeps the verify tail", () => {
@@ -140,14 +125,17 @@ describe("composePrompt", () => {
     expect(sol.instructions).toContain("Verify standards");
   });
 
-  test("7. nano: delegate → executor, primary → base with discipline + contract", () => {
-    const delegate = composePrompt(AUTO, inputs({ model: "gpt-5.4-nano", role: "delegate" }), CTX);
-    expect(delegate.instructions.startsWith("You are a coding executor")).toBe(true);
-
-    const primary = composePrompt(AUTO, inputs({ model: "gpt-5.4-nano" }), CTX);
-    expect(primary.instructions.startsWith("You are glorious")).toBe(true);
-    expect(primary.instructions).toContain("# Execution discipline");
-    expect(primary.instructions).toContain("# Subagent contract");
+  test("7. the 5.6 profiles carry the evidence rule; others do not", () => {
+    // The confabulation fix: hallucinationGuard is ON for sol/terra so neither
+    // can claim validation it never ran.
+    for (const model of ["gpt-5.6-sol", "gpt-5.6-terra"]) {
+      const out = composePrompt(AUTO, inputs({ model }), CTX);
+      expect(out.instructions).toContain("# Evidence rule");
+      expect(out.instructions).toContain("re-run the check before");
+    }
+    expect(composePrompt(AUTO, inputs({ model: "gpt-5.4" }), CTX).instructions).not.toContain(
+      "# Evidence rule",
+    );
   });
 
   test("8. params pass through from the profile", () => {
@@ -161,118 +149,43 @@ describe("composePrompt", () => {
     expect(luna.params.providerOptions?.openai?.reasoningEffort).toBe("medium");
   });
 
-  test("9. marks known non-vision profiles", () => {
-    expect(composePrompt(AUTO, inputs({ model: "deepseek-v4-pro" }), CTX).supportsImages).toBe(
-      false,
-    );
-    expect(composePrompt(AUTO, inputs({ model: "gpt-5.6-sol" }), CTX).supportsImages).toBe(true);
-  });
-
-  test("10. no residual {{ across every profile × role", () => {
-    for (const name of [...profileNames, "claude-x"]) {
-      for (const role of ["primary", "delegate"] as const) {
-        const out = composePrompt(
-          AUTO,
-          inputs({ model: name, role, outputSchema: "MyResult" }),
-          CTX,
-        );
-        expect(out.instructions.includes("{{")).toBe(false);
-      }
-    }
-  });
-
-  test("11. mode composes orthogonally with model profiles", () => {
-    const plan = composePrompt(AUTO, inputs({ model: "gpt-5.6-sol", mode: "plan" }), CTX);
-    expect(plan.instructions).toContain("# Plan mode");
-    expect(plan.instructions).toContain("The session controller selected plan mode for this turn.");
-    expect(plan.instructions).toContain("the user enters /build to");
-    expect(plan.instructions).toContain("Tab only switches the mode");
-    expect(plan.instructions).not.toContain("# Build mode");
-    expect(plan.instructions).not.toContain("# Build role");
-    expect(plan.instructions).not.toContain("# Goal");
-    expect(plan.instructions).not.toContain("Verify behavior");
-
-    const research = composePrompt(
+  test("9. project rules and the environment footer render from inputs and ctx", () => {
+    const out = composePrompt(
       AUTO,
-      inputs({ model: "gpt-5.4-nano", role: "delegate", mode: "plan" }),
+      inputs({ model: "gpt-5.6-sol", agentName: "scout", rules: "- always use tabs" }),
       CTX,
     );
-    expect(research.instructions).toContain("# Research role");
-    expect(research.instructions.startsWith("You are a coding executor")).toBe(false);
-
-    // The nano RESEARCH worker keeps the subagent contract + report schema.
-    const researchNano = composePrompt(
-      AUTO,
-      inputs({ model: "gpt-5.4-nano", role: "delegate", mode: "plan" }),
-      CTX,
+    expect(out.instructions).toContain("You are scout");
+    expect(out.instructions).toContain("# Project rules\n- always use tabs");
+    expect(out.instructions).toContain("cwd: /repo | os: darwin | date: 2026-07-12");
+    expect(out.instructions).toContain("git: main clean");
+    // The footer is last, so the expensive prefix above it stays cacheable.
+    expect(out.instructions.indexOf("# Environment")).toBeGreaterThan(
+      out.instructions.indexOf("# Project rules"),
     );
-    expect(researchNano.instructions).toContain("# Subagent contract");
-    expect(researchNano.instructions).toContain("open_questions");
-
-    const build = composePrompt(AUTO, inputs({ model: "gpt-5.6-sol", mode: "build" }), CTX);
-    expect(build.instructions).toContain("# Build mode");
-    expect(build.instructions).toContain(
-      "The session controller selected build mode for this turn.",
-    );
-    expect(build.instructions).toContain(
-      "Ignore earlier conversation claims that this session\nis in plan mode or lacks edit access.",
-    );
-    expect(build.instructions).toContain("# Build role");
-    expect(build.instructions).toContain("# Completion report");
-    expect(build.instructions).toContain('"status":"done|in_progress|blocked|failed"');
-    expect(build.instructions).toContain("# Goal");
-    expect(build.instructions).toContain("Verify behavior");
   });
 
-  test("12. every primary build profile carries the authoritative build instruction", () => {
+  test("10. no residual {{ across every profile", () => {
     for (const model of [...profileNames, "claude-x"]) {
-      const out = composePrompt(AUTO, inputs({ model, role: "primary", mode: "build" }), CTX);
-      expect(out.instructions).toContain(
-        "The session controller selected build mode for this turn.",
-      );
+      const out = composePrompt(AUTO, inputs({ model }), CTX);
+      expect(out.instructions.includes("{{")).toBe(false);
     }
   });
 
-  test("12b. the 5.6 build profiles carry the evidence rule against fabricated reports", () => {
-    // The confabulation fix: hallucinationGuard is ON for sol/terra so the
-    // completion-report template cannot be filled from plan text without tools.
-    for (const model of ["gpt-5.6-sol", "gpt-5.6-terra"]) {
-      const build = composePrompt(AUTO, inputs({ model, mode: "build" }), CTX);
-      expect(build.instructions).toContain("# Evidence rule");
-      expect(build.instructions).toContain("re-run the check before");
-    }
-  });
-
-  test("completion reports preserve answers embedded in mixed implementation requests", () => {
-    const composed = composePrompt(AUTO, inputs({ model: "gpt-5.6-luna", mode: "build" }), CTX);
-    expect(composed.instructions).toContain(
-      "Put answers to informational\nor no-code questions in summary",
-    );
-    expect(composed.instructions).toContain(
-      "openQuestions is only for unresolved questions the user still needs to answer",
-    );
-  });
-
-  test("12c. non-5.6 profiles keep hallucinationGuard off by default", () => {
-    const build = composePrompt(AUTO, inputs({ model: "gpt-5.4", mode: "build" }), CTX);
-    expect(build.instructions).not.toContain("# Evidence rule");
-  });
-
-  test("13. hash pin: mode authority, evidence rules, and background-job guidance", () => {
-    // Versions recaptured 2026-07-22 after the agentj → glorious rebrand, which
-    // changed the agent name embedded in the prompt. A failure here means prompt
-    // CONTENT changed — a separate, eval-validated decision, never a refactor side
-    // effect. Nano's standalone delegate remains unaffected.
-    const pinned: Record<string, { primary: string; delegate: string }> = {
-      "gpt-5.6-sol": { primary: "8a3f2f3ee5ad", delegate: "8a3f2f3ee5ad" },
-      "gpt-5.6-terra": { primary: "2232b0303279", delegate: "2232b0303279" },
-      "gpt-5.6-luna": { primary: "1d7de94223b1", delegate: "1d7de94223b1" },
-      "gpt-5.4": { primary: "e3e36fa46922", delegate: "e3e36fa46922" },
-      "gpt-5.4-nano": { primary: "6cf41d48e8b2", delegate: "096ae64c4caf" },
-      "deepseek-v4-pro": { primary: "9e783ce6cfd9", delegate: "9e783ce6cfd9" },
-      "claude-x": { primary: "1d9a079fa9dd", delegate: "1d9a079fa9dd" },
+  test("11. hash pin: one version per profile", () => {
+    // Versions recaptured 2026-07-25 for the basic-chat prompt set. A failure
+    // here means prompt CONTENT changed — a separate, eval-validated decision,
+    // never a refactor side effect.
+    const pinned: Record<string, string> = {
+      "gpt-5.6-sol": "e4a56541e521",
+      "gpt-5.6-terra": "575d6c9f8d37",
+      "gpt-5.6-luna": "4e1fe4ced7dc",
+      "gpt-5.4": "c63b6d338aa9",
+      "gpt-5.4-nano": "3bbf7a8d7cac",
+      "deepseek-v4-pro": "2cdafe83563b",
+      "claude-x": "acc7f5b82ead",
     };
-    const pinCtx = {
+    const pinCtx: PromptContext = {
       cwd: "/repo",
       os: "linux",
       date: "2026-01-01",
@@ -280,18 +193,8 @@ describe("composePrompt", () => {
       gitStatusSummary: "clean",
     };
     for (const [model, expected] of Object.entries(pinned)) {
-      const primary = composePrompt(
-        AUTO,
-        inputs({ model, role: "primary", rules: "", mode: "build" }),
-        pinCtx,
-      );
-      const delegate = composePrompt(
-        AUTO,
-        inputs({ model, role: "delegate", rules: "", mode: "build" }),
-        pinCtx,
-      );
-      expect(`${model}:${primary.version}`).toBe(`${model}:${expected.primary}`);
-      expect(`${model}:${delegate.version}`).toBe(`${model}:${expected.delegate}`);
+      const out = composePrompt(AUTO, inputs({ model, rules: "" }), pinCtx);
+      expect(`${model}:${out.version}`).toBe(`${model}:${expected}`);
     }
   });
 });

@@ -11,10 +11,11 @@ Requires [Bun](https://bun.sh) ≥ 1.2 and git. See [install](/install).
 ## Set the model key
 
 ```sh
-glorious config set --secret agent.llm.providers.azure.apiKey
+export AZURE_FOUNDRY_API_KEY=…   # or AZURE_API_KEY
+export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource
 ```
 
-Stored in the OS keychain.
+`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`).
 
 ## Open a session
 
@@ -24,22 +25,17 @@ From inside a git repo:
 glorious
 ```
 
-Starts in [plan mode](/modes) — read-only. **Tab** or **`/build`** switches to build mode.
+Type, and the agent reads and edits files and runs commands as you chat.
 
-## One-shot
+## Keys
 
-```sh
-glorious run "add a --json flag to the export command"
-glorious run --plan "where is rate limiting enforced?"
-```
-
-## Undo
-
-`/undo` and `/redo` step file changes through git snapshots. Build-mode tools are gated by [permissions](/permissions).
+- **Enter** submits; **Shift+Enter** inserts a newline.
+- **Esc** removes the newest queued message, then interrupts the running turn.
+- **Ctrl+C** clears the composer; twice on an empty composer exits.
+- **Up/Down** browse prompt history.
+- Mouse-select copies to the clipboard.
 
 ## Next
 
-- [modes](/modes)
+- [tools](/tools)
 - [cli](/cli)
-- [commands](/commands)
-- [config](/config)

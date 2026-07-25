@@ -1,14 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONFIG_DOCS } from "../core/lib/config/reference";
-import {
-  buildOutputs,
-  markdownToHtml,
-  renderCliMarkdown,
-  renderConfigMarkdown,
-  renderReferenceMarkdown,
-} from "./generate";
+import { buildOutputs, markdownToHtml, renderCliMarkdown } from "./generate";
 
 const DOCS_DIR = new URL(".", import.meta.url).pathname;
 const read = (relative: string): string => readFileSync(join(DOCS_DIR, relative), "utf8");
@@ -20,34 +13,16 @@ describe("docs generator", () => {
     }
   });
 
-  test("the reference is sourced from the live command registry", () => {
-    const reference = renderReferenceMarkdown();
-    // A representative command and a key line, so a rename in the registry that
-    // skipped regeneration is caught here too, not only by the byte pin above.
-    expect(reference).toContain("`/build` — Approve the plan and build it");
-    expect(reference).toContain("Ctrl+V — paste copied files");
+  test("the generator owns exactly the CLI reference and the site page", () => {
+    expect(Object.keys(buildOutputs()).sort()).toEqual(["content/cli.generated.md", "index.html"]);
   });
 
-  test("config reference pulls defaults from the schema for every documented key", () => {
-    const config = renderConfigMarkdown();
-    // Real key with its schema default and a non-default example.
-    expect(config).toContain("`agent.steps` (default: `100`)");
-    expect(config).toContain("`agent.context.softLimit` (default: unset)");
-    for (const doc of CONFIG_DOCS) expect(config).toContain(`\`${doc.path}\``);
-  });
-
-  test("the CLI reference is sourced from the command definitions (flags and options)", () => {
+  test("the CLI reference is sourced from the command definitions", () => {
     const cli = renderCliMarkdown();
-    expect(cli).toContain("### `glorious run <task>`");
-    expect(cli).toContain("`--allow-all` — Resolve permission asks to allow");
-    // An option (value-taking), not just a boolean flag, so both categories are covered.
-    expect(cli).toContain("`--resume <str>` — Resume a chat session by id.");
-  });
-
-  test("documenting a config key that does not exist fails the build", () => {
-    expect(() =>
-      renderConfigMarkdown([{ path: "agent.not.a.real.key", description: "x" }]),
-    ).toThrow("unknown config path");
+    // The only command is the bare chat invocation — no subcommands, no flags.
+    expect(cli).toContain("### `glorious`");
+    expect(cli).toContain("Invocation opens a chat session.");
+    expect(cli).not.toContain("### `glorious run");
   });
 
   test("markdown renderer escapes HTML, adds heading ids, and handles the subset", () => {
@@ -63,8 +38,8 @@ describe("docs generator", () => {
   });
 
   test("fenced code blocks render verbatim and escaped", () => {
-    expect(markdownToHtml("```\nglorious run <task>\n```").html).toBe(
-      "<pre><code>glorious run &lt;task&gt;</code></pre>",
+    expect(markdownToHtml("```\nglorious <task>\n```").html).toBe(
+      "<pre><code>glorious &lt;task&gt;</code></pre>",
     );
   });
 
@@ -74,8 +49,9 @@ describe("docs generator", () => {
   });
 
   test("the site builds a table of contents from its own headings", () => {
-    const { headings } = markdownToHtml(buildOutputs()["content/reference.generated.md"] ?? "");
+    const { headings } = markdownToHtml(buildOutputs()["content/cli.generated.md"] ?? "");
     const site = buildOutputs()["index.html"] ?? "";
+    expect(headings.length).toBeGreaterThan(0);
     // Every h1/h2 in the content is linkable from the sticky nav.
     expect(site).toContain('<nav class="toc"');
     for (const h of headings) expect(site).toContain(`href="#${h.id}"`);

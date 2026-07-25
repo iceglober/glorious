@@ -1,9 +1,0 @@
-{
-  "id": "sol",
-  "agent": {
-    "llm": {
-      "model": "gpt-5.6-sol",
-      "providers": { "azure": { "resourceName": "kayn-default-foundry-resource" } }
-    }
-  }
-}

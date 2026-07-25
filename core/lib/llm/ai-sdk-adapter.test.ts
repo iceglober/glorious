@@ -1,6 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
 import { z } from "zod";
-import type { MetricMeasurement, MetricsSink } from "../metrics";
 import type { GenerateRequest, LlmConfig, ToolSet } from "./index";
 
 type AgentOptions = Record<string, unknown>;
@@ -33,16 +32,11 @@ mock.module("ai", () => ({
 
 const { createAiSdkRuntime, LLM_MAX_RETRIES } = await import("./ai-sdk-adapter");
 
-const config = {
-  provider: "azure",
-  model: "test-model",
-  providers: { azure: { apiKey: "test-api-key" } },
-} as LlmConfig;
-const secret = "azure-key-should-not-be-exported";
-const path = "/private/project/path";
-const prompt = `prompt containing ${secret} and ${path}`;
-const output = `output containing ${secret} and ${path}`;
-const toolError = `ERROR tool input ${secret} ${path}`;
+// The model is built from config.azure; a literal key keeps provider
+// construction offline (nothing here ever reaches the network).
+const config = { model: "test-model", azure: { apiKey: "test-api-key" } } as LlmConfig;
+const prompt = "prompt text";
+const output = "output text";
 
 function request(tools: ToolSet = {}): GenerateRequest {
   return { instructions: "stable instructions", prompt, tools };
@@ -111,24 +105,12 @@ describe("createAiSdkRuntime", () => {
     });
   });
 
-  test("stopContextTokens installs a stop condition on step input tokens", async () => {
+  test("stopSteps installs the step-count stop condition", async () => {
     resetResult({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
 
-    await createAiSdkRuntime(config).generate({
-      ...request(),
-      stopSteps: 5,
-      stopContextTokens: 1_000,
-    });
+    await createAiSdkRuntime(config).generate({ ...request(), stopSteps: 5 });
 
-    const stopWhen = constructedAgents[0]?.stopWhen as unknown[];
-    expect(Array.isArray(stopWhen)).toBe(true);
-    expect(stopWhen).toHaveLength(2);
-    expect(stopWhen[0]).toEqual({ count: 5 });
-    const condition = stopWhen[1] as (options: { steps: unknown[] }) => boolean;
-    expect(condition({ steps: [{ usage: { inputTokens: 999 } }] })).toBe(false);
-    expect(condition({ steps: [{ usage: { inputTokens: 1_000 } }] })).toBe(true);
-    expect(condition({ steps: [{}] })).toBe(false);
-    expect(condition({ steps: [] })).toBe(false);
+    expect(constructedAgents[0]?.stopWhen).toEqual([{ count: 5 }]);
   });
 
   test("without stop settings no stopWhen is installed", async () => {
@@ -137,6 +119,23 @@ describe("createAiSdkRuntime", () => {
     await createAiSdkRuntime(config).generate(request());
 
     expect(constructedAgents[0]).not.toHaveProperty("stopWhen");
+  });
+
+  test("a turn that exhausts the step ceiling without final text is flagged", async () => {
+    resetResult({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+    nextResult.text = "";
+    nextResult.steps = [
+      { toolCalls: [], toolResults: [] },
+      { toolCalls: [], toolResults: [] },
+    ];
+
+    const truncated = await createAiSdkRuntime(config).generate({ ...request(), stopSteps: 2 });
+    expect(truncated.stepLimitReached).toBe(true);
+
+    // The same step count with an answer is a normal finish.
+    nextResult.text = output;
+    const answered = await createAiSdkRuntime(config).generate({ ...request(), stopSteps: 2 });
+    expect(answered.stepLimitReached).toBeUndefined();
   });
 
   test("falls back to zero aggregate usage without absent cache details", async () => {
@@ -160,30 +159,6 @@ describe("createAiSdkRuntime", () => {
     expect(constructedAgents).toHaveLength(1);
     expect(constructedAgents[0].toolOrder).toEqual(["alpha", "middle", "zebra"]);
     expect(Object.keys(constructedAgents[0].tools as object)).toEqual(["alpha", "middle", "zebra"]);
-  });
-
-  test("forces only the first step when the port requires a tool", async () => {
-    resetResult({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
-    await createAiSdkRuntime(config).generate({
-      ...request({
-        run_background_job: {
-          description: "start",
-          inputSchema: z.object({}),
-          execute: async () => "",
-        },
-      }),
-      requiredFirstTool: "run_background_job",
-    });
-
-    const prepareStep = constructedAgents[0]?.prepareStep as
-      | ((context: { stepNumber: number }) => Record<string, unknown>)
-      | undefined;
-    expect(prepareStep).toBeDefined();
-    expect(prepareStep?.({ stepNumber: 0 })).toEqual({
-      activeTools: ["run_background_job"],
-      toolChoice: { type: "tool", toolName: "run_background_job" },
-    });
-    expect(prepareStep?.({ stepNumber: 1 })).toEqual({});
   });
 
   test("maps provider-neutral JSON Schema through the AI SDK helper", async () => {
@@ -224,6 +199,28 @@ describe("createAiSdkRuntime", () => {
     ).toBe(inputSchema);
   });
 
+  test("turns a thrown tool failure into an ERROR the model can read", async () => {
+    resetResult({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+
+    await createAiSdkRuntime(config).generate(
+      request({
+        broken: {
+          description: "broken",
+          inputSchema: z.object({}),
+          execute: async () => {
+            throw new Error("sandbox is gone");
+          },
+        },
+      }),
+    );
+
+    const agent = constructedAgents[0];
+    if (!agent) throw new Error("agent was not constructed");
+    const execute = (agent.tools as Record<string, { execute: () => Promise<unknown> }>).broken
+      .execute;
+    await expect(execute()).rejects.toThrow("ERROR: sandbox is gone");
+  });
+
   test("marks structured nonzero command results as tool errors", async () => {
     resetResult({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     nextResult.steps = [
@@ -241,69 +238,21 @@ describe("createAiSdkRuntime", () => {
     });
   });
 
-  test("records only aggregate metrics and contains a throwing sink", async () => {
-    resetResult({
-      inputTokens: 30,
-      outputTokens: 4,
-      totalTokens: 34,
-      inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: 20, cacheWriteTokens: 0 },
-    });
-    const measurements: MetricMeasurement[] = [];
-    const sink: MetricsSink = {
-      record(measurement) {
-        measurements.push(measurement);
+  test("marks ERROR strings and successful results apart", async () => {
+    resetResult({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+    nextResult.steps = [
+      {
+        toolCalls: [],
+        toolResults: [
+          { toolName: "edit", output: "ERROR: old_string not found" },
+          { toolName: "edit", output: "OK: applied 1 edit(s)." },
+          { toolName: "bash", output: { exitCode: 0, stdout: "done" } },
+        ],
       },
-    };
+    ];
 
-    const result = await createAiSdkRuntime(config, sink).generate(request());
-
-    expect(result.text).toBe(output);
-    expect(measurements.map(({ name }) => name).sort()).toEqual([
-      "model.cache_read_ratio",
-      "model.duration_ms",
-      "model.tokens.cache_read",
-      "model.tokens.cache_write",
-      "model.tokens.input",
-      "model.tokens.no_cache",
-      "model.tokens.output",
-      "model.tokens.total",
-    ]);
-    expect(
-      measurements.every(({ attributes }) =>
-        Object.keys(attributes).every((key) => ["provider", "model", "outcome"].includes(key)),
-      ),
-    ).toBe(true);
-    expect(
-      measurements.every(
-        ({ attributes }) =>
-          JSON.stringify(attributes) ===
-          JSON.stringify({ provider: "azure", model: "test-model", outcome: "success" }),
-      ),
-    ).toBe(true);
-    const exported = JSON.stringify(measurements);
-    for (const value of [prompt, output, toolError, path, secret]) {
-      expect(exported).not.toContain(value);
-    }
-
-    const throwingSink: MetricsSink = {
-      record: () => {
-        throw new Error(toolError);
-      },
-    };
-    await expect(
-      createAiSdkRuntime(config, throwingSink).generate(request()),
-    ).resolves.toMatchObject({
-      text: output,
-    });
-  });
-
-  test("does not emit metrics when no sink is configured", async () => {
-    resetResult({ inputTokens: 1, outputTokens: 1, totalTokens: 2 });
-
-    await expect(createAiSdkRuntime(config).generate(request())).resolves.toMatchObject({
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-    });
-    expect(generateCalls).toHaveLength(1);
+    const result = await createAiSdkRuntime(config).generate(request());
+    expect(result.steps[0]?.toolResults.map((r) => r.isError)).toEqual([true, false, false]);
   });
 
   test("fresh turns send prompt and return a continuation with the response messages", async () => {
@@ -316,23 +265,6 @@ describe("createAiSdkRuntime", () => {
     expect(generateCalls[0]).toMatchObject({ prompt });
     expect(generateCalls[0]).not.toHaveProperty("messages");
     expect(result.messages).toEqual([{ role: "user", content: prompt }, assistantTurn]);
-  });
-
-  test("sends image attachments as AI SDK file parts", async () => {
-    resetResult({ inputTokens: 1, outputTokens: 1, totalTokens: 2 });
-    const image = { mediaType: "image/png" as const, data: "c2NyZWVuc2hvdA==" };
-
-    const result = await createAiSdkRuntime(config).generate({ ...request(), images: [image] });
-
-    const user = {
-      role: "user",
-      content: [
-        { type: "text", text: prompt },
-        { type: "file", ...image },
-      ],
-    };
-    expect(generateCalls[0]).toEqual({ messages: [user] });
-    expect(result.messages).toEqual([user]);
   });
 
   test("bounds tool outputs, preserves small objects, and spills oversized values", async () => {

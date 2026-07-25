@@ -1,10 +1,6 @@
 import { stderr as processStderr, stdout as processStdout } from "node:process";
 
-import { command, flag, oneOf, option, optional, positional, runSafely, string } from "cmd-ts";
-
-import type { ConfigCliHandlers } from "../config-cli";
-import type { EvalCliHandlers } from "../eval-cli";
-import type { UpdateChannel } from "../update";
+import { command, runSafely } from "cmd-ts";
 
 export const EXIT_SUCCESS = 0;
 export const EXIT_FAILURE = 1;
@@ -12,34 +8,14 @@ export const EXIT_ABORTED = 130;
 
 export const DEFAULT_COMMAND_NAME = "glorious";
 export const DEFAULT_COMMAND_DESCRIPTION =
-  "Interactive coding agent. Bare invocation opens a chat session; `run` executes one task.";
-
-export interface RunOnceOptions {
-  /** Plan-only: read-only tools, no edits. */
-  plan: boolean;
-  /** Resolve permission asks to allow instead of the safe deny default. */
-  allowAll: boolean;
-  signal: AbortSignal;
-}
+  "Interactive coding agent. Invocation opens a chat session.";
 
 export interface GloriousCommandDependencies {
   version: string;
-  /** Update the installed Glorious CLI. */
-  update?: (options: { channel: UpdateChannel }) => Promise<number>;
-  /** The interactive chat session (default command). */
-  runChat(options?: { resume?: string; continueLatest?: boolean }): Promise<number>;
-  /** Non-interactive one-shot turn for scripts/CI. */
-  runOnce(task: string, options: RunOnceOptions): Promise<number>;
-  createAbortSignal?: () => AbortSignal;
+  /** The interactive chat session (the only command). */
+  runChat(): Promise<number>;
   name?: string;
   description?: string;
-  configHandlers?: ConfigCliHandlers;
-  /** Interactive `glorious config` (no subcommand). Omitted → bare config errors. */
-  runConfigUi?: () => Promise<number>;
-  /** Native provider authentication flows. */
-  runAuth?: (provider: "claude") => Promise<number>;
-  evalHandlers?: EvalCliHandlers;
-  createEvalHandlers?: () => EvalCliHandlers | Promise<EvalCliHandlers>;
   writers?: GloriousCliIo;
 }
 
@@ -53,198 +29,8 @@ const createChatCommand = (deps: GloriousCommandDependencies) =>
     name: deps.name ?? DEFAULT_COMMAND_NAME,
     version: deps.version,
     description: deps.description ?? DEFAULT_COMMAND_DESCRIPTION,
-    args: {
-      resume: option({
-        long: "resume",
-        type: optional(string),
-        description: "Resume a chat session by id.",
-      }),
-      continueLatest: flag({
-        long: "continue",
-        description: "Resume the newest chat session for this project.",
-      }),
-    },
-    handler: ({ resume, continueLatest }) =>
-      deps.runChat({ ...(resume ? { resume } : {}), continueLatest }),
-  });
-
-const createUpdateCommand = (deps: GloriousCommandDependencies) =>
-  command({
-    name: `${deps.name ?? DEFAULT_COMMAND_NAME} update`,
-    version: deps.version,
-    description: "Update the Glorious CLI.",
-    args: {
-      channel: option({
-        long: "channel",
-        type: optional(oneOf(["next", "latest"] as const)),
-        description: "Release channel to install.",
-      }),
-    },
-    handler: ({ channel }) => deps.update!({ channel: channel ?? "auto" }),
-  });
-
-const createAuthClaudeCommand = (deps: GloriousCommandDependencies) =>
-  command({
-    name: `${deps.name ?? DEFAULT_COMMAND_NAME} auth claude`,
-    version: deps.version,
-    description: "Sign in with a Claude Pro or Max subscription (run directly in a terminal).",
     args: {},
-    handler: () => deps.runAuth!("claude"),
-  });
-
-const createRunCommand = (deps: GloriousCommandDependencies) =>
-  command({
-    name: `${deps.name ?? DEFAULT_COMMAND_NAME} run`,
-    version: deps.version,
-    description: "Run one task non-interactively and exit.",
-    args: {
-      plan: flag({ long: "plan", description: "Plan only — read-only tools, no edits." }),
-      allowAll: flag({
-        long: "allow-all",
-        description: "Resolve permission asks to allow (default: deny with a notice).",
-      }),
-      task: positional({ type: string, displayName: "task", description: "Task to run." }),
-    },
-    handler: ({ task, plan, allowAll }) =>
-      deps.runOnce(task.trim(), {
-        plan,
-        allowAll,
-        signal: (deps.createAbortSignal ?? (() => new AbortController().signal))(),
-      }),
-  });
-
-/** `--scope` picks which layer a write lands in; absent means global (you). */
-const scopeOption = () =>
-  option({
-    long: "scope",
-    type: optional(oneOf(["global", "project", "local"] as const)),
-    description:
-      "Layer to write: global (you, default), project (.glorious), or local (this machine).",
-  });
-
-const createConfigSetCommand = (handlers: ConfigCliHandlers) =>
-  command({
-    name: "glorious config set",
-    description: "Set an Glorious configuration value.",
-    args: {
-      secret: flag({
-        long: "secret",
-        description: "Read the value from masked input and store it in the keychain.",
-      }),
-      scope: scopeOption(),
-      key: positional({
-        type: string,
-        displayName: "key",
-        description: "Public configuration key to set.",
-      }),
-      value: positional({
-        type: optional(string),
-        displayName: "value",
-        description: "Value to store for a normal configuration key.",
-      }),
-    },
-    handler: ({ key, secret, value, scope }) => handlers.set({ key, secret, value, scope }),
-  });
-
-const createConfigDeleteCommand = (handlers: ConfigCliHandlers) =>
-  command({
-    name: "glorious config delete",
-    description: "Delete an Glorious configuration value.",
-    args: {
-      secret: flag({
-        long: "secret",
-        description: "Delete a secret stored in the keychain.",
-      }),
-      scope: scopeOption(),
-      key: positional({
-        type: string,
-        displayName: "key",
-        description: "Public configuration key to delete.",
-      }),
-    },
-    handler: ({ key, secret, scope }) => handlers.delete({ key, secret, scope }),
-  });
-
-const createConfigGetCommand = (handlers: ConfigCliHandlers) =>
-  command({
-    name: "glorious config get",
-    description: "Read an Glorious configuration value.",
-    args: {
-      key: positional({
-        type: string,
-        displayName: "key",
-        description: "Configuration key to read.",
-      }),
-    },
-    handler: ({ key }) => handlers.get({ key }),
-  });
-
-const createConfigListMutationCommand = (
-  handlers: ConfigCliHandlers,
-  operation: "add" | "remove",
-) =>
-  command({
-    name: `glorious config ${operation}`,
-    description: `${operation === "add" ? "Append to" : "Remove from"} an array configuration value.`,
-    args: {
-      scope: scopeOption(),
-      key: positional({
-        type: string,
-        displayName: "key",
-        description: "Array configuration key.",
-      }),
-      value: positional({
-        type: string,
-        displayName: "value",
-        description: "Array value to mutate.",
-      }),
-    },
-    handler: ({ key, value, scope }) => handlers[operation]({ key, value, scope }),
-  });
-
-const createConfigRuleCommand = (handlers: ConfigCliHandlers, decision: "allow" | "ask" | "deny") =>
-  command({
-    name: `glorious config ${decision}`,
-    description: `Set a permission rule to ${decision} (default-deny access control).`,
-    args: {
-      scope: scopeOption(),
-      pattern: positional({
-        type: string,
-        displayName: "pattern",
-        description: "Tool-call pattern: bash(pnpm *), edit, web, or mcp_<server>_<tool>.",
-      }),
-    },
-    handler: ({ pattern, scope }) => handlers.rule({ pattern, decision, scope }),
-  });
-
-const createConfigUnruleCommand = (handlers: ConfigCliHandlers) =>
-  command({
-    name: "glorious config unrule",
-    description: "Remove a permission rule.",
-    args: {
-      scope: scopeOption(),
-      pattern: positional({
-        type: string,
-        displayName: "pattern",
-        description: "The rule pattern to remove.",
-      }),
-    },
-    handler: ({ pattern, scope }) => handlers.unrule({ pattern, scope }),
-  });
-
-const createConfigUncagedCommand = (handlers: ConfigCliHandlers) =>
-  command({
-    name: "glorious config uncaged",
-    description: "Allow every gated tool call, or restore default-deny.",
-    args: {
-      scope: scopeOption(),
-      state: positional({
-        type: string,
-        displayName: "on|off",
-        description: "`on` opens every gated call; `off` restores the rules.",
-      }),
-    },
-    handler: ({ state, scope }) => handlers.uncaged({ on: state === "on", scope }),
+    handler: () => deps.runChat(),
   });
 
 /** One argument or flag of a CLI command, as shown in `--help`. */
@@ -297,26 +83,13 @@ const describeCommand = (command: Introspectable): CliCommandDoc => {
  * invoked here (help extraction only reads structure), so no-op deps are safe.
  */
 export function describeCli(): CliCommandDoc[] {
-  const deps = {
+  const deps: GloriousCommandDependencies = {
     version: "",
     runChat: async () => EXIT_SUCCESS,
-    runOnce: async () => EXIT_SUCCESS,
-  } as GloriousCommandDependencies;
-  const handlers = {} as ConfigCliHandlers;
-  return [
-    createChatCommand(deps),
-    createRunCommand(deps),
-    createUpdateCommand(deps),
-    createAuthClaudeCommand(deps),
-    createConfigSetCommand(handlers),
-    createConfigGetCommand(handlers),
-    createConfigDeleteCommand(handlers),
-    createConfigRuleCommand(handlers, "allow"),
-    createConfigRuleCommand(handlers, "ask"),
-    createConfigRuleCommand(handlers, "deny"),
-    createConfigUnruleCommand(handlers),
-    createConfigUncagedCommand(handlers),
-  ].map((command) => describeCommand(command as unknown as Introspectable));
+  };
+  return [createChatCommand(deps)].map((command) =>
+    describeCommand(command as unknown as Introspectable),
+  );
 }
 
 const writeResult = (
@@ -336,131 +109,6 @@ const writeResult = (
   return exitCode;
 };
 
-const CONFIG_ROUTES = [
-  "set",
-  "get",
-  "add",
-  "remove",
-  "delete",
-  "allow",
-  "ask",
-  "deny",
-  "unrule",
-  "uncaged",
-];
-const isConfigRoute = (argv: string[]): boolean =>
-  argv[0] === "config" && CONFIG_ROUTES.includes(argv[1] ?? "");
-
-const isEvalRoute = (argv: string[]): boolean => argv[0] === "eval";
-const isAuthRoute = (argv: string[]): boolean => argv[0] === "auth" && argv[1] === "claude";
-
-const dispatchAuth = async (
-  argv: string[],
-  deps: GloriousCommandDependencies,
-  writers: Required<GloriousCliIo>,
-): Promise<number> => {
-  if (deps.runAuth === undefined) {
-    writers.stderr.write("error: authentication commands are not available.\n");
-    return EXIT_FAILURE;
-  }
-  return dispatchLeaf(createAuthClaudeCommand(deps), argv, writers);
-};
-
-const dispatchUpdate = async (
-  argv: string[],
-  deps: GloriousCommandDependencies,
-  writers: Required<GloriousCliIo>,
-): Promise<number> => {
-  if (deps.update === undefined) {
-    writers.stderr.write("error: update command is not available.\n");
-    return EXIT_FAILURE;
-  }
-  return dispatchLeaf(createUpdateCommand(deps), argv, writers);
-};
-
-const evalHelp = (name: string, version: string): string =>
-  `${name} eval ${version}\n` +
-  "> Run Glorious evaluation commands.\n\n" +
-  "ARGUMENTS:\n" +
-  "  [str] - Optional command: report or selfcheck. [optional]\n\n" +
-  "FLAGS:\n" +
-  "  --help, -h    - show help [optional]\n" +
-  "  --version, -v - print the version [optional]";
-
-const dispatchConfig = async (
-  argv: string[],
-  handlers: ConfigCliHandlers | undefined,
-  writers: Required<GloriousCliIo>,
-): Promise<number> => {
-  if (handlers === undefined) {
-    writers.stderr.write("error: config commands are not available.\n");
-    return EXIT_FAILURE;
-  }
-
-  const route = argv[1];
-  const commandForRoute =
-    route === "set"
-      ? createConfigSetCommand(handlers)
-      : route === "delete"
-        ? createConfigDeleteCommand(handlers)
-        : route === "get"
-          ? createConfigGetCommand(handlers)
-          : route === "allow" || route === "ask" || route === "deny"
-            ? createConfigRuleCommand(handlers, route)
-            : route === "unrule"
-              ? createConfigUnruleCommand(handlers)
-              : route === "uncaged"
-                ? createConfigUncagedCommand(handlers)
-                : createConfigListMutationCommand(handlers, route as "add" | "remove");
-  const result = await runSafely(commandForRoute, argv.slice(2));
-  if (result._tag === "error") {
-    return writeResult(result, writers) ?? EXIT_FAILURE;
-  }
-
-  return (await result.value).ok ? EXIT_SUCCESS : EXIT_FAILURE;
-};
-
-const dispatchEval = async (
-  argv: string[],
-  deps: GloriousCommandDependencies,
-  writers: Required<GloriousCliIo>,
-): Promise<number> => {
-  const args = argv.slice(1);
-  if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
-    writers.stdout.write(evalHelp(deps.name ?? DEFAULT_COMMAND_NAME, deps.version));
-    return EXIT_SUCCESS;
-  }
-
-  const route =
-    args.length === 0
-      ? "run"
-      : args.length === 1 && (args[0] === "report" || args[0] === "selfcheck")
-        ? args[0]
-        : undefined;
-  if (route === undefined) {
-    writers.stderr.write("error: unknown eval command. Try 'glorious eval --help'.\n");
-    return 2;
-  }
-
-  const handlers = deps.evalHandlers ?? (await deps.createEvalHandlers?.());
-  if (handlers === undefined) {
-    writers.stderr.write("error: eval commands are not available.\n");
-    return EXIT_FAILURE;
-  }
-
-  return handlers[route]();
-};
-
-const dispatchLeaf = async (
-  parser: Parameters<typeof runSafely>[0],
-  argv: string[],
-  writers: Required<GloriousCliIo>,
-): Promise<number> => {
-  const result = await runSafely(parser, argv);
-  if (result._tag === "error") return writeResult(result, writers) ?? EXIT_FAILURE;
-  return await Promise.resolve(result.value as number);
-};
-
 export async function runGloriousCli(
   argv: string[],
   deps: GloriousCommandDependencies,
@@ -471,29 +119,7 @@ export async function runGloriousCli(
     stderr: io.stderr ?? deps.writers?.stderr ?? processStderr,
   };
 
-  if (argv[0] === "config" && argv.length === 1 && deps.runConfigUi) {
-    return deps.runConfigUi();
-  }
-
-  if (isConfigRoute(argv)) {
-    return dispatchConfig(argv, deps.configHandlers, writers);
-  }
-
-  if (isEvalRoute(argv)) {
-    return dispatchEval(argv, deps, writers);
-  }
-
-  if (isAuthRoute(argv)) {
-    return dispatchAuth(argv.slice(2), deps, writers);
-  }
-
-  if (argv[0] === "run") {
-    return dispatchLeaf(createRunCommand(deps), argv.slice(1), writers);
-  }
-
-  if (argv[0] === "update") {
-    return dispatchUpdate(argv.slice(1), deps, writers);
-  }
-
-  return dispatchLeaf(createChatCommand(deps), argv, writers);
+  const result = await runSafely(createChatCommand(deps), argv);
+  if (result._tag === "error") return writeResult(result, writers) ?? EXIT_FAILURE;
+  return await (result.value as Promise<number> | number);
 }

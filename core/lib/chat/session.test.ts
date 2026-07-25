@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import type { Agent, GenerateOptions } from "../agent";
 import type { RunResult } from "../llm";
-import { createChatLog, loadChatLog } from "../session/log";
-import type { TodoList } from "../todos";
 import type { ChatEvent } from "./events";
 import { createChatSession } from "./session";
 
@@ -21,765 +16,481 @@ function makeAgent(impl: (prompt: string, opts?: GenerateOptions) => Promise<Run
   return { composed: {} as Agent["composed"], generate: impl };
 }
 
-async function withLog<T>(
-  run: (log: Awaited<ReturnType<typeof createChatLog>>, root: string) => Promise<T>,
-) {
-  const root = await mkdtemp(path.join(tmpdir(), "glorious-chat-"));
-  try {
-    const log = await createChatLog({ root, projectRoot: "/repo/x", title: "test" });
-    return await run(log, root);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-}
+/** The session takes the agent as a promise; tests hand it a resolved fake. */
+const agentOf = (impl: (prompt: string, opts?: GenerateOptions) => Promise<RunResult>) =>
+  Promise.resolve(makeAgent(impl));
 
 describe("createChatSession", () => {
-  test("runs turns per mode, persists turn+state, threads the continuation", async () => {
-    await withLog(async (log, root) => {
-      const calls: Array<{ prompt: string; mode: string; messages?: unknown[] }> = [];
-      const events: ChatEvent[] = [];
-      const agents = {
-        plan: makeAgent(async (prompt, opts) => {
-          calls.push({ prompt, mode: "plan", messages: opts?.messages });
-          return result("plan answer", { messages: [{ turn: 1 }] });
-        }),
-        build: makeAgent(async (prompt, opts) => {
-          calls.push({ prompt, mode: "build", messages: opts?.messages });
-          return result("build answer", { messages: [{ turn: 1 }, { turn: 2 }] });
-        }),
-      };
-      const session = createChatSession({
-        agentFor: async (mode) => agents[mode],
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      expect(session.mode).toBe("plan");
-      await session.send("what does this repo do?");
-      expect(calls[0]).toMatchObject({ mode: "plan", messages: [] });
-
-      session.setMode(); // Tab: plan → build
-      expect(session.mode).toBe("build");
-      await session.send("now build it");
-      // The build turn receives the plan turn's continuation.
-      expect(calls[1]).toMatchObject({ mode: "build", messages: [{ turn: 1 }] });
-
-      const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
-      expect(loaded?.turns.map((turn) => turn.mode)).toEqual(["plan", "build"]);
-      expect(loaded?.state?.messages).toEqual([{ turn: 1 }, { turn: 2 }]);
-      expect(events.filter((event) => event.type === "assistant")).toHaveLength(2);
-      expect(events.filter((event) => event.type === "turn-finished")).toHaveLength(2);
-      expect(events.filter((event) => event.type === "submission-finished")).toHaveLength(2);
-      expect(events.at(-1)?.type).toBe("submission-finished");
+  test("runs a turn and threads the continuation into the next one", async () => {
+    const calls: Array<{ prompt: string; messages?: unknown[] }> = [];
+    const events: ChatEvent[] = [];
+    let turns = 0;
+    const session = createChatSession({
+      agent: agentOf(async (prompt, opts) => {
+        turns += 1;
+        calls.push({ prompt, messages: opts?.messages });
+        return result(`answer ${turns}`, {
+          messages: Array.from({ length: turns }, (_unused, index) => ({ turn: index + 1 })),
+        });
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    await session.send("what does this repo do?");
+    expect(calls[0]).toMatchObject({ prompt: "what does this repo do?", messages: [] });
+
+    await session.send("now build it");
+    // The second turn receives the first turn's continuation verbatim.
+    expect(calls[1]).toMatchObject({ prompt: "now build it", messages: [{ turn: 1 }] });
+
+    expect(events.filter((event) => event.type === "assistant")).toHaveLength(2);
+    expect(events.filter((event) => event.type === "turn-finished")).toHaveLength(2);
+    expect(events.filter((event) => event.type === "submission-finished")).toHaveLength(2);
+    expect(events.at(-1)?.type).toBe("submission-finished");
+    expect(session.busy).toBe(false);
   });
 
   test("streams each step's assistant text (intermediate prose isn't dropped)", async () => {
-    await withLog(async (log) => {
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (_p, opts) => {
-            // An intermediate step: the model explains, then calls a tool.
-            opts?.onStep?.({
-              text: "AgentJ is a terminal coding agent.",
-              toolCalls: [{ name: "bash", input: {} }],
-              toolResults: [{ name: "bash", output: "ok" }],
-            });
-            // The final step: a short closing message (also RunResult.text).
-            opts?.onStep?.({ text: "Done — I started a job.", toolCalls: [], toolResults: [] });
-            return result("Done — I started a job.");
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-      await session.send("what does agentj do");
-      // Both the intermediate explanation and the final message surface, and the
-      // final isn't duplicated (it was already streamed as the last step).
-      const texts = events
-        .filter((e): e is Extract<ChatEvent, { type: "assistant" }> => e.type === "assistant")
-        .map((e) => e.text);
-      expect(texts).toEqual(["AgentJ is a terminal coding agent.", "Done — I started a job."]);
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (_prompt, opts) => {
+        // An intermediate step: the model explains, then calls a tool.
+        opts?.onStep?.({
+          text: "AgentJ is a terminal coding agent.",
+          toolCalls: [{ name: "bash", input: {} }],
+          toolResults: [{ name: "bash", output: "ok" }],
+        });
+        // The final step: a short closing message (also RunResult.text).
+        opts?.onStep?.({ text: "Done — that's the shape of it.", toolCalls: [], toolResults: [] });
+        return result("Done — that's the shape of it.");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    await session.send("what does agentj do");
+
+    // Both the intermediate explanation and the final message surface, and the
+    // final isn't duplicated (it was already streamed as the last step).
+    const texts = events
+      .filter((e): e is Extract<ChatEvent, { type: "assistant" }> => e.type === "assistant")
+      .map((e) => e.text);
+    expect(texts).toEqual(["AgentJ is a terminal coding agent.", "Done — that's the shape of it."]);
+    expect(events.filter((event) => event.type === "tool-call")).toEqual([
+      { type: "tool-call", call: { name: "bash", input: {} } },
+    ]);
+    expect(events.filter((event) => event.type === "tool-result")).toEqual([
+      { type: "tool-result", result: { name: "bash", output: "ok" } },
+    ]);
   });
 
   test("a text-only turn emits the assistant text exactly once (no duplicate)", async () => {
-    await withLog(async (log) => {
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (_p, opts) => {
-            opts?.onStep?.({ text: "Just an answer.", toolCalls: [], toolResults: [] });
-            return result("Just an answer.");
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-      await session.send("hi");
-      expect(events.filter((e) => e.type === "assistant")).toHaveLength(1);
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (_prompt, opts) => {
+        opts?.onStep?.({ text: "Just an answer.", toolCalls: [], toolResults: [] });
+        return result("Just an answer.");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    await session.send("hi");
+
+    expect(events.filter((e) => e.type === "assistant")).toHaveLength(1);
   });
 
-  test("plan→build handoff: tracks task+plan, and a fresh-context turn resets the continuation", async () => {
-    await withLog(async (log) => {
-      const calls: Array<{ mode: string; messages?: unknown[] }> = [];
-      const agents = {
-        plan: makeAgent(async (_p, opts) => {
-          calls.push({ mode: "plan", messages: opts?.messages });
-          return result("PLAN: change frobnicate()", { messages: [{ turn: 1 }] });
-        }),
-        build: makeAgent(async (_p, opts) => {
-          calls.push({ mode: "build", messages: opts?.messages });
-          return result("built", { messages: [{ turn: 9 }] });
-        }),
-      };
-      const session = createChatSession({ agentFor: async (mode) => agents[mode], log });
-
-      await session.send("fix the flaky test"); // plan turn
-      await session.send("actually, keep it minimal"); // iterate: task stays, plan updates
-      expect(session.planContext()).toEqual({
-        task: "fix the flaky test",
-        plan: "PLAN: change frobnicate()",
-      });
-
-      session.setMode("build");
-      await session.send("seed with task + plan", { freshContext: true });
-      // The builder gets a FRESH continuation, not the planner's [{ turn: 1 }].
-      expect(calls.at(-1)).toEqual({ mode: "build", messages: [] });
-      // Handoff starts a new stage.
-      expect(session.planContext()).toEqual({ task: null, plan: null });
+  test("a final text that was never streamed still reaches the transcript", async () => {
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (_prompt, opts) => {
+        opts?.onStep?.({ text: "", toolCalls: [{ name: "bash", input: {} }], toolResults: [] });
+        return result("All done.");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    await session.send("go");
+
+    expect(
+      events
+        .filter((e): e is Extract<ChatEvent, { type: "assistant" }> => e.type === "assistant")
+        .map((e) => e.text),
+    ).toEqual(["All done."]);
   });
 
-  test("clearContext resets the captured task and plan", async () => {
-    await withLog(async (log) => {
-      const session = createChatSession({
-        agentFor: async () => makeAgent(async () => result("PLAN")),
-        log,
-      });
-      await session.send("the task");
-      expect(session.planContext()).toEqual({ task: "the task", plan: "PLAN" });
-      await session.clearContext();
-      expect(session.planContext()).toEqual({ task: null, plan: null });
+  test("an empty model reply still emits an assistant event (a silent turn looks like a hang)", async () => {
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async () => result("")),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
-  });
 
-  test("resumed build mode selects the build agent despite a stale plan refusal", async () => {
-    await withLog(async (log) => {
-      const selected: string[] = [];
-      const stalePlanRefusal = [
-        { role: "assistant", content: "I cannot edit because this is plan mode." },
-      ];
-      const session = createChatSession(
-        {
-          agentFor: async (mode) => {
-            selected.push(mode);
-            return makeAgent(async (_prompt, options) => {
-              expect(options?.messages).toBe(stalePlanRefusal);
-              return result("implemented");
-            });
-          },
-          log,
-        },
-        { mode: "build", messages: stalePlanRefusal },
-      );
+    await session.send("go");
 
-      await session.send("finish the implementation");
-
-      expect(selected).toEqual(["build"]);
-    });
-  });
-
-  test("clears continuation, notices, todos, and durable history before the next turn", async () => {
-    await withLog(async (log, root) => {
-      const prompts: Array<{ prompt: string; messages: unknown[] | undefined }> = [];
-      const events: ChatEvent[] = [];
-      let todosCleared = 0;
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt, options) => {
-            prompts.push({ prompt, messages: options?.messages });
-            return result("done", { messages: [{ prompt }] });
-          }),
-        log,
-        todos: {
-          list: () => [],
-          clear: async () => {
-            todosCleared += 1;
-          },
-        },
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      await session.send("old request");
-      session.addTurnNotice("[note] old notice");
-      expect(await session.clearContext()).toBe(true);
-      await session.send("fresh request");
-
-      expect(prompts).toEqual([
-        { prompt: "old request", messages: [] },
-        { prompt: "fresh request", messages: [] },
-      ]);
-      expect(events).toContainEqual({ type: "context-cleared" });
-      expect(todosCleared).toBe(1);
-      const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
-      expect(loaded?.turns.map((turn) => turn.user)).toEqual(["fresh request"]);
-      expect(loaded?.state?.messages).toEqual([{ prompt: "fresh request" }]);
-    });
-  });
-
-  test("a cloud-auth failure surfaces a humanized error + the raw for detection", async () => {
-    await withLog(async (log) => {
-      const events: ChatEvent[] = [];
-      const raw = `{"error":"invalid_grant","error_description":"reauth related error (invalid_rapt)"}`;
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async () => {
-            throw new Error(raw);
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-      await session.send("what does this do");
-      const err = events.find((e) => e.type === "turn-error");
-      // Displayed message is actionable; rawError keeps the vendor blob so the
-      // loop can recognize it and run the login.
-      expect(err).toMatchObject({ type: "turn-error" });
-      if (err?.type === "turn-error") {
-        expect(err.error).toContain("gcloud auth application-default login");
-        expect(err.rawError).toBe(raw);
-      }
-    });
-  });
-
-  test("does not clear context while a turn is running", async () => {
-    await withLog(async (log) => {
-      let release: (() => void) | undefined;
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async () => {
-            await new Promise<void>((resolve) => (release = resolve));
-            return result("done");
-          }),
-        log,
-      });
-
-      const turn = session.send("slow request");
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      expect(await session.clearContext()).toBe(false);
-      release?.();
-      await turn;
-    });
-  });
-
-  test("persists a transformed opaque continuation after the turn", async () => {
-    await withLog(async (log, root) => {
-      const original = [{ vendor: "full-history" }];
-      const compacted = [{ vendor: "summary" }];
-      const session = createChatSession({
-        agentFor: async () => makeAgent(async () => result("done", { messages: original })),
-        log,
-        transformContinuation: async (messages, mode) => {
-          expect(messages).toBe(original);
-          expect(mode).toBe("plan");
-          return compacted;
-        },
-      });
-
-      await session.send("go");
-
-      expect(session.snapshot().messages).toBe(compacted);
-      const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
-      expect(loaded?.state?.messages).toEqual(compacted);
-    });
+    expect(events.filter((e) => e.type === "assistant")).toEqual([{ type: "assistant", text: "" }]);
   });
 
   test("automatically compacts at 75% of the configured context limit", async () => {
-    await withLog(async (log, root) => {
-      const full = [
-        { role: "user", content: "old" },
-        { role: "assistant", content: "large" },
-      ];
-      const compacted = [{ role: "user", content: "summary" }];
-      const events: ChatEvent[] = [];
-      const agent: Agent = {
-        composed: {} as Agent["composed"],
-        generate: async () =>
-          result("done", {
-            messages: full,
-            steps: [
-              {
-                toolCalls: [],
-                toolResults: [],
-                usage: { inputTokens: 75, outputTokens: 1, totalTokens: 76 },
-              },
-            ],
-          }),
-        compactContinuation: (messages) => {
-          expect(messages).toBe(full);
-          return compacted;
-        },
-      };
-      const session = createChatSession({
-        agentFor: async () => agent,
-        log,
-        contextSoftLimit: 100,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      await session.send("go");
-
-      expect(session.snapshot().messages).toBe(compacted);
-      expect(events).toContainEqual({
-        type: "notice",
-        text: "Context compacted after reaching 75% of its soft limit.",
-      });
-      const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
-      expect(loaded?.state?.messages).toEqual(compacted);
+    const full = [
+      { role: "user", content: "old" },
+      { role: "assistant", content: "large" },
+    ];
+    const compacted = [{ role: "user", content: "summary" }];
+    const events: ChatEvent[] = [];
+    const continuations: Array<unknown[] | undefined> = [];
+    const agent: Agent = {
+      composed: {} as Agent["composed"],
+      generate: async (_prompt, opts) => {
+        continuations.push(opts?.messages);
+        return result("done", {
+          messages: full,
+          steps: [
+            {
+              toolCalls: [],
+              toolResults: [],
+              usage: { inputTokens: 75, outputTokens: 1, totalTokens: 76 },
+            },
+          ],
+        });
+      },
+      compactContinuation: (messages) => {
+        expect(messages).toBe(full);
+        return compacted;
+      },
+    };
+    const session = createChatSession({
+      agent: Promise.resolve(agent),
+      contextSoftLimit: 100,
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    await session.send("go");
+
+    expect(events).toContainEqual({
+      type: "notice",
+      text: "Context compacted after reaching 75% of its soft limit.",
+    });
+    // The compacted continuation is what the next turn carries forward.
+    await session.send("again");
+    expect(continuations[1]).toBe(compacted);
   });
 
-  test("manually compacts an idle context and persists it", async () => {
-    await withLog(async (log, root) => {
-      const compacted = [{ role: "user", content: "summary" }];
-      const agent: Agent = {
-        composed: {} as Agent["composed"],
-        generate: async () => result("unused"),
-        compactContinuation: () => compacted,
-      };
-      const session = createChatSession(
-        { agentFor: async () => agent, log },
-        { messages: [{ role: "user", content: "old" }] },
-      );
-
-      expect(await session.compactContext()).toBe(true);
-      expect(session.snapshot().messages).toBe(compacted);
-      const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
-      expect(loaded?.state?.messages).toEqual(compacted);
+  test("stays uncompacted below the soft limit's 75% mark", async () => {
+    const events: ChatEvent[] = [];
+    let compactions = 0;
+    const agent: Agent = {
+      composed: {} as Agent["composed"],
+      generate: async () =>
+        result("done", {
+          steps: [
+            {
+              toolCalls: [],
+              toolResults: [],
+              usage: { inputTokens: 74, outputTokens: 1, totalTokens: 75 },
+            },
+          ],
+        }),
+      compactContinuation: (messages) => {
+        compactions += 1;
+        return messages;
+      },
+    };
+    const session = createChatSession({
+      agent: Promise.resolve(agent),
+      contextSoftLimit: 100,
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    await session.send("go");
+
+    expect(compactions).toBe(0);
+    expect(events.some((event) => event.type === "notice")).toBe(false);
   });
 
-  test("turn-usage counts only the foreground agent's own steps — subagent usage stays out", async () => {
-    await withLog(async (log) => {
-      const events: ChatEvent[] = [];
-      // The session's turn-usage stream is fed exclusively by the foreground
-      // agent's onStep callback; subagents report through their own wiring
-      // (task-usage progress events), so a context soft limit keyed on
-      // turn-usage measures only the conversation-growing context.
-      const agent = makeAgent(async (_prompt, opts) => {
+  test("turn-usage counts only the foreground agent's own steps", async () => {
+    const events: ChatEvent[] = [];
+    // The session's turn-usage stream is fed exclusively by the foreground
+    // agent's onStep callback, so a context soft limit keyed on turn-usage
+    // measures only the conversation-growing context.
+    const session = createChatSession({
+      agent: agentOf(async (_prompt, opts) => {
         opts?.onStep?.({
           toolCalls: [],
           toolResults: [],
           usage: { inputTokens: 210_000, outputTokens: 40, totalTokens: 210_040 },
         });
         return result("done");
-      });
-      const session = createChatSession({
-        agentFor: async () => agent,
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
 
-      await session.send("go");
+    await session.send("go");
 
-      const usage = events.filter((event) => event.type === "turn-usage");
-      expect(usage).toEqual([
-        {
-          type: "turn-usage",
-          usage: { inputTokens: 210_000, outputTokens: 40, totalTokens: 210_040 },
-        },
-      ]);
+    expect(events.filter((event) => event.type === "turn-usage")).toEqual([
+      {
+        type: "turn-usage",
+        usage: { inputTokens: 210_000, outputTokens: 40, totalTokens: 210_040 },
+      },
+    ]);
+  });
+
+  test("uses a transcript label without changing the model prompt", async () => {
+    const prompts: string[] = [];
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (prompt) => {
+        prompts.push(prompt);
+        return result("built");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    await session.send("internal implementation prompt", { transcriptText: "expand @plan.md" });
+
+    expect(prompts).toEqual(["internal implementation prompt"]);
+    expect(events.find((event) => event.type === "turn-started")).toEqual({
+      type: "turn-started",
+      text: "internal implementation prompt",
+      transcriptText: "expand @plan.md",
     });
   });
 
-  test("uses a transcript label without changing the model prompt or durable user text", async () => {
-    await withLog(async (log, root) => {
-      const prompts: string[] = [];
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt) => {
-            prompts.push(prompt);
-            return result("built");
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      await session.send("internal implementation prompt", { transcriptText: "Command: build" });
-
-      expect(prompts).toEqual(["internal implementation prompt"]);
-      expect(events.find((event) => event.type === "turn-started")).toEqual({
-        type: "turn-started",
-        mode: "plan",
-        text: "internal implementation prompt",
-        transcriptText: "Command: build",
-      });
-      const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
-      expect(loaded?.turns[0]).toMatchObject({
-        user: "internal implementation prompt",
-        transcriptText: "Command: build",
-      });
+  test("forwards internal blank lines to the agent unchanged", async () => {
+    const prompts: string[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (prompt) => {
+        prompts.push(prompt);
+        return result("ok");
+      }),
     });
+    const text = "first\n\n\n\nsecond";
+
+    await session.send(text);
+
+    expect(prompts).toEqual([text]);
   });
 
-  test("passes image attachments to the agent without exposing them in events", async () => {
-    await withLog(async (log) => {
-      const images: Array<GenerateOptions["images"]> = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (_prompt, opts) => {
-            images.push(opts?.images);
-            return result("seen");
-          }),
-        log,
-      });
-      const screenshot = { mediaType: "image/png" as const, data: "c2NyZWVuc2hvdA==" };
-
-      await session.send("inspect [pasted image #1]", { images: [screenshot] });
-
-      expect(images).toEqual([[screenshot]]);
+  test("queues messages sent during a running turn and runs them in order", async () => {
+    let release: (() => void) | undefined;
+    const prompts: string[] = [];
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (prompt) => {
+        prompts.push(prompt);
+        if (prompts.length === 1) await new Promise<void>((r) => (release = r));
+        return result(`${prompt} done`);
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
-  });
 
-  test("queues messages during a running turn and applies Tab at the next turn", async () => {
-    await withLog(async (log) => {
-      let release: (() => void) | undefined;
-      const modes: string[] = [];
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async (mode) => {
-          return makeAgent(async () => {
-            modes.push(mode);
-            if (mode === "plan") await new Promise<void>((r) => (release = r));
-            return result(`${mode} done`);
-          });
-        },
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
+    const first = session.send("slow question");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(session.busy).toBe(true);
 
-      const first = session.send("slow question");
-      await new Promise((r) => setTimeout(r, 5));
-      expect(session.busy).toBe(true);
-
-      session.setMode("build"); // mid-turn: pending
-      expect(session.mode).toBe("plan"); // running turn keeps its mode
-      expect(session.pendingMode).toBe("build");
-
-      const second = session.send("queued task", { transcriptText: "Command: build" });
-      await new Promise((r) => setTimeout(r, 5));
-      expect(events.find((event) => event.type === "turn-queued")).toEqual({
-        type: "turn-queued",
-        text: "queued task",
-        transcriptText: "Command: build",
-      });
-
-      release?.();
-      await Promise.all([first, second]);
-      expect(modes).toEqual(["plan", "build"]); // queued turn ran in the new mode
-      expect(
-        events
-          .filter(
-            (event) =>
-              event.type === "turn-started" ||
-              event.type === "turn-finished" ||
-              event.type === "submission-finished",
-          )
-          .map((event) => event.type),
-      ).toEqual([
-        "turn-started",
-        "turn-finished",
-        "submission-finished",
-        "turn-started",
-        "turn-finished",
-        "submission-finished",
-      ]);
+    const second = session.send("queued task", { transcriptText: "expand @task.md" });
+    const third = session.send("later task");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(events.find((event) => event.type === "turn-queued")).toEqual({
+      type: "turn-queued",
+      text: "queued task",
+      transcriptText: "expand @task.md",
     });
+
+    release?.();
+    await Promise.all([first, second, third]);
+
+    expect(prompts).toEqual(["slow question", "queued task", "later task"]); // FIFO drain
+    expect(
+      events
+        .filter(
+          (event) =>
+            event.type === "turn-started" ||
+            event.type === "turn-finished" ||
+            event.type === "submission-finished",
+        )
+        .map((event) => event.type),
+    ).toEqual([
+      "turn-started",
+      "turn-finished",
+      "submission-finished",
+      "turn-started",
+      "turn-finished",
+      "submission-finished",
+      "turn-started",
+      "turn-finished",
+      "submission-finished",
+    ]);
   });
 
   test("dequeue removes the newest queued message, resolves its send, and emits the event", async () => {
-    await withLog(async (log) => {
-      let release: (() => void) | undefined;
-      const prompts: string[] = [];
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt) => {
-            prompts.push(prompt);
-            if (prompts.length === 1) await new Promise<void>((r) => (release = r));
-            return result("ok");
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      expect(session.dequeue()).toBeNull(); // idle: nothing queued
-
-      const first = session.send("slow question");
-      await new Promise((r) => setTimeout(r, 5));
-      const second = session.send("queued a");
-      const third = session.send("expanded queued b", { restoreText: "@queued-b.md" });
-
-      expect(session.dequeue()).toBe("expanded queued b"); // LIFO: newest intent first
-      await third; // its send resolves without ever running
-      expect(session.dequeue()).toBe("queued a");
-      expect(session.dequeue()).toBeNull(); // queue drained; the turn keeps running
-      await second;
-
-      release?.();
-      await first;
-      expect(prompts).toEqual(["slow question"]); // dequeued messages never reach the model
-      expect(events.filter((event) => event.type === "turn-dequeued")).toEqual([
-        { type: "turn-dequeued", text: "expanded queued b", restoreText: "@queued-b.md" },
-        { type: "turn-dequeued", text: "queued a" },
-      ]);
+    let release: (() => void) | undefined;
+    const prompts: string[] = [];
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (prompt) => {
+        prompts.push(prompt);
+        if (prompts.length === 1) await new Promise<void>((r) => (release = r));
+        return result("ok");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    expect(session.dequeue()).toBeNull(); // idle: nothing queued
+
+    const first = session.send("slow question");
+    await new Promise((r) => setTimeout(r, 5));
+    const second = session.send("queued a");
+    const third = session.send("expanded queued b", { restoreText: "@queued-b.md" });
+
+    expect(session.dequeue()).toBe("expanded queued b"); // LIFO: newest intent first
+    await third; // its send resolves without ever running
+    expect(session.dequeue()).toBe("queued a");
+    expect(session.dequeue()).toBeNull(); // queue drained; the turn keeps running
+    await second;
+
+    release?.();
+    await first;
+    expect(prompts).toEqual(["slow question"]); // dequeued messages never reach the model
+    expect(events.filter((event) => event.type === "turn-dequeued")).toEqual([
+      { type: "turn-dequeued", text: "expanded queued b", restoreText: "@queued-b.md" },
+      { type: "turn-dequeued", text: "queued a" },
+    ]);
   });
 
   test("abort ends the turn as aborted and queues an interruption notice", async () => {
-    await withLog(async (log) => {
-      const prompts: string[] = [];
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt, opts) => {
-            prompts.push(prompt);
-            if (prompts.length === 1) {
-              await new Promise((_, reject) => {
-                opts?.abortSignal?.addEventListener("abort", () =>
-                  reject(new DOMException("Aborted", "AbortError")),
-                );
-              });
-            }
-            return result("ok");
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      const turn = session.send("long running");
-      await new Promise((r) => setTimeout(r, 5));
-      expect(session.abort()).toBe(true);
-      expect(session.abort()).toBe(true); // repeated interrupts do not emit duplicate requests
-      await turn;
-      expect(
-        events
-          .filter(
-            (event) =>
-              event.type === "turn-abort-requested" ||
-              event.type === "turn-aborted" ||
-              event.type === "turn-finished" ||
-              event.type === "submission-finished",
-          )
-          .map((event) => event.type),
-      ).toEqual(["turn-abort-requested", "turn-aborted", "turn-finished", "submission-finished"]);
-
-      await session.send("next");
-      expect(prompts[1]).toContain("was interrupted");
-      expect(prompts[1]).toContain("next");
+    const prompts: string[] = [];
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (prompt, opts) => {
+        prompts.push(prompt);
+        if (prompts.length === 1) {
+          await new Promise((_resolve, reject) => {
+            opts?.abortSignal?.addEventListener("abort", () =>
+              reject(new DOMException("Aborted", "AbortError")),
+            );
+          });
+        }
+        return result("ok");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    const turn = session.send("long running");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(session.abort()).toBe(true);
+    expect(session.abort()).toBe(true); // repeated interrupts do not emit duplicate requests
+    await turn;
+    expect(
+      events
+        .filter(
+          (event) =>
+            event.type === "turn-abort-requested" ||
+            event.type === "turn-aborted" ||
+            event.type === "turn-finished" ||
+            event.type === "submission-finished",
+        )
+        .map((event) => event.type),
+    ).toEqual(["turn-abort-requested", "turn-aborted", "turn-finished", "submission-finished"]);
+
+    await session.send("next");
+    expect(prompts[1]).toContain("was interrupted");
+    expect(prompts[1]).toContain("next");
   });
 
-  test("forwards internal blank lines to the agent and durable log unchanged", async () => {
-    await withLog(async (log, root) => {
-      const prompts: string[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt) => {
-            prompts.push(prompt);
-            return result("ok");
-          }),
-        log,
-      });
-      const text = "first\n\n\n\nsecond";
-
-      await session.send(text);
-
-      expect(prompts).toEqual([text]);
-      const loaded = await loadChatLog({ root, projectRoot: "/repo/x", id: log.id });
-      expect(loaded?.turns[0]?.user).toBe(text);
-    });
-  });
-
-  test("resumes open work once after a background completion and includes its notice", async () => {
-    await withLog(async (log) => {
-      let todos: TodoList = [{ id: "deploy", text: "Verify deployment", status: "pending" }];
-      const prompts: string[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt) => {
-            prompts.push(prompt);
-            todos = [{ ...todos[0]!, status: "completed" }];
-            return result("verified");
-          }),
-        log,
-        todos: {
-          list: () => todos,
-          clear: async () => {
-            todos = [];
-          },
-        },
-      });
-
-      session.addTurnNotice("[j1] done — deployment finished");
-      session.resumePendingWork();
-      session.resumePendingWork();
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(prompts).toHaveLength(1);
-      expect(prompts[0]).toContain("[j1] done — deployment finished");
-      expect(prompts[0]).toContain("Continue the open session todos");
-    });
-  });
-
-  test("does not resume after a job completion when all todos are complete", async () => {
-    await withLog(async (log) => {
-      const prompts: string[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt) => {
-            prompts.push(prompt);
-            return result("unexpected");
-          }),
-        log,
-        todos: {
-          list: () => [{ id: "done", text: "Already done", status: "completed" as const }],
-          clear: async () => {},
-        },
-      });
-
-      session.resumePendingWork();
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(prompts).toEqual([]);
-    });
+  test("abort on an idle session reports nothing to interrupt", async () => {
+    const session = createChatSession({ agent: agentOf(async () => result("ok")) });
+    expect(session.abort()).toBe(false);
   });
 
   test("a step-limited turn queues a notice so the next turn knows it stopped early", async () => {
-    await withLog(async (log) => {
-      const prompts: string[] = [];
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async (prompt) => {
-            prompts.push(prompt);
-            return prompts.length === 1 ? result("", { stepLimitReached: true }) : result("done");
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      await session.send("big task");
-      expect(
-        events.find((event) => event.type === "assistant" && event.stepLimitReached),
-      ).toBeDefined();
-
-      await session.send("continue");
-      expect(prompts[1]).toContain("stopped at the step limit");
-      expect(prompts[1]).toContain("continue");
+    const prompts: string[] = [];
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async (prompt) => {
+        prompts.push(prompt);
+        return prompts.length === 1 ? result("", { stepLimitReached: true }) : result("done");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
+
+    await session.send("big task");
+    expect(
+      events.find((event) => event.type === "assistant" && event.stepLimitReached),
+    ).toBeDefined();
+
+    await session.send("continue");
+    expect(prompts[1]).toContain("stopped at the step limit");
+    expect(prompts[1]).toContain("continue");
   });
 
   test("turn errors surface as events and never kill the session", async () => {
-    await withLog(async (log) => {
-      let failures = 0;
-      const events: ChatEvent[] = [];
-      const session = createChatSession({
-        agentFor: async () =>
-          makeAgent(async () => {
-            failures += 1;
-            if (failures === 1) throw new Error("model exploded");
-            return result("recovered");
-          }),
-        log,
-        onEvent: (event) => {
-          events.push(event);
-        },
-      });
-
-      await session.send("boom");
-      expect(events.some((event) => event.type === "turn-error")).toBe(true);
-      expect(events.at(-1)?.type).toBe("submission-finished");
-      expect(session.busy).toBe(false);
-
-      await session.send("again");
-      expect(events.filter((event) => event.type === "assistant")).toHaveLength(1);
+    let failures = 0;
+    const events: ChatEvent[] = [];
+    const session = createChatSession({
+      agent: agentOf(async () => {
+        failures += 1;
+        if (failures === 1) throw new Error("model exploded");
+        return result("recovered");
+      }),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
-  });
 
-  test("build turns snapshot for undo; plan turns do not", async () => {
-    await withLog(async (log) => {
-      const snapshots: string[] = [];
-      const session = createChatSession({
-        agentFor: async () => makeAgent(async () => result("done")),
-        log,
-        undo: {
-          snapshot: async (label: string) => {
-            snapshots.push(label);
-            return null;
-          },
-          undo: async () => null,
-          redo: async () => null,
-          dispose: async () => {},
-        },
-      });
+    await session.send("boom");
+    expect(events).toContainEqual({ type: "turn-error", error: "model exploded" });
+    expect(events.at(-1)?.type).toBe("submission-finished");
+    expect(session.busy).toBe(false);
 
-      await session.send("plan things");
-      expect(snapshots).toHaveLength(0);
-      session.setMode("build");
-      await session.send("build things");
-      expect(snapshots).toEqual(["pre-turn"]);
-    });
+    await session.send("again");
+    expect(events.filter((event) => event.type === "assistant")).toHaveLength(1);
   });
 });
 
 test("a failed turn's request survives into the next turn's notice", async () => {
-  await withLog(async (log) => {
-    const prompts: string[] = [];
-    let failNext = true;
-    const session = createChatSession({
-      agentFor: async () =>
-        makeAgent(async (prompt) => {
-          prompts.push(prompt);
-          if (failNext) {
-            failNext = false;
-            throw new Error("The operation timed out.");
-          }
-          return result("ok");
-        }),
-      log,
-    });
-
-    await session.send("add Orwell's rules to the base prompt");
-    await session.send("try again");
-
-    expect(prompts).toHaveLength(2);
-    expect(prompts[1]).toContain("The previous turn failed (The operation timed out.)");
-    expect(prompts[1]).toContain('Its request was: "add Orwell\'s rules to the base prompt"');
-    expect(prompts[1]).toContain("try again");
+  const prompts: string[] = [];
+  let failNext = true;
+  const session = createChatSession({
+    agent: agentOf(async (prompt) => {
+      prompts.push(prompt);
+      if (failNext) {
+        failNext = false;
+        throw new Error("The operation timed out.");
+      }
+      return result("ok");
+    }),
   });
+
+  await session.send("add Orwell's rules to the base prompt");
+  await session.send("try again");
+
+  expect(prompts).toHaveLength(2);
+  expect(prompts[1]).toContain("The previous turn failed (The operation timed out.)");
+  expect(prompts[1]).toContain('Its request was: "add Orwell\'s rules to the base prompt"');
+  expect(prompts[1]).toContain("try again");
 });

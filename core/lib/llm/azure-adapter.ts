@@ -1,6 +1,9 @@
 import { createAzure } from "@ai-sdk/azure";
+import type { LanguageModel } from "ai";
 import z from "zod";
-import type { ModelFactory } from "./providers";
+
+/** Binds a provider once; yields models by id. */
+export type ModelFactory = (modelId: string) => LanguageModel;
 
 export const azureModelConfigSchema = z.object({
   /** Falls back to AZURE_FOUNDRY_API_KEY, then AZURE_API_KEY (SDK default). */

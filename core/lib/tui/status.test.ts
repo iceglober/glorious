@@ -1,47 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import { composeStatusSection, formatClock, formatSpinnerClock, formatVuMeter } from "./status";
+import { composeStatusSection, formatClock, formatVuMeter } from "./status";
 import { displayWidth } from "./terminal-editor";
 
 const base = {
-  sessionId: "204ed50c",
-  version: "0.1.0-next.32",
   root: "~/repos/glorious",
   model: "azure/gpt-5.6-sol",
-  mode: "plan" as const,
-  frame: 0,
-  usage: { in: 12_400, out: 3_100, ctx: 8_700 },
-  sessionStartedAt: 0,
-  jobs: [],
-  now: 74_000,
+  usage: { ctx: 8_700 },
 };
 
 describe("composeStatusSection", () => {
-  test("splits the footer into an info line and a controls line", () => {
+  test("is one info line: location, model, context", () => {
     expect(composeStatusSection(base, 120)).toEqual([
       "~/repos/glorious · azure/gpt-5.6-sol · ctx 8.7k",
-      "Tab mode · / commands",
     ]);
   });
 
   test("shortens location before dropping it", () => {
     const lines = composeStatusSection(
-      {
-        ...base,
-        root: "~/.glrs/worktrees/glorious/wt-260718-231658-7yr",
-      },
+      { ...base, root: "~/.glrs/worktrees/glorious/wt-260718-231658-7yr" },
       60,
     );
+    expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("~/.glrs/w");
     expect(lines[0]).toContain("…");
     expect(lines[0]).toContain("azure/gpt-5.6-sol · ctx 8.7k");
-    expect(lines[1]).toBe("Tab mode · / commands");
-    expect(lines.every((line) => displayWidth(line) <= 60)).toBe(true);
+    expect(displayWidth(lines[0] ?? "")).toBeLessThanOrEqual(60);
   });
 
   test("degrades the info line to model, then bare context", () => {
-    // Full width no longer needs to reserve room for the controls line.
     expect(composeStatusSection(base, 38)[0]).toBe("azure/gpt-5.6-sol · ctx 8.7k");
-    expect(composeStatusSection(base, 38)[1]).toBe("Tab mode · / commands");
     expect(composeStatusSection(base, 20)[0]).toBe("ctx 8.7k");
   });
 
@@ -49,66 +36,30 @@ describe("composeStatusSection", () => {
     expect(composeStatusSection({ ...base, contextSoftLimit: 10_000 }, 120)[0]).toContain(
       "ctx 8.7k/10.0k",
     );
+    // Over the limit is still plain text — no glyph, no tone.
     expect(composeStatusSection({ ...base, contextSoftLimit: 8_000 }, 120)[0]).toContain(
       "ctx 8.7k/8.0k",
     );
   });
 
-  test("fits Unicode roots and job prompts without screen clipping", () => {
-    const width = 35;
-    const lines = composeStatusSection(
-      {
-        ...base,
-        root: "~/界/very/deep/project/🙂",
-        jobs: [
-          {
-            id: "job-with-a-long-id",
-            mode: "build",
-            prompt: "Investigate a 🙂 Unicode prompt that exceeds the available terminal width",
-            startedAt: 50_000,
-          },
-        ],
-      },
-      width,
+  test("scales the context count by magnitude", () => {
+    expect(composeStatusSection({ ...base, usage: { ctx: 456 } }, 120)[0]).toContain("ctx 456");
+    expect(composeStatusSection({ ...base, usage: { ctx: 1_952_300 } }, 120)[0]).toContain(
+      "ctx 2.0m",
     );
-
-    expect(lines.every((line) => displayWidth(line) <= width)).toBe(true);
-    expect(lines.at(-1)).toContain("job-with");
   });
 
-  test("preserves standard-width job rows after the info and controls lines", () => {
-    const lines = composeStatusSection(
-      {
-        ...base,
-        jobs: [
-          { id: "j1", mode: "build", prompt: "Run the test suite", startedAt: 50_000 },
-          { id: "j2", mode: "plan", prompt: "Investigate the failure", startedAt: 60_000 },
-        ],
-      },
-      90,
-    );
-
-    const c = formatSpinnerClock(0);
-    expect(lines.slice(2)).toEqual([
-      `  ${c} [j1] build: Run the test suite  24s`,
-      `  ${c} [j2] plan: Investigate the failure  14s`,
-    ]);
-  });
-});
-
-describe("formatSpinnerClock", () => {
-  test("cycles a quadrant dial clockwise, single-width plain glyphs", () => {
-    expect(formatSpinnerClock(0)).toBe("◴");
-    expect(formatSpinnerClock(1)).toBe("◷");
-    expect(formatSpinnerClock(2)).toBe("◶");
-    expect(formatSpinnerClock(3)).toBe("◵");
-    // single display cell, not a 2-wide emoji
-    expect([...formatSpinnerClock(0)]).toHaveLength(1);
-  });
-
-  test("wraps every 4 frames and tolerates negatives", () => {
-    expect(formatSpinnerClock(4)).toBe(formatSpinnerClock(0));
-    expect(formatSpinnerClock(-4)).toBe(formatSpinnerClock(0));
+  test("fits Unicode roots at every width without screen clipping", () => {
+    for (const width of [0, 1, 8, 20, 35, 50, 80]) {
+      const lines = composeStatusSection({ ...base, root: "~/界/very/deep/project/🙂" }, width);
+      expect(lines).toHaveLength(1);
+      expect(displayWidth(lines[0] ?? "")).toBeLessThanOrEqual(width);
+    }
+    // A width that leaves room for a shortened root keeps its head and its leaf.
+    const line = composeStatusSection({ ...base, root: "~/界/very/deep/project/🙂" }, 50)[0] ?? "";
+    expect(line).toContain("~/界");
+    expect(line).toContain("🙂");
+    expect(line).toContain("…");
   });
 });
 

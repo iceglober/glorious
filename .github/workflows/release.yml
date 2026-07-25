@@ -29,7 +29,6 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test core docs
-      - run: bun core/eval/run.ts --selfcheck
       - run: bun publish --dry-run --access public --tag next
       - uses: changesets/action@v1
         with:

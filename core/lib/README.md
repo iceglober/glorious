@@ -1,64 +1,34 @@
 # core/lib — architecture
 
 Package-by-domain, layer-by-file. Each folder is one domain; the layer of a
-file is encoded by its name, not by a `ports/` / `adapters/` tree, so adding a
-provider touches exactly one folder.
+file is encoded by its name, not by a `ports/` / `adapters/` tree.
 
 ## The three kinds of module
 
 1. **Ports** — boundaries to external systems. `index.ts` in the domain folder:
-   the interface, its zod config schema, and a registry keyed by config value.
-   The main two are `sandbox/` (command execution + file IO in an isolated
-   environment) and `llm/` (the model *and* its generation loop — one boundary,
-   the `AgentRuntime` interface; keyed by `llm.runtime`). `tools/bash/` is a
-   thin port too: it quarantines the `bash-tool` vendor package behind a
-   vendor-free `ToolSet`.
+   the interface and its zod config schema. The main two are `sandbox/`
+   (command execution + file IO) and `llm/` (the model *and* its generation
+   loop — one boundary, the `AgentRuntime` interface). `tools/bash/` is a thin
+   port too: it quarantines the `bash-tool` vendor package behind a vendor-free
+   `ToolSet`.
 2. **Adapters** — `*-adapter.ts` next to their port, one per external SDK:
-   `sandbox/microsandbox-adapter.ts`, `llm/ai-sdk-adapter.ts` (the AI SDK —
-   `ToolLoopAgent` + `tool()` behind `AgentRuntime`), `llm/azure-adapter.ts`
-   (Azure model auth, an adapter within the ai-sdk family), and
+   `llm/ai-sdk-adapter.ts` (the AI SDK — `ToolLoopAgent` + `tool()` behind
+   `AgentRuntime`), `llm/azure-adapter.ts` (Azure model auth), and
    `tools/bash/bash-tool-adapter.ts` (the `bash-tool` package → `ToolSet`).
-   Only adapters import vendor SDKs. Registered in their port's registry
-   (`runtimes`, `llmProviders`, sandbox provider factories).
+   Only adapters import vendor SDKs.
 3. **Domain services** — everything else. Pure logic written against ports,
-   no vendor imports: `scm/` (git expressed as sandbox commands), `session/`
-   (worktree lifecycle over scm), `tools/edit` + `tools/search` (agent tools
-   defined with the port's `defineTool`, no SDK), `prompt/` (pure prompt
-   composition), `agent/` (assembly of llm-runtime + prompt + tools; mode ×
-   role selects toolsets, `subagents.ts` + `scheduler.ts` run the task DAG,
-   `permissions.ts` gates mutating tools), `chat/` (the interaction core:
-   session turns, jobs, command routing — pure, no TTY),
-   `eval/` (eval contracts + graders; its Env/AgentAdapter implementations
-   live in `core/eval/adapters/`, the app layer).
-
-`scm` deliberately has no port of its own: git runs *inside* the sandbox
-boundary, so retargeting execution (e.g. host-local instead of a microVM)
-means writing a new **sandbox** adapter — scm, session, and all tools follow
-unchanged.
+   no vendor imports: `tools/edit` + `tools/read` + `tools/search` (agent
+   tools defined with the port's `defineTool`, no SDK), `prompt/` (pure
+   prompt composition), `agent/` (assembly of llm-runtime + prompt + tools),
+   `chat/` (the interaction core: session turns, queueing — pure, no TTY),
+   `tui/` (the OpenTUI screen plus pure layout/rendering helpers).
 
 ## Rules
 
 - Ports and domain services depend on zod and other lib modules only — never
-  on vendor SDKs. Vendor imports (`ai`, `@ai-sdk/*`, `bash-tool`) live **only**
-  in `*-adapter.ts` files. No exceptions: the agent loop, the tools, and the
-  eval judge all speak the `llm` port's own vendor-free shapes (`AgentRuntime`,
-  `ToolDef`/`defineTool`, `RunResult`), and the ai-sdk adapter maps them 1:1.
-- Swapping the whole generation stack (a different agent SDK) is a new
-  `llm/<name>-adapter.ts` registered under `runtimes`, selected by the
-  `llm.runtime` config axis — no domain code changes.
-- Every domain exports its own config schema; `config/index.ts` only composes
-  them (`domainSchema.prefault({})`) and defines no shapes of its own.
-- Registries are keyed by config values; `Object.keys(registry)` feeds
-  `z.enum(...)`, so adding an entry updates the schema automatically.
-- Composition roots (`core/agent-loop.ts`, `core/eval/run.ts`) are the only
-  places that pick adapters and wire ports together.
-- Editor completion follows the same boundary: neutral `fuzzy.ts` owns shared
-  ranking; `tui/editor-completion.ts` owns pure token ranges and the callback
-  contract; `workspace/project-files.ts` owns the bounded file catalog;
-  `workspace/git-project-file-source.ts` adapts
-  that catalog's narrow port through the existing execution boundary. The TUI
-  receives completion results only and never imports Git, the filesystem, or
-  host execution.
-- Background-work guidance is a shipped skill in `skills/embedded/`,
-  discovered through the normal skill catalog. The existing chat JobRunner
-  remains the sole job executor and source of job IDs.
+  on vendor SDKs. Vendor imports (`ai`, `@ai-sdk/azure`, `bash-tool`,
+  `@opentui/core`) live **only** in `*-adapter.ts` files and the TUI screen.
+- Every domain exports its own config schema; `agent/index.ts` composes the
+  agent-facing ones.
+- The composition root (`core/agent-loop.ts`) is the only place that picks
+  adapters and wires ports together.

@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { CompletionReport } from "../report";
+import type { ChatEvent } from "../chat/events";
 import type { UiLine, UiSpan, UiTone } from "./styles";
 import {
-  renderCompletionReportBlock,
-  renderDagLine,
   renderToolRow,
   renderTranscriptItem,
   type ToolOutcome,
   type TranscriptItem,
+  toTranscriptItem,
 } from "./transcript-item";
 
 const WIDTH = 80;
@@ -23,8 +22,7 @@ describe("renderTranscriptItem spacing + block per kind", () => {
     { item: { kind: "tool", row: { tool: "read", detail: "x", outcome: "ok" } }, spacing: "none" },
     { item: { kind: "error", text: "error: boom" }, spacing: "none" },
     { item: { kind: "notice", text: "hello" }, spacing: "none" },
-    { item: { kind: "command", text: "Command: help" }, spacing: "none" },
-    { item: { kind: "job", text: "[j1] started", status: "started" }, spacing: "none" },
+    { item: { kind: "dequeued", text: "(dequeued) later" }, spacing: "none" },
   ];
 
   for (const { item, spacing } of cases) {
@@ -35,28 +33,40 @@ describe("renderTranscriptItem spacing + block per kind", () => {
     });
   }
 
-  test("assistant with a completion report renders toned status + headers", () => {
-    const report: CompletionReport = {
-      status: "done",
-      summary: "shipped",
-      changes: ["a"],
-      validation: [],
-      nextSteps: [],
-      openQuestions: [],
-    };
-    const { block, spacing } = renderTranscriptItem({ kind: "assistant", body: "", report }, WIDTH);
+  test("an assistant response is anchored with a leading accent marker", () => {
+    const { block, spacing } = renderTranscriptItem({ kind: "assistant", body: "shipped" }, WIDTH);
     expect(spacing).toBe("turn");
-    // The response is anchored with a leading marker, then the toned status.
-    expect(block[0]).toEqual([
-      { text: "● ", tone: "accent" },
-      { text: "Done — shipped", tone: "success" },
-    ]);
+    expect(block[0]?.[0]).toEqual({ text: "● ", tone: "accent" });
+  });
+
+  test("a step-limited response appends the resume notice under the body", () => {
+    const { block } = renderTranscriptItem(
+      { kind: "assistant", body: "partial work", stepLimitReached: true },
+      WIDTH,
+    );
+    const text = block.flatMap((line) => spans(line).map((span) => span.text)).join("");
+    expect(text).toContain("partial work");
+    expect(text).toContain("step limit reached");
   });
 
   test("empty response is a single muted notice line", () => {
     const { block } = renderTranscriptItem({ kind: "empty" }, WIDTH);
     expect(block).toEqual([
       [{ text: "(no response — the model returned nothing; try again)", tone: "muted" }],
+    ]);
+  });
+
+  test("an error line is toned danger; its hint trails muted", () => {
+    expect(renderTranscriptItem({ kind: "error", text: "error: boom" }, WIDTH).block).toEqual([
+      [{ text: "error: boom", tone: "danger" }],
+    ]);
+    const { block } = renderTranscriptItem(
+      { kind: "error", text: "error: filtered", hint: "retry once" },
+      WIDTH,
+    );
+    expect(block).toEqual([
+      [{ text: "error: filtered", tone: "danger" }],
+      [{ text: "retry once", tone: "muted" }],
     ]);
   });
 
@@ -67,15 +77,6 @@ describe("renderTranscriptItem spacing + block per kind", () => {
     expect(renderTranscriptItem({ kind: "notice", text: "a" }, WIDTH).block).toEqual([
       [{ text: "a" }],
     ]);
-  });
-
-  test("a failed job tones its head line danger, leaving the body plain", () => {
-    const { block } = renderTranscriptItem(
-      { kind: "job", text: "[j1] Failed in 1s\nChild setup failed.", status: "failed" },
-      WIDTH,
-    );
-    expect(block[0]).toEqual([{ text: "[j1] Failed in 1s", tone: "danger" }]);
-    expect(block[1]).toEqual([{ text: "Child setup failed." }]);
   });
 });
 
@@ -119,61 +120,86 @@ describe("renderToolRow — only the glyph carries tone", () => {
     expect(spans(line).find((span) => span.text === "▌")?.tone).toBe("accent");
   });
 
-  test("owned DAG rows freeze below the tool line, toned by glyph", () => {
-    const block = renderToolRow(
-      { tool: "run_subagents", detail: "3 tasks", outcome: "ok", dag: ["    ✓ Review done"] },
+  test("a row is one line: no detail span when blank, multi-line detail flattened", () => {
+    const bare = renderToolRow(
+      { tool: "read", detail: "  ", outcome: "ok" },
       { live: false },
       WIDTH,
     );
-    expect(block).toHaveLength(2);
-    expect(block[1]).toEqual([{ text: "    ✓ Review done", tone: "success" }]);
-  });
-});
+    expect(bare).toHaveLength(1);
+    expect(spans(bare[0]).map((span) => span.text)).toEqual(["  ", "✓", " ", "read"]);
 
-describe("renderDagLine", () => {
-  test("tones by leading glyph and preserves indentation", () => {
-    expect(renderDagLine("    ✓ ok")).toEqual([{ text: "    ✓ ok", tone: "success" }]);
-    expect(renderDagLine("  ✗ nope")).toEqual([{ text: "  ✗ nope", tone: "danger" }]);
-    expect(renderDagLine("  · idle")).toEqual([{ text: "  · idle", tone: "muted" }]);
-    expect(renderDagLine("  ↳ queued")).toEqual([{ text: "  ↳ queued", tone: "muted" }]);
-    expect(renderDagLine("plain")).toEqual([{ text: "plain" }]);
-  });
-
-  test("upgrades a legacy 'x ' marker to '✗ ' and tones it danger", () => {
-    expect(renderDagLine("    x failed task")).toEqual([
-      { text: "    ✗ failed task", tone: "danger" },
-    ]);
-  });
-});
-
-describe("renderCompletionReportBlock", () => {
-  const report: CompletionReport = {
-    status: "failed",
-    summary: "tests broke",
-    changes: ["edited a.ts"],
-    validation: [{ command: "bun test", outcome: "failed", evidence: "3 failing" }],
-    nextSteps: ["fix a.ts"],
-    openQuestions: ["retry?"],
-  };
-
-  test("tones the status line by status and uses bold+underline headers", () => {
-    const block = renderCompletionReportBlock(report);
-    expect(block[0]).toEqual([{ text: "Failed — tests broke", tone: "danger" }]);
-    const headerLines = block.filter(
-      (line) => line.length === 1 && line[0]?.bold && line[0]?.underline,
+    const wrapped = renderToolRow(
+      { tool: "bash", detail: "git status\n--short", outcome: "ok" },
+      { live: false },
+      WIDTH,
     );
-    const headers = headerLines.map((line) => line[0]?.text);
-    expect(headers).toEqual(["Changes", "Validation", "Next", "Open questions"]);
-    // Section bodies are plain bullet lines, not raw prose.
-    expect(block).toContainEqual([{ text: "- Failed — bun test: 3 failing" }]);
+    expect(wrapped).toHaveLength(1);
+    const detail = spans(wrapped[0]).find((span) => span.text.includes("git status"));
+    expect(detail?.text).not.toContain("\n");
+    expect(detail?.text).toContain("git status --short");
+  });
+});
+
+describe("toTranscriptItem", () => {
+  const item = (event: ChatEvent): TranscriptItem | null => toTranscriptItem(event);
+
+  test("a started turn carries its transcript override when present", () => {
+    expect(item({ type: "turn-started", text: "hi" })).toEqual({ kind: "user", text: "hi" });
+    expect(item({ type: "turn-started", text: "hi", transcriptText: "> hi" })).toEqual({
+      kind: "user",
+      text: "hi",
+      transcriptText: "> hi",
+    });
   });
 
-  test("maps each status to its tone", () => {
-    const tone = (status: CompletionReport["status"]): unknown =>
-      renderCompletionReportBlock({ ...report, status })[0]?.[0]?.tone;
-    expect(tone("done")).toBe("success");
-    expect(tone("failed")).toBe("danger");
-    expect(tone("blocked")).toBe("warning");
-    expect(tone("in_progress")).toBe("accent");
+  test("assistant text is trimmed; a blank response becomes the empty item", () => {
+    expect(item({ type: "assistant", text: "  done.  " })).toEqual({
+      kind: "assistant",
+      body: "done.",
+    });
+    expect(item({ type: "assistant", text: "   " })).toEqual({ kind: "empty" });
+    // A blank but step-limited turn still renders the notice, not "empty".
+    expect(item({ type: "assistant", text: "", stepLimitReached: true })).toEqual({
+      kind: "assistant",
+      body: "",
+      stepLimitReached: true,
+    });
+  });
+
+  test("a content-filter failure gets the retry hint; other errors do not", () => {
+    const filtered = item({
+      type: "turn-error",
+      error: "the response was filtered by the content management policy",
+    });
+    expect(filtered?.kind).toBe("error");
+    expect((filtered as { hint?: string }).hint).toContain("content filter");
+    const plain = item({ type: "turn-error", error: "socket hang up" });
+    expect(plain).toEqual({ kind: "error", text: "error: socket hang up" });
+  });
+
+  test("aborted, notice, and dequeued turns render as one-liners", () => {
+    expect(item({ type: "turn-aborted" })).toEqual({ kind: "notice", text: "(turn interrupted)" });
+    expect(item({ type: "notice", text: "cleared" })).toEqual({ kind: "notice", text: "cleared" });
+    expect(item({ type: "turn-dequeued", text: "run tests\nand more" })).toEqual({
+      kind: "dequeued",
+      text: "(dequeued) run tests",
+    });
+    // The restore text wins over the display text when both are present.
+    expect(item({ type: "turn-dequeued", text: "shown", restoreText: "original" })).toEqual({
+      kind: "dequeued",
+      text: "(dequeued) original",
+    });
+  });
+
+  test("plumbing events render nothing", () => {
+    for (const event of [
+      { type: "turn-queued", text: "later" },
+      { type: "turn-abort-requested" },
+      { type: "turn-finished" },
+      { type: "submission-finished" },
+    ] satisfies ChatEvent[]) {
+      expect(item(event)).toBeNull();
+    }
   });
 });

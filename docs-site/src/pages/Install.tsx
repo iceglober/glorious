@@ -41,7 +41,8 @@ export function Install() {
 
       <pre>
         <code>
-          glorious config set --secret agent.llm.providers.azure.apiKey{"\n"}
+          export AZURE_FOUNDRY_API_KEY=…{"\n"}
+          export AZURE_RESOURCE_NAME=…{"\n"}
           glorious
         </code>
       </pre>
@@ -53,7 +54,9 @@ export function Install() {
       <h2>Update</h2>
 
       <pre>
-        <code>glorious update --channel next</code>
+        <code>
+          <Cmd action="install" pkg="@glrs-dev/glorious@next" />
+        </code>
       </pre>
 
       <h2>Uninstall</h2>

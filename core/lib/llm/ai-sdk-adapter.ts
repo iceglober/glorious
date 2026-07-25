@@ -7,8 +7,8 @@ import {
   ToolLoopAgent,
   tool,
 } from "ai";
-import { type MetricsSink, recordModelUsage } from "../metrics";
 import { truncateUnknownWithSpill } from "../truncation";
+import { createAzureModelProvider } from "./azure-adapter";
 import type {
   AgentRuntime,
   GenerateRequest,
@@ -19,29 +19,12 @@ import type {
   ToolDef,
   ToolSet,
 } from "./index";
-import {
-  llmProviders,
-  type ModelFactory,
-  type ProviderConfigs,
-  type ProviderName,
-  providerNames,
-} from "./providers";
-
-export type { ModelFactory, ProviderConfigs, ProviderName };
-export { providerNames };
 
 /** Maximum retries for retryable model responses such as rate limits and 5xx errors. */
 export const LLM_MAX_RETRIES = 5;
 
-const createModel = (config: LlmConfig): LanguageModel => {
-  // The mapped registry ties each key to its own config type; indexing with a
-  // union key erases that link, so re-assert it here — the shape is enforced
-  // where it matters, on the registry itself.
-  const provider = llmProviders[config.provider] as (
-    c?: ProviderConfigs[ProviderName],
-  ) => ModelFactory;
-  return provider(config.providers?.[config.provider])(config.model);
-};
+const createModel = (config: LlmConfig): LanguageModel =>
+  createAzureModelProvider(config.azure)(config.model);
 
 /** Minimal structural view of an ai StepResult; decouples us from ai generics. */
 interface AiStepLike {
@@ -139,22 +122,6 @@ const mapStep = (step: AiStepLike, req?: GenerateRequest): RunStep => ({
   }),
 });
 
-/**
- * Stop once the latest step's request context reached the token ceiling. The
- * SDK's StopCondition is generic over the toolset; the check only touches
- * step usage, so the structural type is asserted at this vendor boundary.
- */
-const contextTokensAtLeast = (limit: number) =>
-  (({ steps }: { steps: ReadonlyArray<{ usage?: { inputTokens?: number } }> }) => {
-    const inputTokens = steps.at(-1)?.usage?.inputTokens;
-    return inputTokens !== undefined && inputTokens >= limit;
-  }) as unknown as ReturnType<typeof stepCountIs>;
-
-const stopConditions = (req: GenerateRequest): ReturnType<typeof stepCountIs>[] => [
-  ...(req.stopSteps !== undefined ? [stepCountIs(req.stopSteps)] : []),
-  ...(req.stopContextTokens !== undefined ? [contextTokensAtLeast(req.stopContextTokens)] : []),
-];
-
 /** Wrap one ToolDef as an ai `tool()`, forwarding call options verbatim. */
 const toAiTool = (def: ToolDef, req: Pick<GenerateRequest, "maxOutputChars" | "spill">) =>
   tool({
@@ -182,21 +149,6 @@ const mapTools = (tools: ToolSet, req: GenerateRequest): AiToolSet =>
       .map((name) => [name, toAiTool(tools[name], req)]),
   ) as AiToolSet;
 
-const userMessage = (req: GenerateRequest): ModelMessage =>
-  req.images && req.images.length > 0
-    ? {
-        role: "user",
-        content: [
-          { type: "text", text: req.prompt },
-          ...req.images.map((image) => ({
-            type: "file" as const,
-            mediaType: image.mediaType,
-            data: image.data,
-          })),
-        ],
-      }
-    : { role: "user", content: req.prompt };
-
 /**
  * The AI SDK runtime: a ToolLoopAgent per generate() call (instructions and
  * call settings are per-request), driving the model this factory bound once.
@@ -204,124 +156,81 @@ const userMessage = (req: GenerateRequest): ModelMessage =>
  * temperature/topP/providerOptions/stopWhen are constructor-level, while
  * abortSignal/onStepFinish are generate()-level.
  */
-export const createAiSdkRuntime = (config: LlmConfig, metricsSink?: MetricsSink): AgentRuntime => {
+export const createAiSdkRuntime = (config: LlmConfig): AgentRuntime => {
   const model = createModel(config);
 
   return {
     async generate(req: GenerateRequest): Promise<RunResult> {
-      const startedAt = Date.now();
-      const recordUsage = (outcome: "success" | "error", usage?: TokenUsage) => {
-        try {
-          recordModelUsage(
-            metricsSink,
-            { provider: config.provider, model: config.model, outcome },
-            {
-              durationMs: Date.now() - startedAt,
-              inputTokens: usage?.inputTokens,
-              noCacheTokens: usage?.noCacheInputTokens,
-              cacheReadTokens: usage?.cacheReadInputTokens,
-              cacheWriteTokens: usage?.cacheWriteInputTokens,
-              outputTokens: usage?.outputTokens,
-              totalTokens: usage?.totalTokens,
-            },
-          );
-        } catch {
-          // Metrics are observational and must never affect generation.
-        }
-      };
-
-      try {
-        const requiredFirstTool = req.requiredFirstTool;
-        const agent = new ToolLoopAgent({
-          model,
-          instructions: req.instructions,
-          maxRetries: LLM_MAX_RETRIES,
-          ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-          ...(req.topP !== undefined ? { topP: req.topP } : {}),
-          // Our providerOptions is Record<string, Record<string, unknown>>; the
-          // SDK wants JSON-valued options. It is passed through verbatim, so cast
-          // at this vendor boundary rather than narrowing the port's shape.
-          ...(req.providerOptions
-            ? {
-                providerOptions: req.providerOptions as Record<string, Record<string, never>>,
-              }
-            : {}),
-          ...(stopConditions(req).length > 0 ? { stopWhen: stopConditions(req) } : {}),
-          toolOrder: Object.keys(req.tools).sort(),
-          tools: mapTools(req.tools, req),
-          ...(requiredFirstTool
-            ? {
-                prepareStep: ({ stepNumber }: { stepNumber: number }) =>
-                  stepNumber === 0
-                    ? {
-                        activeTools: [requiredFirstTool],
-                        toolChoice: { type: "tool" as const, toolName: requiredFirstTool },
-                      }
-                    : {},
-              }
-            : {}),
-        });
-
-        const onStep = req.onStep;
-        // Continuation: prior turns (opaque vendor messages) plus this turn's
-        // prompt as the next user message; fresh turns send prompt alone.
-        const input = userMessage(req);
-        const inputMessages = req.messages
-          ? [...sanitizeHistory(req.messages, req), input]
-          : undefined;
-        // The continuation is opaque at the port; this vendor boundary is the
-        // one place that re-asserts its true shape (same idiom as providerOptions).
-        const result = await agent.generate({
-          ...(inputMessages
-            ? { messages: inputMessages as ModelMessage[] }
-            : req.images && req.images.length > 0
-              ? { messages: [input] }
-              : { prompt: req.prompt }),
-          ...(req.abortSignal ? { abortSignal: req.abortSignal } : {}),
-          ...(onStep ? { onStepFinish: (step) => onStep(mapStep(step, req)) } : {}),
-        });
-
-        const usage = (result as { totalUsage?: typeof result.usage }).totalUsage ?? result.usage;
-        const inputTokenDetails = usage.inputTokenDetails as
-          | {
-              noCacheTokens?: number;
-              cacheReadTokens?: number;
-              cacheWriteTokens?: number;
+      const agent = new ToolLoopAgent({
+        model,
+        instructions: req.instructions,
+        maxRetries: LLM_MAX_RETRIES,
+        ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+        ...(req.topP !== undefined ? { topP: req.topP } : {}),
+        // Our providerOptions is Record<string, Record<string, unknown>>; the
+        // SDK wants JSON-valued options. It is passed through verbatim, so cast
+        // at this vendor boundary rather than narrowing the port's shape.
+        ...(req.providerOptions
+          ? {
+              providerOptions: req.providerOptions as Record<string, Record<string, never>>,
             }
-          | undefined;
-        const mappedUsage: TokenUsage = {
-          inputTokens: usage.inputTokens ?? 0,
-          outputTokens: usage.outputTokens ?? 0,
-          totalTokens: usage.totalTokens ?? 0,
-          ...(inputTokenDetails?.noCacheTokens !== undefined
-            ? { noCacheInputTokens: inputTokenDetails.noCacheTokens }
-            : {}),
-          ...(inputTokenDetails?.cacheReadTokens !== undefined
-            ? { cacheReadInputTokens: inputTokenDetails.cacheReadTokens }
-            : {}),
-          ...(inputTokenDetails?.cacheWriteTokens !== undefined
-            ? { cacheWriteInputTokens: inputTokenDetails.cacheWriteTokens }
-            : {}),
-        };
-        recordUsage("success", mappedUsage);
-        const finishReason = (result as { finishReason?: string }).finishReason;
-        const stepLimit = req.stopSteps ?? 20;
-        const responseMessages =
-          (result as { response?: { messages?: unknown[] } }).response?.messages ?? [];
-        return {
-          text: result.text,
-          steps: result.steps.map((step) => mapStep(step, req)),
-          usage: mappedUsage,
-          messages: sanitizeHistory([...(inputMessages ?? [input]), ...responseMessages], req),
-          ...(finishReason ? { finishReason } : {}),
-          ...(result.steps.length >= stepLimit && result.text.trim() === ""
-            ? { stepLimitReached: true }
-            : {}),
-        };
-      } catch (error) {
-        recordUsage("error");
-        throw error;
-      }
+          : {}),
+        ...(req.stopSteps !== undefined ? { stopWhen: [stepCountIs(req.stopSteps)] } : {}),
+        toolOrder: Object.keys(req.tools).sort(),
+        tools: mapTools(req.tools, req),
+      });
+
+      const onStep = req.onStep;
+      // Continuation: prior turns (opaque vendor messages) plus this turn's
+      // prompt as the next user message; fresh turns send prompt alone.
+      const input: ModelMessage = { role: "user", content: req.prompt };
+      const inputMessages = req.messages
+        ? [...sanitizeHistory(req.messages, req), input]
+        : undefined;
+      // The continuation is opaque at the port; this vendor boundary is the
+      // one place that re-asserts its true shape (same idiom as providerOptions).
+      const result = await agent.generate({
+        ...(inputMessages ? { messages: inputMessages as ModelMessage[] } : { prompt: req.prompt }),
+        ...(req.abortSignal ? { abortSignal: req.abortSignal } : {}),
+        ...(onStep ? { onStepFinish: (step) => onStep(mapStep(step, req)) } : {}),
+      });
+
+      const usage = (result as { totalUsage?: typeof result.usage }).totalUsage ?? result.usage;
+      const inputTokenDetails = usage.inputTokenDetails as
+        | {
+            noCacheTokens?: number;
+            cacheReadTokens?: number;
+            cacheWriteTokens?: number;
+          }
+        | undefined;
+      const mappedUsage: TokenUsage = {
+        inputTokens: usage.inputTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
+        totalTokens: usage.totalTokens ?? 0,
+        ...(inputTokenDetails?.noCacheTokens !== undefined
+          ? { noCacheInputTokens: inputTokenDetails.noCacheTokens }
+          : {}),
+        ...(inputTokenDetails?.cacheReadTokens !== undefined
+          ? { cacheReadInputTokens: inputTokenDetails.cacheReadTokens }
+          : {}),
+        ...(inputTokenDetails?.cacheWriteTokens !== undefined
+          ? { cacheWriteInputTokens: inputTokenDetails.cacheWriteTokens }
+          : {}),
+      };
+      const finishReason = (result as { finishReason?: string }).finishReason;
+      const stepLimit = req.stopSteps ?? 20;
+      const responseMessages =
+        (result as { response?: { messages?: unknown[] } }).response?.messages ?? [];
+      return {
+        text: result.text,
+        steps: result.steps.map((step) => mapStep(step, req)),
+        usage: mappedUsage,
+        messages: sanitizeHistory([...(inputMessages ?? [input]), ...responseMessages], req),
+        ...(finishReason ? { finishReason } : {}),
+        ...(result.steps.length >= stepLimit && result.text.trim() === ""
+          ? { stepLimitReached: true }
+          : {}),
+      };
     },
   };
 };
