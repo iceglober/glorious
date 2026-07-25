@@ -59,6 +59,7 @@ describe("suggestChatCommands", () => {
       "config",
       "update",
       "model",
+      "trust",
       "cost",
       "activity",
       "todos",
@@ -135,14 +136,13 @@ describe("completeChatInput", () => {
     );
   });
 
-  test("completes model targets and guided handoff", () => {
-    const targetInput = "/model sub";
-    const target = completeChatInput(targetInput, targetInput.length, context);
-    expect(target?.suggestions[0]).toMatchObject({ value: "subagents ", label: "subagents" });
-    const selectedInput = "/model primary ";
-    expect(completeChatInput(selectedInput, selectedInput.length, context)?.hint).toContain(
-      "choose a provider",
-    );
+  test("completes model and trust commands with Config TUI hints", () => {
+    const modelInput = "/model ";
+    const model = completeChatInput(modelInput, modelInput.length, context);
+    expect(model?.hint).toContain("open model settings");
+    const trustInput = "/trust ";
+    const trust = completeChatInput(trustInput, trustInput.length, context);
+    expect(trust?.hint).toContain("open trust & permission settings");
   });
 
   test("completes update channels", () => {
@@ -555,38 +555,27 @@ describe("runChatCommand", () => {
     expect((events.at(-1) as { text: string }).text).toContain("collected interactively");
   });
 
-  test("guides primary selection and lets subagents return to inheritance", async () => {
-    const { context, events } = makeContext();
-    const answers = ["primary", "azure", "gpt-5.6-luna", "inherit"];
-    const configured: Array<{
-      target: "primary" | "subagents";
-      selection: { provider: string; model: string } | null;
-    }> = [];
-    context.guided = { askInput: async () => answers.shift() ?? null };
-    context.models = {
-      current: () => ({
-        primary: { provider: "azure", model: "gpt-5.6-sol" },
-        subagents: { provider: "azure", model: "gpt-5.6-terra" },
-      }),
-      providers: () => ["azure"],
-      modelSuggestions: () => ["gpt-5.6-sol", "gpt-5.6-luna"],
-      configure: async (target, selection) => {
-        configured.push({ target, selection });
-        return true;
-      },
+  test("launches section-specific Config TUI for model, trust, and mcp commands", async () => {
+    const { context } = makeContext();
+    const launched: string[] = [];
+    context.launchConfigTui = async (section?: string) => {
+      launched.push(section ?? "default");
     };
 
     await runChatCommand(context, "model", "");
-    await runChatCommand(context, "model", "subagents");
+    await runChatCommand(context, "trust", "");
+    await runChatCommand(context, "mcp", "");
 
-    expect(configured).toEqual([
-      {
-        target: "primary",
-        selection: { provider: "azure", model: "gpt-5.6-luna" },
-      },
-      { target: "subagents", selection: null },
-    ]);
-    expect((events.at(-1) as { text: string }).text).toContain("inherit the primary");
+    expect(launched).toEqual(["models", "trust", "mcp"]);
+  });
+
+  test("config command without arguments displays usage instead of opening TUI", async () => {
+    const { context, events } = makeContext();
+    context.launchConfigTui = async () => {};
+
+    await runChatCommand(context, "config", "");
+
+    expect((events.at(-1) as { text: string }).text).toContain("Usage: /config get|set|delete");
   });
 
   test("update requests the selected channel and exits", async () => {

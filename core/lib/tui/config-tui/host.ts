@@ -1,4 +1,9 @@
 import {
+  type ClaudeAuthContext,
+  exchangeClaudeAuthCode,
+  parseClaudeAuthorizationInput,
+} from "../../cli/auth";
+import {
   type Config,
   type ConfigLayer,
   type ConfigObject,
@@ -20,6 +25,7 @@ import {
   resolveTierVariant,
 } from "../../llm";
 import { defaultModelVariant } from "../../prompt/profiles";
+import type { SecretStore } from "../../secrets";
 import type { ConfigEffect, ConfigTuiData } from "./model";
 
 /**
@@ -53,6 +59,10 @@ export interface ConfigTuiHostDeps {
   validateSession: (provider: string) => Promise<CloudSessionResult>;
   /** Display path of each writable layer's file (static for the session). */
   layerPaths: Record<WritableConfigLayer, string>;
+  /** Keychain secret store for OAuth token storage. */
+  secrets?: SecretStore;
+  /** Optional custom fetch for OAuth token exchange testing. */
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 const KEYLESS_PROVIDERS = providerNames.filter((p) => !KEY_PROVIDERS.includes(p));
@@ -274,6 +284,18 @@ export function createConfigTuiHost(deps: ConfigTuiHostDeps): ConfigTuiHost {
         // Async — the screen validates and reports back to the model; the host
         // only exposes the probe via validateSession.
         return undefined;
+      case "submitClaudeAuth": {
+        const ctx = effect.context as ClaudeAuthContext;
+        const parsed = parseClaudeAuthorizationInput(effect.code, ctx.state);
+        if (parsed.error) return `auth failed: ${parsed.error}`;
+        if (!parsed.code) return "no code provided";
+        if (parsed.state !== ctx.state) return "state mismatch";
+        if (!deps.secrets) return "auth failed: secret store unavailable";
+        const result = await exchangeClaudeAuthCode(ctx, parsed.code, deps.secrets, deps.fetch);
+        return result.ok ? "✓ connected claude" : `auth failed: ${result.reason}`;
+      }
+      case "requestClaudeAuthUrl":
+        return undefined; // Handled purely by screen.ts
       case "quit":
         return undefined;
     }

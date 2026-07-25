@@ -99,11 +99,6 @@ export const runConfigCommand = async (
   args: string,
 ): Promise<void> => {
   const [action, remainder] = splitHead(args);
-  if (!action && context.launchConfigTui) {
-    // Bare `/config` opens the full-screen interactive editor.
-    await context.launchConfigTui();
-    return;
-  }
   if (!(action in configActions)) {
     context.emit({ type: "notice", text: "Usage: /config get|set|delete <path> [JSON value]" });
     return;

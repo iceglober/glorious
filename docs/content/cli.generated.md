@@ -25,6 +25,11 @@ Update the Glorious CLI.
 
 - `--channel <value>` — Release channel to install.
 
+### `glorious auth claude`
+
+Sign in with a Claude Pro or Max subscription (run directly in a terminal).
+
+
 ### `glorious config set <key> [value]`
 
 Set an Glorious configuration value.

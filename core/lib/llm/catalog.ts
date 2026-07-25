@@ -12,6 +12,7 @@ const MODELS_DEV_PROVIDER: Record<ProviderName, string | null> = {
   azure: "azure",
   openai: "openai",
   anthropic: "anthropic",
+  claude: "anthropic",
   google: "google",
   vertex: "google-vertex",
   bedrock: "amazon-bedrock",

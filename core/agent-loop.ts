@@ -58,6 +58,7 @@ import { type ChatSession, createChatSession } from "./lib/chat/session";
 import { bootstrapInteractiveSession } from "./lib/chat/session-bootstrap";
 import { createSessionTodos } from "./lib/chat/todos";
 import { EXIT_ABORTED, EXIT_FAILURE, EXIT_SUCCESS, runGloriousCli } from "./lib/cli";
+import { runClaudeAuthFlow } from "./lib/cli/auth";
 import {
   loadChatConfig,
   loadConfig,
@@ -238,7 +239,16 @@ function withProviderKeys(
 ): AgentConfig["llm"] {
   const providers: Record<string, unknown> = { ...llm.providers };
   for (const [provider, apiKey] of Object.entries(keys)) {
-    providers[provider] = { ...(providers[provider] as object), apiKey };
+    const current = { ...(providers[provider] as object), apiKey } as Record<string, unknown>;
+    if ((provider === "anthropic" || provider === "claude") && apiKey.startsWith("sk-ant-oat")) {
+      delete current.apiKey;
+      current.authToken = apiKey;
+      current.headers = {
+        ...(current.headers as Record<string, string> | undefined),
+        "anthropic-beta": "oauth-2025-04-20",
+      };
+    }
+    providers[provider] = current;
   }
   return { ...llm, providers: providers as AgentConfig["llm"]["providers"] };
 }
@@ -286,6 +296,7 @@ function createProjectConfigTuiHost(
     return path;
   };
   return createConfigTuiHost({
+    secrets: secretStore,
     loadConfig: () => loadConfig(undefined, configOptions),
     loadLayers: () => readConfigLayers(configOptions),
     mutate: (layer, mutations) => mutateConfigLayer(layer, mutations, configOptions),
@@ -1420,7 +1431,7 @@ export async function runGloriousChat(
         requestedUpdate = channel;
       },
       config: interactiveConfig,
-      launchConfigTui: async () => {
+      launchConfigTui: async (section?: "models" | "trust" | "mcp") => {
         const runModal = screen?.runModalScreen;
         if (!runModal) {
           emit({
@@ -1433,6 +1444,7 @@ export async function runGloriousChat(
         await runModal((renderer) =>
           runConfigTuiScreen({
             renderer,
+            initialSection: section,
             loadData: configHost.loadData,
             applyEffect: configHost.applyEffect,
             validateSession: configHost.validateSession,
@@ -1854,6 +1866,34 @@ const main = async (): Promise<void> => {
           ),
         runOnce: (task, options) => runGloriousOnce(task, options),
         update: ({ channel }) => runProductionUpdate(channel),
+        runAuth: async (provider) => {
+          if (provider !== "claude") return EXIT_FAILURE;
+          // Auth needs a real terminal because the code is pasted after the
+          // browser round-trip. Host-agent commands deliberately run with
+          // stdin ignored; letting `prompts` read there produces a confusing
+          // EIO and leaves the parent TUI's escape sequences on screen.
+          if (!process.stdin.isTTY || !process.stdout.isTTY) {
+            processStderr.write(
+              "Claude authentication requires an interactive terminal. Run `glorious auth claude` directly in a separate terminal, not from an agent task.\n",
+            );
+            return EXIT_FAILURE;
+          }
+          const result = await runClaudeAuthFlow({
+            store: createKeyringSecretStore({}),
+            readAuthorizationCode: () =>
+              guided.askInput({
+                label: "Paste the callback URL, authorization code, or CODE#STATE · <Esc> Cancel",
+              }),
+            onAuthorizationUrl: (url) =>
+              processStdout.write(`Open this URL if the browser did not open:\n${url}\n`),
+          });
+          if (result.ok) {
+            processStdout.write("Claude authentication succeeded.\n");
+            return EXIT_SUCCESS;
+          }
+          processStderr.write(`Claude authentication failed: ${result.reason}\n`);
+          return EXIT_FAILURE;
+        },
         createAbortSignal: () => abortController.signal,
         configHandlers,
         runConfigUi: createProductionConfigUi(),

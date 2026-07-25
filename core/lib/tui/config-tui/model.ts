@@ -83,6 +83,8 @@ export type ConfigEffect =
   // A cloud-auth provider's non-secret params (Bedrock region, Vertex project /
   // location) → agent.llm.providers.<provider>. A layered config write.
   | { kind: "setProviderConfig"; provider: string; config: Record<string, string> }
+  | { kind: "requestClaudeAuthUrl" }
+  | { kind: "submitClaudeAuth"; code: string; context: unknown }
   // Suspend the TUI and run the vendor login CLI (aws sso / gcloud …), then
   // resume. Imperative — the screen handles it, not the config host.
   | { kind: "runLogin"; provider: string; argv: string[] }
@@ -226,6 +228,14 @@ type ProviderCatalog = { kind: "provider-catalog"; role: "plan" | "build"; idx: 
  *  Esc discards it (nothing saved). */
 type ScopeConfirm = { kind: "scope-confirm"; pending: ConfigEffect; label: string; idx: number };
 
+type ClaudeAuthForm = {
+  kind: "claude-auth";
+  phase: "generating" | "waiting";
+  url?: string;
+  code: string;
+  context?: unknown;
+};
+
 type Overlay =
   | ModelExplorer
   | { kind: "rule-add"; idx: number; decision: PermissionDecision }
@@ -234,6 +244,7 @@ type Overlay =
   | CloudForm
   | ProviderCatalog
   | ScopeConfirm
+  | ClaudeAuthForm
   | null;
 
 /** Where a connect/setup form returns when it closes. `picker` resumes the model
@@ -243,6 +254,8 @@ type FormReturn =
   | { via: "picker"; role: "plan" | "build"; provider: string }
   | { via: "catalog"; role: "plan" | "build"; idx: number }
   | null;
+
+const CONNECT_NEW_PROVIDER_ID = "__connect_new_provider__";
 
 const filterList = (list: readonly string[], query: string): string[] => {
   const q = query.trim().toLowerCase();
@@ -272,12 +285,16 @@ export interface ConfigTuiModel {
   reload(data: ConfigTuiData): void;
   /** The screen reports a checkSession result back here (async validation). */
   reportSessionCheck(provider: string, result: SessionCheck): void;
+  reportClaudeAuthUrl(url: string, context: unknown): void;
   toast(text: string): void;
 }
 
-export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
+export function createConfigTuiModel(
+  initial: ConfigTuiData,
+  initialSection?: "models" | "trust" | "mcp",
+): ConfigTuiModel {
   let data = initial;
-  let section = 0;
+  let section = initialSection ? Math.max(0, SECTIONS.indexOf(initialSection)) : 0;
   let row = 0;
   let overlay: Overlay = null;
   let toastText: string | undefined;
@@ -350,12 +367,19 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
   const lastCol = (o: ModelExplorer): 0 | 1 | 2 => (modelReasons(o.provider, o.model) ? 2 : 1);
 
   const explorerCells = (o: ModelExplorer): Cell[] => {
-    if (o.col === 0)
-      return filterList(data.modelProviders, o.query).map((p) => ({
+    if (o.col === 0) {
+      const providers = filterList(data.modelProviders, o.query).map((p) => ({
         value: p,
         label: p,
         note: providerStatusNote(p),
       }));
+      providers.push({
+        value: CONNECT_NEW_PROVIDER_ID,
+        label: "+ Connect Provider",
+        note: "↵",
+      });
+      return providers;
+    }
     if (o.col === 2)
       return filterList(data.availableVariants, o.query).map((v) => ({ value: v, label: v }));
     // Column 1: the provider's model suggestions, plus a literal from the query.
@@ -389,8 +413,19 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
 
   // A column's full (unfiltered) cells, for the trail columns behind the cursor.
   const cellsForCol = (o: ModelExplorer, col: 0 | 1 | 2): Cell[] => {
-    if (col === 0)
-      return data.modelProviders.map((p) => ({ value: p, label: p, note: providerStatusNote(p) }));
+    if (col === 0) {
+      const providers = data.modelProviders.map((p) => ({
+        value: p,
+        label: p,
+        note: providerStatusNote(p),
+      }));
+      providers.push({
+        value: CONNECT_NEW_PROVIDER_ID,
+        label: "+ Connect Provider",
+        note: "↵",
+      });
+      return providers;
+    }
     if (col === 1)
       return (data.providerModels[o.provider] ?? []).map((m) => ({
         value: m,
@@ -403,6 +438,25 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
   const EXPLORER_ROWS = 9;
 
   const explorerColumns = (o: ModelExplorer): ConfigOverlayColumn[] => {
+    if (o.col === 0 && o.provider === CONNECT_NEW_PROVIDER_ID) {
+      return [
+        {
+          title: "provider",
+          active: true,
+          search: o.query,
+          items: explorerCells(o).map((c) => ({
+            label: c.label,
+            ...(c.note ? { note: c.note } : {}),
+            cursor: c.value === CONNECT_NEW_PROVIDER_ID,
+          })),
+        },
+        {
+          title: "catalog",
+          active: false,
+          items: [{ label: "open provider catalog", cursor: false, muted: true }],
+        },
+      ];
+    }
     // The variant column exists only when the selected model reasons; while on
     // the provider column (no model chosen yet) show it as a pending column.
     const showVariant = o.col === 0 || modelReasons(o.provider, o.model);
@@ -561,16 +615,21 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
   };
 
   // Open a connect/setup form for `provider`, remembering where to return.
-  const openConnectForm = (provider: string, ret: FormReturn): void => {
+  const openConnectForm = (provider: string, ret: FormReturn): ConfigEffect[] | null => {
     formReturn = ret;
+    if (provider === "claude") {
+      overlay = { kind: "claude-auth", phase: "generating", code: "" };
+      return [{ kind: "requestClaudeAuthUrl" }];
+    }
     if (providerKeyless(provider)) openCloudForm(provider);
     else openProviderForm(provider);
+    return null;
   };
 
   // From the picker: the role's own provider is unconnected — connect it, then
   // resume the picker (advancing to its models once it's usable).
-  const beginConnect = (role: "plan" | "build", provider: string): void =>
-    openConnectForm(provider, { via: "picker", role, provider });
+  const beginConnect = (role: "plan" | "build", provider: string): ConfigEffect[] =>
+    openConnectForm(provider, { via: "picker", role, provider }) ?? [];
 
   // Esc from a connect/setup form returns to wherever it was opened from.
   const closeForm = (): void => {
@@ -666,10 +725,13 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
         explorerApply(o);
         if (o.col === 0) {
           const p = o.provider;
+          if (p === CONNECT_NEW_PROVIDER_ID) {
+            openCatalog(o.role, 0);
+            return [];
+          }
           // Only the role's own provider can sit here unconnected → connect it.
           if (!providerConnected(p)) {
-            beginConnect(o.role, p);
-            return [];
+            return beginConnect(o.role, p);
           }
           // A connected cloud provider: verify its live session (fetch a token)
           // before letting you into its models — creds present ≠ session valid.
@@ -802,6 +864,27 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
       }
       return [];
     }
+    if (overlay.kind === "claude-auth") {
+      if (esc) {
+        closeForm();
+        return [];
+      }
+      if (overlay.phase === "waiting") {
+        if (key.name === "return" || key.name === "kpenter") {
+          const code = overlay.code.trim();
+          if (code && overlay.context) {
+            const ctx = overlay.context;
+            overlay = null;
+            return [{ kind: "submitClaudeAuth", code, context: ctx }];
+          }
+        } else if (key.name === "backspace") {
+          overlay.code = overlay.code.slice(0, -1);
+        } else if (key.char) {
+          overlay.code += key.char;
+        }
+      }
+      return [];
+    }
     if (overlay.kind === "cloud-add") {
       const form = overlay;
       const info = data.cloudAuth[form.provider];
@@ -871,8 +954,8 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
       if (key.name === "return" || key.name === "kpenter") {
         // Connect / re-enter key (key provider) or set up cloud auth (keyless);
         // the form returns here when it closes.
-        openConnectForm(p.name, { via: "catalog", role: cat.role, idx: cat.idx });
-        return [];
+        const effects = openConnectForm(p.name, { via: "catalog", role: cat.role, idx: cat.idx });
+        return effects ?? [];
       }
       if (key.name === "x" && p.connected && !p.keyless) {
         return [{ kind: "disconnectProvider", provider: p.name }];
@@ -978,6 +1061,8 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
     "runLogin",
     "checkSession",
     "setProviderConfig",
+    "requestClaudeAuthUrl",
+    "submitClaudeAuth",
   ]);
 
   // Every layered config write passes through here: instead of applying
@@ -1031,7 +1116,6 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
           ["↑↓", "move"],
           ["type", "search"],
           ["→ ⏎", "open · select"],
-          ["^n", "connect new"],
           ["←", "back"],
           ["esc", "cancel"],
         ],
@@ -1166,6 +1250,25 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
           ["esc", "cancel"],
         ],
       };
+    } else if (overlay && overlay.kind === "claude-auth") {
+      const o = overlay;
+      const masked = "•".repeat(o.code.length);
+      ov = {
+        title: "connect claude",
+        items:
+          o.phase === "generating"
+            ? [{ label: "status", note: "generating request...", cursor: false }]
+            : [
+                { label: "authorize", note: "open url in browser", cursor: false },
+                { label: "url", note: o.url ?? "", cursor: false },
+                { label: "auth code", note: masked || "paste code", cursor: true },
+              ],
+        keys: [
+          ["type", "code"],
+          ["⏎", "connect"],
+          ["esc", "cancel"],
+        ],
+      };
     }
 
     // Only advertise keys the focused row actually responds to, so ←→/⏎/x never
@@ -1233,6 +1336,13 @@ export function createConfigTuiModel(initial: ConfigTuiData): ConfigTuiModel {
         openCatalog(role, idx);
       }
       clampRow();
+    },
+    reportClaudeAuthUrl(url, context) {
+      if (overlay?.kind === "claude-auth") {
+        overlay.phase = "waiting";
+        overlay.url = url;
+        overlay.context = context;
+      }
     },
     toast(text) {
       toastText = text;

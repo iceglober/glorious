@@ -186,7 +186,7 @@ describe("config TUI model", () => {
     const m = fresh();
     m.handleKey(k("return"));
     const col0 = m.view().overlay?.columns?.[0]?.items ?? [];
-    expect(col0.map((i) => i.label)).toEqual(["azure", "openai", "vertex"]); // connected only
+    expect(col0.map((i) => i.label)).toEqual(["azure", "openai", "vertex", "+ Connect Provider"]); // connected only + catalog action
     const noteFor = (label: string) => col0.find((i) => i.label === label)?.note;
     expect(noteFor("azure")).toBe("✓"); // connected key
     expect(noteFor("vertex")).toBe("cloud ✓"); // cloud creds detected
@@ -275,6 +275,26 @@ describe("config TUI model", () => {
     catalogIdx(m, "bedrock");
     m.handleKey(k("return"));
     expect(m.view().overlay?.title).toContain("connect bedrock");
+  });
+
+  test("catalog: connecting claude runs its OAuth login flow", () => {
+    const dataWithClaude: ConfigTuiData = {
+      ...structuredClone(DATA),
+      providers: [...DATA.providers, { name: "claude", connected: false, keyless: true }],
+    };
+    const m = createConfigTuiModel(dataWithClaude);
+    m.handleKey(k("return")); // picker col 0
+    m.handleKey(k("n", { ctrl: true })); // → catalog
+    // Move cursor down to claude
+    const order = ["azure", "openai", "anthropic", "bedrock", "vertex", "claude"];
+    for (let i = 0; i < order.indexOf("claude"); i += 1) m.handleKey(k("down"));
+
+    // Pressing Enter on unconnected claude emits requestClaudeAuthUrl
+    const effects = m.handleKey(k("return"));
+    expect(effects).toHaveLength(1);
+    expect(effects[0]).toMatchObject({
+      kind: "requestClaudeAuthUrl",
+    });
   });
 
   test("Plan/Build rows show the effective variant as a note", () => {

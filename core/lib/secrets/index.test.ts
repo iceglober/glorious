@@ -2,7 +2,11 @@ import { describe, expect, mock, test } from "bun:test";
 import {
   AZURE_API_KEY_ACCOUNT,
   AZURE_SECRET_SERVICE,
+  CLAUDE_OAUTH_META_ACCOUNT,
+  CLAUDE_OAUTH_TOKEN_ACCOUNT,
   resolveAzureApiKey,
+  resolveProviderKey,
+  SECRET_SERVICE,
   type SecretStore,
   SecretStoreUnavailableError,
 } from "./index";
@@ -16,6 +20,58 @@ function makeStore(get: SecretStore["get"]): SecretStore {
     delete: async () => false,
   };
 }
+
+describe("resolveProviderKey", () => {
+  test("refreshes an expiring Claude OAuth token and persists rotated credentials", async () => {
+    const values = new Map([
+      [`${SECRET_SERVICE}:${CLAUDE_OAUTH_TOKEN_ACCOUNT}`, "sk-ant-oat01-old"],
+      [
+        `${SECRET_SERVICE}:${CLAUDE_OAUTH_META_ACCOUNT}`,
+        JSON.stringify({ refreshToken: "sk-ant-ort01-old", expiresAt: 900_000 }),
+      ],
+    ]);
+    const store: SecretStore = {
+      get: async (service, account) => values.get(`${service}:${account}`),
+      set: async (service, account, value) => void values.set(`${service}:${account}`, value),
+      delete: async () => false,
+    };
+    let body: Record<string, string> | undefined;
+    const resolved = await resolveProviderKey("claude", store, {
+      now: () => 1_000_000,
+      fetch: async (_input, init) => {
+        body = JSON.parse(String(init?.body)) as Record<string, string>;
+        return new Response(
+          JSON.stringify({
+            access_token: "sk-ant-oat01-new",
+            refresh_token: "sk-ant-ort01-new",
+            expires_in: 3600,
+          }),
+          { status: 200 },
+        );
+      },
+    });
+
+    expect(resolved).toBe("sk-ant-oat01-new");
+    expect(body).toEqual({
+      grant_type: "refresh_token",
+      refresh_token: "sk-ant-ort01-old",
+      client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+    });
+    expect(values.get(`${SECRET_SERVICE}:${CLAUDE_OAUTH_TOKEN_ACCOUNT}`)).toBe("sk-ant-oat01-new");
+    expect(values.get(`${SECRET_SERVICE}:${CLAUDE_OAUTH_META_ACCOUNT}`)).toContain(
+      "sk-ant-ort01-new",
+    );
+  });
+
+  test("leaves API keys and non-expiring OAuth tokens untouched", async () => {
+    const get = mock<SecretStore["get"]>();
+    get.mockResolvedValue("sk-ant-api01-key");
+    const store = makeStore(get);
+    await expect(resolveProviderKey("anthropic", store)).resolves.toBe("sk-ant-api01-key");
+    await expect(resolveProviderKey("openai", store)).resolves.toBe("sk-ant-api01-key");
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("resolveAzureApiKey", () => {
   test("prefers Foundry then Azure environment credentials without reading the store", async () => {

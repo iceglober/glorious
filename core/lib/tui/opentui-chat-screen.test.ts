@@ -150,6 +150,55 @@ describe("createOpenTuiChatScreen", () => {
     renderer.destroy();
   });
 
+  test("pressing Up arrow at top autocomplete option dismisses completion and browses history", async () => {
+    const { renderer, screen, mockInput, renderOnce, captureCharFrame } = await setup({
+      initialHistory: ["previous message"],
+      matchesSlashCommand: () => true,
+      editorCompletionOptions: ({ text, cursor }) =>
+        text.startsWith("/")
+          ? {
+              token: { start: 0, end: cursor, sigil: "/", query: text.slice(1) },
+              suggestions: [{ value: "/model ", label: "/model" }],
+            }
+          : null,
+    });
+    renderer.start();
+    screen.start();
+    await mockInput.typeText("/m");
+    await renderOnce();
+    expect(captureCharFrame()).toContain("/model");
+
+    mockInput.pressArrow("up");
+    await renderOnce();
+    const frame = captureCharFrame();
+    expect(frame).toContain("previous message");
+    screen.stop();
+    renderer.destroy();
+  });
+
+  test("pressing Enter on autocomplete executes the command immediately", async () => {
+    const { renderer, screen, mockInput, renderOnce, submitted } = await setup({
+      matchesSlashCommand: () => true,
+      editorCompletionOptions: ({ text, cursor }) =>
+        text.startsWith("/")
+          ? {
+              token: { start: 0, end: cursor, sigil: "/", query: text.slice(1) },
+              suggestions: [{ value: "/model ", label: "/model" }],
+            }
+          : null,
+    });
+    renderer.start();
+    screen.start();
+    await mockInput.typeText("/m");
+    await renderOnce();
+
+    mockInput.pressEnter();
+    await waitUntil(() => submitted.length > 0);
+    expect(submitted).toEqual(["/model "]);
+    screen.stop();
+    renderer.destroy();
+  });
+
   test("copies a highlighted selection to the system clipboard", async () => {
     const { renderer, screen } = await setup();
     const copied: string[] = [];

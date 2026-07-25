@@ -3,6 +3,75 @@ export const SECRET_SERVICE = "glorious";
 /** The keychain account holding a provider's API key. */
 export const providerKeyAccount = (provider: string): string => `${provider}-api-key`;
 
+export const CLAUDE_OAUTH_TOKEN_ACCOUNT = "claude-oauth-token";
+export const CLAUDE_OAUTH_META_ACCOUNT = "claude-oauth-meta";
+export const CLAUDE_OAUTH_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize";
+export const CLAUDE_OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
+export const CLAUDE_OAUTH_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
+export const CLAUDE_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+export const CLAUDE_OAUTH_SCOPE =
+  "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
+const OAUTH_ACCESS_TOKEN_PREFIX = "sk-ant-oat";
+const OAUTH_REFRESH_BUFFER_MS = 60_000;
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+type ClaudeOAuthMetadata = { refreshToken: string; expiresAt: number };
+
+const parseClaudeOAuthMetadata = (raw: string | undefined): ClaudeOAuthMetadata | undefined => {
+  if (!raw) return undefined;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    return typeof value.refreshToken === "string" &&
+      typeof value.expiresAt === "number" &&
+      Number.isFinite(value.expiresAt)
+      ? { refreshToken: value.refreshToken, expiresAt: value.expiresAt }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const refreshClaudeOAuthToken = async (
+  accessToken: string,
+  store: SecretStore,
+  metadata: ClaudeOAuthMetadata,
+  options: { fetch: FetchLike; now: () => number },
+): Promise<string> => {
+  if (metadata.expiresAt > options.now() + OAUTH_REFRESH_BUFFER_MS) return accessToken;
+
+  const response = await options.fetch(CLAUDE_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: metadata.refreshToken,
+      client_id: CLAUDE_OAUTH_CLIENT_ID,
+    }),
+  });
+  if (!response.ok) return accessToken;
+
+  const payload = (await response.json()) as {
+    access_token?: unknown;
+    refresh_token?: unknown;
+    expires_in?: unknown;
+  };
+  if (typeof payload.access_token !== "string" || payload.access_token.length === 0)
+    return accessToken;
+  const expiresIn = typeof payload.expires_in === "number" ? payload.expires_in : 28_800;
+  if (!Number.isFinite(expiresIn) || expiresIn <= 0) return accessToken;
+
+  const nextMetadata = {
+    refreshToken:
+      typeof payload.refresh_token === "string" && payload.refresh_token
+        ? payload.refresh_token
+        : metadata.refreshToken,
+    expiresAt: options.now() + expiresIn * 1000,
+  };
+  await store.set(SECRET_SERVICE, CLAUDE_OAUTH_TOKEN_ACCOUNT, payload.access_token);
+  await store.set(SECRET_SERVICE, CLAUDE_OAUTH_META_ACCOUNT, JSON.stringify(nextMetadata));
+  return payload.access_token;
+};
+
 export const AZURE_SECRET_SERVICE = SECRET_SERVICE;
 export const AZURE_API_KEY_ACCOUNT = providerKeyAccount("azure");
 
@@ -76,10 +145,32 @@ export async function hasAzureApiKey(options?: ResolveAzureApiKeyOptions): Promi
 export async function resolveProviderKey(
   provider: string,
   store?: SecretStore,
+  options: { fetch?: FetchLike; now?: () => number } = {},
 ): Promise<string | undefined> {
   if (!store) return undefined;
   try {
-    return await store.get(SECRET_SERVICE, providerKeyAccount(provider));
+    const account =
+      provider === "claude" ? CLAUDE_OAUTH_TOKEN_ACCOUNT : providerKeyAccount(provider);
+    let accessToken = await store.get(SECRET_SERVICE, account);
+    if (provider === "claude" && !accessToken) {
+      accessToken = await store.get(SECRET_SERVICE, providerKeyAccount("claude"));
+    }
+    if (provider !== "claude" || !accessToken?.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
+      return accessToken;
+    }
+    const metadata = parseClaudeOAuthMetadata(
+      await store.get(SECRET_SERVICE, CLAUDE_OAUTH_META_ACCOUNT),
+    );
+    if (!metadata) return accessToken;
+    try {
+      return await refreshClaudeOAuthToken(accessToken, store, metadata, {
+        fetch: options.fetch ?? fetch,
+        now: options.now ?? Date.now,
+      });
+    } catch {
+      // A transient refresh failure should not erase a still-usable token.
+      return accessToken;
+    }
   } catch {
     return undefined;
   }

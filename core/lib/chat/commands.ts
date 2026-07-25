@@ -7,11 +7,10 @@ import { buildHandoffPrompt } from "../prompt";
 import { formatDuration, formatToolActivityLabel } from "../tui/progress";
 import { formatTodoDetails } from "../tui/todos";
 import type { UpdateChannel } from "../update";
-import type { ChatCommandContext, ModelTarget, SkillCommand } from "./command-context";
+import type { ChatCommandContext, SkillCommand } from "./command-context";
 import { configActions, isSensitiveConfigPath, runConfigCommand } from "./config-command";
 import { formatCostReport } from "./cost";
 import type { GuidedInputPort } from "./guided-input";
-import { modelTargets, runModelCommand } from "./model-command";
 
 export type {
   ChatCommandContext,
@@ -172,6 +171,10 @@ const addMcpServer = async (context: ChatCommandContext): Promise<void> => {
 const runMcpCommand = async (context: ChatCommandContext, args: string): Promise<void> => {
   const [action, remainder] = splitHead(args);
   if (!action) {
+    if (context.launchConfigTui) {
+      await context.launchConfigTui("mcp");
+      return;
+    }
     const statuses = context.mcp?.statuses() ?? [];
     const prompts = context.mcp?.prompts?.() ?? [];
     context.emit({
@@ -371,8 +374,24 @@ export const chatCommands: Record<string, ChatCommand> = {
     run: runUpdateCommand,
   },
   model: {
-    summary: "Choose primary or subagent models",
-    run: runModelCommand,
+    summary: "Configure primary or subagent models",
+    async run(context) {
+      if (context.launchConfigTui) {
+        await context.launchConfigTui("models");
+      } else {
+        context.emit({ type: "notice", text: "Config TUI is unavailable in this session." });
+      }
+    },
+  },
+  trust: {
+    summary: "Manage tool permissions and trust rules",
+    async run(context) {
+      if (context.launchConfigTui) {
+        await context.launchConfigTui("trust");
+      } else {
+        context.emit({ type: "notice", text: "Config TUI is unavailable in this session." });
+      }
+    },
   },
   cost: {
     summary: "Show foreground token usage and estimated cost",
@@ -756,19 +775,18 @@ export function completeChatInput(
   }
 
   if (command === "model") {
-    if (args.length === 0) {
-      return {
-        token,
-        suggestions: prefixedSuggestions(Object.entries(modelTargets), prefix),
-        hint: "Choose what to configure, or press Enter for guided selection.",
-      };
-    }
     return {
       token,
       suggestions: [],
-      hint: modelTargets[args[0] as ModelTarget]
-        ? "Press Enter to choose a provider and model."
-        : "Expected: primary or subagents.",
+      hint: "Press Enter to open model settings in Config TUI.",
+    };
+  }
+
+  if (command === "trust") {
+    return {
+      token,
+      suggestions: [],
+      hint: "Press Enter to open trust & permission settings in Config TUI.",
     };
   }
 

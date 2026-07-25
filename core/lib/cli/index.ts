@@ -36,6 +36,8 @@ export interface GloriousCommandDependencies {
   configHandlers?: ConfigCliHandlers;
   /** Interactive `glorious config` (no subcommand). Omitted → bare config errors. */
   runConfigUi?: () => Promise<number>;
+  /** Native provider authentication flows. */
+  runAuth?: (provider: "claude") => Promise<number>;
   evalHandlers?: EvalCliHandlers;
   createEvalHandlers?: () => EvalCliHandlers | Promise<EvalCliHandlers>;
   writers?: GloriousCliIo;
@@ -79,6 +81,15 @@ const createUpdateCommand = (deps: GloriousCommandDependencies) =>
       }),
     },
     handler: ({ channel }) => deps.update!({ channel: channel ?? "auto" }),
+  });
+
+const createAuthClaudeCommand = (deps: GloriousCommandDependencies) =>
+  command({
+    name: `${deps.name ?? DEFAULT_COMMAND_NAME} auth claude`,
+    version: deps.version,
+    description: "Sign in with a Claude Pro or Max subscription (run directly in a terminal).",
+    args: {},
+    handler: () => deps.runAuth!("claude"),
   });
 
 const createRunCommand = (deps: GloriousCommandDependencies) =>
@@ -296,6 +307,7 @@ export function describeCli(): CliCommandDoc[] {
     createChatCommand(deps),
     createRunCommand(deps),
     createUpdateCommand(deps),
+    createAuthClaudeCommand(deps),
     createConfigSetCommand(handlers),
     createConfigGetCommand(handlers),
     createConfigDeleteCommand(handlers),
@@ -340,6 +352,19 @@ const isConfigRoute = (argv: string[]): boolean =>
   argv[0] === "config" && CONFIG_ROUTES.includes(argv[1] ?? "");
 
 const isEvalRoute = (argv: string[]): boolean => argv[0] === "eval";
+const isAuthRoute = (argv: string[]): boolean => argv[0] === "auth" && argv[1] === "claude";
+
+const dispatchAuth = async (
+  argv: string[],
+  deps: GloriousCommandDependencies,
+  writers: Required<GloriousCliIo>,
+): Promise<number> => {
+  if (deps.runAuth === undefined) {
+    writers.stderr.write("error: authentication commands are not available.\n");
+    return EXIT_FAILURE;
+  }
+  return dispatchLeaf(createAuthClaudeCommand(deps), argv, writers);
+};
 
 const dispatchUpdate = async (
   argv: string[],
@@ -456,6 +481,10 @@ export async function runGloriousCli(
 
   if (isEvalRoute(argv)) {
     return dispatchEval(argv, deps, writers);
+  }
+
+  if (isAuthRoute(argv)) {
+    return dispatchAuth(argv.slice(2), deps, writers);
   }
 
   if (argv[0] === "run") {

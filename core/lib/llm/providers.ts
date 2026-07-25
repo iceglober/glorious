@@ -37,7 +37,10 @@ const DEADLINE_FETCH = fetchWithRequestDeadline as unknown as typeof fetch;
  */
 export const keyProviderConfigSchema = z.object({
   apiKey: z.string().optional(),
+  /** Bearer credential alternative used by Anthropic subscription OAuth. */
+  authToken: z.string().optional(),
   baseURL: z.string().url().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
 });
 export type KeyProviderConfig = z.infer<typeof keyProviderConfigSchema>;
 
@@ -45,7 +48,9 @@ export type KeyProviderConfig = z.infer<typeof keyProviderConfigSchema>;
 // callable ModelFactories; unify them at this boundary.
 type VendorCreate = (opts: {
   apiKey?: string;
+  authToken?: string;
   baseURL?: string;
+  headers?: Record<string, string>;
   fetch?: typeof fetch;
 }) => ModelFactory;
 
@@ -53,7 +58,13 @@ const keyBased =
   (create: VendorCreate) =>
   (config: KeyProviderConfig = {}): ModelFactory =>
   (modelId) =>
-    create({ apiKey: config.apiKey, baseURL: config.baseURL, fetch: DEADLINE_FETCH })(modelId);
+    create({
+      apiKey: config.apiKey,
+      authToken: config.authToken,
+      baseURL: config.baseURL,
+      headers: config.headers,
+      fetch: DEADLINE_FETCH,
+    })(modelId);
 
 const asVendor = (create: unknown): VendorCreate => create as VendorCreate;
 
@@ -191,6 +202,7 @@ export interface ProviderConfigs {
   azure: AzureModelConfig;
   openai: KeyProviderConfig;
   anthropic: KeyProviderConfig;
+  claude: KeyProviderConfig;
   google: KeyProviderConfig;
   mistral: KeyProviderConfig;
   cohere: KeyProviderConfig;
@@ -214,6 +226,7 @@ export const llmProviders: {
   azure: createAzureModelProvider,
   openai: keyBased(asVendor(createOpenAI)),
   anthropic: keyBased(asVendor(createAnthropic)),
+  claude: keyBased(asVendor(createAnthropic)),
   google: keyBased(asVendor(createGoogle)),
   mistral: keyBased(asVendor(createMistral)),
   cohere: keyBased(asVendor(createCohere)),
@@ -236,6 +249,7 @@ export const providersConfigSchema = z.object({
   azure: azureModelConfigSchema.optional(),
   openai: keyProviderConfigSchema.optional(),
   anthropic: keyProviderConfigSchema.optional(),
+  claude: keyProviderConfigSchema.optional(),
   google: keyProviderConfigSchema.optional(),
   mistral: keyProviderConfigSchema.optional(),
   cohere: keyProviderConfigSchema.optional(),
@@ -251,14 +265,15 @@ export const providersConfigSchema = z.object({
 });
 
 /**
- * Providers whose only credential is an API key stored in the keychain
- * (`config set --secret providers.<name>.apiKey`). Bedrock and Vertex use their
- * cloud credential chains, so they're excluded from the key-entry flow.
+ * Providers whose credential is stored in the keychain. Claude uses its OAuth
+ * access token here rather than an API key. Bedrock and Vertex use their cloud
+ * credential chains, so they're excluded from the key-entry flow.
  */
 export const KEY_PROVIDERS: readonly ProviderName[] = [
   "azure",
   "openai",
   "anthropic",
+  "claude",
   "google",
   "mistral",
   "cohere",

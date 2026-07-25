@@ -8,16 +8,10 @@ const makeContext = (over: Partial<ChatCommandContext> = {}): ChatCommandContext
   ({ emit: () => {}, ...over }) as unknown as ChatCommandContext;
 
 describe("runConfigCommand", () => {
-  test("bare /config launches the interactive TUI when the screen supports it", async () => {
-    let launched = 0;
-    await runConfigCommand(makeContext({ launchConfigTui: async () => void launched++ }), "");
-    expect(launched).toBe(1);
-  });
-
-  test("bare /config falls back to the usage notice without a TUI-capable screen", async () => {
+  test("bare /config prints the usage notice", async () => {
     const notices: Notice[] = [];
     await runConfigCommand(makeContext({ emit: (event) => notices.push(event as Notice) }), "");
-    expect(notices[0]?.text).toContain("Usage: /config");
+    expect(notices[0]?.text).toContain("Usage: /config get|set|delete");
   });
 
   test("`/config get <path>` still routes to the get handler", async () => {

@@ -14,6 +14,7 @@ describe("provider registry", () => {
       "azure",
       "openai",
       "anthropic",
+      "claude",
       "google",
       "mistral",
       "cohere",
@@ -52,16 +53,22 @@ describe("provider registry", () => {
   test("the providers schema accepts each provider's config and rejects a bad url", () => {
     const parsed = providersConfigSchema.parse({
       openai: { apiKey: "k" },
+      anthropic: {
+        authToken: "sk-ant-oat01-token",
+        headers: { "anthropic-beta": "oauth-2025-04-20" },
+      },
       azure: { apiKey: "k", resourceName: "r" },
       bedrock: { region: "us-east-1" },
       vertex: { project: "p", location: "us" },
     });
     expect(parsed.openai?.apiKey).toBe("k");
+    expect(parsed.anthropic?.authToken).toBe("sk-ant-oat01-token");
     expect(() => providersConfigSchema.parse({ openai: { baseURL: "not-a-url" } })).toThrow();
   });
 
-  test("bedrock and vertex are excluded from the API-key entry set", () => {
+  test("Claude OAuth and API-key providers are in the secret-backed entry set", () => {
     expect(KEY_PROVIDERS).toContain("openai");
+    expect(KEY_PROVIDERS).toContain("claude");
     expect(KEY_PROVIDERS).not.toContain("bedrock");
     expect(KEY_PROVIDERS).not.toContain("vertex");
   });

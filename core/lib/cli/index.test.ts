@@ -86,6 +86,18 @@ describe("runGloriousCli", () => {
     await expect(runGloriousCli(["run", "task"], deps)).resolves.toBe(130);
   });
 
+  test("auth claude routes to the authentication handler", async () => {
+    const calls: string[] = [];
+    const { deps } = makeDeps({
+      runAuth: async (provider) => {
+        calls.push(provider);
+        return EXIT_SUCCESS;
+      },
+    });
+    await expect(runGloriousCli(["auth", "claude"], deps)).resolves.toBe(EXIT_SUCCESS);
+    expect(calls).toEqual(["claude"]);
+  });
+
   test("update routes the selected channel and defaults to automatic channel selection", async () => {
     const calls: Array<{ channel: "auto" | "next" | "latest" }> = [];
     const { deps } = makeDeps({
@@ -195,6 +207,7 @@ describe("runGloriousCli", () => {
     // A value-taking option is captured too, not only boolean flags.
     const chat = cli.find((c) => c.name === "glorious");
     expect(chat?.flags.some((f) => f.usage === "--resume <str>")).toBe(true);
+    expect(cli.find((c) => c.name === "glorious auth claude")?.description).toContain("Claude");
     // The auto-added help flag is excluded from the reference.
     expect(cli.every((c) => c.flags.every((f) => !f.usage.startsWith("--help")))).toBe(true);
   });

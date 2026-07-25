@@ -10,7 +10,8 @@ In-session slash commands and key bindings — the same list `/help` prints, gen
 - `/mcp` — Manage and reload MCP servers
 - `/config` — Read or update global configuration
 - `/update` — Update glorious and exit
-- `/model` — Choose primary or subagent models
+- `/model` — Configure primary or subagent models
+- `/trust` — Manage tool permissions and trust rules
 - `/cost` — Show foreground token usage and estimated cost
 - `/activity` — Show completed tool activity for this session
 - `/todos` — Show all session todos
