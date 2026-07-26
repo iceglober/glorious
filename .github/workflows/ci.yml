@@ -29,7 +29,7 @@ jobs:
       - name: biome
         run: bun run check
       - name: test
-        run: bun test core docs
+        run: bun test core docs activegraph
 
   eval-selftest:
     runs-on: ubuntu-latest

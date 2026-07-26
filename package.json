@@ -32,7 +32,7 @@
   "scripts": {
     "dev": "bun core/agent-loop.ts",
     "glorious": "bun core/agent-loop.ts",
-    "test": "bun test core docs",
+    "test": "bun test core docs activegraph",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
     "format": "biome format --write .",
