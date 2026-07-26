@@ -13,11 +13,24 @@ const schema = defineSchema({
 type S1 = typeof schema;
 
 const ev = (id: number, type: string, payload: unknown): AnyEvent<S1> =>
-  ({ id, branch: "main", type, payload, causedBy: null, at: "2026-01-01T00:00:00.000Z" }) as AnyEvent<S1>;
+  ({
+    id,
+    branch: "main",
+    type,
+    payload,
+    causedBy: null,
+    at: "2026-01-01T00:00:00.000Z",
+  }) as AnyEvent<S1>;
 
 const log = [
   ev(1, "object.created", { objectId: "t1", objectType: "task", data: { title: "A" } }),
-  ev(2, "object.patched", { objectId: "t1", objectType: "task", patch: { title: "B" }, baseVersion: 1, version: 2 }),
+  ev(2, "object.patched", {
+    objectId: "t1",
+    objectType: "task",
+    patch: { title: "B" },
+    baseVersion: 1,
+    version: 2,
+  }),
 ];
 
 describe("createMemoryGraphStore", () => {

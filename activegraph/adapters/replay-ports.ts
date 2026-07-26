@@ -10,9 +10,10 @@
  * the next recorded event. Wire `tracer` into the runtime so the cursor
  * advances with every append.
  */
-import { err, ok } from "../lib/fp";
-import { canonicalJson, type AnyEvent } from "../domain/events";
+
+import { type AnyEvent, canonicalJson } from "../domain/events";
 import type { SchemaDef } from "../domain/schema";
+import { err, ok } from "../lib/fp";
 import type { Clock } from "../ports/clock";
 import type { ToolExecutor } from "../ports/tools";
 import type { TracerSink } from "../ports/tracer";

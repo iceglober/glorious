@@ -4,9 +4,10 @@
  * seeds a per-branch cache from the log's own llm.responded events (see
  * shell/runtime.ts), which is what makes replay and forks free.
  */
-import { hashRequest } from "../domain/events";
-import type { AnyEvent } from "../domain/events";
+
 import type { LlmResponse } from "../domain/effects";
+import type { AnyEvent } from "../domain/events";
+import { hashRequest } from "../domain/events";
 import type { SchemaDef } from "../domain/schema";
 import type { CompletionCache, LlmPort } from "../ports/llm";
 

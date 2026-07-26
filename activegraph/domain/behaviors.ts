@@ -93,7 +93,7 @@ export interface Kit<S extends SchemaDef> {
     readonly where?: (event: EventUnion<S, K>, view: GraphView<S>) => boolean;
     readonly prompt: (event: EventUnion<S, K>, view: GraphView<S>) => LlmRequest;
     readonly output: Out;
-    readonly then: (
+    readonly andThen: (
       output: z.infer<Out>,
       event: EventUnion<S, K>,
       ctx: BehaviorContext<S>,
@@ -156,7 +156,7 @@ export const createKit = <S extends SchemaDef>(schema: S): Kit<S> => {
             const issues = parsed.error.issues.map((issue) => issue.message).join("; ");
             throw new Error(`llm output failed schema: ${issues}`);
           }
-          return def.then(parsed.data, event, ctx);
+          return def.andThen(parsed.data, event, ctx);
         },
       }),
   };
@@ -181,13 +181,15 @@ export const whereObject =
   <S extends SchemaDef, T extends ObjectTypeName<S>>(type: T, match: Partial<ObjectData<S, T>>) =>
   (event: AnyEvent<S>, view: GraphView<S>): boolean => {
     const ids = referencedIds(event.payload);
-    return view.objects(type).some(
-      (object) =>
-        ids.has(object.id) &&
-        Object.entries(match as Record<string, unknown>).every(
-          (entry) => (object.data as Record<string, unknown>)[entry[0]] === entry[1],
-        ),
-    );
+    return view
+      .objects(type)
+      .some(
+        (object) =>
+          ids.has(object.id) &&
+          Object.entries(match as Record<string, unknown>).every(
+            (entry) => (object.data as Record<string, unknown>)[entry[0]] === entry[1],
+          ),
+      );
   };
 
 /** Post-process the mutations a behavior returns. */

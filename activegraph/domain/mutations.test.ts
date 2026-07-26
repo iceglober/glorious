@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { AnyEvent } from "./events";
 import { project } from "./graph";
-import { createMutations, toSnapshot, validateMutation, type Mutation } from "./mutations";
+import { createMutations, type Mutation, toSnapshot, validateMutation } from "./mutations";
 import { defineSchema, objectId, relationId } from "./schema";
 
 const schema = defineSchema({
@@ -19,14 +19,36 @@ type S1 = typeof schema;
 const m = createMutations(schema);
 
 const ev = (id: number, type: string, payload: unknown) =>
-  ({ id, branch: "main", type, payload, causedBy: null, at: "2026-01-01T00:00:00.000Z" }) as AnyEvent<S1>;
+  ({
+    id,
+    branch: "main",
+    type,
+    payload,
+    causedBy: null,
+    at: "2026-01-01T00:00:00.000Z",
+  }) as AnyEvent<S1>;
 
 const graph = () =>
   project<S1>([
-    ev(1, "object.created", { objectId: "t1", objectType: "task", data: { title: "A", status: "open" } }),
+    ev(1, "object.created", {
+      objectId: "t1",
+      objectType: "task",
+      data: { title: "A", status: "open" },
+    }),
     ev(2, "object.created", { objectId: "n1", objectType: "note", data: { text: "hi" } }),
-    ev(3, "relation.created", { relationId: "r1", relationType: "depends_on", source: "t1", target: "t1" }),
-    ev(4, "object.patched", { objectId: "t1", objectType: "task", patch: { status: "done" }, baseVersion: 1, version: 2 }),
+    ev(3, "relation.created", {
+      relationId: "r1",
+      relationType: "depends_on",
+      source: "t1",
+      target: "t1",
+    }),
+    ev(4, "object.patched", {
+      objectId: "t1",
+      objectType: "task",
+      patch: { status: "done" },
+      baseVersion: 1,
+      version: 2,
+    }),
   ]);
 
 const validate = (mutation: Mutation<S1>) => validateMutation({ schema, graph: graph(), mutation });
@@ -96,7 +118,10 @@ describe("validateMutation", () => {
 
   test("rejects an explicit id that already exists as duplicate_id", () => {
     const dup = m.addObject("task", { title: "B", status: "open" }, { id: objectId("t1") });
-    expect(validate(dup)).toMatchObject({ ok: false, error: { reason: "duplicate_id", objectId: "t1" } });
+    expect(validate(dup)).toMatchObject({
+      ok: false,
+      error: { reason: "duplicate_id", objectId: "t1" },
+    });
   });
 
   test("rejects relation endpoints whose runtime object type mismatches the declaration", () => {
@@ -110,7 +135,11 @@ describe("validateMutation", () => {
   });
 
   test("rejects emits with undeclared names or bad payloads", () => {
-    const undeclared = { kind: "emit", type: "task.exploded", payload: {} } as unknown as Mutation<S1>;
+    const undeclared = {
+      kind: "emit",
+      type: "task.exploded",
+      payload: {},
+    } as unknown as Mutation<S1>;
     expect(validate(undeclared)).toMatchObject({ ok: false, error: { reason: "schema_invalid" } });
     const badPayload = m.emit("task.completed", { taskId: 42 } as never);
     expect(validate(badPayload)).toMatchObject({ ok: false, error: { reason: "schema_invalid" } });

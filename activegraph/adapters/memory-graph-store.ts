@@ -3,10 +3,11 @@
  * `applyEvent` the runtime uses, so it satisfies the port contract by
  * construction.
  */
-import { fold } from "../lib/fp";
+
 import type { AnyEvent } from "../domain/events";
 import { applyEvent, emptyGraph, type GraphState } from "../domain/graph";
 import type { SchemaDef } from "../domain/schema";
+import { fold } from "../lib/fp";
 import type { GraphStore } from "../ports/graph-store";
 
 export const createMemoryGraphStore = <S extends SchemaDef>(): GraphStore<S> => {

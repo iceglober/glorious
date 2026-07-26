@@ -46,9 +46,7 @@ export const defineSchema = <
 
 // Derived type utilities — the vocabulary every other module speaks.
 export type ObjectTypeName<S extends SchemaDef> = keyof S["objects"] & string;
-export type ObjectData<S extends SchemaDef, T extends ObjectTypeName<S>> = z.infer<
-  S["objects"][T]
->;
+export type ObjectData<S extends SchemaDef, T extends ObjectTypeName<S>> = z.infer<S["objects"][T]>;
 export type RelationTypeName<S extends SchemaDef> = keyof S["relations"] & string;
 export type RelationSource<
   S extends SchemaDef,

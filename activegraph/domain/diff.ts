@@ -88,9 +88,7 @@ export const diffToMutations = <S extends SchemaDef>(
   return [
     ...diff.removedRelations.map((relation) => m.removeRelation(relation.id)),
     ...diff.removedObjects.map((object) => m.removeObject(object.id)),
-    ...diff.addedObjects.map((object) =>
-      m.addObject(object.type, object.data, { id: object.id }),
-    ),
+    ...diff.addedObjects.map((object) => m.addObject(object.type, object.data, { id: object.id })),
     ...diff.changedObjects.map((change) =>
       m.patchObject(
         change.before.type,

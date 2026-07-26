@@ -30,15 +30,10 @@
  * looser budget resumes dispatch.
  */
 import { fold, type Result } from "../lib/fp";
-import { matchBehaviors, type AnyBehavior } from "./behaviors";
+import { type AnyBehavior, matchBehaviors } from "./behaviors";
 import type { AnyEvent, BehaviorTrace } from "./events";
 import { applyEvent, emptyGraph, type GraphState } from "./graph";
-import {
-  toSnapshot,
-  validateMutation,
-  type Mutation,
-  type MutationSnapshot,
-} from "./mutations";
+import { type Mutation, type MutationSnapshot, toSnapshot, validateMutation } from "./mutations";
 import type { EventId, SchemaDef } from "./schema";
 import { createGraphView } from "./view";
 
@@ -322,7 +317,12 @@ export const applyProposals = <S extends SchemaDef>(options: {
     }
 
     if (m.requiresApproval === true) {
-      const approvalId = ids({ eventId: state.nextEventId, kind: "approval", index, typeName: actor });
+      const approvalId = ids({
+        eventId: state.nextEventId,
+        kind: "approval",
+        index,
+        typeName: actor,
+      });
       push([
         {
           type: "approval.proposed",
@@ -362,7 +362,8 @@ export const applyProposals = <S extends SchemaDef>(options: {
     switch (m.kind) {
       case "addObject": {
         const objectId =
-          m.id ?? ids({ eventId: domainEventId, kind: "object", index, typeName: m.objectType ?? "" });
+          m.id ??
+          ids({ eventId: domainEventId, kind: "object", index, typeName: m.objectType ?? "" });
         appliedSnapshot = { ...snapshot, id: objectId };
         domainProto = {
           type: "object.created",
@@ -492,11 +493,20 @@ export const settleStep = <S extends SchemaDef>(options: {
 
   for (const outcome of outcomes) {
     push([
-      { type: "behavior.started", payload: { behavior: outcome.behavior, forEvent }, causedBy: forEvent },
+      {
+        type: "behavior.started",
+        payload: { behavior: outcome.behavior, forEvent },
+        causedBy: forEvent,
+      },
     ]);
     outcome.trace.forEach((entry, index) => {
       if (entry.kind === "llm") {
-        const requestId = ids({ eventId: state.nextEventId, kind: "request", index, typeName: "llm" });
+        const requestId = ids({
+          eventId: state.nextEventId,
+          kind: "request",
+          index,
+          typeName: "llm",
+        });
         push([
           {
             type: "llm.requested",
@@ -515,7 +525,12 @@ export const settleStep = <S extends SchemaDef>(options: {
           },
         ]);
       } else {
-        const requestId = ids({ eventId: state.nextEventId, kind: "request", index, typeName: "tool" });
+        const requestId = ids({
+          eventId: state.nextEventId,
+          kind: "request",
+          index,
+          typeName: "tool",
+        });
         push([
           {
             type: "tool.requested",

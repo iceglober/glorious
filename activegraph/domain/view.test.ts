@@ -24,11 +24,31 @@ const ev = (id: number, type: string, payload: unknown, causedBy: number | null 
 const log: AnyEvent<S1>[] = [
   ev(1, "goal.created", { goalId: "g1", text: "go" }),
   ev(2, "task.completed", { taskId: "warmup" }, 1),
-  ev(3, "object.created", { objectId: "t1", objectType: "task", data: { title: "A", status: "open" } }, 2),
-  ev(4, "object.created", { objectId: "t2", objectType: "task", data: { title: "B", status: "open" } }, 1),
+  ev(
+    3,
+    "object.created",
+    { objectId: "t1", objectType: "task", data: { title: "A", status: "open" } },
+    2,
+  ),
+  ev(
+    4,
+    "object.created",
+    { objectId: "t2", objectType: "task", data: { title: "B", status: "open" } },
+    1,
+  ),
   ev(5, "object.created", { objectId: "n1", objectType: "note", data: { text: "hello" } }, 1),
-  ev(6, "relation.created", { relationId: "r1", relationType: "depends_on", source: "t1", target: "t2" }, 1),
-  ev(7, "relation.created", { relationId: "r2", relationType: "annotates", source: "n1", target: "t1" }, 1),
+  ev(
+    6,
+    "relation.created",
+    { relationId: "r1", relationType: "depends_on", source: "t1", target: "t2" },
+    1,
+  ),
+  ev(
+    7,
+    "relation.created",
+    { relationId: "r2", relationType: "annotates", source: "n1", target: "t1" },
+    1,
+  ),
 ];
 
 const view = () => createGraphView({ state: project<S1>(log), log });
@@ -48,14 +68,26 @@ describe("createGraphView", () => {
   });
 
   test("relations(type) and relationsOf(id) filter typed edges", () => {
-    expect(view().relations("depends_on").map((r) => String(r.id))).toEqual(["r1"]);
+    expect(
+      view()
+        .relations("depends_on")
+        .map((r) => String(r.id)),
+    ).toEqual(["r1"]);
     const ofT1 = view().relationsOf(objectId<"task">("t1"));
     expect(ofT1.map((r) => String(r.id)).sort()).toEqual(["r1", "r2"]);
-    expect(view().relationsOf(objectId<"task">("t2")).map((r) => String(r.id))).toEqual(["r1"]);
+    expect(
+      view()
+        .relationsOf(objectId<"task">("t2"))
+        .map((r) => String(r.id)),
+    ).toEqual(["r1"]);
   });
 
   test("recentEvents returns the log tail, newest last", () => {
-    expect(view().recentEvents(2).map((e) => e.id)).toEqual([6, 7]);
+    expect(
+      view()
+        .recentEvents(2)
+        .map((e) => e.id),
+    ).toEqual([6, 7]);
     expect(view().recentEvents().length).toBe(log.length);
   });
 

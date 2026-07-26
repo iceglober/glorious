@@ -9,9 +9,10 @@
  * what makes forking O(1) and lets `project` and strict replay run unchanged
  * on forks. Chained forks overlay recursively.
  */
-import type { Result } from "../lib/fp";
+
 import type { AnyEvent } from "../domain/events";
 import type { EventId, SchemaDef } from "../domain/schema";
+import type { Result } from "../lib/fp";
 
 export interface BranchRecord {
   readonly name: string;
@@ -24,7 +25,12 @@ export type StoreError =
   | { readonly reason: "io_error"; readonly message: string }
   | { readonly reason: "unknown_branch"; readonly branch: string }
   | { readonly reason: "branch_exists"; readonly branch: string }
-  | { readonly reason: "id_gap"; readonly branch: string; readonly expected: EventId; readonly got: EventId };
+  | {
+      readonly reason: "id_gap";
+      readonly branch: string;
+      readonly expected: EventId;
+      readonly got: EventId;
+    };
 
 export interface EventStore<S extends SchemaDef> {
   /** Events must continue the branch's contiguous id sequence. */

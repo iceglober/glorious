@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { canonicalEvent, type AnyEvent } from "./events";
+import { type AnyEvent, canonicalEvent } from "./events";
 import { compareLogs, isPrefixOf } from "./replay";
 import { defineSchema } from "./schema";
 
@@ -12,7 +12,14 @@ const schema = defineSchema({
 type S1 = typeof schema;
 
 const ev = (id: number, type: string, payload: unknown) =>
-  ({ id, branch: "main", type, payload, causedBy: null, at: "2026-01-01T00:00:00.000Z" }) as AnyEvent<S1>;
+  ({
+    id,
+    branch: "main",
+    type,
+    payload,
+    causedBy: null,
+    at: "2026-01-01T00:00:00.000Z",
+  }) as AnyEvent<S1>;
 
 const recorded: AnyEvent<S1>[] = [
   ev(1, "goal.created", { goalId: "g1", text: "go" }),

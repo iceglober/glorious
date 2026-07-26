@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { unwrap } from "../lib/fp";
-import { hashRequest, type AnyEvent } from "../domain/events";
+import { type AnyEvent, hashRequest } from "../domain/events";
 import { defineSchema } from "../domain/schema";
+import { unwrap } from "../lib/fp";
 import { createFakeLlm } from "./fake-llm";
 import { createMemoryCompletionCache, seedCacheFromLog, withCompletionCache } from "./llm-cache";
 
@@ -16,9 +16,13 @@ describe("withCompletionCache", () => {
       return `answer:${request.prompt}`;
     });
     const cached = withCompletionCache(inner, createMemoryCompletionCache());
-    expect(unwrap(await cached.complete({ prompt: "q", model: "m" }))).toEqual({ text: "answer:q" });
+    expect(unwrap(await cached.complete({ prompt: "q", model: "m" }))).toEqual({
+      text: "answer:q",
+    });
     // Key-order-insensitive: same canonical request.
-    expect(unwrap(await cached.complete({ model: "m", prompt: "q" }))).toEqual({ text: "answer:q" });
+    expect(unwrap(await cached.complete({ model: "m", prompt: "q" }))).toEqual({
+      text: "answer:q",
+    });
     expect(calls).toBe(1);
     expect(unwrap(await cached.complete({ prompt: "other" }))).toEqual({ text: "answer:other" });
     expect(calls).toBe(2);
@@ -34,7 +38,12 @@ describe("seedCacheFromLog", () => {
         id: 1,
         branch: "main",
         type: "llm.responded",
-        payload: { requestId: "req_1_0", requestHash, response: { text: "recorded" }, cached: false },
+        payload: {
+          requestId: "req_1_0",
+          requestHash,
+          response: { text: "recorded" },
+          cached: false,
+        },
         causedBy: null,
         at: "2026-01-01T00:00:00.000Z",
       } as AnyEvent<S1>,

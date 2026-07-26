@@ -10,7 +10,10 @@ describe("clock adapters", () => {
   });
 
   test("logical clock ticks deterministically per call", () => {
-    const clock = createLogicalClock({ startMs: Date.parse("2026-01-01T00:00:00.000Z"), tickSeconds: 2 });
+    const clock = createLogicalClock({
+      startMs: Date.parse("2026-01-01T00:00:00.000Z"),
+      tickSeconds: 2,
+    });
     expect(clock.now()).toBe("2026-01-01T00:00:00.000Z");
     expect(clock.now()).toBe("2026-01-01T00:00:02.000Z");
     expect(clock.monotonicSeconds()).toBe(4);

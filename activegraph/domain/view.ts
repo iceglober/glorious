@@ -28,8 +28,7 @@ export const createGraphView = <S extends SchemaDef>(options: {
   readonly log: readonly AnyEvent<S>[];
 }): GraphView<S> => {
   const { state, log } = options;
-  const eventById = (id: EventId): AnyEvent<S> | undefined =>
-    log.find((event) => event.id === id);
+  const eventById = (id: EventId): AnyEvent<S> | undefined => log.find((event) => event.id === id);
   return {
     object: <T extends ObjectTypeName<S>>(id: ObjectId<T>) =>
       state.objects.get(id) as GraphObject<S, T> | undefined,

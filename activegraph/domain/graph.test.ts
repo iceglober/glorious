@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { fold } from "../lib/fp";
-import { type AnyEvent } from "./events";
+import type { AnyEvent } from "./events";
 import { applyEvent, emptyGraph, project } from "./graph";
 import { defineSchema, objectId } from "./schema";
 
@@ -23,12 +23,37 @@ const ev = (id: number, type: string, payload: unknown, causedBy: number | null 
 
 const sampleLog = (): AnyEvent<S1>[] => [
   ev(1, "goal.created", { goalId: "g1", text: "do things" }),
-  ev(2, "object.created", { objectId: "t1", objectType: "task", data: { title: "A", status: "open" } }, 1),
-  ev(3, "object.created", { objectId: "t2", objectType: "task", data: { title: "B", status: "open" } }, 1),
+  ev(
+    2,
+    "object.created",
+    { objectId: "t1", objectType: "task", data: { title: "A", status: "open" } },
+    1,
+  ),
+  ev(
+    3,
+    "object.created",
+    { objectId: "t2", objectType: "task", data: { title: "B", status: "open" } },
+    1,
+  ),
   ev(4, "object.created", { objectId: "n1", objectType: "note", data: { text: "hi" } }, 1),
-  ev(5, "relation.created", { relationId: "r1", relationType: "depends_on", source: "t1", target: "t2" }, 1),
-  ev(6, "relation.created", { relationId: "r2", relationType: "annotates", source: "n1", target: "t2" }, 1),
-  ev(7, "object.patched", { objectId: "t1", objectType: "task", patch: { status: "done" }, baseVersion: 1, version: 2 }, 1),
+  ev(
+    5,
+    "relation.created",
+    { relationId: "r1", relationType: "depends_on", source: "t1", target: "t2" },
+    1,
+  ),
+  ev(
+    6,
+    "relation.created",
+    { relationId: "r2", relationType: "annotates", source: "n1", target: "t2" },
+    1,
+  ),
+  ev(
+    7,
+    "object.patched",
+    { objectId: "t1", objectType: "task", patch: { status: "done" }, baseVersion: 1, version: 2 },
+    1,
+  ),
 ];
 
 describe("applyEvent", () => {
@@ -52,7 +77,10 @@ describe("applyEvent", () => {
   });
 
   test("object.removed cascades to incident relations", () => {
-    const log = [...sampleLog(), ev(8, "object.removed", { objectId: "t2", objectType: "task" }, 1)];
+    const log = [
+      ...sampleLog(),
+      ev(8, "object.removed", { objectId: "t2", objectType: "task" }, 1),
+    ];
     const state = project<S1>(log);
     expect(state.objects.has("t2")).toBe(false);
     expect(state.relations.size).toBe(0); // r1 and r2 both touched t2
@@ -61,7 +89,10 @@ describe("applyEvent", () => {
   });
 
   test("relation.removed removes only the named relation", () => {
-    const log = [...sampleLog(), ev(8, "relation.removed", { relationId: "r1", relationType: "depends_on" }, 1)];
+    const log = [
+      ...sampleLog(),
+      ev(8, "relation.removed", { relationId: "r1", relationType: "depends_on" }, 1),
+    ];
     const state = project<S1>(log);
     expect(state.relations.has("r1")).toBe(false);
     expect(state.relations.has("r2")).toBe(true);
@@ -70,15 +101,34 @@ describe("applyEvent", () => {
   test("patching or removing an unknown object is identity, not an error", () => {
     const empty = emptyGraph<S1>();
     expect(
-      applyEvent(empty, ev(1, "object.patched", { objectId: "ghost", objectType: "task", patch: {}, baseVersion: 1, version: 2 })),
+      applyEvent(
+        empty,
+        ev(1, "object.patched", {
+          objectId: "ghost",
+          objectType: "task",
+          patch: {},
+          baseVersion: 1,
+          version: 2,
+        }),
+      ),
     ).toBe(empty);
-    expect(applyEvent(empty, ev(1, "object.removed", { objectId: "ghost", objectType: "task" }))).toBe(empty);
+    expect(
+      applyEvent(empty, ev(1, "object.removed", { objectId: "ghost", objectType: "task" })),
+    ).toBe(empty);
   });
 
   test("does not mutate the input state — old snapshots stay valid", () => {
     const before = project<S1>(sampleLog().slice(0, 2));
     const sizeBefore = before.objects.size;
-    applyEvent(before, ev(3, "object.created", { objectId: "tX", objectType: "task", data: { title: "X", status: "open" } }, 1));
+    applyEvent(
+      before,
+      ev(
+        3,
+        "object.created",
+        { objectId: "tX", objectType: "task", data: { title: "X", status: "open" } },
+        1,
+      ),
+    );
     expect(before.objects.size).toBe(sizeBefore);
   });
 });

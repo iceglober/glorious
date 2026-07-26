@@ -5,31 +5,30 @@
  * parent prefix recursively. Appends enforce per-branch id contiguity so a
  * torn writer can't silently corrupt the sequence.
  */
-import { err, ok } from "../lib/fp";
+
 import type { AnyEvent } from "../domain/events";
 import type { EventId, SchemaDef } from "../domain/schema";
+import { andThen, err, mapResult, ok, type Result } from "../lib/fp";
 import type { BranchRecord, EventStore, StoreError } from "../ports/event-store";
 
 export const createMemoryEventStore = <S extends SchemaDef>(): EventStore<S> => {
   const branches = new Map<string, BranchRecord>();
   const own = new Map<string, AnyEvent<S>[]>();
 
-  const materialized = (name: string): readonly AnyEvent<S>[] | StoreError => {
+  const materialized = (name: string): Result<readonly AnyEvent<S>[], StoreError> => {
     const record = branches.get(name);
-    if (record === undefined) return { reason: "unknown_branch", branch: name };
+    if (record === undefined) return err({ reason: "unknown_branch", branch: name });
     const events = own.get(name) ?? [];
-    if (record.parent === null) return events;
-    const parent = materialized(record.parent);
-    if (!Array.isArray(parent)) return parent as StoreError;
+    if (record.parent === null) return ok(events);
     const base = record.baseEventId ?? 0;
-    return [...parent.filter((event) => event.id <= base), ...events];
+    return mapResult(materialized(record.parent), (parent) => [
+      ...parent.filter((event) => event.id <= base),
+      ...events,
+    ]);
   };
 
-  const headOf = (name: string): EventId | StoreError => {
-    const all = materialized(name);
-    if (!Array.isArray(all)) return all as StoreError;
-    return all.length === 0 ? 0 : (all[all.length - 1]?.id ?? 0);
-  };
+  const headOf = (name: string): Result<EventId, StoreError> =>
+    mapResult(materialized(name), (all) => all[all.length - 1]?.id ?? 0);
 
   return {
     append: async (events) => {
@@ -42,29 +41,25 @@ export const createMemoryEventStore = <S extends SchemaDef>(): EventStore<S> => 
           own.set(name, []);
         }
         const head = headOf(name);
-        if (typeof head !== "number") return err(head);
-        if (event.id !== head + 1) {
-          return err({ reason: "id_gap", branch: name, expected: head + 1, got: event.id });
+        if (!head.ok) return head;
+        if (event.id !== head.value + 1) {
+          return err({ reason: "id_gap", branch: name, expected: head.value + 1, got: event.id });
         }
         own.get(name)?.push(event);
       }
       return ok(undefined);
     },
-    read: async ({ branch, fromId, toId }) => {
-      const all = materialized(branch);
-      if (!Array.isArray(all)) return err(all as StoreError);
-      return ok(
-        all.filter(
-          (event) =>
-            (fromId === undefined || event.id >= fromId) &&
-            (toId === undefined || event.id <= toId),
+    read: async ({ branch, fromId, toId }) =>
+      andThen(materialized(branch), (all) =>
+        ok(
+          all.filter(
+            (event) =>
+              (fromId === undefined || event.id >= fromId) &&
+              (toId === undefined || event.id <= toId),
+          ),
         ),
-      );
-    },
-    head: async (branch) => {
-      const head = headOf(branch);
-      return typeof head === "number" ? ok(head) : err(head);
-    },
+      ),
+    head: async (branch) => headOf(branch),
     createBranch: async (record) => {
       if (branches.has(record.name)) return err({ reason: "branch_exists", branch: record.name });
       if (record.parent !== null && !branches.has(record.parent)) {

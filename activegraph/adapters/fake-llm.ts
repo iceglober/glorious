@@ -5,8 +5,9 @@
  * errs when the script runs dry. No real provider adapters ship in v1 — a
  * future ai-sdk adapter slots in behind the same `LlmPort`.
  */
-import { err, ok } from "../lib/fp";
+
 import type { LlmRequest, LlmResponse } from "../domain/effects";
+import { err, ok } from "../lib/fp";
 import type { LlmPort } from "../ports/llm";
 
 export const createFakeLlm = (respond: (request: LlmRequest) => string | LlmResponse): LlmPort => ({
@@ -22,7 +23,10 @@ export const createScriptedLlm = (script: readonly (string | LlmResponse)[]): Ll
     complete: async () => {
       const next = script[cursor++];
       if (next === undefined) {
-        return err({ reason: "provider_error", message: `script exhausted after ${script.length} calls` });
+        return err({
+          reason: "provider_error",
+          message: `script exhausted after ${script.length} calls`,
+        });
       }
       return ok(typeof next === "string" ? { text: next } : next);
     },
@@ -31,5 +35,6 @@ export const createScriptedLlm = (script: readonly (string | LlmResponse)[]): Ll
 
 /** An LlmPort that must never be reached (strict replay serves from cache). */
 export const createUnreachableLlm = (label = "unreachable"): LlmPort => ({
-  complete: async () => err({ reason: "provider_error", message: `llm port called during ${label}` }),
+  complete: async () =>
+    err({ reason: "provider_error", message: `llm port called during ${label}` }),
 });

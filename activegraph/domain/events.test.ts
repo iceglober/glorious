@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import {
+  type AnyEvent,
   canonicalEvent,
   canonicalJson,
   canonicalLog,
   fnv1a64,
   hashRequest,
   isExternalEvent,
-  type AnyEvent,
 } from "./events";
 import { defineSchema } from "./schema";
 
@@ -82,11 +82,19 @@ describe("fnv1a64 and hashRequest", () => {
 
 describe("isExternalEvent", () => {
   test("null-cause events are external unless they are runtime.idle or budget markers", () => {
-    expect(isExternalEvent(ev({ id: 1, type: "goal.created", payload: { goalId: "g", text: "t" } }))).toBe(true);
-    expect(isExternalEvent(ev({ id: 2, type: "runtime.idle", payload: { processed: 0 } }))).toBe(false);
+    expect(
+      isExternalEvent(ev({ id: 1, type: "goal.created", payload: { goalId: "g", text: "t" } })),
+    ).toBe(true);
+    expect(isExternalEvent(ev({ id: 2, type: "runtime.idle", payload: { processed: 0 } }))).toBe(
+      false,
+    );
     expect(
       isExternalEvent(
-        ev({ id: 3, type: "runtime.budget_exhausted", payload: { limit: "max_events", processed: 0 } }),
+        ev({
+          id: 3,
+          type: "runtime.budget_exhausted",
+          payload: { limit: "max_events", processed: 0 },
+        }),
       ),
     ).toBe(false);
     expect(

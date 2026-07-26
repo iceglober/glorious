@@ -13,9 +13,9 @@
  * semantics as the memory adapter (the shared contract suite runs on both).
  */
 import { Database } from "bun:sqlite";
-import { err, ok } from "../lib/fp";
 import type { AnyEvent } from "../domain/events";
 import type { EventId, SchemaDef } from "../domain/schema";
+import { andThen, err, mapResult, ok, type Result } from "../lib/fp";
 import type { BranchRecord, EventStore, StoreError } from "../ports/event-store";
 
 export const createSqliteEventStore = <S extends SchemaDef>(
@@ -38,10 +38,13 @@ export const createSqliteEventStore = <S extends SchemaDef>(
     );
   `);
 
-  const getBranch = db.prepare<{ name: string; parent: string | null; base_event_id: number | null }, [string]>(
-    "SELECT name, parent, base_event_id FROM branches WHERE name = ?",
+  const getBranch = db.prepare<
+    { name: string; parent: string | null; base_event_id: number | null },
+    [string]
+  >("SELECT name, parent, base_event_id FROM branches WHERE name = ?");
+  const insertBranch = db.prepare(
+    "INSERT INTO branches (name, parent, base_event_id) VALUES (?, ?, ?)",
   );
-  const insertBranch = db.prepare("INSERT INTO branches (name, parent, base_event_id) VALUES (?, ?, ?)");
   const insertEvent = db.prepare("INSERT INTO events (branch, id, type, body) VALUES (?, ?, ?, ?)");
   const ownEvents = db.prepare<{ body: string }, [string]>(
     "SELECT body FROM events WHERE branch = ? ORDER BY id",
@@ -57,24 +60,25 @@ export const createSqliteEventStore = <S extends SchemaDef>(
       : { name: row.name, parent: row.parent, baseEventId: row.base_event_id };
   };
 
-  const materialized = (name: string): readonly AnyEvent<S>[] | StoreError => {
+  const materialized = (name: string): Result<readonly AnyEvent<S>[], StoreError> => {
     const record = branchRecord(name);
-    if (record === null) return { reason: "unknown_branch", branch: name };
+    if (record === null) return err({ reason: "unknown_branch", branch: name });
     const events = ownEvents.all(name).map((row) => JSON.parse(row.body) as AnyEvent<S>);
-    if (record.parent === null) return events;
-    const parent = materialized(record.parent);
-    if (!Array.isArray(parent)) return parent as StoreError;
+    if (record.parent === null) return ok(events);
     const base = record.baseEventId ?? 0;
-    return [...parent.filter((event) => event.id <= base), ...events];
+    return mapResult(materialized(record.parent), (parent) => [
+      ...parent.filter((event) => event.id <= base),
+      ...events,
+    ]);
   };
 
-  const headOf = (name: string): EventId | StoreError => {
+  const headOf = (name: string): Result<EventId, StoreError> => {
     const record = branchRecord(name);
-    if (record === null) return { reason: "unknown_branch", branch: name };
+    if (record === null) return err({ reason: "unknown_branch", branch: name });
     const head = ownHead.get(name)?.head;
-    if (head !== null && head !== undefined) return head;
-    if (record.parent === null) return 0;
-    return record.baseEventId ?? 0;
+    if (head !== null && head !== undefined) return ok(head);
+    if (record.parent === null) return ok(0);
+    return ok(record.baseEventId ?? 0);
   };
 
   return {
@@ -84,9 +88,9 @@ export const createSqliteEventStore = <S extends SchemaDef>(
           const name = event.branch;
           if (branchRecord(name) === null) insertBranch.run(name, null, null);
           const head = headOf(name);
-          if (typeof head !== "number") return err(head);
-          if (event.id !== head + 1) {
-            return err({ reason: "id_gap", branch: name, expected: head + 1, got: event.id });
+          if (!head.ok) return head;
+          if (event.id !== head.value + 1) {
+            return err({ reason: "id_gap", branch: name, expected: head.value + 1, got: event.id });
           }
           insertEvent.run(name, event.id, event.type, JSON.stringify(event));
         }
@@ -95,21 +99,17 @@ export const createSqliteEventStore = <S extends SchemaDef>(
         return err({ reason: "io_error", message: String(cause) });
       }
     },
-    read: async ({ branch, fromId, toId }) => {
-      const all = materialized(branch);
-      if (!Array.isArray(all)) return err(all as StoreError);
-      return ok(
-        all.filter(
-          (event) =>
-            (fromId === undefined || event.id >= fromId) &&
-            (toId === undefined || event.id <= toId),
+    read: async ({ branch, fromId, toId }) =>
+      andThen(materialized(branch), (all) =>
+        ok(
+          all.filter(
+            (event) =>
+              (fromId === undefined || event.id >= fromId) &&
+              (toId === undefined || event.id <= toId),
+          ),
         ),
-      );
-    },
-    head: async (branch) => {
-      const head = headOf(branch);
-      return typeof head === "number" ? ok(head) : err(head);
-    },
+      ),
+    head: async (branch) => headOf(branch),
     createBranch: async (record) => {
       if (branchRecord(record.name) !== null) {
         return err({ reason: "branch_exists", branch: record.name });

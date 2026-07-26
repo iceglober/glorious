@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { err, ok, pipe } from "../lib/fp";
 import {
+  type BehaviorContext,
   createKit,
   mapMutations,
   matchBehaviors,
   when,
   whereObject,
-  type BehaviorContext,
 } from "./behaviors";
 import type { AnyEvent } from "./events";
 import { project } from "./graph";
@@ -28,12 +28,32 @@ type S1 = typeof schema;
 const kit = createKit(schema);
 
 const ev = (id: number, type: string, payload: unknown) =>
-  ({ id, branch: "main", type, payload, causedBy: null, at: "2026-01-01T00:00:00.000Z" }) as AnyEvent<S1>;
+  ({
+    id,
+    branch: "main",
+    type,
+    payload,
+    causedBy: null,
+    at: "2026-01-01T00:00:00.000Z",
+  }) as AnyEvent<S1>;
 
 const log: AnyEvent<S1>[] = [
-  ev(1, "object.created", { objectId: "t1", objectType: "task", data: { title: "Research", status: "open" } }),
-  ev(2, "object.created", { objectId: "t2", objectType: "task", data: { title: "Memo", status: "blocked" } }),
-  ev(3, "relation.created", { relationId: "r1", relationType: "depends_on", source: "t1", target: "t2" }),
+  ev(1, "object.created", {
+    objectId: "t1",
+    objectType: "task",
+    data: { title: "Research", status: "open" },
+  }),
+  ev(2, "object.created", {
+    objectId: "t2",
+    objectType: "task",
+    data: { title: "Memo", status: "blocked" },
+  }),
+  ev(3, "relation.created", {
+    relationId: "r1",
+    relationType: "depends_on",
+    source: "t1",
+    target: "t2",
+  }),
 ];
 const state = () => project<S1>(log);
 const view = () => createGraphView({ state: state(), log });
@@ -87,7 +107,11 @@ describe("relationBehavior", () => {
     const mutations = await unblock.run(touching, ctx());
     expect(seen).toEqual(["r1"]);
     expect(mutations).toHaveLength(1);
-    expect(mutations[0]).toMatchObject({ kind: "patchObject", objectId: "t2", patch: { status: "open" } });
+    expect(mutations[0]).toMatchObject({
+      kind: "patchObject",
+      objectId: "t2",
+      patch: { status: "open" },
+    });
   });
 
   test("does not fire for events that reference no endpoint of its relation type", () => {
@@ -99,9 +123,9 @@ describe("relationBehavior", () => {
     });
     const unrelated = ev(4, "task.completed", { taskId: "someone-else" });
     expect(unblock.where?.(unrelated, view())).toBe(false);
-    expect(
-      matchBehaviors({ event: unrelated, behaviors: [unblock], view: view() }),
-    ).toHaveLength(0);
+    expect(matchBehaviors({ event: unrelated, behaviors: [unblock], view: view() })).toHaveLength(
+      0,
+    );
   });
 });
 
@@ -114,7 +138,7 @@ describe("llmBehavior", () => {
         prompt: `summarize ${event.type === "task.completed" ? event.payload.taskId : ""}`,
       }),
       output: z.object({ text: z.string(), confidence: z.number() }),
-      then: (output, _event, ctx) => [ctx.m.addObject("note", { text: output.text })],
+      andThen: (output, _event, ctx) => [ctx.m.addObject("note", { text: output.text })],
     });
 
   test("parses structured output through zod and maps it to mutations", async () => {
@@ -140,9 +164,9 @@ describe("llmBehavior", () => {
       claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), wrongShape),
     ).rejects.toThrow(/failed schema/);
     const portless: BehaviorContext<S1> = ctx();
-    expect(claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), portless)).rejects.toThrow(
-      /no_llm_port/,
-    );
+    expect(
+      claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), portless),
+    ).rejects.toThrow(/no_llm_port/);
   });
 });
 

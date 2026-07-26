@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { unwrap } from "../lib/fp";
 import type { AnyEvent } from "../domain/events";
 import { defineSchema } from "../domain/schema";
+import { unwrap } from "../lib/fp";
 import { createRecordedStamps, createRecordedTools } from "./replay-ports";
 
 const schema = defineSchema({ objects: {}, relations: {}, events: {} });
@@ -33,9 +33,19 @@ describe("createRecordedTools", () => {
     const at = "2026-01-01T00:00:00.000Z";
     const recorded = [
       ev(1, "tool.requested", { requestId: "r1", tool: "search", input: { q: "x" } }, at),
-      ev(2, "tool.responded", { requestId: "r1", tool: "search", output: { hits: 1 }, isError: false }, at),
+      ev(
+        2,
+        "tool.responded",
+        { requestId: "r1", tool: "search", output: { hits: 1 }, isError: false },
+        at,
+      ),
       ev(3, "tool.requested", { requestId: "r2", tool: "search", input: { q: "x" } }, at),
-      ev(4, "tool.responded", { requestId: "r2", tool: "search", output: { hits: 2 }, isError: false }, at),
+      ev(
+        4,
+        "tool.responded",
+        { requestId: "r2", tool: "search", output: { hits: 2 }, isError: false },
+        at,
+      ),
     ];
     const tools = createRecordedTools(recorded);
     expect(unwrap(await tools.execute("search", { q: "x" }))).toEqual({ hits: 1 });
@@ -44,6 +54,9 @@ describe("createRecordedTools", () => {
       ok: false,
       error: { reason: "tool_error" },
     });
-    expect(await tools.execute("other", {})).toMatchObject({ ok: false, error: { reason: "tool_error" } });
+    expect(await tools.execute("other", {})).toMatchObject({
+      ok: false,
+      error: { reason: "tool_error" },
+    });
   });
 });

@@ -2,19 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { err, ok } from "../lib/fp";
 import { createKit } from "./behaviors";
-import type { AnyEvent } from "./events";
 import { createMutations } from "./mutations";
 import { defineSchema, objectId } from "./schema";
 import {
   appendExternal,
   applyProposals,
+  type BehaviorOutcome,
   derivedIdStrategy,
   initialState,
   planStep,
-  settleStep,
-  type BehaviorOutcome,
   type RuntimeState,
   type StepPlan,
+  settleStep,
 } from "./step";
 
 const schema = defineSchema({
@@ -120,7 +119,11 @@ describe("applyProposals", () => {
       at: stamp.at,
       ids,
     });
-    expect(appended.map((e) => e.type)).toEqual(["patch.proposed", "patch.applied", "object.created"]);
+    expect(appended.map((e) => e.type)).toEqual([
+      "patch.proposed",
+      "patch.applied",
+      "object.created",
+    ]);
     const createdId = "task_4_0"; // domain event id 4, first proposal
     expect(state.graph.objects.get(createdId)).toMatchObject({ type: "task", version: 1 });
     expect(appended[1]?.payload).toMatchObject({ actor: "planner", mutation: { id: createdId } });
@@ -199,7 +202,11 @@ describe("settleStep", () => {
   test("orders started → patches → completed per behavior, in registry order", () => {
     const plan = dispatchOf(planStep({ state: seeded(), behaviors: [], budget: {}, stamp }));
     const outcomes: BehaviorOutcome<S1>[] = [
-      { behavior: "planner", result: ok([m.addObject("task", { title: "A", status: "open" })]), trace: [] },
+      {
+        behavior: "planner",
+        result: ok([m.addObject("task", { title: "A", status: "open" })]),
+        trace: [],
+      },
       { behavior: "grump", result: err({ reason: "exploded" }), trace: [] },
     ];
     const { state, appended } = settleStep({ schema, plan, outcomes, stamp, ids });
@@ -265,7 +272,9 @@ describe("settleStep", () => {
     const outcomes: BehaviorOutcome<S1>[] = [
       {
         behavior: "gate",
-        result: ok([m.addObject("task", { title: "Sensitive", status: "open" }, { requiresApproval: true })]),
+        result: ok([
+          m.addObject("task", { title: "Sensitive", status: "open" }, { requiresApproval: true }),
+        ]),
         trace: [],
       },
     ];
@@ -275,7 +284,7 @@ describe("settleStep", () => {
     expect(proposal).toBeDefined();
     expect(state.graph.objects.size).toBe(0);
     expect(state.pendingApprovals.size).toBe(1);
-    const approvalId = (proposal?.payload as { approvalId: string }).approvalId;
+    const approvalId = (proposal!.payload as { approvalId: string }).approvalId;
 
     // Drain the queue without behaviors, then grant.
     while (true) {

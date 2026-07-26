@@ -39,10 +39,7 @@ import type {
   SchemaDef,
 } from "./schema";
 
-export interface GraphObject<
-  S extends SchemaDef,
-  T extends ObjectTypeName<S> = ObjectTypeName<S>,
-> {
+export interface GraphObject<S extends SchemaDef, T extends ObjectTypeName<S> = ObjectTypeName<S>> {
   readonly id: ObjectId<T>;
   readonly type: T;
   readonly data: ObjectData<S, T>;

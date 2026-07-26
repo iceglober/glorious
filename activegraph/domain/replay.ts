@@ -6,7 +6,7 @@
  * settle; permissive replay never needs this module because it IS `project`.
  */
 import { err, ok, type Result } from "../lib/fp";
-import { canonicalEvent, type AnyEvent } from "./events";
+import { type AnyEvent, canonicalEvent } from "./events";
 import type { EventId, SchemaDef } from "./schema";
 
 export interface Divergence {

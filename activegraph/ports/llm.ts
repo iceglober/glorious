@@ -9,8 +9,9 @@
  * replay, forks) never re-calls a provider. `withCompletionCache` (adapter)
  * layers a persistent cache across runs on top of the same interface.
  */
-import type { Result } from "../lib/fp";
+
 import type { LlmError, LlmRequest, LlmResponse } from "../domain/effects";
+import type { Result } from "../lib/fp";
 
 export interface LlmPort {
   readonly complete: (request: LlmRequest) => Promise<Result<LlmResponse, LlmError>>;

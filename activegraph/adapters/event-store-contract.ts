@@ -7,9 +7,9 @@
  */
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { unwrap } from "../lib/fp";
 import type { AnyEvent } from "../domain/events";
 import { defineSchema } from "../domain/schema";
+import { unwrap } from "../lib/fp";
 import type { EventStore } from "../ports/event-store";
 
 export const contractSchema = defineSchema({
@@ -66,7 +66,9 @@ export const describeEventStoreContract = (
       const store = makeStore();
       unwrap(await store.append([contractEvent(1, "main")]));
       unwrap(await store.createBranch({ name: "fork", parent: "main", baseEventId: 1 }));
-      expect(await store.createBranch({ name: "fork", parent: "main", baseEventId: 1 })).toMatchObject({
+      expect(
+        await store.createBranch({ name: "fork", parent: "main", baseEventId: 1 }),
+      ).toMatchObject({
         ok: false,
         error: { reason: "branch_exists" },
       });
@@ -84,7 +86,11 @@ export const describeEventStoreContract = (
     test("fork reads overlay the parent prefix up to the base, then own events", async () => {
       const store = makeStore();
       unwrap(
-        await store.append([contractEvent(1, "main"), contractEvent(2, "main"), contractEvent(3, "main")]),
+        await store.append([
+          contractEvent(1, "main"),
+          contractEvent(2, "main"),
+          contractEvent(3, "main"),
+        ]),
       );
       unwrap(await store.createBranch({ name: "fork", parent: "main", baseEventId: 2 }));
       expect(unwrap(await store.head("fork"))).toBe(2);
