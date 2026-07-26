@@ -190,9 +190,21 @@ export const canonicalJson = (value: unknown): string => {
   return JSON.stringify(value) ?? "null";
 };
 
-/** Canonical bytes of one event — the determinism/divergence currency. */
+/**
+ * Canonical bytes of one event — the determinism/divergence currency. The
+ * `branch` label is deliberately excluded: a fork's overlay read returns its
+ * parent's prefix with the parent's branch label, and replaying that prefix
+ * under the fork's name must not read as divergence. Branch identity is
+ * bookkeeping; id/type/payload/causedBy/at are the causal content.
+ */
 export const canonicalEvent = <S extends SchemaDef>(event: AnyEvent<S>): string =>
-  canonicalJson(event);
+  canonicalJson({
+    id: event.id,
+    type: event.type,
+    payload: event.payload,
+    causedBy: event.causedBy,
+    at: event.at,
+  });
 
 /** Canonical bytes of a whole log, one event per line. */
 export const canonicalLog = <S extends SchemaDef>(events: Iterable<AnyEvent<S>>): string => {
