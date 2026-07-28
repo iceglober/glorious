@@ -1,8 +1,6 @@
 name: ci
 
-# Validates the core Bun agent with no model credentials — every push proves
-# the tests pass and every eval task's graders still fail on the unsolved
-# fixture and pass on its reference solution.
+# Validates the core Bun agent with no model credentials.
 on:
   push:
     branches: [main]
@@ -30,21 +28,3 @@ jobs:
         run: bun run check
       - name: test
         run: bun test core docs
-
-  eval-selftest:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.14"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-      - name: install
-        run: bun install --frozen-lockfile
-      - name: selftest (no model — proves each task's graders are real)
-        run: bun core/eval/run.ts --selfcheck

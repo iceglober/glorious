@@ -1,13 +1,5 @@
-import type { ChatMode } from "../session/log";
 import { splitGraphemes } from "./editor";
 import { displayWidth, graphemeWidth, truncateToDisplayWidth } from "./terminal-editor";
-
-/** A spinning dial for background-job rows: a filled quadrant sweeping clockwise
- *  (upper-left → upper-right → lower-right → lower-left). Plain single-width
- *  glyphs, not emoji, so job rows stay aligned. */
-const CLOCK_FRAMES = ["◴", "◷", "◶", "◵"];
-export const formatSpinnerClock = (frame: number): string =>
-  CLOCK_FRAMES[((frame % CLOCK_FRAMES.length) + CLOCK_FRAMES.length) % CLOCK_FRAMES.length] ?? "◴";
 
 const VU_BLOCKS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
 
@@ -80,80 +72,34 @@ const middleEllipsis = (text: string, maxWidth: number): string => {
 };
 
 export interface StatusSectionState {
-  /** Display path of the directory the session started in — the root the
-   *  session orchestrates from, however many worktrees the work fans into. */
+  /** Display path of the directory the session started in. */
   root: string;
-  /** Provider/model label, e.g. "azure/gpt-5.6-sol". */
+  /** Model label, e.g. "gpt-5.6-luna". */
   model: string;
-  mode: ChatMode;
-  /** Animation frame for the job clock (advances on the fast tick). */
-  frame: number;
   /** Latest request's context size. */
   usage: { ctx: number };
   /** When set, ctx displays against this soft limit (for example, 8.7k/8.0k). */
   contextSoftLimit?: number;
-  /** Running background jobs only — each gets its own row. */
-  jobs: ReadonlyArray<{ id: string; mode: ChatMode; prompt: string; startedAt: number }>;
-  now?: number;
 }
-
-/** Re-warn after enough growth to be useful without repeating every step. */
-export const contextWarningRearmThreshold = (softLimit: number): number =>
-  Math.max(1, Math.ceil(softLimit * 0.1));
-
-/**
- * Warn when the latest request first reaches the soft limit, then re-arm once
- * the context has grown another tenth of that limit beyond the last warning.
- */
-export const shouldWarnContext = (
-  ctx: number,
-  softLimit: number | undefined,
-  lastWarnedContext: number | undefined,
-): boolean =>
-  softLimit !== undefined &&
-  ctx >= softLimit &&
-  (lastWarnedContext === undefined ||
-    ctx >= lastWarnedContext + contextWarningRearmThreshold(softLimit));
 
 export const composeStatusSection = (
   state: StatusSectionState,
   requestedWidth: number,
 ): string[] => {
   const width = normalizedWidth(requestedWidth);
-  const now = state.now ?? Date.now();
-  const frame = formatSpinnerClock(state.frame);
   const context =
     state.contextSoftLimit === undefined
       ? formatStatusTokens(state.usage.ctx)
       : `${formatStatusTokens(state.usage.ctx)}/${formatStatusTokens(state.contextSoftLimit)}`;
-  const controls = "Tab mode · / commands";
   const fullContext = `${state.model} · ctx ${context}`;
   const compactContext = `ctx ${context}`;
-  // The controls live on their own line now, so the info line gets the full
-  // width. It degrades location → model → context → the essential mode.
+  // The info line degrades location → model → context.
   const rootWidth = width - displayWidth(fullContext) - 3;
   const info =
     rootWidth >= 8
       ? `${middleEllipsis(state.root, rootWidth)} · ${fullContext}`
       : displayWidth(fullContext) <= width
         ? fullContext
-        : displayWidth(compactContext) <= width
-          ? compactContext
-          : `${state.mode} · ${compactContext}`;
-  const infoLine = truncateToDisplayWidth(info, width);
-  const controlsLine = truncateToDisplayWidth(controls, width);
-
-  const jobRows = state.jobs.map((job) => {
-    const prefix = `  ${frame} [${job.id}] ${job.mode}: `;
-    const suffix = `  ${formatClock(now - job.startedAt)}`;
-    const available = width - displayWidth(prefix) - displayWidth(suffix);
-    if (available < 0)
-      return truncateToDisplayWidth(`${frame} [${job.id}] ${suffix.trim()}`, width);
-
-    const firstLine = job.prompt.split("\n")[0] ?? "";
-    const snippet = truncateToDisplayWidth(firstLine, Math.min(48, available));
-    return `${prefix}${snippet}${suffix}`;
-  });
-
-  return [infoLine, controlsLine, ...jobRows];
+        : compactContext;
+  return [truncateToDisplayWidth(info, width)];
 };

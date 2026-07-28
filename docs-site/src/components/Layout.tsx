@@ -3,10 +3,8 @@ import { NavLink, Outlet, useLocation, Link } from "react-router";
 const NAV = [
   { to: "/install", label: "install" },
   { to: "/quickstart", label: "quickstart" },
-  { to: "/modes", label: "modes" },
+  { to: "/tools", label: "tools" },
   { to: "/cli", label: "cli" },
-  { to: "/config", label: "config" },
-  { to: "/mcp", label: "mcp" },
 ];
 
 function Breadcrumbs() {

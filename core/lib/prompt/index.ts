@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import z from "zod";
-import { modelAddendum } from "./addenda";
 import { BASE_TEMPLATE } from "./base";
 import {
   type ModelParams,
@@ -12,7 +11,6 @@ import {
 } from "./profiles";
 import { renderTemplate } from "./render";
 
-export { buildHandoffPrompt } from "./handoff";
 export type { ModelParams, Profile, ProfileName };
 export { profileNames, profiles, resolveProfile };
 
@@ -21,7 +19,6 @@ export type PromptFlags = {
   planning: boolean;
   smallModel: boolean;
   hallucinationGuard: boolean;
-  subagentContract: boolean;
 };
 
 /** The full flag set the renderer sees; the two workflow flags are chosen by
@@ -43,7 +40,6 @@ export const promptConfigSchema = z.object({
       planning: z.boolean().optional(),
       smallModel: z.boolean().optional(),
       hallucinationGuard: z.boolean().optional(),
-      subagentContract: z.boolean().optional(),
     })
     .optional(),
 });
@@ -60,19 +56,11 @@ export interface PromptContext {
   gitStatusSummary: string;
 }
 
-/** Session-stable inputs a caller (a future `agent` module) supplies. */
+/** Session-stable inputs the agent module supplies. */
 export interface PromptInputs {
   model: string;
-  /** The provider backing `model`; combined into the full ref for model-family
-   *  prompt addenda (profiles still match the bare `model`). */
-  provider?: string;
   agentName: string;
-  role: "primary" | "delegate";
-  /** Capability mode: plan (read-only) or build (full). Default build. */
-  mode?: "plan" | "build";
   rules: string;
-  /** Fills SUBAGENT_CONTRACT's {{OUTPUT_SCHEMA}}; used by a future orchestrator. */
-  outputSchema?: string;
 }
 
 export interface ComposedPrompt {
@@ -80,8 +68,6 @@ export interface ComposedPrompt {
   params: ModelParams;
   profile: ProfileName | "default";
   flags: RenderFlags;
-  /** Whether the selected profile accepts image inputs. */
-  supportsImages: boolean;
   /** 12-char sha256 of instructions + "\0" + JSON(params). Cache/version key. */
   version: string;
 }
@@ -92,19 +78,8 @@ const DEFAULT_FLAGS: RenderFlags = {
   planning: false,
   smallModel: false,
   hallucinationGuard: false,
-  subagentContract: false,
   workflowSteps: true,
   workflowOutcome: false,
-};
-
-const DEFAULT_OUTPUT_SCHEMA = "{status, changes[], evidence[], open_questions[]}";
-
-/** Insert a block just before the `# Environment` footer (or append if absent),
- *  keeping it inside the version-hashed body. */
-const insertBeforeEnvironment = (text: string, block: string): string => {
-  const marker = "\n# Environment";
-  const idx = text.indexOf(marker);
-  return idx >= 0 ? `${text.slice(0, idx)}\n\n${block}${text.slice(idx)}` : `${text}\n\n${block}`;
 };
 
 /**
@@ -112,8 +87,8 @@ const insertBeforeEnvironment = (text: string, block: string): string => {
  *   1. Pick the profile ("auto" → resolveProfile, else the named one; a miss
  *      yields the neutral default with no delta and empty params).
  *   2. Merge flags: DEFAULT_FLAGS ← profile.flags ← defined-only config.flags.
- *   3. Pick the template: build mode picks standalone (delegate) or primary
- *      overrides when the profile defines them; plan mode always uses base.
+ *   3. Pick the template: the profile's `primary` override when defined, else
+ *      base.
  *   4. Render, then hash instructions+params for the version key.
  */
 export function composePrompt(
@@ -130,19 +105,12 @@ export function composePrompt(
     if (value !== undefined) flags[key as keyof PromptFlags] = value;
   }
 
-  const isBuild = (inputs.mode ?? "build") === "build";
-  const template =
-    inputs.role === "delegate" && isBuild && profile?.standalone
-      ? profile.standalone
-      : isBuild && profile?.primary
-        ? profile.primary
-        : BASE_TEMPLATE;
+  const template = profile?.primary ?? BASE_TEMPLATE;
 
   const vars: Record<string, string> = {
     AGENT_NAME: inputs.agentName,
     PROFILE_DELTA: profile?.delta ?? "",
     PROJECT_RULES: inputs.rules,
-    OUTPUT_SCHEMA: inputs.outputSchema ?? DEFAULT_OUTPUT_SCHEMA,
     CWD: ctx.cwd,
     OS: ctx.os,
     DATE: ctx.date,
@@ -152,28 +120,19 @@ export function composePrompt(
 
   // Template flags are UPPER_SNAKE; map the camelCase RenderFlags across.
   const templateFlags: Record<string, boolean> = {
-    WORKFLOW_STEPS: flags.workflowSteps && isBuild,
-    WORKFLOW_OUTCOME: flags.workflowOutcome && isBuild,
+    WORKFLOW_STEPS: flags.workflowSteps,
+    WORKFLOW_OUTCOME: flags.workflowOutcome,
     PLANNING: flags.planning,
     SMALL_MODEL: flags.smallModel,
     HALLUCINATION_GUARD: flags.hallucinationGuard,
-    SUBAGENT_CONTRACT: flags.subagentContract,
-    PLAN: !isBuild && inputs.role === "primary",
-    RESEARCH: !isBuild && inputs.role === "delegate",
-    BUILDER: isBuild,
   };
 
-  const rendered = renderTemplate(template, vars, templateFlags);
-  // Model-family addenda match the COMPLETE provider/model ref. Insert before the
-  // volatile `# Environment` footer so the addendum is part of the version hash.
-  const modelRef = inputs.provider ? `${inputs.provider}/${inputs.model}` : inputs.model;
-  const addendum = modelAddendum(modelRef);
-  const instructions = addendum ? insertBeforeEnvironment(rendered, addendum) : rendered;
+  const instructions = renderTemplate(template, vars, templateFlags);
   const params: ModelParams = profile?.params ?? {};
 
   // Version identifies the prompt CONTENT (template + flags + delta + rules +
   // params), not the trial: the volatile `# Environment` footer is excluded so
-  // eval results can group trials by prompt across sessions and workdirs.
+  // results can group by prompt across sessions and workdirs.
   const stable = instructions.split("\n# Environment")[0] ?? instructions;
   const version = createHash("sha256")
     .update(`${stable}\0${JSON.stringify(params)}`)
@@ -185,7 +144,6 @@ export function composePrompt(
     params,
     profile: profileName ?? "default",
     flags,
-    supportsImages: profile?.supportsImages !== false,
     version,
   };
 }

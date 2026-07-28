@@ -1,90 +1,22 @@
 #!/usr/bin/env bun
 /**
- * Builds the glorious docs site under `docs/`. The user-facing reference is
- * generated from the same code the CLI runs — the `chatCommands` registry and
- * the key-binding constant that back `/help` — so the command list can never
- * drift from the product. Hand-written prose lives in `docs/content/*.md`.
+ * Builds the glorious docs site under `docs/`. The command-line reference is
+ * generated from the same `command()` definitions the CLI parser runs, so it
+ * can never drift from the product. Hand-written prose lives in
+ * `docs/content/*.md`.
  *
  * `bun docs/generate.ts` (or `bun run docs`) rewrites the committed output;
- * `generate.test.ts` pins the committed files against a fresh render, so a new
- * command with no regenerate turns CI red. Render functions are pure and
+ * `generate.test.ts` pins the committed files against a fresh render, so a
+ * CLI change with no regenerate turns CI red. Render functions are pure and
  * exported for that test; only `main()` touches the filesystem.
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { chatCommands, INPUT_AND_KEY_HELP } from "../core/lib/chat/commands";
 import { type CliCommandDoc, describeCli } from "../core/lib/cli";
-import { configSchema } from "../core/lib/config";
-import { CONFIG_DOCS, type ConfigDoc } from "../core/lib/config/reference";
-import { listConfigPaths } from "../core/lib/config-cli";
 
 const DOCS_DIR = new URL(".", import.meta.url).pathname;
 const CONTENT_DIR = join(DOCS_DIR, "content");
-
-/** The generated reference, as Markdown, sourced from the live registry. */
-export function renderReferenceMarkdown(): string {
-  const commands = Object.entries(chatCommands).map(
-    ([name, command]) => `- \`/${name}\` — ${command.summary}`,
-  );
-  return [
-    "## Commands & keys",
-    "",
-    "In-session slash commands and key bindings — the same list `/help` prints, generated from the registry so it always matches your version.",
-    "",
-    ":::details Show every slash command and key binding",
-    "",
-    "### Slash commands",
-    "",
-    ...commands,
-    "",
-    "### Input & keys",
-    "",
-    ...INPUT_AND_KEY_HELP.map((line) => `- ${line}`),
-    "",
-    ":::",
-    "",
-  ].join("\n");
-}
-
-/** Render a schema default as inline-code Markdown, or "unset" when absent. */
-const formatDefault = (value: unknown): string => {
-  if (value === undefined) return "unset";
-  if (Array.isArray(value)) return value.length === 0 ? "`[]`" : `\`${JSON.stringify(value)}\``;
-  return `\`${JSON.stringify(value)}\``;
-};
-
-/**
- * The configuration reference: keys and defaults from the live schema, editorial
- * text from `CONFIG_DOCS`. Throws if a documented key is not a real config path,
- * so a rename can't silently ship a stale doc.
- */
-export function renderConfigMarkdown(docs: readonly ConfigDoc[] = CONFIG_DOCS): string {
-  const valid = new Set(listConfigPaths());
-  const unknown = docs.filter((doc) => !valid.has(doc.path)).map((doc) => doc.path);
-  if (unknown.length > 0) {
-    throw new Error(`CONFIG_DOCS references unknown config paths: ${unknown.join(", ")}`);
-  }
-  const defaults = configSchema.parse({}) as Record<string, unknown>;
-  const at = (path: string): unknown =>
-    path
-      .split(".")
-      .reduce<unknown>((node, key) => (node as Record<string, unknown>)?.[key], defaults);
-  return [
-    "## Configuration reference",
-    "",
-    "Set with `glorious config set <key> <value>`; read with `glorious config get <key>`. Global writes use `~/.config/glorious/config.json`; project settings layer from `.glorious/config.json` and `.glorious/config.local.json`. Defaults come straight from the schema.",
-    "",
-    ":::details Show all configuration keys",
-    "",
-    ...docs.map(
-      (doc) => `- \`${doc.path}\` (default: ${formatDefault(at(doc.path))}) — ${doc.description}`,
-    ),
-    "",
-    ":::",
-    "",
-  ].join("\n");
-}
 
 /**
  * The command-line reference, sourced from the CLI's own `command()` definitions
@@ -337,14 +269,10 @@ const CONTENT_ORDER = ["index.md"] as const;
 /** The full set of files the generator owns, as {relativePath: contents}. */
 export function buildOutputs(): Record<string, string> {
   const cli = renderCliMarkdown();
-  const reference = renderReferenceMarkdown();
-  const config = renderConfigMarkdown();
   const prose = CONTENT_ORDER.map((name) => readFileSync(join(CONTENT_DIR, name), "utf8"));
   return {
     "content/cli.generated.md": cli,
-    "content/reference.generated.md": reference,
-    "content/config.generated.md": config,
-    "index.html": renderSite([...prose, cli, reference, config]),
+    "index.html": renderSite([...prose, cli]),
   };
 }
 
@@ -360,7 +288,7 @@ function main(): void {
   for (const [path, contents] of Object.entries(buildOutputs())) {
     writeFileSync(join(DOCS_DIR, path), contents);
   }
-  process.stdout.write("docs: wrote index.html and content/reference.generated.md\n");
+  process.stdout.write("docs: wrote index.html and content/cli.generated.md\n");
 }
 
 if (import.meta.main) main();

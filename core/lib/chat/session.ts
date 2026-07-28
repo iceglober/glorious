@@ -1,79 +1,28 @@
 import type { Agent } from "../agent";
-import { describeAuthError, type ImageAttachment } from "../llm";
-import type { ChatLog, ChatMode } from "../session/log";
-import type { UndoStack } from "../session/undo";
 import type { ChatEvent } from "./events";
 
-export interface SessionTodoLifecycle {
-  list(): ReadonlyArray<{ status: "pending" | "in_progress" | "completed" }>;
-  clear(): Promise<void>;
-}
-
-const hasOpenTodos = (todos: SessionTodoLifecycle | undefined): boolean =>
-  todos?.list().some((todo) => todo.status !== "completed") ?? false;
-
 /**
- * The persistent chat loop's core: one foreground turn at a time over an
- * opaque message continuation, mode toggling between turns, message queueing,
- * and durable turn/state records. Pure logic — no TTY, no process state; the
- * composition root injects agents, log, and undo, and the screen renders the
- * emitted events.
+ * The chat loop's core: one foreground turn at a time over an opaque message
+ * continuation, with message queueing. Pure logic — no TTY, no process state;
+ * the composition root injects the agent, and the screen renders the emitted
+ * events.
  */
 
 export interface ChatSessionDependencies {
-  /** Mode-specific agents; the composition root caches per mode. */
-  agentFor(mode: ChatMode): Promise<Agent>;
-  log: ChatLog;
-  /** Present in repos only; snapshots are taken before each build turn. */
-  undo?: UndoStack;
-  /** Optional session-owned state cleared with model context and history. */
-  todos?: SessionTodoLifecycle;
+  agent: Promise<Agent>;
   /** Request-context ceiling; old turns compact automatically at 75%. */
   contextSoftLimit?: number;
   onEvent?(event: ChatEvent): void | Promise<void>;
-  /**
-   * Optional composition-root continuation transform run after a successful
-   * turn and before its durable state record. It receives opaque messages and
-   * returns opaque messages; session logic never interprets either shape.
-   */
-  transformContinuation?(messages: unknown[], mode: ChatMode): Promise<unknown[]> | unknown[];
-  now?: () => string;
-}
-
-export interface ChatSessionInitialState {
-  messages?: unknown[];
-  mode?: ChatMode;
 }
 
 export interface ChatSession {
-  readonly mode: ChatMode;
-  /** The mode the NEXT turn will use (differs from mode while a turn runs). */
-  readonly pendingMode: ChatMode;
   readonly busy: boolean;
-  /** Toggle or set the next turn's mode; applies immediately when idle. */
-  setMode(mode?: ChatMode): ChatMode;
   /**
    * Submit a user message. Runs the turn now, or queues it when one is
    * already running (queued messages run in order). Resolves when this
    * message's turn has completed.
    */
-  send(
-    text: string,
-    options?: {
-      transcriptText?: string;
-      restoreText?: string;
-      images?: readonly ImageAttachment[];
-      /** Reset the model continuation before this turn runs (fresh context),
-       *  keeping the visible transcript. Used for the plan→build handoff. */
-      freshContext?: boolean;
-    },
-  ): Promise<void>;
-  /**
-   * The current planning stage: the first user message (the task) and the most
-   * recent plan-mode assistant output (the plan). Both reset on a fresh-context
-   * turn and on clearContext. Drives the clean plan→build handoff.
-   */
-  planContext(): { task: string | null; plan: string | null };
+  send(text: string, options?: { transcriptText?: string; restoreText?: string }): Promise<void>;
   /** Abort the running foreground turn. Returns false when idle. */
   abort(): boolean;
   /**
@@ -82,41 +31,17 @@ export interface ChatSession {
    * null when nothing is queued.
    */
   dequeue(): string | null;
-  /** Queue a notice prepended to the next user turn (job completions). */
-  addTurnNotice(text: string): void;
-  /** Continue open work after a non-aborted background job, coalescing completions. */
-  resumePendingWork(): void;
-  /** Start a fresh model context and durable visible history. Returns false while busy. */
-  clearContext(): Promise<boolean>;
-  /** Compact old tool-heavy turns while preserving recent conversation. */
-  compactContext(): Promise<boolean>;
-  /** The resumable continuation for the session log. */
-  snapshot(): { messages: unknown[]; mode: ChatMode };
 }
 
-export function createChatSession(
-  deps: ChatSessionDependencies,
-  initial: ChatSessionInitialState = {},
-): ChatSession {
-  const now = deps.now ?? (() => new Date().toISOString());
-  let mode: ChatMode = initial.mode ?? "plan";
-  let pendingMode: ChatMode = mode;
-  let messages: unknown[] = initial.messages ?? [];
-  // The task (first user message of the current stage) and the latest plan-mode
-  // output, captured for the plan→build handoff. Reset when the context resets.
-  let stageTask: string | null = null;
-  let lastPlan: string | null = null;
+export function createChatSession(deps: ChatSessionDependencies): ChatSession {
+  let messages: unknown[] = [];
   let busy = false;
   let turnAbort: AbortController | null = null;
   const notices: string[] = [];
-  let resumeRunning = false;
-  let resumeRequested = false;
   const queue: Array<{
     text: string;
     transcriptText?: string;
     restoreText?: string;
-    images?: readonly ImageAttachment[];
-    freshContext?: boolean;
     resolve: () => void;
   }> = [];
 
@@ -124,38 +49,16 @@ export function createChatSession(
     void deps.onEvent?.(event);
   };
 
-  const runExchange = async (
-    text: string,
-    transcriptText?: string,
-    images?: readonly ImageAttachment[],
-    freshContext?: boolean,
-  ): Promise<{
-    succeeded: boolean;
-    mode: ChatMode;
-    text?: string;
-    stepLimitReached?: boolean;
-  }> => {
-    mode = pendingMode;
-    // A fresh-context turn (plan→build handoff) starts a new model continuation
-    // and a new stage — the seed already carried whatever it needed forward.
-    if (freshContext) {
-      messages = [];
-      stageTask = null;
-      lastPlan = null;
-    }
-    // The first genuine user message of a planning stage is the task carried
-    // into the handoff; system/background prompts don't count.
-    if (mode === "plan" && stageTask === null && !text.startsWith("[system]")) stageTask = text;
+  const runExchange = async (text: string, transcriptText?: string): Promise<void> => {
     turnAbort = new AbortController();
     const abort = turnAbort;
-    emit({ type: "turn-started", mode, text, ...(transcriptText ? { transcriptText } : {}) });
+    emit({ type: "turn-started", text, ...(transcriptText ? { transcriptText } : {}) });
 
     const drained = notices.splice(0);
     const content = drained.length > 0 ? `${drained.join("\n")}\n\n${text}` : text;
 
     try {
-      if (mode === "build") await deps.undo?.snapshot("pre-turn");
-      const agent = await deps.agentFor(mode);
+      const agent = await deps.agent;
       // Stream each step's assistant text as it lands so intermediate prose (the
       // model talking between tool calls) is shown, not dropped in favour of only
       // the final text. `lastStreamed` dedups the final emit below.
@@ -165,7 +68,7 @@ export function createChatSession(
         onStep: (step) => {
           const stepText = step.text ?? "";
           if (stepText.trim().length > 0) {
-            emit({ type: "assistant", mode, text: stepText });
+            emit({ type: "assistant", text: stepText });
             lastStreamed = stepText;
           }
           for (const call of step.toolCalls) emit({ type: "tool-call", call });
@@ -174,33 +77,21 @@ export function createChatSession(
           if (step.usage) emit({ type: "turn-usage", usage: step.usage });
         },
         messages,
-        ...(images && images.length > 0 ? { images } : {}),
       });
       messages = result.messages ?? messages;
-      // Remember the latest plan so /build can hand it to the builder.
-      if (mode === "plan") lastPlan = result.text;
       // The final text is normally the last step's — already streamed above, so
       // don't repeat it. Emit only to carry the step-limit notice, to show a
       // final text that wasn't streamed, or to surface an empty response.
       if (result.stepLimitReached) {
         const body = result.text.trim() && result.text !== lastStreamed ? result.text : "";
-        emit({ type: "assistant", mode, text: body, stepLimitReached: true });
+        emit({ type: "assistant", text: body, stepLimitReached: true });
       } else if (result.text.trim() && result.text !== lastStreamed) {
-        emit({ type: "assistant", mode, text: result.text });
+        emit({ type: "assistant", text: result.text });
       } else if (lastStreamed.trim().length === 0 && result.text.trim().length === 0) {
-        emit({ type: "assistant", mode, text: "" });
+        emit({ type: "assistant", text: "" });
       }
       if (result.stepLimitReached)
         notices.push("[note] The previous turn stopped at the step limit before finishing.");
-      await deps.log.append({
-        type: "turn",
-        mode,
-        user: text,
-        assistant: result.text,
-        ts: now(),
-        ...(transcriptText ? { transcriptText } : {}),
-      });
-      if (deps.transformContinuation) messages = await deps.transformContinuation(messages, mode);
       const latestContext = result.steps.at(-1)?.usage?.inputTokens;
       const softLimit = deps.contextSoftLimit;
       if (softLimit && latestContext && latestContext >= softLimit * 0.75) {
@@ -210,47 +101,29 @@ export function createChatSession(
           emit({ type: "notice", text: "Context compacted after reaching 75% of its soft limit." });
         }
       }
-      await deps.log.append({ type: "state", messages, mode, ts: now() });
-      return {
-        succeeded: true,
-        mode,
-        text: result.text,
-        ...(result.stepLimitReached ? { stepLimitReached: true } : {}),
-      };
     } catch (error) {
       if (abort.signal.aborted) {
         emit({ type: "turn-aborted" });
         notices.push(`[note] The previous turn ("${text.slice(0, 60)}") was interrupted.`);
       } else {
-        const raw = error instanceof Error ? error.message : String(error);
-        // Rewrite opaque provider auth blobs (e.g. Google's invalid_rapt JSON)
-        // into a one-line fix; keep the original so the loop can detect re-auth.
-        const hint = describeAuthError(raw);
-        const message = hint ?? raw;
-        emit({ type: "turn-error", error: message, ...(hint ? { rawError: raw } : {}) });
+        const message = error instanceof Error ? error.message : String(error);
+        emit({ type: "turn-error", error: message });
         notices.push(
           `[note] The previous turn failed (${message.slice(0, 200)}) before completing. Its request was: "${text.slice(0, 2_000)}". If the user asks to retry or continue, act on that request.`,
         );
       }
-      return { succeeded: false, mode };
     } finally {
       if (turnAbort === abort) turnAbort = null;
       emit({ type: "turn-finished" });
     }
   };
 
-  const runTurn = async (
-    text: string,
-    transcriptText?: string,
-    images?: readonly ImageAttachment[],
-    freshContext?: boolean,
-  ): Promise<void> => {
+  const runTurn = async (text: string, transcriptText?: string): Promise<void> => {
     busy = true;
     try {
-      await runExchange(text, transcriptText, images, freshContext);
+      await runExchange(text, transcriptText);
     } finally {
       busy = false;
-      if (pendingMode !== mode) emit({ type: "mode-changed", mode: pendingMode, pending: false });
       emit({ type: "submission-finished" });
     }
   };
@@ -259,7 +132,7 @@ export function createChatSession(
     while (queue.length > 0 && !busy) {
       const next = queue.shift();
       if (!next) break;
-      await runTurn(next.text, next.transcriptText, next.images, next.freshContext);
+      await runTurn(next.text, next.transcriptText);
       next.resolve();
     }
   };
@@ -267,8 +140,6 @@ export function createChatSession(
   const send: ChatSession["send"] = async (text, options) => {
     const transcriptText = options?.transcriptText;
     const restoreText = options?.restoreText;
-    const images = options?.images;
-    const freshContext = options?.freshContext;
     if (busy) {
       emit({
         type: "turn-queued",
@@ -281,53 +152,18 @@ export function createChatSession(
           text,
           ...(transcriptText ? { transcriptText } : {}),
           ...(restoreText ? { restoreText } : {}),
-          ...(images && images.length > 0 ? { images } : {}),
-          ...(freshContext ? { freshContext } : {}),
           resolve,
         });
       });
       return;
     }
-    await runTurn(text, transcriptText, images, freshContext);
+    await runTurn(text, transcriptText);
     await drainQueue();
   };
 
-  const resumePendingWork = (): void => {
-    if (!hasOpenTodos(deps.todos)) return;
-    resumeRequested = true;
-    if (resumeRunning) return;
-    resumeRunning = true;
-    void (async () => {
-      try {
-        while (resumeRequested && hasOpenTodos(deps.todos)) {
-          resumeRequested = false;
-          await send(
-            "[system] A background job finished. Continue the open session todos now. Do not wait or ask the user to send continue unless work is truly blocked.",
-            { transcriptText: "[system] Background job completed — continuing open work" },
-          );
-        }
-      } finally {
-        resumeRunning = false;
-      }
-    })();
-  };
-
   return {
-    get mode() {
-      return mode;
-    },
-    get pendingMode() {
-      return pendingMode;
-    },
     get busy() {
       return busy;
-    },
-
-    setMode(next) {
-      pendingMode = next ?? (pendingMode === "plan" ? "build" : "plan");
-      if (!busy) mode = pendingMode;
-      emit({ type: "mode-changed", mode: pendingMode, pending: busy });
-      return pendingMode;
     },
 
     send,
@@ -351,52 +187,6 @@ export function createChatSession(
       });
       entry.resolve();
       return entry.text;
-    },
-
-    addTurnNotice(text) {
-      notices.push(text);
-    },
-
-    resumePendingWork,
-
-    planContext() {
-      return { task: stageTask, plan: lastPlan };
-    },
-
-    async clearContext() {
-      if (busy) return false;
-      messages = [];
-      stageTask = null;
-      lastPlan = null;
-      notices.length = 0;
-      await deps.todos?.clear();
-      await deps.log.append({
-        type: "state",
-        messages,
-        mode,
-        ts: now(),
-        reset: true,
-      });
-      emit({ type: "context-cleared" });
-      return true;
-    },
-
-    async compactContext() {
-      if (busy) return false;
-      const agent = await deps.agentFor(mode);
-      const compacted = agent.compactContinuation?.(messages) ?? messages;
-      const changed = compacted !== messages;
-      messages = compacted;
-      await deps.log.append({ type: "state", messages, mode, ts: now() });
-      emit({
-        type: "notice",
-        text: changed ? "Context compacted." : "Context is already compact.",
-      });
-      return true;
-    },
-
-    snapshot() {
-      return { messages, mode };
     },
   };
 }
