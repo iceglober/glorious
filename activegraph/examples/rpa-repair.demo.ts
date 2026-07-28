@@ -32,8 +32,8 @@ const llm = createFakeLlm(() =>
 
 const eventStore = createMemoryEventStore<RpaSchema>();
 let traceBuffer: string[] = [];
-const runtime: Runtime<RpaSchema> = unwrap(
-  await createRuntime({
+const runtime: Runtime<RpaSchema> = await unwrap(
+  createRuntime({
     schema: rpaSchema,
     behaviors: rpaBehaviors,
     eventStore,
@@ -81,22 +81,22 @@ const dashboard = () => {
 
 // ── phase 0: provision the workflow ─────────────────────────────────────────
 phase("PHASE 0 — provision the invoice workflow");
-unwrap(await runtime.propose(seedInvoiceWorkflow(), { actor: "provisioner" }));
-unwrap(await runtime.runUntilIdle());
+await unwrap(runtime.propose(seedInvoiceWorkflow(), { actor: "provisioner" }));
+await unwrap(runtime.runUntilIdle());
 showTrace("seeding: 4 objects + 5 relations, then the queue drains to idle");
 dashboard();
 
 // ── phase 1: a bot reports a failure ────────────────────────────────────────
 phase("PHASE 1 — a bot run fails (selector drift)");
-unwrap(
-  await runtime.emit("run.failed", {
+await unwrap(
+  runtime.emit("run.failed", {
     workflowId: ids.workflow,
     stepId: ids.portal,
     error: "NoSuchElementError: #nav .portal-link",
     domSnippet: '<nav id="invoices-nav"><a class="portal">Portal</a></nav>',
   }),
 );
-const paused = unwrap(await runtime.runUntilIdle());
+const paused = await unwrap(runtime.runUntilIdle());
 showTrace("triage → hold downstream → LLM diagnosis → fix parked for approval");
 dashboard();
 
@@ -105,8 +105,8 @@ phase("PHASE 2 — operator approves the proposed fix");
 console.log(
   `\n  operator reviews fix, then: runtime.grantApproval("${paused.pendingApprovals[0]}")`,
 );
-unwrap(await runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
-unwrap(await runtime.runUntilIdle());
+await unwrap(runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
+await unwrap(runtime.runUntilIdle());
 showTrace("released patch → selector updated → recovery cascade");
 dashboard();
 

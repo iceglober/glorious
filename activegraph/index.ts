@@ -111,6 +111,7 @@ export {
   mapResult,
   ok,
   pipe,
+  UnwrapError,
   unwrap,
 } from "./lib/fp";
 export type { Clock } from "./ports/clock";

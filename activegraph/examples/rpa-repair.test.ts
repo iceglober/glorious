@@ -48,8 +48,8 @@ const makeAgent = async (llm: LlmPort) => {
       llm,
     }),
   );
-  unwrap(await runtime.propose(seedInvoiceWorkflow(), { actor: "provisioner" }));
-  unwrap(await runtime.runUntilIdle());
+  await unwrap(runtime.propose(seedInvoiceWorkflow(), { actor: "provisioner" }));
+  await unwrap(runtime.runUntilIdle());
   return { eventStore, runtime };
 };
 
@@ -64,8 +64,8 @@ const reportFailure = (runtime: Runtime<RpaSchema>) =>
 describe("the RPA repair agent", () => {
   test("failure → triage → LLM diagnosis → approval-gated selector fix → recovery", async () => {
     const { runtime } = await makeAgent(goodLlm());
-    unwrap(await reportFailure(runtime));
-    const paused = unwrap(await runtime.runUntilIdle());
+    await unwrap(reportFailure(runtime));
+    const paused = await unwrap(runtime.runUntilIdle());
 
     // Triage and diagnosis landed; the repair is parked behind approval.
     const view = runtime.view();
@@ -83,8 +83,8 @@ describe("the RPA repair agent", () => {
     expect(paused.pendingApprovals).toHaveLength(1);
 
     // The operator approves; the parked patch flows through the normal pipeline.
-    unwrap(await runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
-    const healed = unwrap(await runtime.runUntilIdle());
+    await unwrap(runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
+    const healed = await unwrap(runtime.runUntilIdle());
 
     const after = runtime.view();
     expect(after.object(ids.portal)?.data.selector).toBe("#invoices-nav a.portal");
@@ -99,10 +99,10 @@ describe("the RPA repair agent", () => {
   test("the whole repair is deterministic — two runs, byte-identical logs", async () => {
     const runOnce = async () => {
       const { runtime } = await makeAgent(goodLlm());
-      unwrap(await reportFailure(runtime));
-      const paused = unwrap(await runtime.runUntilIdle());
-      unwrap(await runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
-      unwrap(await runtime.runUntilIdle());
+      await unwrap(reportFailure(runtime));
+      const paused = await unwrap(runtime.runUntilIdle());
+      await unwrap(runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
+      await unwrap(runtime.runUntilIdle());
       return runtime.log();
     };
     const [a, b] = [await runOnce(), await runOnce()];
@@ -112,8 +112,8 @@ describe("the RPA repair agent", () => {
 
   test("provenance: the fix traces back to the run.failed report that caused it", async () => {
     const { runtime } = await makeAgent(goodLlm());
-    unwrap(await reportFailure(runtime));
-    unwrap(await runtime.runUntilIdle());
+    await unwrap(reportFailure(runtime));
+    await unwrap(runtime.runUntilIdle());
     const fix = runtime.view().objects("fix")[0];
     if (fix === undefined) throw new Error("fix missing");
     const chain = runtime.view().provenance(fix.id);
@@ -123,8 +123,8 @@ describe("the RPA repair agent", () => {
 
   test("a shaky diagnosis escalates and quarantines instead of touching the bot", async () => {
     const { runtime } = await makeAgent(shakyLlm());
-    unwrap(await reportFailure(runtime));
-    const status = unwrap(await runtime.runUntilIdle());
+    await unwrap(reportFailure(runtime));
+    const status = await unwrap(runtime.runUntilIdle());
 
     const view = runtime.view();
     expect(view.objects("fix")[0]?.data.status).toBe("rejected");
@@ -136,8 +136,8 @@ describe("the RPA repair agent", () => {
 
   test("an escalated repair can be rehearsed on a fork, then promoted to production", async () => {
     const { runtime: production, eventStore } = await makeAgent(shakyLlm());
-    unwrap(await reportFailure(production));
-    unwrap(await production.runUntilIdle());
+    await unwrap(reportFailure(production));
+    await unwrap(production.runUntilIdle());
     const head = production.status().headEventId;
 
     // The operator rehearses a hand-written fix on an isolated fork.
@@ -160,7 +160,7 @@ describe("the RPA repair agent", () => {
         { actor: "operator" },
       ),
     );
-    unwrap(await rehearsal.runUntilIdle());
+    await unwrap(rehearsal.runUntilIdle());
 
     // The fork healed itself (recover fired there); production is untouched.
     expect(rehearsal.view().object(ids.workflow)?.data.status).toBe("healthy");
@@ -177,7 +177,7 @@ describe("the RPA repair agent", () => {
       }),
     );
     expect(landed.rejected).toBe(0);
-    unwrap(await production.runUntilIdle());
+    await unwrap(production.runUntilIdle());
 
     const after = production.view();
     expect(after.object(ids.portal)?.data.selector).toBe("#invoices-nav a.portal");
@@ -194,10 +194,10 @@ describe("the RPA repair agent", () => {
       },
     };
     const { runtime, eventStore } = await makeAgent(counting);
-    unwrap(await reportFailure(runtime));
-    const paused = unwrap(await runtime.runUntilIdle());
-    unwrap(await runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
-    unwrap(await runtime.runUntilIdle());
+    await unwrap(reportFailure(runtime));
+    const paused = await unwrap(runtime.runUntilIdle());
+    await unwrap(runtime.grantApproval(paused.pendingApprovals[0] ?? ""));
+    await unwrap(runtime.runUntilIdle());
     expect(providerCalls).toBe(1);
 
     const verdict = await replayStrict({

@@ -77,8 +77,8 @@ const unblock = kit.relationBehavior({
 });
 
 // 3. Compose a runtime and run a goal.
-const { runtime } = unwrap(
-  await createDefaultRuntime({
+const { runtime } = await unwrap(
+  createDefaultRuntime({
     schema,
     behaviors: [planner, researcher, unblock],
     store: { sqlite: "run.db" }, // or "memory" (default)
@@ -86,12 +86,28 @@ const { runtime } = unwrap(
   }),
 );
 
-await runtime.runGoal("Evaluate this startup idea");
+const status = await unwrap(runtime.runGoal("Evaluate this startup idea"));
 runtime.view().objects("task"); // GraphObject<S, "task">[] — data fully typed
 ```
 
 The full executable version of this walkthrough lives in [`example.ts`](example.ts) and runs in
-[`shell/runtime.test.ts`](shell/runtime.test.ts).
+[`shell/runtime.test.ts`](shell/runtime.test.ts); a narrated demo with printed traces is
+[`examples/rpa-repair.demo.ts`](examples/rpa-repair.demo.ts).
+
+## Errors: two spellings, pick per call site
+
+Every fallible call returns a typed `Result<T, E>` and never throws. Handle it explicitly, or
+pass the promise straight through `unwrap` to convert errors into a thrown `UnwrapError`
+(which carries the typed error on `.error`):
+
+```ts
+// explicit, non-throwing — full typed error handling
+const result = await runtime.runGoal("...");
+if (!result.ok) return report(result.error); // { reason: "store_error", ... } | ...
+
+// throwing shorthand — for scripts, tests, and "this should never fail" paths
+const status = await unwrap(runtime.runGoal("..."));
+```
 
 ## Architecture
 

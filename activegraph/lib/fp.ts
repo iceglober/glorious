@@ -31,11 +31,38 @@ export const collectResults = <T, E>(rs: readonly Result<T, E>[]): Result<readon
   return ok(values);
 };
 
-/** Unwrap for contexts where an error is a programming bug, not a domain outcome. */
-export const unwrap = <T, E>(r: Result<T, E>): T => {
-  if (!r.ok) throw new Error(`unwrap of err: ${JSON.stringify(r.error)}`);
+/** Thrown by `unwrap`; carries the typed error value for callers that catch. */
+export class UnwrapError extends Error {
+  readonly error: unknown;
+  constructor(error: unknown) {
+    super(`unwrap of err: ${JSON.stringify(error)}`);
+    this.name = "UnwrapError";
+    this.error = error;
+  }
+}
+
+const unwrapSync = <T, E>(r: Result<T, E>): T => {
+  if (!r.ok) throw new UnwrapError(r.error);
   return r.value;
 };
+
+/**
+ * Unwrap for contexts where an error is a programming bug, not a domain
+ * outcome. Accepts a plain `Result` (returns the value, throws `UnwrapError`
+ * on err) or a `Promise<Result>` (returns a promise of the value, rejecting
+ * with `UnwrapError` on err) — so both spellings work:
+ *
+ *     const status = await unwrap(runtime.runGoal("..."));  // promise form
+ *     const status = unwrap(await runtime.runGoal("..."));  // result form
+ *
+ * The untouched alternative remains: `const r = await runtime.runGoal("...")`
+ * and branch on `r.ok` for typed, non-throwing error handling.
+ */
+export function unwrap<T, E>(r: Promise<Result<T, E>>): Promise<T>;
+export function unwrap<T, E>(r: Result<T, E>): T;
+export function unwrap<T, E>(r: Result<T, E> | Promise<Result<T, E>>): T | Promise<T> {
+  return r instanceof Promise ? r.then(unwrapSync) : unwrapSync(r);
+}
 
 export function pipe<A>(a: A): A;
 export function pipe<A, B>(a: A, ab: (a: A) => B): B;

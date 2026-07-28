@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { andThen, collectResults, err, fold, mapResult, ok, pipe, unwrap } from "./fp";
+import { andThen, collectResults, err, fold, mapResult, ok, pipe, UnwrapError, unwrap } from "./fp";
 
 describe("Result", () => {
   test("mapResult transforms ok values and passes errors through untouched", () => {
@@ -19,9 +19,21 @@ describe("Result", () => {
     expect(collectResults([ok(1), err("a"), err("b")])).toEqual(err("a"));
   });
 
-  test("unwrap returns the value and throws on err", () => {
+  test("unwrap returns the value and throws UnwrapError carrying the typed error", () => {
     expect(unwrap(ok("v"))).toBe("v");
-    expect(() => unwrap(err({ reason: "nope" }))).toThrow(/unwrap of err/);
+    try {
+      unwrap(err({ reason: "nope" }));
+      throw new Error("should have thrown");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(UnwrapError);
+      expect((thrown as UnwrapError).error).toEqual({ reason: "nope" });
+      expect((thrown as UnwrapError).message).toMatch(/unwrap of err/);
+    }
+  });
+
+  test("unwrap also accepts a Promise<Result> — `await unwrap(call())` works", async () => {
+    expect(await unwrap(Promise.resolve(ok(42)))).toBe(42);
+    expect(unwrap(Promise.resolve(err("boom")))).rejects.toBeInstanceOf(UnwrapError);
   });
 });
 
