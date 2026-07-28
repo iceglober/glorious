@@ -1,27 +1,51 @@
-import { describe, expect, test } from "bun:test";
-import { z } from "zod";
-import type { ToolSet } from "../llm";
+import { describe, expect, mock, test } from "bun:test";
 import type { Sandbox } from "../sandbox";
-import type { WebFetch, WebSearch } from "../tools/web";
-import {
-  agentConfigSchema,
-  type CreateAgentOptions,
-  childAgentConfig,
-  createAgentModelRouting,
-  createAgentTools,
-  withAgentModelSelection,
-} from ".";
-import { permissionsConfigSchema } from "./permissions";
+import type { AgentConfig, CreateAgentOptions, ToolActivity } from ".";
 
-const sandbox: Sandbox = {
+type SdkAgentOptions = Record<string, unknown>;
+
+const constructedAgents: SdkAgentOptions[] = [];
+const generateCalls: Record<string, unknown>[] = [];
+
+/** Stands in for the SDK's tool loop: records what the adapter built, never
+ *  calls a model. Installed before importing the agent module so the runtime
+ *  underneath createAgent() is inert. */
+class FakeToolLoopAgent {
+  constructor(options: SdkAgentOptions) {
+    constructedAgents.push(options);
+  }
+
+  async generate(options: Record<string, unknown>) {
+    generateCalls.push(options);
+    return {
+      text: "done",
+      steps: [],
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      response: { messages: [{ role: "assistant", content: "done" }] },
+    };
+  }
+}
+
+mock.module("ai", () => ({
+  ToolLoopAgent: FakeToolLoopAgent,
+  jsonSchema: (schema: unknown) => ({ schema }),
+  stepCountIs: (count: number) => ({ count }),
+  tool: <T>(definition: T) => definition,
+}));
+
+const { agentConfigSchema, createAgent, createAgentTools } = await import(".");
+
+const sandboxReading = (content: string): Sandbox => ({
   async executeCommand() {
     return { stdout: "", stderr: "", exitCode: 0 };
   },
   async readFile() {
-    return "";
+    return content;
   },
   async writeFiles() {},
-};
+});
+
+const sandbox = sandboxReading("");
 
 const baseOptions: CreateAgentOptions = {
   root: "/repo",
@@ -34,441 +58,239 @@ const baseOptions: CreateAgentOptions = {
   },
 };
 
-const externalTool = (name: string): ToolSet[string] => ({
-  description: name,
-  inputSchema: z.object({ value: z.string().optional() }),
-  execute: async () => name,
-});
+// Credentials are env-only; a test key keeps model construction offline.
+process.env.AZURE_API_KEY ??= "test-key";
 
-const web: { search: WebSearch; fetch: WebFetch } = {
-  search: { search: async () => ({ results: [] }) },
-  fetch: { fetch: async (url) => ({ url, contentType: "text/plain", text: "page" }) },
+/** A parsed config that can build a model without touching the network. */
+const config = (over: Record<string, unknown> = {}): AgentConfig => agentConfigSchema.parse(over);
+
+const reset = () => {
+  constructedAgents.length = 0;
+  generateCalls.length = 0;
 };
 
-describe("childAgentConfig", () => {
-  test("routes children to the configured subagent model, preserving providers", () => {
-    const config = agentConfigSchema.parse({
-      llm: { model: "gpt-5.6-terra", providers: { azure: { resourceName: "r" } } },
-      tools: { subagents: { model: "gpt-5.6-luna" } },
-    });
-    const child = childAgentConfig(config, "delegate");
-    expect(child.role).toBe("delegate");
-    expect(child.llm.model).toBe("gpt-5.6-luna");
-    expect(child.llm.providers?.azure?.resourceName).toBe("r");
-    // The parent config is untouched.
-    expect(config.llm.model).toBe("gpt-5.6-terra");
+describe("agentConfigSchema", () => {
+  test("`{}` is a complete agent: identity, ceilings, model, prompt, tools", () => {
+    const parsed = agentConfigSchema.parse({});
+    expect(parsed.name).toBe("glorious");
+    expect(parsed.rules).toBe("");
+    // Well above the SDK's implicit 20-step default, which silently truncated
+    // long turns.
+    expect(parsed.steps).toBe(100);
+    expect(parsed.llm.model).toBe("gpt-5.6-luna");
+    expect(parsed.prompt.profile).toBe("auto");
+    expect(parsed.tools.maxOutputChars).toBe(30_000);
+    expect(parsed.tools.edit.mode).toBe("batch");
   });
 
-  test("routes both provider and model overrides without mutating the parent", () => {
-    const config = agentConfigSchema.parse({
-      llm: { provider: "azure", model: "primary" },
-      tools: { subagents: { provider: "azure", model: "child" } },
-    });
-    const child = childAgentConfig(config, "delegate");
-    expect(child.llm).toMatchObject({ provider: "azure", model: "child" });
-    expect(config.llm).toMatchObject({ provider: "azure", model: "primary" });
-    expect(agentConfigSchema.safeParse({ tools: { subagents: { model: "   " } } }).success).toBe(
-      false,
-    );
-  });
-
-  test("without tier routing, children inherit the parent model", () => {
-    const config = agentConfigSchema.parse({ llm: { model: "gpt-5.6-terra" } });
-    expect(childAgentConfig(config, "delegate").llm.model).toBe("gpt-5.6-terra");
-  });
-
-  test("applies live primary and subagent selections immutably", () => {
-    const original = agentConfigSchema.parse({ llm: { model: "primary" } });
-    const primary = withAgentModelSelection(original, "primary", {
-      provider: "azure",
-      model: "next-primary",
-    });
-    const routed = withAgentModelSelection(primary, "subagents", {
-      provider: "azure",
-      model: "child",
-    });
-    const inherited = withAgentModelSelection(routed, "subagents", null);
-
-    expect(original.llm.model).toBe("primary");
-    expect(primary.llm.model).toBe("next-primary");
-    expect(childAgentConfig(routed, "delegate").llm.model).toBe("child");
-    expect(inherited.tools.subagents).toMatchObject({ concurrency: 2 });
-    expect(inherited.tools.subagents.model).toBeUndefined();
-    expect(childAgentConfig(inherited, "delegate").llm.model).toBe("next-primary");
-  });
-
-  test("subagents.tier resolves through the ladder", () => {
-    const config = agentConfigSchema.parse({
-      llm: { tiers: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] },
-      tools: { subagents: { tier: 2 } },
-    });
-    expect(childAgentConfig(config, "delegate").llm.model).toBe("gpt-5.6-luna");
-  });
-
-  test("explicit subagents.model beats subagents.tier", () => {
-    const config = agentConfigSchema.parse({
-      llm: { tiers: ["gpt-5.6-sol", "gpt-5.6-terra"] },
-      tools: { subagents: { model: "deepseek-v4-pro", tier: 1 } },
-    });
-    expect(childAgentConfig(config, "delegate").llm.model).toBe("deepseek-v4-pro");
-  });
-
-  test("context ceiling: off by default, warns, and children inherit it", () => {
-    const config = agentConfigSchema.parse({});
-    expect(config.context.softLimit).toBeUndefined();
-    expect(config.context.onLimit).toBe("warn");
-    const limited = agentConfigSchema.parse({
-      context: { softLimit: 240_000 },
-    });
-    expect(limited.context.softLimit).toBe(240_000);
-    expect(limited.context.onLimit).toBe("warn");
-    expect(childAgentConfig(limited, "delegate").context).toEqual(limited.context);
-  });
-
-  test("the per-turn step ceiling defaults well above the SDK's 20 and flows to children", () => {
-    const config = agentConfigSchema.parse({});
-    expect(config.steps).toBe(100);
-    expect(childAgentConfig(config, "delegate").steps).toBe(100);
+  test("ceilings and caps stay inside their sane ranges", () => {
     expect(agentConfigSchema.parse({ steps: 250 }).steps).toBe(250);
-  });
-});
-
-describe("createAgentModelRouting", () => {
-  test("routes modes through tiers until a live primary selection takes precedence", () => {
-    let changes = 0;
-    const routing = createAgentModelRouting(
-      agentConfigSchema.parse({
-        llm: {
-          model: "base",
-          tiers: ["frontier", "economy"],
-          modes: { plan: 0, build: 1 },
-        },
-      }),
-      () => changes++,
+    expect(agentConfigSchema.safeParse({ steps: 0 }).success).toBe(false);
+    expect(agentConfigSchema.safeParse({ tools: { maxOutputChars: 100 } }).success).toBe(false);
+    expect(agentConfigSchema.safeParse({ tools: { edit: { mode: "typo" } } }).success).toBe(false);
+    expect(agentConfigSchema.parse({ tools: { edit: { mode: "hash" } } }).tools.edit.mode).toBe(
+      "hash",
     );
-
-    expect(routing.configFor("plan").llm.model).toBe("frontier");
-    expect(routing.configFor("build").llm.model).toBe("economy");
-
-    routing.configure("primary", { provider: "azure", model: "live" });
-    expect(routing.configFor("plan").llm.model).toBe("live");
-    expect(routing.configFor("build").llm.model).toBe("live");
-    expect(routing.selections().primary).toEqual({ provider: "azure", model: "live" });
-    expect(changes).toBe(1);
-  });
-
-  test("reload adopts a fresh config, drops any primary override, and signals change", () => {
-    let changes = 0;
-    const routing = createAgentModelRouting(
-      agentConfigSchema.parse({
-        llm: { model: "base", tiers: ["frontier", "economy"], modes: { plan: 0, build: 1 } },
-      }),
-      () => changes++,
-    );
-    routing.configure("primary", { provider: "azure", model: "pinned" });
-    expect(routing.configFor("plan").llm.model).toBe("pinned");
-
-    routing.reload(
-      agentConfigSchema.parse({
-        llm: { model: "base", tiers: ["sol", "luna"], modes: { plan: 0, build: 1 } },
-      }),
-    );
-    // Fresh tiers route again; the live override is gone.
-    expect(routing.configFor("plan").llm.model).toBe("sol");
-    expect(routing.configFor("build").llm.model).toBe("luna");
-    expect(changes).toBe(2); // configure + reload
-  });
-
-  test("reports explicit child routing and clears it back to inheritance", () => {
-    const routing = createAgentModelRouting(agentConfigSchema.parse({ llm: { model: "primary" } }));
-    expect(routing.selections().subagents).toBeNull();
-
-    routing.configure("subagents", { provider: "azure", model: "child" });
-    expect(routing.selections().subagents).toEqual({ provider: "azure", model: "child" });
-
-    routing.configure("subagents", null);
-    expect(routing.selections().subagents).toBeNull();
-    expect(routing.config().tools.subagents.model).toBeUndefined();
   });
 });
 
 describe("createAgentTools", () => {
-  test("run_background_job and check_background_job exist only for a primary agent given a jobs port", async () => {
-    const config = agentConfigSchema.parse({});
-    const jobs = {
-      start: () => ({ id: "j1" }),
-      inspect: () => undefined,
-      renewSoftTimeout: () => false,
-      abort: () => false,
-    };
-    const withJobs = await createAgentTools(sandbox, config, { ...baseOptions, jobs });
-    expect(withJobs).toHaveProperty("run_background_job");
-    expect(withJobs).toHaveProperty("check_background_job");
-    expect(
-      await createAgentTools(sandbox, config, { ...baseOptions, mode: "plan", jobs }),
-    ).toHaveProperty("run_background_job");
-    expect(await createAgentTools(sandbox, config, baseOptions)).not.toHaveProperty(
-      "run_background_job",
-    );
-    expect(
-      await createAgentTools(sandbox, childAgentConfig(config, "delegate"), {
-        ...baseOptions,
-        jobs,
-      }),
-    ).not.toHaveProperty("run_background_job");
-  });
-
-  test("run_background_job reports standard tool activity", async () => {
-    const events: string[] = [];
-    const tools = await createAgentTools(sandbox, agentConfigSchema.parse({}), {
-      ...baseOptions,
-      jobs: {
-        start: () => ({ id: "j1" }),
-        inspect: () => undefined,
-        renewSoftTimeout: () => false,
-        abort: () => false,
-      },
-      onToolActivity: (activity) => events.push(`${activity.phase}:${activity.tool}`),
-    });
-
-    await tools.run_background_job?.execute({ prompt: "watch CI" });
-    expect(events).toEqual(["start:run_background_job", "end:run_background_job"]);
-  });
-
-  test("permission gating is strictly opt-in: no-gate builder tools behave as before", async () => {
-    const config = agentConfigSchema.parse({});
-    const plain = await createAgentTools(sandbox, config, baseOptions);
-    const gated = await createAgentTools(sandbox, config, {
-      ...baseOptions,
-      permissions: {
-        config: permissionsConfigSchema.parse({ rules: { "bash(*)": "deny" } }),
-        gate: async () => "deny",
-      },
-    });
-    expect(Object.keys(gated).sort()).toEqual(Object.keys(plain).sort());
-    const denied = await gated.bash?.execute({ command: "ls" });
-    expect(String(denied)).toContain("Denied by user");
-    const allowed = await plain.bash?.execute({ command: "ls" });
-    expect(String(allowed)).not.toContain("Denied by user");
-  });
-
-  test("tool activity fires around execution, after permission grants, never on deny", async () => {
-    const config = agentConfigSchema.parse({});
-    const events: string[] = [];
-    const record = (activity: { tool: string; detail: string; phase: string }) =>
-      events.push(`${activity.phase}:${activity.tool}:${activity.detail}`);
-
-    const denied = await createAgentTools(sandbox, config, {
-      ...baseOptions,
-      onToolActivity: record,
-      permissions: {
-        config: permissionsConfigSchema.parse({ rules: { "bash(*)": "deny" } }),
-        gate: async () => "deny",
-      },
-    });
-    const deniedResult = await denied.bash?.execute({ command: "ls" });
-    expect(String(deniedResult)).toContain("Denied by user");
-    expect(events).toEqual([]); // denial short-circuits before activity
-
-    const allowed = await createAgentTools(sandbox, config, {
-      ...baseOptions,
-      onToolActivity: record,
-      permissions: {
-        config: permissionsConfigSchema.parse({ rules: { "bash(*)": "ask" } }),
-        gate: async () => {
-          events.push("permission:bash");
-          return "allow";
-        },
-      },
-    });
-    await allowed.bash?.execute({ command: "ls" });
-    expect(events).toEqual(["permission:bash", "start:bash:ls", "end:bash:ls"]);
-  });
-
-  test("plan mode receives read/search/bash but never edit tools; research adds delegation tools", async () => {
-    const config = agentConfigSchema.parse({});
-    const planPrimary = await createAgentTools(sandbox, config, {
-      ...baseOptions,
-      mode: "plan",
-      research: {
-        async createWorker() {
-          return {
-            generate: async () => ({
-              text: "",
-              steps: [],
-              usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-            }),
-          };
-        },
-      },
-    });
-    const planDelegate = await createAgentTools(sandbox, config, {
-      ...baseOptions,
-      mode: "plan",
-    });
-
-    expect(Object.keys(planPrimary).sort()).toEqual([
+  test("every agent gets the one toolset: shell, read, search, edit", async () => {
+    const tools = await createAgentTools(sandbox, agentConfigSchema.parse({}), baseOptions);
+    expect(Object.keys(tools).sort()).toEqual([
       "bash",
+      "edit",
       "glob",
       "grep",
       "readFile",
-      "run_one_subagent",
-      "run_subagents",
+      "writeFile",
     ]);
-    expect(Object.keys(planDelegate).sort()).toEqual(["bash", "glob", "grep", "readFile"]);
-    for (const tools of [planPrimary, planDelegate]) {
-      expect(tools).not.toHaveProperty("writeFile");
-      expect(tools).not.toHaveProperty("edit");
-    }
-    expect(planDelegate).not.toHaveProperty("run_one_subagent");
-    expect(planDelegate).not.toHaveProperty("run_subagents");
   });
 
-  test("injects web research tools in both modes and for delegates", async () => {
-    const primary = agentConfigSchema.parse({});
-    for (const mode of ["plan", "build"] as const) {
-      const primaryTools = await createAgentTools(sandbox, primary, { ...baseOptions, mode, web });
-      const delegateTools = await createAgentTools(sandbox, childAgentConfig(primary, "delegate"), {
-        ...baseOptions,
-        mode,
-        web,
-      });
-      for (const tools of [primaryTools, delegateTools]) {
-        expect(tools).toHaveProperty("web_search");
-        expect(tools).toHaveProperty("web_fetch");
-      }
-    }
+  test("the edit mode swaps the edit tool's input shape, nothing else", async () => {
+    const batch = await createAgentTools(sandbox, agentConfigSchema.parse({}), baseOptions);
+    const exact = await createAgentTools(
+      sandbox,
+      agentConfigSchema.parse({ tools: { edit: { mode: "exact" } } }),
+      baseOptions,
+    );
+    expect(Object.keys(exact).sort()).toEqual(Object.keys(batch).sort());
+
+    const batchInput = { path: "a.ts", edits: [{ old_string: "x", new_string: "y" }] };
+    const exactInput = { path: "a.ts", old_string: "x", new_string: "y" };
+    expect(batch.edit.inputSchema.safeParse(batchInput).success).toBe(true);
+    expect(batch.edit.inputSchema.safeParse(exactInput).success).toBe(false);
+    expect(exact.edit.inputSchema.safeParse(exactInput).success).toBe(true);
+    expect(exact.edit.inputSchema.safeParse(batchInput).success).toBe(false);
   });
 
-  test("injects interactive session tools for primary agents in both modes, never delegates", async () => {
-    const primary = agentConfigSchema.parse({});
-    const todos = { list: () => [], replace: async () => {} };
-    const questions = { ask: async () => [] };
-    const plan = await createAgentTools(sandbox, primary, {
-      ...baseOptions,
-      mode: "plan",
-      todos,
-      questions,
-    });
-    const build = await createAgentTools(sandbox, primary, { ...baseOptions, todos, questions });
-    const delegate = await createAgentTools(sandbox, childAgentConfig(primary, "delegate"), {
-      ...baseOptions,
-      todos,
-      questions,
-    });
-
-    expect(plan).toHaveProperty("update_todos");
-    expect(plan).toHaveProperty("ask_user");
-    expect(build).toHaveProperty("update_todos");
-    expect(build).toHaveProperty("ask_user");
-    expect(delegate).not.toHaveProperty("update_todos");
-    expect(delegate).not.toHaveProperty("ask_user");
-  });
-
-  test("build mode (the default) retains mutation tools", async () => {
-    const tools = await createAgentTools(sandbox, agentConfigSchema.parse({}), baseOptions);
-    expect(tools).toHaveProperty("bash");
-    expect(tools).toHaveProperty("writeFile");
-    expect(tools).toHaveProperty("edit");
-    expect(tools).not.toHaveProperty("run_subagents");
-  });
-
-  test("injects only the external tools selected for the primary agent's mode", async () => {
-    const config = agentConfigSchema.parse({});
-    const externalTools: CreateAgentOptions["externalTools"] = {
-      plan: { tools: { mcp_plan: externalTool("plan") } },
-      build: {
-        tools: { mcp_build: externalTool("build") },
-        permissionTargets: { mcp_build: () => "server::build" },
-      },
-    };
-
-    const plan = await createAgentTools(sandbox, config, {
-      ...baseOptions,
-      mode: "plan",
-      externalTools,
-    });
-    const build = await createAgentTools(sandbox, config, { ...baseOptions, externalTools });
-
-    expect(plan).toHaveProperty("mcp_plan");
-    expect(plan).not.toHaveProperty("mcp_build");
-    expect(build).toHaveProperty("mcp_build");
-    expect(build).not.toHaveProperty("mcp_plan");
-    await expect(plan.mcp_plan?.execute({})).resolves.toBe("plan");
-    await expect(build.mcp_build?.execute({})).resolves.toBe("build");
-  });
-
-  test("authorizes and reports generic external calls under their resolved target before activity", async () => {
-    const events: string[] = [];
+  test("tool activity brackets each call with an id shared by its start and end", async () => {
+    const events: ToolActivity[] = [];
     const tools = await createAgentTools(sandbox, agentConfigSchema.parse({}), {
       ...baseOptions,
-      externalTools: {
-        build: {
-          tools: {
-            call_mcp_tool: {
-              description: "call",
-              inputSchema: z.object({ tool: z.string() }),
-              execute: async () => {
-                events.push("execute");
-                return "called";
-              },
-            },
-          },
-          permissionTargets: {
-            call_mcp_tool: (input) => (input as { tool: string }).tool,
-          },
-        },
-      },
-      permissions: {
-        config: permissionsConfigSchema.parse({ rules: { "mcp_*": "ask" } }),
-        gate: async (request) => {
-          events.push(`gate:${request.tool}`);
-          return "allow";
-        },
-      },
-      onToolActivity: (activity) => events.push(`${activity.phase}:${activity.tool}`),
+      onToolActivity: (activity) => events.push(activity),
     });
 
-    await tools.call_mcp_tool?.execute({ tool: "mcp_github_create_issue" });
-    expect(events).toEqual([
-      "gate:mcp_github_create_issue",
-      "start:mcp_github_create_issue",
-      "execute",
-      "end:mcp_github_create_issue",
+    await tools.readFile.execute({ path: "/repo/a.ts" });
+    await tools.readFile.execute({ path: "/repo/b.ts" });
+
+    expect(events.map((e) => `${e.phase}:${e.tool}:${e.detail}`)).toEqual([
+      "start:readFile:/repo/a.ts",
+      "end:readFile:/repo/a.ts",
+      "start:readFile:/repo/b.ts",
+      "end:readFile:/repo/b.ts",
+    ]);
+    // Parallel calls to the same tool are told apart by the minted id, which
+    // also rides along in execute options as `activityId`.
+    expect(events.map((e) => e.id)).toEqual([1, 1, 2, 2]);
+  });
+
+  test("the end event still fires when the call fails", async () => {
+    const events: string[] = [];
+    const tools = await createAgentTools(
+      { ...sandbox, readFile: async () => Promise.reject(new Error("gone")) },
+      agentConfigSchema.parse({}),
+      { ...baseOptions, onToolActivity: (a) => events.push(`${a.phase}:${a.tool}`) },
+    );
+
+    const result = await tools.readFile.execute({ path: "/repo/a.ts" });
+    expect(String(result)).toContain("ERROR: gone");
+    // A failed call must not leave a UI showing the tool as still running.
+    expect(events).toEqual(["start:readFile", "end:readFile"]);
+  });
+
+  test("without an activity callback the tools are handed over unwrapped", async () => {
+    const tools = await createAgentTools(sandbox, agentConfigSchema.parse({}), baseOptions);
+    await expect(tools.readFile.execute({ path: "/repo/a.ts" })).resolves.toBeDefined();
+  });
+});
+
+describe("createAgent", () => {
+  test("composes the prompt for the configured model and sends it as instructions", async () => {
+    reset();
+    const agent = await createAgent(
+      sandbox,
+      config({ llm: { model: "gpt-5.6-luna" } }),
+      baseOptions,
+    );
+    expect(agent.composed.profile).toBe("gpt-5.6-luna");
+
+    await agent.generate("fix the build");
+
+    expect(constructedAgents[0]?.instructions).toBe(agent.composed.instructions);
+    expect(generateCalls[0]?.prompt).toBe("fix the build");
+    // The whole toolset is offered, in the stable sorted order.
+    expect(constructedAgents[0]?.toolOrder).toEqual([
+      "bash",
+      "edit",
+      "glob",
+      "grep",
+      "readFile",
+      "writeFile",
     ]);
   });
 
-  test("rejects external tool collisions instead of replacing built-in capabilities", async () => {
-    const config = agentConfigSchema.parse({});
-    await expect(
-      createAgentTools(sandbox, config, {
-        ...baseOptions,
-        mode: "plan",
-        externalTools: { plan: { tools: { readFile: externalTool("replacement") } } },
-      }),
-    ).rejects.toThrow("External tool name collision: readFile");
-    await expect(
-      createAgentTools(sandbox, config, {
-        ...baseOptions,
-        externalTools: { build: { tools: { bash: externalTool("replacement") } } },
-      }),
-    ).rejects.toThrow("External tool name collision: bash");
+  test("explicit call settings beat the profile's recommendation", async () => {
+    reset();
+    // The deepseek profile advises temperature/topP 1.0.
+    const advised = await createAgent(
+      sandbox,
+      config({ llm: { model: "deepseek-v4-pro" } }),
+      baseOptions,
+    );
+    await advised.generate("hi");
+    expect(constructedAgents.at(-1)).toMatchObject({ temperature: 1, topP: 1 });
+
+    const pinned = await createAgent(
+      sandbox,
+      config({ llm: { model: "deepseek-v4-pro", temperature: 0.2, topP: 0.5 } }),
+      baseOptions,
+    );
+    await pinned.generate("hi");
+    expect(constructedAgents.at(-1)).toMatchObject({ temperature: 0.2, topP: 0.5 });
   });
 
-  test("never injects external tools into delegates or background-child configs", async () => {
-    const primary = agentConfigSchema.parse({});
-    const externalTools: CreateAgentOptions["externalTools"] = {
-      plan: { tools: { mcp_plan: externalTool("plan") } },
-      build: { tools: { mcp_build: externalTool("build") } },
-    };
-    for (const mode of ["plan", "build"] as const) {
-      const delegate = await createAgentTools(sandbox, childAgentConfig(primary, "delegate"), {
+  test("the profile's provider options ride along with every turn", async () => {
+    reset();
+    const agent = await createAgent(
+      sandbox,
+      config({ llm: { model: "gpt-5.6-luna" } }),
+      baseOptions,
+    );
+    await agent.generate("hi");
+    expect(constructedAgents[0]?.providerOptions).toEqual({
+      openai: { reasoningEffort: "medium", textVerbosity: "low" },
+    });
+  });
+
+  test("the caller's stopSteps overrides the config's per-turn ceiling", async () => {
+    reset();
+    const stepped = config({ steps: 42 });
+    const capped = await createAgent(sandbox, stepped, { ...baseOptions, stopSteps: 3 });
+    await capped.generate("hi");
+    expect(constructedAgents.at(-1)?.stopWhen).toEqual([{ count: 3 }]);
+
+    const uncapped = await createAgent(sandbox, stepped, baseOptions);
+    await uncapped.generate("hi");
+    expect(constructedAgents.at(-1)?.stopWhen).toEqual([{ count: 42 }]);
+  });
+
+  test("prior turns are sent back with the new prompt appended", async () => {
+    reset();
+    const agent = await createAgent(sandbox, config(), baseOptions);
+    const history = [{ role: "user", content: "earlier" }];
+
+    const result = await agent.generate("next", { messages: history });
+
+    expect(generateCalls[0]?.messages).toEqual([...history, { role: "user", content: "next" }]);
+    expect(result.messages).toEqual([
+      ...history,
+      { role: "user", content: "next" },
+      { role: "assistant", content: "done" },
+    ]);
+  });
+
+  test("the tool-output cap and the session spill store reach the tools", async () => {
+    reset();
+    const spilled: string[] = [];
+    const agent = await createAgent(
+      sandboxReading("x".repeat(5_000)),
+      config({ tools: { maxOutputChars: 1_000 } }),
+      {
         ...baseOptions,
-        mode,
-        externalTools,
-      });
-      expect(delegate).not.toHaveProperty("mcp_plan");
-      expect(delegate).not.toHaveProperty("mcp_build");
-    }
+        spill: {
+          dir: "/spill",
+          write: (label, value) => {
+            spilled.push(`${label}:${value.length}`);
+            return "/spill/full.txt";
+          },
+        },
+      },
+    );
+    await agent.generate("hi");
+
+    const tools = constructedAgents[0]?.tools as Record<
+      string,
+      { execute: (input: unknown) => Promise<unknown> }
+    >;
+    const out = (await tools.readFile.execute({ path: "/repo/big.ts" })) as string;
+    expect(out.length).toBeLessThanOrEqual(1_000);
+    expect(out).toContain("/spill/full.txt");
+    // 5002 = the file's 5,000 chars plus the read tool's `1|` line prefix.
+    expect(spilled).toEqual(["tool-output:5002"]);
+  });
+
+  test("exposes a continuation compactor that folds old turns into a summary", async () => {
+    const agent = await createAgent(sandbox, config(), baseOptions);
+    const history = Array.from({ length: 8 }, (_, i) => ({ role: "user", content: `turn ${i}` }));
+
+    const compacted = agent.compactContinuation?.(history) ?? [];
+
+    expect(compacted.length).toBeLessThan(history.length);
+    expect((compacted[0] as { content: string }).content).toContain(
+      "Compacted earlier conversation",
+    );
+    // Recent turns survive verbatim.
+    expect(compacted.at(-1)).toEqual({ role: "user", content: "turn 7" });
   });
 });

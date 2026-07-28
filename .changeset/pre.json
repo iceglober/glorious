@@ -17,6 +17,7 @@
     "remove-ansi-renderer",
     "remove-completion-grounding",
     "surface-intermediate-text",
+    "teardown-basic-chat",
     "tui-progress-animations"
   ]
 }

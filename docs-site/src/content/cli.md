@@ -4,38 +4,15 @@ Matches `glorious --help`.
 
 ## `glorious`
 
-Interactive session (plan mode).
+Opens the interactive chat session. That is the whole command line.
 
-- `--continue` — newest session for this project
-- `--resume <id>` — a specific session
+- `--version` — print the version
+- `--help` — usage
 
-## `glorious run <task>`
+## Environment
 
-- `<task>`
-- `--plan` — read-only, no edits
-- `--allow-all` — resolve asks to allow (default: deny)
-
-## `glorious config <set|get|delete> <key> [value]`
-
-See [config](/config).
-
-- `set <key> [value]` — `--secret` reads masked input into the keychain
-- `get <key>`
-- `delete <key>` — `--secret` removes a keychain secret
-- `add|remove <key> <value>` — for array values
-
-## `glorious config <allow|ask|deny|unrule|uncaged>`
-
-Permission [ACL](/permissions) — idempotent.
-
-- `allow|ask|deny <pattern>` — set a rule (`bash(pnpm *)`, `edit`, `web`, `mcp_linear_get_issue`)
-- `unrule <pattern>` — remove a rule
-- `uncaged on|off` — open everything, or restore default-deny
-
-## `glorious update`
-
-- `--channel <next|latest>`
-
-## `glorious eval`
-
-`eval`, `eval report`, `eval selfcheck`.
+- `AZURE_FOUNDRY_API_KEY` / `AZURE_API_KEY` / `AZURE_OPENAI_API_KEY` — the model key (required)
+- `AZURE_RESOURCE_NAME` — the Azure AI Foundry resource
+- `GLORIOUS_MODEL` — model override (default `gpt-5.6-luna`)
+- `GLORIOUS_CONTEXT_SOFT_LIMIT` — optional request-context ceiling in tokens;
+  old turns compact automatically at 75% of it

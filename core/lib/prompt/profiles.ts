@@ -1,4 +1,4 @@
-import { COMPACT_PRIMARY, STANDALONE_EXECUTOR } from "./base";
+import { COMPACT_PRIMARY } from "./base";
 import { DEEPSEEK_DELTA, GPT54_DELTA } from "./blocks";
 import type { RenderFlags } from "./index";
 
@@ -16,7 +16,7 @@ export interface ModelParams {
 
 /**
  * A prompting profile: how to detect a model, which prompt flags/delta it
- * wants, an optional standalone delegate template, and its recommended params.
+ * wants, an optional compact template, and its recommended params.
  */
 export interface Profile {
   /** Any regex matching → this profile. */
@@ -25,12 +25,8 @@ export interface Profile {
   flags: Partial<RenderFlags>;
   /** Appended into {{PROFILE_DELTA}}. */
   delta?: string;
-  /** Whether the model accepts image inputs. Omitted means supported. */
-  supportsImages?: boolean;
-  /** Primary builder role uses this template instead of base. */
+  /** Use this template instead of base. */
   primary?: string;
-  /** Delegate role uses this template instead of base. */
-  standalone?: string;
   params: ModelParams;
 }
 
@@ -44,15 +40,13 @@ export const profiles = {
     match: [/^deepseek-v4-pro\b/],
     flags: { planning: false, hallucinationGuard: true },
     delta: DEEPSEEK_DELTA,
-    supportsImages: false,
     // DeepSeek vendor guidance: lower temps collapse the reasoning trace, so
     // hold sampling wide open.
     params: { temperature: 1.0, topP: 1.0 },
   },
   "gpt-5.4-nano": {
     match: [/^gpt-5\.4-nano\b/],
-    flags: { planning: true, smallModel: true, subagentContract: true },
-    standalone: STANDALONE_EXECUTOR,
+    flags: { planning: true, smallModel: true },
     params: { providerOptions: { openai: { reasoningEffort: "low", textVerbosity: "low" } } },
   },
   "gpt-5.4": {
@@ -65,8 +59,7 @@ export const profiles = {
   "gpt-5.6-sol": {
     match: [/^gpt-5\.6-sol\b/],
     // hallucinationGuard stays ON despite the subtractive framing: the 5.6
-    // family will otherwise fill the completion-report template from plan text
-    // without running the validation it claims.
+    // family will otherwise claim validation it never ran.
     flags: { workflowSteps: false, workflowOutcome: true, hallucinationGuard: true },
     params: { providerOptions: { openai: { reasoningEffort: "high", textVerbosity: "low" } } },
   },

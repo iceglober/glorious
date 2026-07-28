@@ -10,7 +10,7 @@ export function Home() {
     <main className="home">
       <div className="home-hero">
         <h1>glorious</h1>
-        <p className="tagline">a terminal coding agent</p>
+        <p className="tagline">a simple terminal coding agent</p>
       </div>
 
       <NpmVersions />
@@ -33,17 +33,8 @@ export function Home() {
       <div className="links">
         <Link to="/install">install</Link>
         <Link to="/quickstart">quickstart</Link>
-        <Link to="/modes">plan &amp; build modes</Link>
-        <Link to="/cli">cli</Link>
-        <Link to="/commands">commands &amp; keys</Link>
-        <Link to="/config">configuration</Link>
-        <Link to="/permissions">permissions</Link>
-        <Link to="/subagents">parallel subagents</Link>
-        <Link to="/jobs">background jobs</Link>
-        <Link to="/skills">skills</Link>
-        <Link to="/mcp">mcp servers</Link>
         <Link to="/tools">tools</Link>
-        <Link to="/sessions">sessions</Link>
+        <Link to="/cli">cli</Link>
       </div>
 
       <div className="external">
