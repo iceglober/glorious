@@ -42,19 +42,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
       # While in pre-release mode we only publish under `next`, so npm `latest`
       # goes stale and `npm i` / `bun update -g` (which follow `latest`) fetch an
-      # old build. Keep `latest` pointed at the newest `next` prerelease. Skipped
-      # once pre mode is exited (pre.json gone) so a future stable release owns
-      # `latest`. Idempotent + self-healing: runs every push, no-op when in sync.
+      # old build. Keep `latest` pointed at the version this commit ships.
+      # Skipped once pre mode is exited (pre.json gone) so a future stable
+      # release owns `latest`. Idempotent + self-healing: runs every push, no-op
+      # when in sync, and repairs a `latest` left behind by an earlier run.
+      #
+      # The target comes from package.json, not from `dist-tags.next`: the
+      # registry's read path lags the publish that ran seconds earlier, so
+      # querying it here once returned the pre-publish tags and skipped the
+      # retag, stranding `latest` a version behind (0.1.0-next.2). The local
+      # version is what we just published, so only *visibility* needs waiting on.
       - name: Track npm `latest` to the newest `next` prerelease
         if: hashFiles('.changeset/pre.json') != ''
         run: |
           set -e
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          next=$(npm view @glrs-dev/glorious dist-tags.next 2>/dev/null || true)
+          version=$(node -p "require('./package.json').version")
+          for _ in $(seq 1 30); do
+            npm view "@glrs-dev/glorious@$version" version >/dev/null 2>&1 && break
+            sleep 5
+          done
+          if ! npm view "@glrs-dev/glorious@$version" version >/dev/null 2>&1; then
+            echo "version $version is not on the registry; nothing to tag"
+            exit 0
+          fi
           latest=$(npm view @glrs-dev/glorious dist-tags.latest 2>/dev/null || true)
-          echo "next=$next latest=$latest"
-          if [ -n "$next" ] && [ "$next" != "$latest" ]; then
-            npm dist-tag add "@glrs-dev/glorious@$next" latest
+          echo "version=$version latest=$latest"
+          if [ "$version" != "$latest" ]; then
+            npm dist-tag add "@glrs-dev/glorious@$version" latest
           fi
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
