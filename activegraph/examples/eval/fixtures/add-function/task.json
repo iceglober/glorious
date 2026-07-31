@@ -1,4 +1,5 @@
 {
   "goal": "Add a slugify(value) function to src/text.ts that lowercases and hyphenates, with a test in src/text.test.ts, then run bun test",
-  "check": "bun test 2>&1 | grep -q '0 fail' && grep -q 'slugify' src/text.ts && grep -q 'slugify' src/text.test.ts"
+  "check": "bun -e 'import {slugify} from \"./src/text\"; process.exit(slugify(\"Hello Wide World\")===\"hello-wide-world\"?0:1)' && bun test 2>&1 | grep -q '0 fail' && test $(bun test 2>&1 | grep -oE '[0-9]+ pass' | grep -oE '[0-9]+') -ge 2",
+  "expectStatus": "completed"
 }

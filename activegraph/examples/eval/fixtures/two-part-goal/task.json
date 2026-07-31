@@ -1,0 +1,5 @@
+{
+  "goal": "Add first(list) and last(list) to src/list.ts, each returning undefined for an empty list, with a test for each in src/list.test.ts, then run bun test",
+  "check": "bun -e 'import {first,last} from \"./src/list\"; const ok = first([1,2])===1 && last([1,2])===2 && first([])===undefined && last([])===undefined; process.exit(ok?0:1)' && bun test 2>&1 | grep -q '0 fail' && test $(bun test 2>&1 | grep -oE '[0-9]+ pass' | grep -oE '[0-9]+') -ge 3",
+  "expectStatus": "completed"
+}

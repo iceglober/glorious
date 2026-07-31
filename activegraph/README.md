@@ -186,7 +186,14 @@ bun run eval 3 refactor-rename                     # or one task
 
 Each fixture in [`examples/eval/fixtures`](examples/eval/fixtures) is a directory to copy, a goal to
 give, and a shell command that decides the outcome — no model judges the result, so the score means
-the same thing every time. It calls the provider for real, which is the point and also the cost.
+the same thing every time. A fixture may also require the task to end in a given status, which is how
+a goal that cannot be done gets checked: what matters there is not what changed but whether the agent
+admits nothing did.
+
+Checks test behaviour, not the shape of the solution. One of these fixtures first grepped for
+`export const first` and scored 0/3 against an agent that had written `export function first`,
+tested it, and reported honestly — a benchmark that fails correct work is worse than none, since it
+sends you fixing what is not broken. Checks import the result and call it instead. It calls the provider for real, which is the point and also the cost.
 
 A model varies run to run, so one success proves nothing and one failure proves nothing either; this
 example has twice been changed on the strength of a single observed failure that then would not
