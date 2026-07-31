@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { createAzureLlm, createConsoleTracer, unwrap } from "../index";
 import { pendingCommands } from "./approvals";
 import {
@@ -33,8 +33,14 @@ const MAX_DIRTY = 20;
  * leading space is trimmed away.
  */
 const git = (...args: readonly string[]): string => {
-  const result = Bun.spawnSync(["git", ...args], { stdout: "pipe", stderr: "ignore" });
-  return result.exitCode === 0 ? result.stdout.toString().trimEnd() : "";
+  try {
+    const result = Bun.spawnSync(["git", ...args], { stdout: "pipe", stderr: "ignore" });
+    return result.exitCode === 0 ? result.stdout.toString().trimEnd() : "";
+  } catch {
+    // Spawning fails outright when the working directory has stopped
+    // existing, which the agent can arrange: it renamed or deleted it.
+    return "";
+  }
 };
 
 /** Cap a list, saying how much was dropped rather than truncating in silence. */
@@ -50,6 +56,11 @@ const capped = (values: readonly string[], limit: number): readonly string[] =>
  */
 const sampleWorkspace = (): Workspace => {
   const cwd = process.cwd();
+  if (!existsSync(cwd)) {
+    // The goal moved or removed the directory the run started in. Saying so is
+    // better than crashing after the work is done but before it is reported.
+    return { cwd, entries: [] };
+  }
   const gitRoot = git("rev-parse", "--show-toplevel");
   const branch = gitRoot === "" ? "" : git("rev-parse", "--abbrev-ref", "HEAD");
   const status = gitRoot === "" ? "" : git("status", "--porcelain");

@@ -102,6 +102,14 @@ describe("shell tool", () => {
     expect(unmasked.ok ? unmasked.value : "").toContain(secret);
   });
 
+  test("a working directory that is gone is an error, not a throw", async () => {
+    // A coding agent can delete or move the directory it was told to run in.
+    const result = await run({ command: "echo hi", cwd: "/definitely/not/here" });
+
+    expect(result.ok).toBe(false);
+    expect(messageOf(result)).toContain("Could not start the command in /definitely/not/here");
+  });
+
   test("refuses nothing: judging a command is the agent's job, not the tool's", async () => {
     const dir = mkdtempSync(join(tmpdir(), "shell-tool-"));
     writeFileSync(join(dir, "doomed.txt"), "bye\n");

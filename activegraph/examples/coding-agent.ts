@@ -581,7 +581,12 @@ export const executor = codingAgentKit.behavior({
       timeoutMs,
       maxOutputBytes,
     };
-    const result = await ctx.tool("bash", input);
+    // A tool that throws instead of returning a Result would surface as a
+    // failed behavior, leaving this command pending and the task never
+    // settling — no verdict, no review, nothing to read.
+    const result = await ctx
+      .tool("bash", input)
+      .catch((error: unknown) => tooling(error instanceof Error ? error.message : String(error)));
     // A failure is a sentence, not a payload. This string is what the reviewer
     // reads and what the operator sees printed, so `{"reason":"tool_error",
     // "message":"..."}` costs tokens and clarity for nothing.
@@ -741,6 +746,12 @@ export const createCodingAgent = (options: {
     store: options.store,
     tracer: options.tracer,
   });
+
+/** A thrown tool becomes the same shape a well-behaved one returns. */
+const tooling = (message: string) => ({
+  ok: false as const,
+  error: { reason: "tool_error" as const, message },
+});
 
 const stringify = (value: unknown): string =>
   typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));

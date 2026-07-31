@@ -143,6 +143,24 @@ describe("coding agent", () => {
     expect(runtime.view().objects("command")[0]?.data.output).toBe("permission denied");
   });
 
+  test("a tool that throws still leaves a settled task, not a stranded one", async () => {
+    const { runtime } = await runAgent({
+      llm: planThenDone(),
+      tools: {
+        execute: async () => {
+          throw new Error("posix_spawn failed");
+        },
+      },
+    });
+
+    // Without the guard this is a failed behavior and a command stuck at
+    // pending, so the task never settles and no report is ever written.
+    expect(runtime.view().objects("command")[0]?.data.status).toBe("failed");
+    expect(runtime.view().objects("command")[0]?.data.output).toContain("posix_spawn failed");
+    expect(runtime.view().objects("task")[0]?.data.status).toBe("failed");
+    expect(failures(runtime)).toEqual([]);
+  });
+
   test("every command carries the workspace directory and its limits", async () => {
     const { calls, tools } = recordingTools();
     await runAgent({

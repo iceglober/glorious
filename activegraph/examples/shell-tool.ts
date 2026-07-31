@@ -53,13 +53,30 @@ export const createShellTool = (options: ShellToolOptions = {}): ToolExecutor =>
     execute: async (_name, rawInput) => {
       const input = rawInput as BashInput;
 
-      const child = Bun.spawn(["bash", "-lc", input.command], {
-        cwd: input.cwd,
-        timeout: input.timeoutMs,
-        maxBuffer: input.maxOutputBytes,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      // Spawning can fail before the command exists — most plausibly because
+      // the working directory is gone, which a coding agent can arrange for
+      // itself. The port promises a Result; throwing here would surface as a
+      // failed behavior and leave the command pending forever.
+      let child: Bun.Subprocess<"ignore", "pipe", "pipe">;
+      try {
+        child = Bun.spawn(["bash", "-lc", input.command], {
+          cwd: input.cwd,
+          timeout: input.timeoutMs,
+          maxBuffer: input.maxOutputBytes,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            reason: "tool_error",
+            message: `Could not start the command in ${input.cwd}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        };
+      }
       const [stdout, stderr, exitCode] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
