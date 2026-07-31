@@ -54,6 +54,13 @@ const capped = (values: readonly string[], limit: number): readonly string[] =>
  * Sample the directory the plan will run in: what is on disk, which branch is
  * checked out, and what is uncommitted. This is the agent's whole view of the
  * world, and it enters through an event, so the log keeps it.
+ *
+ * The platform is deliberately absent. Models reach for GNU coreutils flags
+ * that BSD userland rejects — `sed -i` without an argument, `find -printf`,
+ * `base64 -w` — and three such failures appeared over some fifty runs here.
+ * Naming the platform in the prompt is plausible and unmeasurable: twelve runs
+ * across the two goal shapes most likely to provoke it produced none at all,
+ * so there is no baseline against which a fix could be shown to work.
  */
 const sampleWorkspace = (): Workspace => {
   const cwd = process.cwd();

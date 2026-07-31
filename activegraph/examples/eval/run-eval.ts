@@ -18,6 +18,7 @@ import { Database } from "bun:sqlite";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -177,9 +178,13 @@ const replays = async (dbPath: string): Promise<boolean> => {
   }
 };
 
-const shell = (command: string, cwd: string): boolean =>
-  Bun.spawnSync(["bash", "-lc", command], { cwd, stdout: "ignore", stderr: "ignore" }).exitCode ===
-  0;
+const shell = (command: string, cwd: string, expected: string): boolean =>
+  Bun.spawnSync(["bash", "-lc", command], {
+    cwd,
+    env: { ...process.env, EXPECTED: expected },
+    stdout: "ignore",
+    stderr: "ignore",
+  }).exitCode === 0;
 
 interface Attempt {
   readonly passed: boolean;
@@ -216,6 +221,18 @@ const attempt = async (task: Task): Promise<Attempt> => {
   const dir = mkdtempSync(join(tmpdir(), `eval-${task.name}-`));
   cpSync(join(fixtures, task.name, "files"), dir, { recursive: true });
   const goals = task.goals ?? [task.goal ?? ""];
+  // Anything a check needs to compare against is scaffolding, not part of the
+  // task: left in place it shows up in the agent's own directory listing, and
+  // one run duly read the answer key. Moved aside, and handed to the check as
+  // $EXPECTED.
+  const expected = `${dir}-expected`;
+  mkdirSync(expected, { recursive: true });
+  for (const path of readdirSync(dir)) {
+    if (path.startsWith(".expected-")) {
+      renameSync(join(dir, path), join(expected, path.slice(".expected-".length)));
+    }
+  }
+
   // A fixture's tests are data, not this repository's tests — one of them is
   // meant to fail — so they are stored with a suffix that `bun test` ignores
   // and given their real names on the way into the copy.
@@ -254,11 +271,12 @@ const attempt = async (task: Task): Promise<Attempt> => {
   const settled =
     task.expectStatus === undefined || finalStatus(join(dir, "eval.db")) === task.expectStatus;
   const withinBudget = task.maxCalls === undefined || spentEarly.calls <= task.maxCalls;
-  const passed = settled && withinBudget && shell(task.check, dir);
+  const passed = settled && withinBudget && shell(task.check, dir, expected);
   const replayed = await replays(join(dir, "eval.db"));
   const spent = spentEarly;
   const unreachable = unreachableProvider(join(dir, "eval.db"));
   const interesting = !unreachable && (!passed || !replayed || seconds > SLOW_SECONDS);
+  rmSync(expected, { recursive: true, force: true });
   if (!interesting) rmSync(dir, { recursive: true, force: true });
   return interesting
     ? { passed, replays: replayed, seconds, ...spent, unreachable, kept: dir }

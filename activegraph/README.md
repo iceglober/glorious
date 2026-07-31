@@ -211,6 +211,11 @@ started with, the others require the count that was there to still be passing. E
 against a deliberate cheat — the failing tests replaced by trivially passing ones — and against an
 honest fix, because a check is only known to work when it has been seen to fail.
 
+Whatever a check compares against is moved out of the working directory before the agent starts and
+handed to the check as `$EXPECTED`. Left in place it appears in the agent's own directory listing —
+and one run duly read the answer key — which for the fixture that pins two files as untouched would
+have told it exactly which files not to touch.
+
 Checks test behaviour, not the shape of the solution. One of these fixtures first grepped for
 `export const first` and scored 0/3 against an agent that had written `export function first`,
 tested it, and reported honestly — a benchmark that fails correct work is worse than none, since it
