@@ -144,6 +144,22 @@ model, history reaches the model through the request, so it is part of the cache
 a goal issued against a log that has grown re-plans rather than replaying its own earlier answer,
 while a true replay of a recorded log still serves every completion from the recording.
 
+Any recorded log can be checked against the behaviors that produced it:
+
+```bash
+bun activegraph/examples/verify-log.ts coding-agent.db   # or: bun run verify-log
+```
+
+It summarises the branch, replays it with `createCodingAgentBehaviors()` — no arguments, which is the
+property being tested — and either confirms the branch re-derives from itself or names the fields
+that differ at the first divergent event. No provider is reached: every completion is served from the
+recording, so it is offline and free. This exists because the unit tests were green while every
+approval-gated log on disk was unreplayable; they built their runtimes with default settings and
+never exercised the configuration the runner used. Replaying a real log is what catches that, and it
+is worth a command rather than a script written from memory. Note that it compares against *today's*
+behaviors, so a log recorded before a behavior changed is expected to diverge — that is the tool
+working, not the log rotting.
+
 Every run ends by saying what it did to the working tree. The runner re-samples the workspace, emits
 it as a second `workspace.sampled` so the log holds the state the run left as well as the one it
 started from, and [`workspace-diff.ts`](examples/workspace-diff.ts) reports what appeared, what went
