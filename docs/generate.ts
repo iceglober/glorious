@@ -1,47 +1,19 @@
 #!/usr/bin/env bun
 /**
- * Builds the glorious docs site under `docs/`. The command-line reference is
- * generated from the same `command()` definitions the CLI parser runs, so it
- * can never drift from the product. Hand-written prose lives in
+ * Builds the glorious docs site under `docs/`. Hand-written prose lives in
  * `docs/content/*.md`.
  *
  * `bun docs/generate.ts` (or `bun run docs`) rewrites the committed output;
  * `generate.test.ts` pins the committed files against a fresh render, so a
- * CLI change with no regenerate turns CI red. Render functions are pure and
+ * content change with no regenerate turns CI red. Render functions are pure and
  * exported for that test; only `main()` touches the filesystem.
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type CliCommandDoc, describeCli } from "../core/lib/cli";
 
 const DOCS_DIR = new URL(".", import.meta.url).pathname;
 const CONTENT_DIR = join(DOCS_DIR, "content");
-
-/**
- * The command-line reference, sourced from the CLI's own `command()` definitions
- * via `describeCli()` — so it can never disagree with `glorious --help`.
- */
-export function renderCliMarkdown(commands: readonly CliCommandDoc[] = describeCli()): string {
-  const lines = [
-    "## Command line",
-    "",
-    "Every subcommand, argument, and flag — generated from the same definitions `glorious --help` prints.",
-    "",
-    ":::details Show all commands and flags",
-    "",
-  ];
-  for (const command of commands) {
-    const usage = [command.name, ...command.args.map((arg) => arg.usage)].join(" ");
-    lines.push(`### \`${usage}\``, "", command.description, "");
-    for (const item of [...command.args, ...command.flags]) {
-      lines.push(`- \`${item.usage}\` — ${item.description}`);
-    }
-    lines.push("");
-  }
-  lines.push(":::", "");
-  return lines.join("\n");
-}
 
 const escapeHtml = (text: string): string =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -263,16 +235,14 @@ export function renderSite(sections: string[]): string {
   ].join("\n");
 }
 
-/** Prose pages, in site order. Reference is appended after them, generated. */
+/** Prose pages, in site order. */
 const CONTENT_ORDER = ["index.md"] as const;
 
 /** The full set of files the generator owns, as {relativePath: contents}. */
 export function buildOutputs(): Record<string, string> {
-  const cli = renderCliMarkdown();
   const prose = CONTENT_ORDER.map((name) => readFileSync(join(CONTENT_DIR, name), "utf8"));
   return {
-    "content/cli.generated.md": cli,
-    "index.html": renderSite([...prose, cli]),
+    "index.html": renderSite(prose),
   };
 }
 
@@ -288,7 +258,7 @@ function main(): void {
   for (const [path, contents] of Object.entries(buildOutputs())) {
     writeFileSync(join(DOCS_DIR, path), contents);
   }
-  process.stdout.write("docs: wrote index.html and content/cli.generated.md\n");
+  process.stdout.write("docs: wrote index.html\n");
 }
 
 if (import.meta.main) main();

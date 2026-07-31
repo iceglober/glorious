@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildOutputs, markdownToHtml, renderCliMarkdown } from "./generate";
+import { buildOutputs, markdownToHtml } from "./generate";
 
 const DOCS_DIR = new URL(".", import.meta.url).pathname;
 const read = (relative: string): string => readFileSync(join(DOCS_DIR, relative), "utf8");
@@ -13,16 +13,8 @@ describe("docs generator", () => {
     }
   });
 
-  test("the generator owns exactly the CLI reference and the site page", () => {
-    expect(Object.keys(buildOutputs()).sort()).toEqual(["content/cli.generated.md", "index.html"]);
-  });
-
-  test("the CLI reference is sourced from the command definitions", () => {
-    const cli = renderCliMarkdown();
-    // The only command is the bare chat invocation — no subcommands, no flags.
-    expect(cli).toContain("### `glorious`");
-    expect(cli).toContain("Invocation opens a chat session.");
-    expect(cli).not.toContain("### `glorious run");
+  test("the generator owns exactly the site page", () => {
+    expect(Object.keys(buildOutputs()).sort()).toEqual(["index.html"]);
   });
 
   test("markdown renderer escapes HTML, adds heading ids, and handles the subset", () => {
@@ -49,7 +41,7 @@ describe("docs generator", () => {
   });
 
   test("the site builds a table of contents from its own headings", () => {
-    const { headings } = markdownToHtml(buildOutputs()["content/cli.generated.md"] ?? "");
+    const { headings } = markdownToHtml(readFileSync(join(DOCS_DIR, "content/index.md"), "utf8"));
     const site = buildOutputs()["index.html"] ?? "";
     expect(headings.length).toBeGreaterThan(0);
     // Every h1/h2 in the content is linkable from the sticky nav.

@@ -12,4 +12,4 @@ while [ -L "$script" ]; do
 done
 
 script_dir=$(CDPATH= cd "$(dirname "$script")" && pwd)
-exec bun "$script_dir/../core/agent-loop.ts" "$@"
+exec bun "$script_dir/../v2/index.ts" "$@"

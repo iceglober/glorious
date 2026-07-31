@@ -16,6 +16,6 @@
     "types": ["bun-types", "node"],
     "skipLibCheck": true
   },
-  "include": ["core/**/*.ts", "docs/**/*.ts"],
+  "include": ["v2/**/*.ts", "docs/**/*.ts"],
   "exclude": ["node_modules", "**/dist/**", "**/build/**", "**/coverage/**", "core/**/generated/**"]
 }
