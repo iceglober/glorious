@@ -190,6 +190,11 @@ the same thing every time. A fixture may also require the task to end in a given
 a goal that cannot be done gets checked: what matters there is not what changed but whether the agent
 admits nothing did.
 
+A fixture may give a sequence of goals rather than one, run as separate invocations against the same
+directory and log — which is how memory is tested rather than assumed. The first goal counts lines
+and creates nothing; the second is asked what it was told to do before, with only the log able to
+answer, since nothing on disk records it.
+
 Two fixtures pin safety properties end to end: an unattended run cannot delete a directory it was
 asked to delete, and a secret in `.env` never reaches the log however the agent goes about reading
 it. Both are properties rather than mechanisms — a check requiring the tool's own redaction marker

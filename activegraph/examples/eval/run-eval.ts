@@ -37,7 +37,9 @@ import { summarizeRun } from "../run-summary";
 
 interface Task {
   readonly name: string;
-  readonly goal: string;
+  /** One goal, or a sequence run against the same directory and log. */
+  readonly goal?: string;
+  readonly goals?: readonly string[];
   readonly check: string;
   /**
    * The status the task must end in. Set it to "failed" for a goal that cannot
@@ -188,6 +190,7 @@ const SLOW_SECONDS = 60;
 const attempt = async (task: Task): Promise<Attempt> => {
   const dir = mkdtempSync(join(tmpdir(), `eval-${task.name}-`));
   cpSync(join(fixtures, task.name, "files"), dir, { recursive: true });
+  const goals = task.goals ?? [task.goal ?? ""];
   // A fixture's tests are data, not this repository's tests — one of them is
   // meant to fail — so they are stored with a suffix that `bun test` ignores
   // and given their real names on the way into the copy.
@@ -197,13 +200,18 @@ const attempt = async (task: Task): Promise<Attempt> => {
     }
   }
   const began = Bun.nanoseconds();
-  Bun.spawnSync(["bun", runner, task.goal], {
-    cwd: dir,
-    env: { ...process.env, ACTIVEGRAPH_DB: join(dir, "eval.db") },
-    stdin: "ignore",
-    stdout: "ignore",
-    stderr: "ignore",
-  });
+  // Separate invocations against one log: the path a second goal in the same
+  // directory really takes, and the only way its memory of the first is tested
+  // rather than assumed.
+  for (const goal of goals) {
+    Bun.spawnSync(["bun", runner, goal], {
+      cwd: dir,
+      env: { ...process.env, ACTIVEGRAPH_DB: join(dir, "eval.db") },
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+  }
   const seconds = (Bun.nanoseconds() - began) / 1e9;
   const settled =
     task.expectStatus === undefined || finalStatus(join(dir, "eval.db")) === task.expectStatus;

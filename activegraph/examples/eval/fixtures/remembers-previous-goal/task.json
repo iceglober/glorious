@@ -1,0 +1,7 @@
+{
+  "goals": [
+    "Count the lines in stock.txt and report the number. Do not create or modify any files.",
+    "Write into previous-goal.txt a one-line summary of the goal you were given before this one. Do not guess from the files; use what you already know about earlier work in this directory."
+  ],
+  "check": "grep -qi 'stock' previous-goal.txt && grep -qiE 'count|lines|number' previous-goal.txt && ! test -f inventory.txt"
+}
