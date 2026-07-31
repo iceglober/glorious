@@ -41,3 +41,6 @@ core/eval/traj/
 # .glorious/ stay tracked; only the config files are ignored.
 /.glorious/config.json
 /.glorious/config.local.json
+
+# local agent event log
+coding-agent.db*
