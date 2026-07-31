@@ -49,8 +49,7 @@ const gaveUpJson = JSON.stringify({
  * status is its verdict now, so a stub that always claims achievement would
  * make every test assert that the verdict is ignored.
  */
-const reviewOf = (prompt: string): string =>
-  prompt.includes(", failed]") || prompt.includes(", skipped]") ? gaveUpJson : doneJson;
+const reviewOf = (prompt: string): string => (prompt.includes(", failed]") ? gaveUpJson : doneJson);
 
 const isReview = (request: LlmRequest): boolean =>
   request.system?.startsWith("You are") === true ? request.system.includes("reviewing") : false;

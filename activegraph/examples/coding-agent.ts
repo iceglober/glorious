@@ -103,7 +103,7 @@ export const codingAgentSchema = defineSchema({
     command: z.object({
       description: z.string(),
       command: z.string(),
-      status: z.enum(["pending", "running", "completed", "failed", "skipped"]),
+      status: z.enum(["pending", "running", "completed", "failed"]),
       output: z.string().optional(),
       /** Round that proposed this command; the task's status follows the last. */
       round: z.number().optional(),
@@ -745,7 +745,6 @@ export const reviewer = codingAgentKit.llmBehavior({
         "Each follow-up command needs a description: a short phrase in plain words saying what it does, never a copy of the command itself. " +
         "Set done to true when the goal is met or nothing further can usefully be run, and leave commands empty. " +
         "Set done to false and return follow-up commands only when the output shows work still to do — a failed command to fix, or a next step the output makes obvious. " +
-        "A command marked skipped never ran, because an earlier one in its round failed; fix that failure and propose the skipped work again if it is still needed. " +
         "A refused command was rejected by the operator: do not propose it again. " +
         "Do not reach the same effect by other means either — a different tool or language for the same action is still the refused action. " +
         "Propose a narrower step, one that shows what would change without changing it, or set done to true and say the work needs the operator. " +
