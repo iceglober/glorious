@@ -381,6 +381,25 @@ describe("coding agent", () => {
     ).toEqual({ ok: true, value: undefined });
   });
 
+  test("a malformed reply costs a re-ask, not the run", async () => {
+    let planCalls = 0;
+    const { calls, tools } = recordingTools();
+    const { runtime } = await runAgent({
+      tools,
+      llm: createFakeLlm((request) => {
+        if (isReview(request)) return doneJson;
+        planCalls += 1;
+        // What a real model does now and then: prose instead of the object.
+        return planCalls === 1 ? "Sure! Here is the plan you asked for." : planJson;
+      }),
+    });
+
+    expect(planCalls).toBe(2);
+    expect(calls).toHaveLength(2);
+    expect(runtime.view().objects("task")[0]?.data.status).toBe("completed");
+    expect(failures(runtime)).toEqual([]);
+  });
+
   test("without a sampled workspace the agent refuses to run commands", async () => {
     const { calls, tools } = recordingTools();
     const { runtime } = await runAgent({ tools, llm: planThenDone(), workspace: null });

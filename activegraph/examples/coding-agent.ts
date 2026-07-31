@@ -291,6 +291,12 @@ export interface AgentConfig {
 
 export const DEFAULT_MAX_ROUNDS = 2;
 export const DEFAULT_HISTORY_LIMIT = 3;
+/**
+ * One re-ask when a reply is not usable JSON. A reviewer that fails to parse
+ * is the expensive case: its commands have already run, so losing the round
+ * means a re-run repeats all of that work.
+ */
+export const DEFAULT_RETRIES = 1;
 
 /** Ask the model for a bounded, structured implementation plan. */
 export const createPlanner = ({ model, historyLimit = DEFAULT_HISTORY_LIMIT }: AgentConfig) =>
@@ -314,6 +320,7 @@ export const createPlanner = ({ model, historyLimit = DEFAULT_HISTORY_LIMIT }: A
         "Create a concise command plan. The commands will be executed in that working directory after you respond, and their output will be shown separately.",
     }),
     output: plan,
+    retries: DEFAULT_RETRIES,
     andThen: (output, event, ctx) => {
       const taskId = objectId<"task">(`task_${event.payload.goalId}`);
       return [
@@ -445,6 +452,7 @@ export const createReviewer = ({ model, maxRounds = DEFAULT_MAX_ROUNDS }: AgentC
       };
     },
     output: review,
+    retries: DEFAULT_RETRIES,
     andThen: (output, event, ctx) => {
       const taskId = event.payload.objectId as ObjectId<"task">;
       const task = ctx.view.object(taskId);

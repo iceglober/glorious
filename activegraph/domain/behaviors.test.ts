@@ -194,6 +194,78 @@ describe("llmBehavior", () => {
       claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), portless),
     ).rejects.toThrow(/no_llm_port/);
   });
+
+  test("retries unusable output, telling the model what was wrong", async () => {
+    const retrying = () =>
+      kit.llmBehavior({
+        name: "claimer",
+        on: ["task.completed"],
+        prompt: () => ({ prompt: "summarize" }),
+        output: z.object({ text: z.string(), confidence: z.number() }),
+        retries: 1,
+        andThen: (output, _event, c) => [c.m.addObject("note", { text: output.text })],
+      });
+    const prompts: string[] = [];
+    const recovering: BehaviorContext<S1> = {
+      ...ctx(),
+      llm: async (request) => {
+        prompts.push(request.prompt);
+        return ok({
+          text:
+            prompts.length === 1
+              ? "sorry, here is prose"
+              : JSON.stringify({ text: "market is growing", confidence: 0.7 }),
+        });
+      },
+    };
+
+    const mutations = await retrying().run(ev(4, "task.completed", { taskId: "t1" }), recovering);
+    expect(mutations).toHaveLength(1);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toBe("summarize");
+    // The retry is a different request — so a different cache key — and says why.
+    expect(prompts[1]).toContain("could not be used");
+    expect(prompts[1]).toContain("not JSON");
+  });
+
+  test("gives up after the allowed retries", async () => {
+    let calls = 0;
+    const neverValid: BehaviorContext<S1> = {
+      ...ctx(),
+      llm: async () => {
+        calls += 1;
+        return ok({ text: "still prose" });
+      },
+    };
+    const stubborn = kit.llmBehavior({
+      name: "claimer",
+      on: ["task.completed"],
+      prompt: () => ({ prompt: "summarize" }),
+      output: z.object({ text: z.string() }),
+      retries: 2,
+      andThen: () => [],
+    });
+
+    expect(stubborn.run(ev(4, "task.completed", { taskId: "t1" }), neverValid)).rejects.toThrow(
+      /not JSON/,
+    );
+    await Bun.sleep(0);
+    expect(calls).toBe(3);
+  });
+
+  test("without retries a single unusable reply still fails immediately", async () => {
+    let calls = 0;
+    const bad: BehaviorContext<S1> = {
+      ...ctx(),
+      llm: async () => {
+        calls += 1;
+        return ok({ text: "prose" });
+      },
+    };
+    expect(claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), bad)).rejects.toThrow();
+    await Bun.sleep(0);
+    expect(calls).toBe(1);
+  });
 });
 
 describe("combinators compose with pipe", () => {

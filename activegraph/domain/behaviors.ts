@@ -18,14 +18,15 @@
  * desugars to a behavior that fires once per relation of the declared type
  * whose endpoints are referenced by the event's payload — "coordination logic
  * on the edge, not on either endpoint". `llmBehavior` wires prompt → LLM →
- * zod-parsed structured output → mutations; parse failures throw, and the
- * runtime records thrown behavior errors as `behavior.failed` events.
+ * zod-parsed structured output → mutations; an unusable reply is re-asked
+ * `retries` times with the complaint appended, and then throws, which the
+ * runtime records as a `behavior.failed` event.
  *
  * Combinators (`when`, `whereObject`, `mapMutations`) are ordinary
  * `AnyBehavior<S> => AnyBehavior<S>` functions, composable with `pipe`.
  */
 import type z from "zod";
-import type { Result } from "../lib/fp";
+import { err, ok, type Result } from "../lib/fp";
 import type { LlmError, LlmRequest, LlmResponse, ToolError } from "./effects";
 import type { AnyEvent, EventMap, EventName, EventUnion } from "./events";
 import type { GraphRelation } from "./graph";
@@ -77,6 +78,29 @@ const parseLlmJson = (text: string): unknown => {
   return JSON.parse(candidate);
 };
 
+/** Parse and validate one reply, reporting why it could not be used. */
+const readOutput = <Out extends z.ZodType>(
+  output: Out,
+  text: string,
+): Result<z.infer<Out>, string> => {
+  let json: unknown;
+  try {
+    json = parseLlmJson(text);
+  } catch {
+    return err(`llm output is not JSON: ${text.slice(0, 200)}`);
+  }
+  const parsed = output.safeParse(json);
+  return parsed.success
+    ? ok(parsed.data)
+    : err(
+        `llm output failed schema: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
+      );
+};
+
+/** Re-ask by appending the complaint, so the retry is a distinct request. */
+const retryPrompt = (request: LlmRequest, complaint: string): string =>
+  `${request.prompt}\n\nYour previous reply could not be used: ${complaint}\nReply with JSON only, matching the requested shape exactly.`;
+
 const referencedIds = (payload: unknown, into: Set<string> = new Set()): Set<string> => {
   if (typeof payload === "string") into.add(payload);
   else if (Array.isArray(payload)) for (const item of payload) referencedIds(item, into);
@@ -105,6 +129,12 @@ export interface Kit<S extends SchemaDef> {
     readonly where?: (event: EventUnion<S, K>, view: GraphView<S>) => boolean;
     readonly prompt: (event: EventUnion<S, K>, view: GraphView<S>) => LlmRequest;
     readonly output: Out;
+    /**
+     * Extra attempts when the reply is not usable JSON for `output`. Each one
+     * re-asks with the complaint appended, so it is an ordinary logged call
+     * with its own hash — a replay serves it from the recording like any other.
+     */
+    readonly retries?: number;
     readonly andThen: (
       output: z.infer<Out>,
       event: EventUnion<S, K>,
@@ -153,22 +183,23 @@ export const createKit = <S extends SchemaDef>(schema: S): Kit<S> => {
         where: def.where,
         run: async (event, ctx) => {
           const request = def.prompt(event, ctx.view);
-          const response = await ctx.llm(request);
-          if (!response.ok) {
-            throw new Error(`llm ${response.error.reason}: ${JSON.stringify(response.error)}`);
+          let complaint: string | undefined;
+          for (let attempt = 0; ; attempt += 1) {
+            const asked =
+              complaint === undefined
+                ? request
+                : { ...request, prompt: retryPrompt(request, complaint) };
+            const response = await ctx.llm(asked);
+            if (!response.ok) {
+              throw new Error(`llm ${response.error.reason}: ${JSON.stringify(response.error)}`);
+            }
+            const usable = readOutput(def.output, response.value.text);
+            if (usable.ok) return def.andThen(usable.value, event, ctx);
+            // A provider error is the world failing; unusable output is the
+            // model failing, and telling it so is often enough.
+            if (attempt >= (def.retries ?? 0)) throw new Error(usable.error);
+            complaint = usable.error;
           }
-          let parsedJson: unknown;
-          try {
-            parsedJson = parseLlmJson(response.value.text);
-          } catch {
-            throw new Error(`llm output is not JSON: ${response.value.text.slice(0, 200)}`);
-          }
-          const parsed = def.output.safeParse(parsedJson);
-          if (!parsed.success) {
-            const issues = parsed.error.issues.map((issue) => issue.message).join("; ");
-            throw new Error(`llm output failed schema: ${issues}`);
-          }
-          return def.andThen(parsed.data, event, ctx);
         },
       }),
   };

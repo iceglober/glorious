@@ -138,6 +138,12 @@ The Azure adapter records `usage` inside `llm.responded`, so the numbers are dur
 is a pure fold and works on last week's branch as well as on the run that just finished. The runner
 counts only the events this run appended, not the whole branch.
 
+A reply that is not usable JSON costs a re-ask rather than the run. `llmBehavior` takes `retries`
+(the agent uses 1) and re-asks with the complaint appended — a distinct request, so it is logged and
+hashed like any other and replays from the recording. The reviewer is the case that makes this worth
+having: its commands have already run by then, so losing the round to a parse failure means a re-run
+repeats all of that work.
+
 Command output is redacted before anything sees it. The log is durable and the reviewer's prompt is
 sent to a provider, so one `cat .env` would otherwise write a live credential to disk forever and
 hand it to the model. [`shell-tool.ts`](examples/shell-tool.ts) masks by *value*, not by name: every
