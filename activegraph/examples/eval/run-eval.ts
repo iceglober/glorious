@@ -15,9 +15,24 @@
  */
 
 import { Database } from "bun:sqlite";
-import { cpSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createSqliteEventStore } from "../../adapters/sqlite-event-store";
+import { replayStrict } from "../../shell/replay";
+import {
+  type CodingAgentSchema,
+  codingAgentSchema,
+  createCodingAgentBehaviors,
+} from "../coding-agent";
 
 interface Task {
   readonly name: string;
@@ -74,12 +89,38 @@ const finalStatus = (dbPath: string): string => {
   }
 };
 
+/**
+ * Whether the log this attempt wrote replays from itself, with no arguments.
+ *
+ * Every task is a determinism check for free: replay serves completions from
+ * the recording, so it costs nothing and reaches no provider. Doing it by hand
+ * is what caught settings living in a constructor argument, which made every
+ * approval-gated log on disk unreplayable while the unit tests stayed green.
+ */
+const replays = async (dbPath: string): Promise<boolean> => {
+  if (!existsSync(dbPath)) return false;
+  const store = createSqliteEventStore<CodingAgentSchema>(dbPath);
+  try {
+    const verdict = await replayStrict({
+      schema: codingAgentSchema,
+      behaviors: createCodingAgentBehaviors(),
+      store,
+      branch: "main",
+    });
+    return verdict.ok;
+  } finally {
+    store.close();
+  }
+};
+
 const shell = (command: string, cwd: string): boolean =>
   Bun.spawnSync(["bash", "-lc", command], { cwd, stdout: "ignore", stderr: "ignore" }).exitCode ===
   0;
 
 interface Attempt {
   readonly passed: boolean;
+  /** Whether the branch this run wrote re-derives from itself. */
+  readonly replays: boolean;
   readonly seconds: number;
   /** Kept when the attempt was interesting, so there is something to look at. */
   readonly kept?: string;
@@ -124,9 +165,12 @@ const attempt = async (task: Task): Promise<Attempt> => {
   const settled =
     task.expectStatus === undefined || finalStatus(join(dir, "eval.db")) === task.expectStatus;
   const passed = settled && shell(task.check, dir);
-  const interesting = !passed || seconds > SLOW_SECONDS;
+  const replayed = await replays(join(dir, "eval.db"));
+  const interesting = !passed || !replayed || seconds > SLOW_SECONDS;
   if (!interesting) rmSync(dir, { recursive: true, force: true });
-  return interesting ? { passed, seconds, kept: dir } : { passed, seconds };
+  return interesting
+    ? { passed, replays: replayed, seconds, kept: dir }
+    : { passed, replays: replayed, seconds };
 };
 
 const runs = Number(process.argv[2] ?? 2);
@@ -138,6 +182,7 @@ console.log(
 );
 let passes = 0;
 let total = 0;
+let replaysAll = true;
 for (const task of tasks) {
   const results: Attempt[] = [];
   for (let run = 0; run < runs; run += 1) {
@@ -152,15 +197,17 @@ for (const task of tasks) {
   total += results.length;
   // The worst run, not only the mean: one attempt in ten takes minutes, and an
   // average over three hides it inside a plausible-looking number.
+  const replayedCount = results.filter((result) => result.replays).length;
+  replaysAll = replaysAll && replayedCount === results.length;
   console.log(
     ` ${task.name}: ${won}/${results.length}` +
-      ` (${(elapsed / results.length).toFixed(0)}s avg, ${Math.max(...times).toFixed(0)}s worst)`,
+      ` (${(elapsed / results.length).toFixed(0)}s avg, ${Math.max(...times).toFixed(0)}s worst` +
+      `${replayedCount === results.length ? "" : `, ${replayedCount}/${results.length} replay`})`,
   );
   for (const kept of results.filter((result) => result.kept !== undefined)) {
-    console.log(
-      `    ${kept.passed ? "slow" : "failed"} (${kept.seconds.toFixed(0)}s): ${kept.kept}`,
-    );
+    const why = !kept.passed ? "failed" : !kept.replays ? "did not replay" : "slow";
+    console.log(`    ${why} (${kept.seconds.toFixed(0)}s): ${kept.kept}`);
   }
 }
-console.log(`\ntotal: ${passes}/${total}`);
-process.exit(passes === total ? 0 : 1);
+console.log(`\ntotal: ${passes}/${total}${replaysAll ? ", every log replays" : ""}`);
+process.exit(passes === total && replaysAll ? 0 : 1);
