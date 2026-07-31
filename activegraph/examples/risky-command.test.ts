@@ -24,6 +24,12 @@ const ESCALATES = [
   "git clean -fd",
   "git push --force origin main",
   "git push -f origin main",
+  // Discarding uncommitted work, which the planner is told never to do.
+  "git checkout -- .",
+  "git restore src/text.ts",
+  // Deleting without saying `rm`.
+  "find . -name '*.tmp' -delete",
+  "truncate -s 0 important.log",
 ];
 
 const RUNS_QUIETLY = [
@@ -39,6 +45,14 @@ const RUNS_QUIETLY = [
   'echo "rm -rf is dangerous"',
   "git commit -m 'confirm -f behaviour'",
   "cat docs/reboot-procedure.md",
+  // Moving between branches is not discarding work.
+  "git checkout main",
+  "git checkout -b feature/thing",
+  "git commit -m 'restore the docs'",
+  "find . -name '*.ts' -print",
+  // Truncation with `>` is how nearly every file gets written; gating it would
+  // gate everything and teach the operator to stop reading the prompt.
+  "printf hello > notes.txt",
 ];
 
 describe("looksDestructive", () => {

@@ -301,8 +301,12 @@ is a pure fold and works on last week's branch as well as on the run that just f
 counts only the events this run appended, not the whole branch.
 
 A risky-looking command always waits for a person, whatever the configuration: `looksDestructive`
-matches `sudo`, `mkfs`, `dd`, `rm -rf`, `git reset --hard`, `git clean -f`, and force-pushes, and
-those commands park behind an approval while everything else runs untouched. It matches only in
+matches `sudo`, `mkfs`, `dd`, `rm -rf`, `git reset --hard`, `git clean -f`, force-pushes, and the
+quieter ways to destroy work — `find … -delete`, `truncate -s 0`, and the `git restore` and
+`git checkout --` forms that discard exactly the uncommitted changes the planner is told never to
+touch. Those park behind an approval while everything else runs untouched. Shell truncation with `>`
+is deliberately not among them: it destroys a file just as surely and is also how nearly every file
+gets written, and a gate that fires on everything teaches the operator to approve without reading. It matches only in
 command position — line start, after a separator, or handed to something that execs its argument, so
 `find … -exec rm -rf {} +` and `xargs rm -f` are caught while `grep -r "sudo" .` and
 `cat notes/dd/readme.md` are not. The examples are the specification and live in

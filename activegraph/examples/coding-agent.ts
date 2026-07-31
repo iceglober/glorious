@@ -319,8 +319,18 @@ const RISKY_PROGRAM = String.raw`(?:sudo|mkfs\S*|dd|shutdown|reboot)\s`;
 /**
  * Actions that are destructive in a particular form. Anchored the same way, so
  * `echo "rm -rf is dangerous"` is prose and `find . -exec rm -rf {} +` is not.
+ *
+ * `git restore` and `git checkout --` are here because they discard exactly
+ * the uncommitted work the planner is told never to touch, and an audit found
+ * them slipping through while `git reset --hard` was caught. `git checkout
+ * main` stays ungated: switching branches is not discarding work.
+ *
+ * Shell truncation with `>` is deliberately absent. It destroys a file just as
+ * surely, and it is also how the agent writes almost every file it writes — a
+ * pattern that gates every write teaches the operator to approve without
+ * reading, which costs more than it saves.
  */
-const RISKY_ACTION = String.raw`(?:\brm\s+-[a-z]*[rf]|\bgit\s+reset\s+--hard|\bgit\s+clean\s+-[a-z]*f|\bgit\s+push\s+[^;|&]*(?:--force|-f)(?:\s|$))`;
+const RISKY_ACTION = String.raw`(?:\brm\s+-[a-z]*[rf]|\bgit\s+reset\s+--hard|\bgit\s+clean\s+-[a-z]*f|\bgit\s+push\s+[^;|&]*(?:--force|-f)(?:\s|$)|\bgit\s+restore\b|\bgit\s+checkout\s+(?:--|\.)|\bfind\b[^;|&]*\s-delete\b|\btruncate\s+-s\s*0)`;
 
 export const RISKY_COMMAND = new RegExp(
   `${COMMAND_POSITION}(?:${RISKY_PROGRAM}|${RISKY_ACTION})`,
