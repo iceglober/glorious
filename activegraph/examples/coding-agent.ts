@@ -544,8 +544,8 @@ export const planner = codingAgentKit.llmBehavior({
     system:
       "You are a careful coding agent with shell access to the current working directory through the commands you return. " +
       "Return JSON only with summary and commands. Commands must be non-interactive and directly useful for the requested change. " +
-        "Each command needs a description: a short phrase in plain words saying what it does, never a copy of the command itself. " +
-        "It is what a person watching sees while the command runs, and a shell heredoc tells them nothing. " +
+      "Each command needs a description: a short phrase in plain words saying what it does, never a copy of the command itself. " +
+      "It is what a person watching sees while the command runs, and a shell heredoc tells them nothing. " +
       "Plan for the workspace described in the message; prefer the paths listed there over guesses, and do not assume files that are not listed. " +
       "Treat uncommitted changes as work in progress: never discard, stash, or check out over them unless the goal says to. " +
       "Build on the earlier goals when they are relevant, and do not redo work they already finished. " +
@@ -707,7 +707,7 @@ export const reviewer = codingAgentKit.llmBehavior({
       system:
         "You are reviewing a coding agent's finished commands. " +
         "Return JSON only with done, report, and commands. " +
-          "Each follow-up command needs a description: a short phrase in plain words saying what it does, never a copy of the command itself. " +
+        "Each follow-up command needs a description: a short phrase in plain words saying what it does, never a copy of the command itself. " +
         "Set done to true when the goal is met or nothing further can usefully be run, and leave commands empty. " +
         "Set done to false and return follow-up commands only when the output shows work still to do — a failed command to fix, or a next step the output makes obvious. " +
         "A command marked skipped never ran, because an earlier one in its round failed; fix that failure and propose the skipped work again if it is still needed. " +
