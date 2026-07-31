@@ -141,7 +141,9 @@ set, so one failure ends the round: the commands after it are recorded `skipped`
 because "create the directory, then write into it" is broken the moment the first step fails and
 running on can do damage the reviewer then has to undo. Rounds are capped by
 `ACTIVEGRAPH_MAX_ROUNDS` (2 by default; `0` reviews without ever adding work), each command's output
-is clipped to 2,000 characters inside the reviewer's prompt, and the task's status follows the newest
+is clipped to 2,000 characters inside the reviewer's prompt — from the middle, keeping both ends,
+because a long command's most useful line is usually its last and head-only truncation feeds the
+reviewer the preamble while dropping the verdict, and the task's status follows the newest
 round, so a successful retry moves a `failed` task back to `completed` while the failed round stays in
 the graph as history.
 

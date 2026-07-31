@@ -5,6 +5,7 @@ import { createAzureLlm, createConsoleTracer, unwrap } from "../index";
 import { pendingCommands } from "./approvals";
 import {
   type AgentSettings,
+  clip,
   createCodingAgent,
   DEFAULT_HISTORY_LIMIT,
   DEFAULT_LIMITS,
@@ -246,7 +247,7 @@ const runOneGoal = async (goal: string): Promise<void> => {
       console.log(round === 0 ? "\n--- plan ---" : `\n--- review round ${round} ---`);
     }
     console.log(`$ ${command.data.command}`);
-    if (command.data.output) console.log(truncate(command.data.output, maxOutput));
+    if (command.data.output) console.log(clip(command.data.output, maxOutput));
   }
   if (task?.data.report !== undefined) console.log(`\nreport: ${task.data.report}`);
 
@@ -280,13 +281,4 @@ if (goal !== "") {
 function parseInteger(value: string | undefined, fallback: number, min: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= min ? parsed : fallback;
-}
-
-function truncate(value: string, limit: number): string {
-  if (value.length <= limit) return value;
-  const marker = `\n... [truncated ${value.length - limit} characters; limit ${limit}] ...\n`;
-  const available = Math.max(0, limit - marker.length);
-  const head = Math.ceil(available / 2);
-  const tail = Math.floor(available / 2);
-  return `${value.slice(0, head)}${marker}${tail === 0 ? "" : value.slice(-tail)}`;
 }

@@ -348,10 +348,28 @@ const failedEarlierInRound = (
   return false;
 };
 
-const clip = (value: string, limit: number): string =>
-  value.length <= limit
-    ? value
-    : `${value.slice(0, limit)}\n[…${value.length - limit} more characters]`;
+/**
+ * Truncate from the middle, keeping both ends.
+ *
+ * A long command's most useful line is usually its last: the test summary, the
+ * error that stopped the build, the path it finally wrote. Head-only
+ * truncation feeds the reviewer the preamble and drops the verdict, which is
+ * the one part it needs to judge the round.
+ */
+export const clip = (value: string, limit: number): string => {
+  if (value.length <= limit) return value;
+  const shape = (dropped: number) => `\n[… ${dropped} characters dropped …]\n`;
+  // The marker's own length changes how much fits, and its digits change with
+  // the count; two passes settle it, so the number printed is the true one.
+  let marker = shape(value.length);
+  for (let pass = 0; pass < 3; pass += 1) {
+    marker = shape(value.length - Math.max(0, limit - marker.length));
+  }
+  const available = Math.max(0, limit - marker.length);
+  const head = Math.ceil(available / 2);
+  const tail = available - head;
+  return `${value.slice(0, head)}${marker}${tail === 0 ? "" : value.slice(-tail)}`;
+};
 
 const describeCommand = (command: GraphObject<CodingAgentSchema, "command">): string =>
   [
