@@ -1,0 +1,3 @@
+# loud
+
+Run `bun test`.

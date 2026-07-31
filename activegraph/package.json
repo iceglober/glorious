@@ -8,7 +8,8 @@
   "scripts": {
     "test": "bun test .",
     "typecheck": "tsc --noEmit",
-    "verify-log": "bun examples/verify-log.ts"
+    "verify-log": "bun examples/verify-log.ts",
+    "eval": "bun examples/eval/run-eval.ts"
   },
   "dependencies": {
     "@ai-sdk/azure": "^4.0.11",

@@ -1,0 +1,4 @@
+{
+  "goal": "Rename the exported function shout to exclaim everywhere it is used, then run bun test",
+  "check": "bun test 2>&1 | grep -q '0 fail' && ! grep -rq 'shout' src"
+}

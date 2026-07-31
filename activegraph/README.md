@@ -174,6 +174,23 @@ model, history reaches the model through the request, so it is part of the cache
 a goal issued against a log that has grown re-plans rather than replaying its own earlier answer,
 while a true replay of a recorded log still serves every completion from the recording.
 
+Whether the agent actually does the job is a question with an answer:
+
+```bash
+bun activegraph/examples/eval/run-eval.ts 3        # 3 runs of each task
+bun run eval 3 refactor-rename                     # or one task
+```
+
+Each fixture in [`examples/eval/fixtures`](examples/eval/fixtures) is a directory to copy, a goal to
+give, and a shell command that decides the outcome — no model judges the result, so the score means
+the same thing every time. It calls the provider for real, which is the point and also the cost.
+
+A model varies run to run, so one success proves nothing and one failure proves nothing either; this
+example has twice been changed on the strength of a single observed failure that then would not
+reproduce. A failing attempt keeps its directory and its event log and prints the path, because a
+score with no evidence is a scoreboard rather than a diagnosis — and the log replays, so the failure
+can be examined without spending another call.
+
 Any recorded log can be checked against the behaviors that produced it:
 
 ```bash

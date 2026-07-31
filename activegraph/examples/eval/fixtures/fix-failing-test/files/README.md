@@ -1,0 +1,3 @@
+# math
+
+Run `bun test`.
