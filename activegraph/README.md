@@ -102,8 +102,15 @@ Configure an Azure deployment, then run:
 ```bash
 # Copy .env.example to .env and fill in the values, or export them in your shell.
 cp .env.example .env
-bun activegraph/examples/run-coding-agent.ts "Inspect this project"
+bun activegraph/examples/run-coding-agent.ts "Inspect this project"   # one goal, then exit
+bun activegraph/examples/run-coding-agent.ts                          # a session: goal after goal
 ```
+
+A session is worth more than repeated invocations, because each goal re-samples the directory the
+previous one just changed and sees it in history — so "count the words into count.txt" followed by
+"now quote that number in README.md" works, with the second goal reading the first one's file. An
+empty line, `exit`, or EOF ends it; a non-interactive stdin ends it immediately, having done
+nothing.
 
 A run narrates itself: which behavior is thinking, and any failure as the provider's own sentence
 rather than nested JSON — see [`trace-view.ts`](examples/trace-view.ts). `ACTIVEGRAPH_TRACE=1` swaps
