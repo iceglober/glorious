@@ -28,6 +28,27 @@ const MAX_ENTRIES = 60;
 const MAX_DIRTY = 20;
 
 /**
+ * Entries the workspace listing leaves out.
+ *
+ * The event log belongs in that set alongside `.git` and `node_modules`: it
+ * sits in the working directory by default, so listing it presents the agent's
+ * own history as a file in the project. One run spent two commands inspecting
+ * its schema and row counts, then described the database in a summary of the
+ * project — and a log full of prompts read back into a prompt is a loop worth
+ * declining to invite.
+ */
+const dbPath = process.env.ACTIVEGRAPH_DB ?? "coding-agent.db";
+const dbName = dbPath.split("/").at(-1) ?? dbPath;
+const hidden = new Set([
+  ".git",
+  "node_modules",
+  dbName,
+  `${dbName}-wal`,
+  `${dbName}-shm`,
+  `${dbName}-journal`,
+]);
+
+/**
  * Stdout of a git command, or "" when it is not a repository. Only trailing
  * whitespace goes: a porcelain status line begins with two status columns, so
  * ` M README.md` loses its meaning — and its first path character — if the
@@ -74,7 +95,7 @@ const sampleWorkspace = (): Workspace => {
   const status = gitRoot === "" ? "" : git("status", "--porcelain");
   const dirty = status === "" ? [] : capped(status.split("\n"), MAX_DIRTY);
   const names = readdirSync(cwd, { withFileTypes: true })
-    .filter((entry) => entry.name !== ".git" && entry.name !== "node_modules")
+    .filter((entry) => !hidden.has(entry.name))
     .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
     .sort();
   return {
@@ -101,7 +122,7 @@ const settings: AgentSettings = {
 
 const created = await createCodingAgent({
   llm: createAzureLlm({ model }),
-  store: { sqlite: process.env.ACTIVEGRAPH_DB ?? "coding-agent.db" },
+  store: { sqlite: dbPath },
   tracer: rawTrace
     ? createConsoleTracer((line) => console.error(`[activegraph] ${line}`))
     : {
