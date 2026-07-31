@@ -10,6 +10,7 @@ import {
   DEFAULT_HISTORY_LIMIT,
   DEFAULT_LIMITS,
   DEFAULT_MAX_ROUNDS,
+  unfinishedTasks,
   type Workspace,
 } from "./coding-agent";
 import { formatRunSummary, summarizeRun } from "./run-summary";
@@ -120,6 +121,19 @@ const configured = await runtime.emit("settings.configured", settings);
 if (!configured.ok) {
   console.error(`Could not record the settings: ${JSON.stringify(configured.error)}`);
   process.exit(1);
+}
+
+// A previous run may have been killed between doing something and recording
+// it; the log cannot tell which, so say what it does know.
+const unfinished = unfinishedTasks(runtime.view(), process.cwd());
+if (unfinished.length > 0) {
+  console.error("note: a previous run here did not finish:");
+  for (const task of unfinished) {
+    console.error(
+      `  "${task.request}" (${task.status}, ${task.outstanding} command(s) unfinished)`,
+    );
+  }
+  console.error("  Those commands may have run without their results being recorded.");
 }
 
 const currentTaskId = (goal: string): string =>

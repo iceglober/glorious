@@ -5,6 +5,7 @@ import { createMemoryEventStore } from "../adapters/memory-event-store";
 import { createMemoryGraphStore } from "../adapters/memory-graph-store";
 import type { LlmRequest } from "../domain/effects";
 import { hashRequest } from "../domain/events";
+import { objectId } from "../index";
 import { unwrap } from "../lib/fp";
 import type { LlmPort } from "../ports/llm";
 import type { ToolExecutor } from "../ports/tools";
@@ -13,9 +14,11 @@ import { createRuntime } from "../shell/runtime";
 import {
   type AgentSettings,
   type CodingAgentSchema,
+  codingAgentKit,
   codingAgentSchema,
   createCodingAgentBehaviors,
   DEFAULT_LIMITS,
+  unfinishedTasks,
   type Workspace,
 } from "./coding-agent";
 
@@ -141,6 +144,52 @@ describe("coding agent", () => {
     // What the reviewer reads and the operator sees: the sentence, not the
     // envelope it arrived in.
     expect(runtime.view().objects("command")[0]?.data.output).toBe("permission denied");
+  });
+
+  test("work a killed run left behind is findable, and scoped to this directory", async () => {
+    // Exactly the shape a process killed mid-command leaves: the task and the
+    // command exist, and the patch that would have recorded the result never
+    // arrived.
+    const runtime = unwrap(
+      await createRuntime<CodingAgentSchema>({
+        schema: codingAgentSchema,
+        behaviors: [],
+        eventStore: createMemoryEventStore<CodingAgentSchema>(),
+        graphStore: createMemoryGraphStore<CodingAgentSchema>(),
+        clock: createFixedClock(),
+      }),
+    );
+    const m = codingAgentKit.m;
+    const taskId = objectId<"task">("task_goal_1");
+    const commandId = objectId<"command">("command_task_goal_1_r0_0");
+    unwrap(
+      await runtime.propose([
+        m.addObject(
+          "task",
+          { request: "Rebuild the index", summary: "…", status: "planned", cwd: "/repo", round: 0 },
+          { id: taskId },
+        ),
+        m.addObject(
+          "command",
+          { description: "rebuild", command: "make index", status: "pending", round: 0 },
+          { id: commandId },
+        ),
+        m.addRelation("has_command", taskId, commandId),
+      ]),
+    );
+
+    expect(unfinishedTasks(runtime.view(), "/repo")).toEqual([
+      { request: "Rebuild the index", status: "planned", outstanding: 1 },
+    ]);
+    // Another directory's abandoned work is not this directory's problem.
+    expect(unfinishedTasks(runtime.view(), "/elsewhere")).toEqual([]);
+  });
+
+  test("a finished run leaves nothing unfinished", async () => {
+    const { tools } = recordingTools();
+    const { runtime } = await runAgent({ llm: planThenDone(), tools });
+
+    expect(unfinishedTasks(runtime.view(), "/repo")).toEqual([]);
   });
 
   test("a tool that throws still leaves a settled task, not a stranded one", async () => {

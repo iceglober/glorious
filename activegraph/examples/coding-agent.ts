@@ -391,6 +391,40 @@ const describeCommand = (command: GraphObject<CodingAgentSchema, "command">): st
   ].join("\n");
 
 /**
+ * Work a previous run never finished here.
+ *
+ * A run that is killed mid-command leaves its task `planned` or `running` and
+ * its command `pending`, because the patch recording the result never
+ * happened. The next run starts a fresh goal and says nothing — but the
+ * command may well have taken effect on disk before the process died, so the
+ * directory can be half-changed with nothing in the log to say so.
+ */
+export interface UnfinishedTask {
+  readonly request: string;
+  readonly status: string;
+  /** Commands that never reached a terminal state. */
+  readonly outstanding: number;
+}
+
+export const unfinishedTasks = (
+  view: GraphView<CodingAgentSchema>,
+  cwd: string,
+): readonly UnfinishedTask[] =>
+  view
+    .objects("task")
+    .filter(
+      (task) =>
+        task.data.cwd === cwd && (task.data.status === "planned" || task.data.status === "running"),
+    )
+    .map((task) => ({
+      request: task.data.request,
+      status: task.data.status,
+      outstanding: commandsOf(view, task.id).filter(
+        (command) => command.data.status === "pending" || command.data.status === "running",
+      ).length,
+    }));
+
+/**
  * What this workspace has already been asked to do. The log outlives a single
  * run, so a second goal can build on the first instead of rediscovering the
  * project — and because it lands in the prompt, it is part of the cache key

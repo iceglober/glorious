@@ -150,6 +150,11 @@ re-sending it is the resent-context that dominates what a run costs. On a three-
 round, so a successful retry moves a `failed` task back to `completed` while the failed round stays in
 the graph as history.
 
+A run that is killed leaves its task `planned` and its command `pending`, because the patch recording
+the result never happened — and the command may well have taken effect on disk first. The next run in
+that directory says so before starting, since the log knows the work was abandoned but cannot know
+whether it happened.
+
 Goals accumulate. The log outlives a run, so `planner` is shown the last `ACTIVEGRAPH_HISTORY` (3)
 finished goals from this directory — request and reviewer report, each clipped to 400 characters — and
 a second goal can build on the first instead of rediscovering the project. History is scoped by the
