@@ -232,7 +232,9 @@ until you release it with `grantApproval`. A non-interactive stdin declines: for
 shell, failing closed is the only safe default.
 
 The question is asked per command, not per batch, because five proposed commands with one bad line
-should cost you that line and not the other four. Each command parks two mutations — the object and
+should cost you that line and not the other four. Each is shown as its description followed by the
+command indented beneath it — a file-writing heredoc runs to dozens of lines, and a label tacked on
+the end of one arrives long after the reader needed it. Each command parks two mutations — the object and
 the edge attaching it to the task — and [`approvals.ts`](examples/approvals.ts) groups them so a
 release covers both, in proposal order, since an edge cannot attach to an object that does not exist
 yet. A declined command simply never becomes an object, so the task settles on the work that was

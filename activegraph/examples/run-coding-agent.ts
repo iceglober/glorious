@@ -158,13 +158,18 @@ const settleApprovals = async (goal: string): Promise<void> => {
     const granting: string[] = [];
     let rest = false;
     for (const group of pendingCommands(runtime.log(), pending)) {
-      // Models often echo the command as its own description; showing it twice
-      // doubles the line length of the thing the operator has to read.
-      const note =
-        group.description === "" || group.description === group.command
-          ? ""
-          : `   # ${group.description}`;
-      console.log(`  $ ${group.command}${note}`);
+      // The label first, then the command as a block. A file-writing heredoc
+      // runs to dozens of lines, and a description tacked on the end of one
+      // arrives long after the reader needed it.
+      // A blank line first: `prompt` leaves the cursor after its question, so
+      // without one the next command's label continues the previous answer.
+      console.log("");
+      if (group.description !== "" && group.description !== group.command) {
+        console.log(`  ${group.description}`);
+      }
+      const [firstLine, ...moreLines] = group.command.split("\n");
+      console.log(`    $ ${firstLine}`);
+      for (const line of moreLines) console.log(`      ${line}`);
       const answer = rest
         ? "y"
         : (prompt("    run it? [y/N/a=yes to all]") ?? "").trim().toLowerCase();
