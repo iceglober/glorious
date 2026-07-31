@@ -14,6 +14,7 @@
  */
 
 import type { ToolExecutor } from "../ports/tools";
+import { elide } from "./coding-agent";
 
 export interface Heartbeat {
   readonly start: () => void;
@@ -47,13 +48,6 @@ export const createHeartbeat = (options: {
 /** Longest command shown before eliding the middle; keeps the line scannable. */
 const MAX_COMMAND = 100;
 
-export const elideCommand = (value: string, limit: number = MAX_COMMAND): string => {
-  const single = value.replace(/\s+/g, " ").trim();
-  if (single.length <= limit) return single;
-  const half = Math.floor((limit - 1) / 2);
-  return `${single.slice(0, half)}…${single.slice(-half)}`;
-};
-
 const took = (ms: number): string => (ms >= 100 ? ` (${(ms / 1000).toFixed(1)}s)` : "");
 
 export const withProgress = (
@@ -70,7 +64,7 @@ export const withProgress = (
       const command = (input as { command?: string }).command;
       if (command === undefined) return inner.execute(name, input);
 
-      options.write(`$ ${elideCommand(command)}`);
+      options.write(`$ ${elide(command, MAX_COMMAND)}`);
       const beat = createHeartbeat({
         everyMs: options.everyMs ?? 5_000,
         write: options.write,

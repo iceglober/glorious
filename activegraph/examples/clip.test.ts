@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { clip } from "./coding-agent";
+import { clip, elide } from "./coding-agent";
 
 describe("clip", () => {
   test("leaves anything within the limit untouched", () => {
@@ -31,5 +31,23 @@ describe("clip", () => {
     expect(clipped).toContain("characters dropped");
     // Nothing of the original survives, which is honest rather than misleading.
     expect(clipped.replace(/\n\[… \d+ characters dropped …\]\n/, "")).toBe("");
+  });
+});
+
+describe("elide", () => {
+  test("a command with newlines still occupies exactly one line", () => {
+    const heredoc = "python3 - <<'PY'\nimport shutil\nshutil.rmtree('build')\nPY";
+
+    expect(elide(heredoc, 120).split("\n")).toHaveLength(1);
+    expect(elide(heredoc, 120)).toBe("python3 - <<'PY' import shutil shutil.rmtree('build') PY");
+  });
+
+  test("an over-long command is elided without a line break", () => {
+    const long = `for f in ${"a-really-long-file-name.md ".repeat(10)}; do cat "$f"; done`;
+    const elided = elide(long, 120);
+
+    expect(elided.split("\n")).toHaveLength(1);
+    expect(elided.length).toBeLessThanOrEqual(120);
+    expect(elided.endsWith("done")).toBe(true);
   });
 });

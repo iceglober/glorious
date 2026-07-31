@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolExecutor } from "../ports/tools";
-import { createHeartbeat, elideCommand, withProgress } from "./tool-progress";
+import { elide } from "./coding-agent";
+import { createHeartbeat, withProgress } from "./tool-progress";
 
 const lines: string[] = [];
 const write = (line: string) => {
@@ -80,7 +81,7 @@ describe("tool progress", () => {
 
   test("elides a long command from the middle, keeping both ends", () => {
     const command = `find . -maxdepth 3 ${"-not -path './node_modules/*' ".repeat(5)}-print`;
-    const elided = elideCommand(command);
+    const elided = elide(command, 100);
 
     expect(elided.length).toBeLessThanOrEqual(100);
     expect(elided).toContain("…");

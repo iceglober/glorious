@@ -349,6 +349,18 @@ const failedEarlierInRound = (
 };
 
 /**
+ * One line, middle elided. For anywhere a command has to fit on a single line:
+ * `clip` would inject its marker as a new line, and a command can contain
+ * newlines of its own — the model writes heredocs.
+ */
+export const elide = (value: string, limit: number): string => {
+  const single = value.replace(/\s+/g, " ").trim();
+  if (single.length <= limit) return single;
+  const half = Math.floor((limit - 1) / 2);
+  return `${single.slice(0, half)}…${single.slice(-half)}`;
+};
+
+/**
  * Truncate from the middle, keeping both ends.
  *
  * A long command's most useful line is usually its last: the test summary, the
@@ -426,7 +438,7 @@ const describeEarlierRounds = (
   if (earlier.length === 0) return "";
   const lines = earlier.map(
     (command) =>
-      `- [round ${command.data.round ?? 0}, ${command.data.status}] ${clip(command.data.command, 120)}`,
+      `- [round ${command.data.round ?? 0}, ${command.data.status}] ${elide(command.data.command, 120)}`,
   );
   return `Earlier rounds, already reviewed:\n${lines.join("\n")}\n\n`;
 };
