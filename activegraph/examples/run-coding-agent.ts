@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import { readdirSync } from "node:fs";
 import { createAzureLlm, createConsoleTracer, unwrap } from "../index";
+import { pendingCommands } from "./approvals";
 import {
   createCodingAgent,
   DEFAULT_HISTORY_LIMIT,
@@ -11,13 +12,6 @@ import {
 } from "./coding-agent";
 import { formatRunSummary, summarizeRun } from "./run-summary";
 import { createShellTool } from "./shell-tool";
-
-interface ApprovalProposed {
-  readonly approvalId: string;
-  readonly mutation: {
-    readonly data?: { readonly command?: string; readonly description: string };
-  };
-}
 
 const goal = process.argv.slice(2).join(" ") || "Inspect this project";
 const model = process.env.ACTIVEGRAPH_MODEL ?? "gpt-4o-mini";
@@ -111,28 +105,35 @@ if (!result.ok) {
  * only safe default for something holding a shell.
  */
 const settleApprovals = async (): Promise<void> => {
+  const declined = new Set<string>();
   for (;;) {
-    const pending = runtime.status().pendingApprovals;
+    const pending = runtime.status().pendingApprovals.filter((id) => !declined.has(id));
     if (pending.length === 0) return;
-    const waiting = new Set(pending);
-    const commands = runtime
-      .log()
-      .filter((event) => (event.type as string) === "approval.proposed")
-      .map((event) => event.payload as ApprovalProposed)
-      .filter((payload) => waiting.has(payload.approvalId))
-      .flatMap((payload) =>
-        payload.mutation.data?.command === undefined ? [] : [payload.mutation.data],
-      );
 
     console.log("\nThe agent wants to run:");
-    for (const command of commands)
-      console.log(`  $ ${command.command}   # ${command.description}`);
-    if (prompt("Run these commands? [y/N]")?.trim().toLowerCase() !== "y") {
-      console.log("Declined; nothing was run.");
+    const granting: string[] = [];
+    let rest = false;
+    for (const group of pendingCommands(runtime.log(), pending)) {
+      // Models often echo the command as its own description; showing it twice
+      // doubles the line length of the thing the operator has to read.
+      const note =
+        group.description === "" || group.description === group.command
+          ? ""
+          : `   # ${group.description}`;
+      console.log(`  $ ${group.command}${note}`);
+      const answer = rest
+        ? "y"
+        : (prompt("    run it? [y/N/a=yes to all]") ?? "").trim().toLowerCase();
+      if (answer === "a") rest = true;
+      if (rest || answer === "y") granting.push(...group.approvalIds);
+      else for (const approvalId of group.approvalIds) declined.add(approvalId);
+    }
+    if (granting.length === 0) {
+      console.log("Nothing approved; no commands were run.");
       return;
     }
     // In proposal order, so each command object lands before its relation.
-    for (const approvalId of pending) {
+    for (const approvalId of granting) {
       const granted = await runtime.grantApproval(approvalId);
       if (!granted.ok) {
         console.error(`Could not grant ${approvalId}: ${JSON.stringify(granted.error)}`);

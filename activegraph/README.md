@@ -141,9 +141,15 @@ counts only the events this run appended, not the whole branch.
 `ACTIVEGRAPH_APPROVE=1` makes the agent ask before it runs anything. The planner marks each command
 mutation `requiresApproval`, so it parks behind an `approval.proposed` event instead of applying —
 and because `executor` fires on `object.created`, an event that never happens, the shell sees nothing
-until you release it with `grantApproval`. You read the commands, then decide. Each review round
-parks its own batch. A non-interactive stdin declines: for something holding a shell, failing closed
-is the only safe default.
+until you release it with `grantApproval`. A non-interactive stdin declines: for something holding a
+shell, failing closed is the only safe default.
+
+The question is asked per command, not per batch, because five proposed commands with one bad line
+should cost you that line and not the other four. Each command parks two mutations — the object and
+the edge attaching it to the task — and [`approvals.ts`](examples/approvals.ts) groups them so a
+release covers both, in proposal order, since an edge cannot attach to an object that does not exist
+yet. A declined command simply never becomes an object, so the task settles on the work that was
+allowed to happen, and each review round asks about its own batch.
 
 A reply that is not usable JSON costs a re-ask rather than the run. `llmBehavior` takes `retries`
 (the agent uses 1) and re-asks with the complaint appended — a distinct request, so it is logged and
