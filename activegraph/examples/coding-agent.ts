@@ -96,7 +96,7 @@ export const codingAgentSchema = defineSchema({
     command: z.object({
       description: z.string(),
       command: z.string(),
-      status: z.enum(["pending", "running", "completed", "failed"]),
+      status: z.enum(["pending", "running", "completed", "failed", "skipped"]),
       output: z.string().optional(),
       /** Round that proposed this command; the task's status follows the last. */
       round: z.number().optional(),
@@ -329,6 +329,25 @@ const commandsOf = (
       (command): command is GraphObject<CodingAgentSchema, "command"> => command !== undefined,
     );
 
+/**
+ * Whether an earlier command of the same round already failed. Commands of a
+ * round are created together and dispatched in order, so by the time this runs
+ * every earlier sibling has settled.
+ */
+const failedEarlierInRound = (
+  view: GraphView<CodingAgentSchema>,
+  commandId: ObjectId<"command">,
+): boolean => {
+  const edge = view.relations("has_command").find((relation) => relation.target === commandId);
+  if (edge === undefined) return false;
+  const round = view.object(commandId)?.data.round ?? 0;
+  for (const sibling of commandsOf(view, edge.source)) {
+    if (sibling.id === commandId) break;
+    if ((sibling.data.round ?? 0) === round && sibling.data.status === "failed") return true;
+  }
+  return false;
+};
+
 const clip = (value: string, limit: number): string =>
   value.length <= limit
     ? value
@@ -495,6 +514,17 @@ export const executor = codingAgentKit.behavior({
         }),
       ];
     }
+    // A plan is a sequence, not a set: "create the directory, then write into
+    // it" is broken the moment the first step fails, and running the rest can
+    // do damage the reviewer then has to undo. One failure ends the round.
+    if (failedEarlierInRound(ctx.view, event.payload.objectId)) {
+      return [
+        ctx.m.patchObject("command", event.payload.objectId, {
+          status: "skipped",
+          output: "Skipped: an earlier command in this round failed.",
+        }),
+      ];
+    }
     const { timeoutMs, maxOutputBytes } = settingsIn(ctx.view);
     const input: BashInput = {
       command: command.command,
@@ -503,7 +533,14 @@ export const executor = codingAgentKit.behavior({
       maxOutputBytes,
     };
     const result = await ctx.tool("bash", input);
-    const output = result.ok ? stringify(result.value) : stringify(result.error);
+    // A failure is a sentence, not a payload. This string is what the reviewer
+    // reads and what the operator sees printed, so `{"reason":"tool_error",
+    // "message":"..."}` costs tokens and clarity for nothing.
+    const output = result.ok
+      ? stringify(result.value)
+      : "message" in result.error
+        ? result.error.message
+        : result.error.reason;
     return [
       ctx.m.patchObject("command", event.payload.objectId, {
         status: result.ok ? "completed" : "failed",
@@ -579,6 +616,7 @@ export const reviewer = codingAgentKit.llmBehavior({
         "Return JSON only with done, report, and commands. " +
         "Set done to true when the goal is met or nothing further can usefully be run, and leave commands empty. " +
         "Set done to false and return follow-up commands only when the output shows work still to do — a failed command to fix, or a next step the output makes obvious. " +
+        "A command marked skipped never ran, because an earlier one in its round failed; fix that failure and propose the skipped work again if it is still needed. " +
         "A refused command was rejected by the operator: do not propose it again. " +
         "Do not reach the same effect by other means either — a different tool or language for the same action is still the refused action. " +
         "Propose a narrower step, one that shows what would change without changing it, or set done to true and say the work needs the operator. " +

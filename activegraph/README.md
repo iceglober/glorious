@@ -136,7 +136,10 @@ sampled workspace into the graph, `declineRecorder` records a refusal, `planner`
 the goal into commands, `executor` runs each one and
 writes its output back into the graph, `finisher` settles the task once the newest round of commands
 is terminal, and `reviewer` reads that output and either reports done or proposes another round —
-which is what lets a failed command be retried instead of just recorded. Rounds are capped by
+which is what lets a failed command be retried instead of just recorded. A plan is a sequence, not a
+set, so one failure ends the round: the commands after it are recorded `skipped` rather than run,
+because "create the directory, then write into it" is broken the moment the first step fails and
+running on can do damage the reviewer then has to undo. Rounds are capped by
 `ACTIVEGRAPH_MAX_ROUNDS` (2 by default; `0` reviews without ever adding work), each command's output
 is clipped to 2,000 characters inside the reviewer's prompt, and the task's status follows the newest
 round, so a successful retry moves a `failed` task back to `completed` while the failed round stays in

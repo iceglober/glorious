@@ -138,6 +138,9 @@ describe("coding agent", () => {
       },
     });
     expect(runtime.view().objects("task")[0]?.data.status).toBe("failed");
+    // What the reviewer reads and the operator sees: the sentence, not the
+    // envelope it arrived in.
+    expect(runtime.view().objects("command")[0]?.data.output).toBe("permission denied");
   });
 
   test("every command carries the workspace directory and its limits", async () => {
@@ -221,6 +224,45 @@ describe("coding agent", () => {
     expect(reviewRequest?.prompt).toContain("ran printf hello");
     expect(reviewRequest?.prompt).toContain("Rounds used: 0 of 2");
     expect(runtime.view().objects("task")[0]?.data.report).toBe("the commands did what was asked");
+  });
+
+  test("one failed command ends the round; the rest are skipped, not run", async () => {
+    const ran: string[] = [];
+    const { runtime } = await runAgent({
+      llm: createFakeLlm((request) =>
+        isReview(request)
+          ? doneJson
+          : JSON.stringify({
+              summary: "Three steps",
+              commands: [
+                { description: "works", command: "first" },
+                { description: "breaks", command: "second" },
+                { description: "never happens", command: "third" },
+              ],
+            }),
+      ),
+      tools: {
+        execute: async (_name, input) => {
+          const command = (input as { command: string }).command;
+          ran.push(command);
+          return command === "second"
+            ? { ok: false, error: { reason: "tool_error", message: "boom" } }
+            : { ok: true, value: "out" };
+        },
+      },
+    });
+
+    // The third command never reached a shell.
+    expect(ran).toEqual(["first", "second"]);
+    expect(
+      runtime
+        .view()
+        .objects("command")
+        .map((command) => command.data.status),
+    ).toEqual(["completed", "failed", "skipped"]);
+    expect(runtime.view().objects("command")[2]?.data.output).toContain("Skipped");
+    // A skipped command is terminal, so the task still settles — as failed.
+    expect(runtime.view().objects("task")[0]?.data.status).toBe("failed");
   });
 
   test("a follow-up round can bring a failed task back to completed", async () => {
