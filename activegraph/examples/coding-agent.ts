@@ -242,6 +242,20 @@ const MAX_OUTPUT_IN_PROMPT = 2_000;
 /** Per-task budget for the history the planner is shown. */
 const MAX_HISTORY_CHARS = 400;
 
+/**
+ * A step is a shell command, which means every file the agent writes goes
+ * through quoting — a heredoc, or `sed -i` with the code being edited inside
+ * the pattern. Four failures here came from that alone, so a second shape was
+ * built: `{description, path, content}`, written straight to disk by a tool
+ * with no shell involved.
+ *
+ * The model never used it. Six runs across two wordings — one appended to the
+ * instructions, one imperative and first — produced zero writes and eighteen
+ * shell commands. A capability the planner will not reach for is not a
+ * capability, so the branch, the tool and the routing were removed rather than
+ * left as scenery. Anyone rebuilding it should measure whether it gets used
+ * before measuring whether it helps.
+ */
 const commandItem = z.union([
   z.object({ description: z.string(), command: z.string() }),
   z.string(),
