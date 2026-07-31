@@ -2,7 +2,6 @@
 
 ## What this repo is
 - Product: `v2/` — a Bun TypeScript terminal coding agent: a barebones chat TUI over an agent with bash/read/write/edit/grep/glob tools, Azure-only LLM. The sole shipped implementation, and the only thing published to npm.
-- `activegraph/` — a separate, unshipped library in the same repo (hexagonal + functional; its own ports, adapters, and tests). Nothing in `v2/` imports it and nothing in it imports `v2/`.
 - Root layer: `package.json` convenience scripts for test/typecheck/docs; not a separate app.
 
 ## Component map
@@ -23,6 +22,6 @@
 ## Conventions
 - `createX(...)` closure factories, no classes/managers/services.
 - **`v2/` carries no comments.** Names and structure carry the meaning. Keep it that way.
-- Simplicity is the product in `v2/`: no abstraction with a single implementation, no port/adapter split, direct vendor imports. (`activegraph/` follows its own hexagonal conventions — see `activegraph/README.md`.)
-- `bun test docs activegraph`, `tsc --noEmit`, and `bun run check` must stay green at every commit.
+- Simplicity is the product: no abstraction with a single implementation, no port/adapter split, direct vendor imports.
+- `bun test docs`, `tsc --noEmit`, and `bun run check` must stay green at every commit.
 - `v2/` currently has no tests of its own. Adding them is welcome; do not let that fact rot into "this code is untestable".

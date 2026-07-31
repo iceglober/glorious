@@ -27,4 +27,4 @@ jobs:
       - name: biome
         run: bun run check
       - name: test
-        run: bun test docs activegraph
+        run: bun test docs

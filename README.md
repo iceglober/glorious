@@ -68,7 +68,7 @@ Tool output over 30k chars is truncated for the model.
 ## Development
 
 ```sh
-bun test docs activegraph  # tests
+bun test docs              # tests
 bun run typecheck          # tsc
 bun run check              # biome lint + format
 bun run docs               # regenerate docs/ from content/
