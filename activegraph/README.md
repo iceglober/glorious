@@ -105,6 +105,11 @@ cp .env.example .env
 bun activegraph/examples/run-coding-agent.ts "Inspect this project"
 ```
 
+A run narrates itself: which behavior is thinking, each command as it starts, whether it succeeded,
+and any failure as the provider's own sentence rather than nested JSON — see
+[`trace-view.ts`](examples/trace-view.ts). `ACTIVEGRAPH_TRACE=1` swaps that for the full event stream
+with canonical payloads, which is what you want when debugging the runtime rather than the run.
+
 The runner loads `.env` automatically with `dotenv`; shell environment variables still take precedence. See `.env.example` for the supported variables. Set `ACTIVEGRAPH_DB` to choose another SQLite file. Commands run in the current working directory;
 destructive-looking ones stop for approval first. It prints the ActiveGraph lifecycle as events
 are appended, plans, executes, reviews, records the results, and exits. Command output

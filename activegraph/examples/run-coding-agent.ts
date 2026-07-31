@@ -12,9 +12,12 @@ import {
 } from "./coding-agent";
 import { formatRunSummary, summarizeRun } from "./run-summary";
 import { createShellTool } from "./shell-tool";
+import { innermostMessage, renderEvent } from "./trace-view";
 import { describeChanges } from "./workspace-diff";
 
 const goal = process.argv.slice(2).join(" ") || "Inspect this project";
+/** Every event with its payload, for debugging the runtime rather than the run. */
+const rawTrace = process.env.ACTIVEGRAPH_TRACE === "1";
 const model = process.env.ACTIVEGRAPH_MODEL ?? "gpt-4o-mini";
 const MAX_ENTRIES = 60;
 const MAX_DIRTY = 20;
@@ -79,7 +82,14 @@ const { runtime } = await unwrap(
       ),
     },
     store: { sqlite: process.env.ACTIVEGRAPH_DB ?? "coding-agent.db" },
-    tracer: createConsoleTracer((line) => console.error(`[activegraph] ${line}`)),
+    tracer: rawTrace
+      ? createConsoleTracer((line) => console.error(`[activegraph] ${line}`))
+      : {
+          onEvent: (event) => {
+            const line = renderEvent(event);
+            if (line !== null) console.error(line);
+          },
+        },
     tools: createShellTool(),
   }),
 );
@@ -88,7 +98,7 @@ const { runtime } = await unwrap(
 // end counts only what this one appended.
 const before = runtime.status().headEventId;
 
-console.error(`Planning with ${model}...`);
+console.error(`model: ${model}`);
 // The workspace is external input, so it enters through an event: the log
 // then holds everything the plan depended on and can be replayed on its own.
 const workspaceBefore = sampleWorkspace();
@@ -97,12 +107,12 @@ if (!sampled.ok) {
   console.error(`Could not record the workspace: ${JSON.stringify(sampled.error)}`);
   process.exit(1);
 }
+// The trace narrates the run as it happens, so there is nothing useful to
+// announce here — only a store or validation failure, which stops everything.
 const result = await runtime.runGoal(goal);
 if (!result.ok) {
   console.error(`Agent failed: ${JSON.stringify(result.error)}`);
   process.exitCode = 1;
-} else {
-  console.error("Plan received; executing commands...");
 }
 
 /**
@@ -183,8 +193,13 @@ const settleApprovals = async (): Promise<void> => {
 await settleApprovals();
 
 const failures = runtime.log().filter((event) => (event.type as string) === "behavior.failed");
-for (const failure of failures) {
-  console.error(`Behavior failed: ${JSON.stringify(failure.payload)}`);
+// The readable trace already said this as it happened; the raw one only
+// dumped the payload, so spell it out there.
+if (rawTrace) {
+  for (const failure of failures) {
+    const { behavior, reason } = failure.payload as { behavior: string; reason: string };
+    console.error(`${behavior} failed: ${innermostMessage(reason)}`);
+  }
 }
 if (failures.length > 0) process.exitCode = 1;
 
