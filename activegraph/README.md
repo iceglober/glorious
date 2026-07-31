@@ -229,6 +229,12 @@ by a unit test that happened to count responses, which is luck rather than a met
 next to the tokens for the same reason: they are stable where token counts are not, since reasoning
 tokens swing by a factor of three between runs of the same task.
 
+Every run's own verdict is compared with the check. `completed` is what a person reads, what the
+history block tells the next goal, and what anything reading the log believes, so a run that claims
+success the check disagrees with is the failure that matters more than a failed task — and one that
+denies success it had is worth knowing too. Across thirteen tasks twice over, the verdicts agreed
+every time.
+
 Each attempt also reports what it spent, read back off its own log, and replays that log with no
 arguments — so every task is a cost measurement and a determinism check as well as a pass or fail. An
 attempt that never reached the provider is counted separately and scored neither way: the environment
