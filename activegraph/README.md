@@ -132,6 +132,11 @@ the log knows a command ran, not how long it took, and nothing appends while it 
 tool decorator announces the command, says "still running" every five seconds, and reports the real
 elapsed time.
 
+Two runs against one log is a case that resolves itself: the loser fails at startup, before planning
+anything, because the event ids it would write are already taken — and the winner finishes with a log
+that still replays. There is no interleaving to reason about, and nothing to clean up. Any startup
+failure says which log it could not open and that `ACTIVEGRAPH_DB` chooses another.
+
 The runner loads `.env` automatically with `dotenv`; shell environment variables still take precedence. See `.env.example` for the supported variables. Set `ACTIVEGRAPH_DB` to choose another SQLite file. Commands run in the current working directory;
 destructive-looking ones stop for approval first. It prints the ActiveGraph lifecycle as events
 are appended, plans, executes, reviews, records the results, and exits. Command output

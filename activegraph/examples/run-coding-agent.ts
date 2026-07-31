@@ -115,8 +115,15 @@ const created = await createCodingAgent({
   tools: withProgress(createShellTool(), { write: (line) => console.error(line) }),
 });
 if (!created.ok) {
-  // Almost always a path that cannot be opened; a stack trace helps nobody.
-  console.error(`Could not start: ${JSON.stringify(created.error)}`);
+  // Always about the log: a path that cannot be opened, a volume that cannot
+  // be written, or another run holding it — two terminals in one directory
+  // fail here, fast and without corrupting anything. Say which, and say the
+  // one thing that resolves any of them.
+  const error = created.error;
+  const detail =
+    error.reason === "store_error" && "message" in error.error ? error.error.message : error.reason;
+  console.error(`Could not start: ${detail}`);
+  console.error(`Set ACTIVEGRAPH_DB to use a different event log.`);
   process.exit(1);
 }
 const { runtime } = created.value;
