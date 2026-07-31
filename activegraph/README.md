@@ -138,6 +138,15 @@ The Azure adapter records `usage` inside `llm.responded`, so the numbers are dur
 is a pure fold and works on last week's branch as well as on the run that just finished. The runner
 counts only the events this run appended, not the whole branch.
 
+Command output is redacted before anything sees it. The log is durable and the reviewer's prompt is
+sent to a provider, so one `cat .env` would otherwise write a live credential to disk forever and
+hand it to the model. [`shell-tool.ts`](examples/shell-tool.ts) masks by *value*, not by name: every
+environment variable whose name looks secret (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`,
+`AUTH`) and whose value is at least 8 characters is replaced with `[redacted]` wherever it appears in
+stdout, stderr, or an error message. Because `dotenv` loads `.env` into the environment, this covers
+reading that file as well as printing the variable. Short values are left alone; masking every `1`
+and `true` would mangle output without protecting anything.
+
 Commands run under an explicit contract. `executor` puts the workspace directory and the limits into
 the tool input, and [`shell-tool.ts`](examples/shell-tool.ts) enforces them: the command runs in that
 directory rather than wherever the process happens to be, `ACTIVEGRAPH_COMMAND_TIMEOUT_MS` (120s)

@@ -51,6 +51,57 @@ describe("shell tool", () => {
     expect(messageOf(result)).toContain("Killed by SIG");
   });
 
+  test("secret-shaped values are masked wherever they surface", async () => {
+    const secret = "sk-fake-abcdef0123456789";
+    const masking = createShellTool({
+      environment: {
+        DEMO_API_KEY: secret,
+        DEMO_PROJECT: "public-value-not-a-secret",
+        DEMO_TOKEN: "short",
+      },
+    });
+    const dir = mkdtempSync(join(tmpdir(), "shell-tool-"));
+    writeFileSync(
+      join(dir, ".env"),
+      `DEMO_API_KEY=${secret}\nDEMO_PROJECT=public-value-not-a-secret\n`,
+    );
+
+    // The classic leak: reading the very file the runner loaded.
+    const read = await masking.execute("bash", {
+      command: "cat .env",
+      cwd: dir,
+      ...limits,
+    });
+    expect(read.ok).toBe(true);
+    expect(read.ok ? read.value : "").not.toContain(secret);
+    expect(read.ok ? read.value : "").toContain("DEMO_API_KEY=[redacted]");
+    // Values that are not secret-shaped stay readable.
+    expect(read.ok ? read.value : "").toContain("public-value-not-a-secret");
+
+    // Failure paths carry output too, so they are redacted as well.
+    const failed = await masking.execute("bash", {
+      command: `echo ${secret} >&2; exit 1`,
+      cwd: dir,
+      ...limits,
+    });
+    expect(messageOf(failed)).not.toContain(secret);
+    expect(messageOf(failed)).toContain("[redacted]");
+
+    // Too short to mask without mangling ordinary output.
+    const shortValue = await masking.execute("bash", {
+      command: "echo short",
+      cwd: dir,
+      ...limits,
+    });
+    expect(shortValue).toEqual({ ok: true, value: "short" });
+
+    // Control: with nothing to redact the same read returns the value intact,
+    // so the assertions above are the masking working rather than an accident.
+    const plain = createShellTool({ environment: {} });
+    const unmasked = await plain.execute("bash", { command: "cat .env", cwd: dir, ...limits });
+    expect(unmasked.ok ? unmasked.value : "").toContain(secret);
+  });
+
   test("destructive patterns are refused before a shell sees them", async () => {
     const result = await run({ command: "rm -rf /tmp/definitely-not-real" });
 
