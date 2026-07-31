@@ -33,13 +33,31 @@ const planJson = JSON.stringify({
     { description: "write the greeting", command: "printf hello" },
   ],
 });
-const doneJson = JSON.stringify({ done: true, report: "the commands did what was asked" });
+const doneJson = JSON.stringify({
+  done: true,
+  achieved: true,
+  report: "the commands did what was asked",
+});
+const gaveUpJson = JSON.stringify({
+  done: true,
+  achieved: false,
+  report: "a command failed and the goal was not reached",
+});
+
+/**
+ * A reviewer that tells the truth about what it was shown. The task's final
+ * status is its verdict now, so a stub that always claims achievement would
+ * make every test assert that the verdict is ignored.
+ */
+const reviewOf = (prompt: string): string =>
+  prompt.includes(", failed]") || prompt.includes(", skipped]") ? gaveUpJson : doneJson;
 
 const isReview = (request: LlmRequest): boolean =>
   request.system?.startsWith("You are") === true ? request.system.includes("reviewing") : false;
 
 /** Plan on the planner's request, and report done on the reviewer's. */
-const planThenDone = () => createFakeLlm((request) => (isReview(request) ? doneJson : planJson));
+const planThenDone = () =>
+  createFakeLlm((request) => (isReview(request) ? reviewOf(request.prompt) : planJson));
 
 const runAgent = async (options: {
   readonly llm: LlmPort;
@@ -247,7 +265,7 @@ describe("coding agent", () => {
       goal: "Summarize this project",
       llm: createFakeLlm((request) => {
         requests.push(request);
-        return isReview(request) ? doneJson : planJson;
+        return isReview(request) ? reviewOf(request.prompt) : planJson;
       }),
     });
 
@@ -261,7 +279,7 @@ describe("coding agent", () => {
     const { tools } = recordingTools();
     const capture = createFakeLlm((request) => {
       requests.push(request);
-      return isReview(request) ? doneJson : planJson;
+      return isReview(request) ? reviewOf(request.prompt) : planJson;
     });
 
     await runAgent({
@@ -291,7 +309,7 @@ describe("coding agent", () => {
       tools,
       llm: createFakeLlm((request) => {
         requests.push(request);
-        return isReview(request) ? doneJson : planJson;
+        return isReview(request) ? reviewOf(request.prompt) : planJson;
       }),
     });
 
@@ -306,7 +324,7 @@ describe("coding agent", () => {
     const { runtime } = await runAgent({
       llm: createFakeLlm((request) =>
         isReview(request)
-          ? doneJson
+          ? reviewOf(request.prompt)
           : JSON.stringify({
               summary: "Three steps",
               commands: [
@@ -353,10 +371,11 @@ describe("coding agent", () => {
       return reviews === 1
         ? JSON.stringify({
             done: false,
+            achieved: false,
             report: "the first command failed; retrying",
             commands: [{ description: "the fix", command: "good" }],
           })
-        : JSON.stringify({ done: true, report: "the retry worked" });
+        : JSON.stringify({ done: true, achieved: true, report: "the retry worked" });
     });
     const { runtime } = await runAgent({
       llm,
@@ -396,6 +415,7 @@ describe("coding agent", () => {
         return reviews === 1
           ? JSON.stringify({
               done: false,
+              achieved: false,
               report: "more to do",
               commands: [{ description: "round one", command: "second-command" }],
             })
@@ -442,6 +462,7 @@ describe("coding agent", () => {
           ? doneJson
           : JSON.stringify({
               done: false,
+              achieved: false,
               report: "fixing the import",
               commands: [
                 { description: "edit again", command: "edit-the-file" },
@@ -488,6 +509,7 @@ describe("coding agent", () => {
           ? doneJson
           : JSON.stringify({
               done: false,
+              achieved: false,
               report: "trying something else",
               commands: [{ description: "test", command: "run-the-tests" }],
             });
@@ -510,6 +532,7 @@ describe("coding agent", () => {
       reviews += 1;
       return JSON.stringify({
         done: false,
+        achieved: false,
         report: "still more to do",
         commands: [{ description: "another step", command: "step" }],
       });
@@ -646,7 +669,7 @@ describe("coding agent", () => {
       tools,
       llm: createFakeLlm((request) =>
         isReview(request)
-          ? doneJson
+          ? reviewOf(request.prompt)
           : JSON.stringify({
               summary: "Tidy up",
               commands: [

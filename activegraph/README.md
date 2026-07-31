@@ -143,7 +143,10 @@ sampled workspace into the graph, `declineRecorder` records a refusal, `planner`
 the goal into commands, `executor` runs each one and
 writes its output back into the graph, `finisher` settles the task once the newest round of commands
 is terminal, and `reviewer` reads that output and either reports done or proposes another round —
-which is what lets a failed command be retried instead of just recorded. A plan is a sequence, not a
+which is what lets a failed command be retried instead of just recorded. The reviewer's verdict also
+settles the task: `finisher` can only read exit codes, and a goal that turned out to be impossible
+leaves a trail of commands that all exited zero while achieving nothing, so `achieved` is asked for
+separately from `done` and decides whether the task ends `completed` or `failed`. A plan is a sequence, not a
 set, so one failure ends the round: the commands after it are recorded `skipped` rather than run,
 because "create the directory, then write into it" is broken the moment the first step fails and
 running on can do damage the reviewer then has to undo. Rounds are capped by

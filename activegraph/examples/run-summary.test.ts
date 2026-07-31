@@ -22,7 +22,7 @@ const planJson = JSON.stringify({
     { description: "two", command: "pwd" },
   ],
 });
-const doneJson = JSON.stringify({ done: true, report: "all good" });
+const doneJson = JSON.stringify({ done: true, achieved: true, report: "all good" });
 const isReview = (request: LlmRequest): boolean => request.system?.includes("reviewing") === true;
 
 /** Run the agent twice over one log: the second run's planning is cached. */

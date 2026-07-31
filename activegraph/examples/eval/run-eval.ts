@@ -14,6 +14,7 @@
  *   bun activegraph/examples/eval/run-eval.ts [runs-per-task] [task-name…]
  */
 
+import { Database } from "bun:sqlite";
 import { cpSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +23,13 @@ interface Task {
   readonly name: string;
   readonly goal: string;
   readonly check: string;
+  /**
+   * The status the task must end in. Set it to "failed" for a goal that cannot
+   * be done: the interesting question there is not what the agent changed but
+   * whether it admits the work did not happen, and a filesystem check cannot
+   * tell an honest report from a confident one.
+   */
+  readonly expectStatus?: "completed" | "failed";
 }
 
 const FIXTURE_SUFFIX = ".fixture";
@@ -35,11 +43,36 @@ const load = (): readonly Task[] =>
     .filter((entry) => entry.isDirectory())
     .map((entry) => ({
       name: entry.name,
-      ...(JSON.parse(readFileSync(join(fixtures, entry.name, "task.json"), "utf8")) as {
-        goal: string;
-        check: string;
-      }),
+      ...(JSON.parse(readFileSync(join(fixtures, entry.name, "task.json"), "utf8")) as Omit<
+        Task,
+        "name"
+      >),
     }));
+
+/** The status the agent settled its last task on, read back from the log. */
+const finalStatus = (dbPath: string): string => {
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const status = new Map<string, string>();
+    for (const row of db.query("select body from events order by id").all() as { body: string }[]) {
+      const event = JSON.parse(row.body) as {
+        type: string;
+        payload: {
+          objectType?: string;
+          objectId?: string;
+          data?: { status?: string };
+          patch?: { status?: string };
+        };
+      };
+      if (event.payload.objectType !== "task" || event.payload.objectId === undefined) continue;
+      const next = event.payload.data?.status ?? event.payload.patch?.status;
+      if (next !== undefined) status.set(event.payload.objectId, next);
+    }
+    return [...status.values()].at(-1) ?? "(no task)";
+  } finally {
+    db.close();
+  }
+};
 
 const shell = (command: string, cwd: string): boolean =>
   Bun.spawnSync(["bash", "-lc", command], { cwd, stdout: "ignore", stderr: "ignore" }).exitCode ===
@@ -88,7 +121,9 @@ const attempt = async (task: Task): Promise<Attempt> => {
     stderr: "ignore",
   });
   const seconds = (Bun.nanoseconds() - began) / 1e9;
-  const passed = shell(task.check, dir);
+  const settled =
+    task.expectStatus === undefined || finalStatus(join(dir, "eval.db")) === task.expectStatus;
+  const passed = settled && shell(task.check, dir);
   const interesting = !passed || seconds > SLOW_SECONDS;
   if (!interesting) rmSync(dir, { recursive: true, force: true });
   return interesting ? { passed, seconds, kept: dir } : { passed, seconds };

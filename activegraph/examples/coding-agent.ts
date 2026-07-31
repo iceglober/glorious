@@ -246,11 +246,19 @@ const plan = z
 const review = z
   .object({
     done: z.boolean(),
+    /**
+     * Whether the goal is actually done, which is not the same as having
+     * nothing left to try. A task whose commands all exited zero while
+     * achieving nothing was reported `completed` until this existed, because
+     * the status came from exit codes and looking around exits zero.
+     */
+    achieved: z.boolean(),
     report: z.string(),
     commands: z.array(commandItem).max(MAX_COMMANDS).default([]),
   })
   .transform((value) => ({
     done: value.done,
+    achieved: value.achieved,
     report: value.report,
     commands: normalize(value.commands),
   }));
@@ -722,6 +730,9 @@ export const reviewer = codingAgentKit.llmBehavior({
   on: ["object.patched"],
   where: (event) =>
     event.payload.objectType === "task" &&
+    // `finisher` patches status alone; a patch carrying a report is this
+    // behavior's own verdict landing, and reviewing that again would not end.
+    event.payload.patch.report === undefined &&
     (event.payload.patch.status === "completed" || event.payload.patch.status === "failed"),
   prompt: (event, view) => {
     const task = view.object(event.payload.objectId as ObjectId<"task">);
@@ -732,7 +743,9 @@ export const reviewer = codingAgentKit.llmBehavior({
       model,
       system:
         "You are reviewing a coding agent's finished commands. " +
-        "Return JSON only with done, report, and commands. " +
+        "Return JSON only with done, achieved, report, and commands. " +
+        "achieved is whether the goal itself is done: false when you are stopping because nothing further can be tried, " +
+        "or when the work turned out to be impossible here. An accurate explanation of why it could not be done is not an achievement. " +
         "Each follow-up command needs a description: a short phrase in plain words saying what it does, never a copy of the command itself. " +
         "Set done to true when the goal is met or nothing further can usefully be run, and leave commands empty. " +
         "Set done to false and return follow-up commands only when the output shows work still to do — a failed command to fix, or a next step the output makes obvious. " +
@@ -768,7 +781,13 @@ export const reviewer = codingAgentKit.llmBehavior({
         output.done || output.commands.length === 0
           ? ""
           : `\n\n(Stopped after ${maxRounds} round(s) with follow-up work still proposed.)`;
-      return [ctx.m.patchObject("task", taskId, { report: `${output.report}${note}` })];
+      return [
+        ctx.m.patchObject("task", taskId, {
+          report: `${output.report}${note}`,
+          // The reviewer read the output; `finisher` only read exit codes.
+          status: output.achieved ? "completed" : "failed",
+        }),
+      ];
     }
     return [
       ctx.m.patchObject("task", taskId, {

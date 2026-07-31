@@ -1,0 +1,6 @@
+import { expect, test } from "bun:test";
+import { greet } from "./greet";
+
+test("greet greets", () => {
+  expect(greet("you")).toBe("Hello, you!");
+});
