@@ -235,6 +235,10 @@ attempt that never reached the provider is counted separately and scored neither
 failing is not the agent failing, and such a log cannot replay either, since replay serves
 completions from the recording and a request that got no answer left none.
 
+The log a directory accumulates does not become a problem: 50,000 events with a kilobyte of output
+apiece — some 350 runs' worth, and a 69MB database — rehydrate in 65ms, because startup reads the
+branch and nothing else. Disk is the cost that grows, and it buys the replay.
+
 A failing attempt keeps its directory and its event log and prints the path, because a
 score with no evidence is a scoreboard rather than a diagnosis — and the log replays, so the failure
 can be examined without spending another call. A run that takes more than a minute is kept for the

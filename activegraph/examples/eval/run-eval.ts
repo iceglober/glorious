@@ -295,6 +295,7 @@ let total = 0;
 let replaysAll = true;
 let spentIn = 0;
 let spentOut = 0;
+let kept = 0;
 for (const task of tasks) {
   const results: Attempt[] = [];
   for (let run = 0; run < runs; run += 1) {
@@ -326,13 +327,21 @@ for (const task of tasks) {
       ` ${mean((attempt) => attempt.tokensIn)}/${mean((attempt) => attempt.tokensOut)} tokens in/out` +
       `${replayedCount === scored.length ? "" : `, ${replayedCount}/${scored.length} replay`})`,
   );
-  for (const kept of results.filter((result) => result.kept !== undefined)) {
-    const why = !kept.passed ? "failed" : !kept.replays ? "did not replay" : "slow";
-    console.log(`    ${why} (${kept.seconds.toFixed(0)}s): ${kept.kept}`);
+  for (const evidence of results.filter((result) => result.kept !== undefined)) {
+    const why = !evidence.passed ? "failed" : !evidence.replays ? "did not replay" : "slow";
+    kept += 1;
+    console.log(`    ${why} (${evidence.seconds.toFixed(0)}s): ${evidence.kept}`);
   }
 }
 console.log(
   `\ntotal: ${passes}/${total}${replaysAll ? ", every log replays" : ""}` +
     `, ${spentIn.toLocaleString("en-US")} tokens in and ${spentOut.toLocaleString("en-US")} out`,
 );
+// Kept directories are evidence, so nothing here deletes them — but they are
+// a database apiece, and twenty-five of them came to 44MB in one afternoon.
+if (kept > 0) {
+  console.log(
+    `${kept} director${kept === 1 ? "y" : "ies"} kept; when done: rm -rf ${tmpdir()}/eval-*`,
+  );
+}
 process.exit(passes === total && replaysAll ? 0 : 1);
