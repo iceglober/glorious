@@ -1,11 +1,12 @@
 # glorious
 
 A simple terminal coding agent, stripped to the studs: a chat TUI over an agent
-with **bash**, **read**, **edit**, and **search** tools, driven by an
-Azure-hosted model. No modes, no permission prompts, no configuration files —
-you talk, it reads and edits files and runs commands in your repo.
+with **bash**, **read**, **write**, **edit**, **grep**, and **glob** tools,
+driven by an Azure-hosted model. No modes, no permission prompts, no
+configuration files — you talk, it reads and edits files and runs commands in
+your repo.
 
-The implementation lives in [`core/`](core/) — a Bun TypeScript agent.
+The implementation lives in [`v2/`](v2/) — seven files of Bun TypeScript.
 
 ## Requirements
 
@@ -56,21 +57,21 @@ Keys:
 
 ## Built-in tools
 
-- **bash** — runs in the project root on your machine.
-- **read / search** — ripgrep-powered, confined to the project root.
-- **edit** — atomic batch string replacement, paired with a line-prefixed
-  `readFile`.
+- **bash** — runs in the project root on your machine; an interrupt kills the
+  whole process group.
+- **grep / glob** — ripgrep-powered, confined to the project root.
+- **read / write / edit** — `edit` applies a batch of exact string replacements
+  atomically, paired with a line-prefixed `read`.
 
-Tool output over 30k chars is truncated for the model; the full value spills to
-a session temp file the agent can read back in slices.
+Tool output over 30k chars is truncated for the model.
 
 ## Development
 
 ```sh
-bun test core docs      # tests
-bun run typecheck       # tsc
-bun run check           # biome lint + format
-bun run docs            # regenerate docs/ from the CLI definitions
+bun test docs activegraph  # tests
+bun run typecheck          # tsc
+bun run check              # biome lint + format
+bun run docs               # regenerate docs/ from content/
 ```
 
 Releases go through changesets; merging the release PR publishes to npm under
