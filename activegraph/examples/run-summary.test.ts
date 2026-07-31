@@ -80,6 +80,37 @@ describe("run summary", () => {
     expect(summary.reasoningTokens).toBe(10);
   });
 
+  test("reports how long the run took, from the stamps the log already has", () => {
+    const summary = summarizeRun([
+      {
+        id: 1,
+        type: "goal.created",
+        payload: { goalId: "g1", text: "do it" },
+        causedBy: null,
+        at: "2026-01-01T00:00:00.000Z",
+        branch: "main",
+      },
+      {
+        id: 2,
+        type: "runtime.idle",
+        payload: { processed: 1 },
+        causedBy: null,
+        at: "2026-01-01T00:00:21.000Z",
+        branch: "main",
+      },
+    ] as never);
+
+    expect(summary.seconds).toBe(21);
+    expect(formatRunSummary(summary)).toContain("in 21s");
+  });
+
+  test("a run too short to time says nothing about it", () => {
+    const summary = summarizeRun([]);
+
+    expect(summary.seconds).toBe(0);
+    expect(formatRunSummary(summary)).not.toContain(" in ");
+  });
+
   test("says so plainly when the provider reported no usage", () => {
     const summary = summarizeRun([
       {

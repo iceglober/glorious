@@ -1,0 +1,4 @@
+{
+  "goal": "Add a JSDoc comment above the greet function in src/greet.ts explaining what it does",
+  "check": "grep -q '/\\*\\*' src/greet.ts && diff -q src/untouched.ts .expected-untouched.ts && diff -q notes.md .expected-notes.md"
+}

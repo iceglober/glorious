@@ -189,7 +189,9 @@ A model varies run to run, so one success proves nothing and one failure proves 
 example has twice been changed on the strength of a single observed failure that then would not
 reproduce. A failing attempt keeps its directory and its event log and prints the path, because a
 score with no evidence is a scoreboard rather than a diagnosis — and the log replays, so the failure
-can be examined without spending another call.
+can be examined without spending another call. A run that takes more than a minute is kept for the
+same reason: these tasks cluster around ten seconds and the occasional one takes minutes, which an
+average over three runs hides inside a plausible number, so the worst run is reported alongside it.
 
 Any recorded log can be checked against the behaviors that produced it:
 
@@ -221,8 +223,8 @@ touched, so a suggestion that cannot tell the two apart is worse than none. Untr
 out for the same reason — undoing those means deleting them, and they are already named as created.
 
 Every run also ends with what it cost, folded out of the log by
-[`run-summary.ts`](examples/run-summary.ts): calls made, how many the log's own cache answered,
-characters of context sent and saved, commands run, and the provider's token counts — including
+[`run-summary.ts`](examples/run-summary.ts): calls made, how long it took, how many the log's own cache
+answered, characters of context sent and saved, commands run, and the provider's token counts — including
 reasoning tokens, which are otherwise invisible and were 40% of the output on a one-command goal.
 The Azure adapter records `usage` inside `llm.responded`, so the numbers are durable: `summarizeRun`
 is a pure fold and works on last week's branch as well as on the run that just finished. The runner

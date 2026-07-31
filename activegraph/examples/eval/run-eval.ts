@@ -48,9 +48,17 @@ const shell = (command: string, cwd: string): boolean =>
 interface Attempt {
   readonly passed: boolean;
   readonly seconds: number;
-  /** Kept only when the check failed, so there is something to look at. */
+  /** Kept when the attempt was interesting, so there is something to look at. */
   readonly kept?: string;
 }
+
+/**
+ * Above this, an attempt is worth keeping even though it passed. Runs of this
+ * shape cluster around ten seconds; the occasional one takes minutes, and
+ * whether that is a command sitting on its timeout, a slow provider, or extra
+ * review rounds is not a question an average can answer.
+ */
+const SLOW_SECONDS = 60;
 
 /**
  * One attempt: a clean copy of the fixture, one goal, then the check.
@@ -81,8 +89,9 @@ const attempt = async (task: Task): Promise<Attempt> => {
   });
   const seconds = (Bun.nanoseconds() - began) / 1e9;
   const passed = shell(task.check, dir);
-  if (passed) rmSync(dir, { recursive: true, force: true });
-  return passed ? { passed, seconds } : { passed, seconds, kept: dir };
+  const interesting = !passed || seconds > SLOW_SECONDS;
+  if (!interesting) rmSync(dir, { recursive: true, force: true });
+  return interesting ? { passed, seconds, kept: dir } : { passed, seconds };
 };
 
 const runs = Number(process.argv[2] ?? 2);
@@ -102,14 +111,20 @@ for (const task of tasks) {
     process.stdout.write(outcome.passed ? "." : "x");
   }
   const won = results.filter((result) => result.passed).length;
-  const elapsed = results.reduce((sum, result) => sum + result.seconds, 0);
+  const times = results.map((result) => result.seconds);
+  const elapsed = times.reduce((sum, seconds) => sum + seconds, 0);
   passes += won;
   total += results.length;
+  // The worst run, not only the mean: one attempt in ten takes minutes, and an
+  // average over three hides it inside a plausible-looking number.
   console.log(
-    ` ${task.name}: ${won}/${results.length} (${(elapsed / results.length).toFixed(0)}s avg)`,
+    ` ${task.name}: ${won}/${results.length}` +
+      ` (${(elapsed / results.length).toFixed(0)}s avg, ${Math.max(...times).toFixed(0)}s worst)`,
   );
-  for (const failure of results.filter((result) => result.kept !== undefined)) {
-    console.log(`    kept: ${failure.kept} (log: eval.db — bun run verify-log)`);
+  for (const kept of results.filter((result) => result.kept !== undefined)) {
+    console.log(
+      `    ${kept.passed ? "slow" : "failed"} (${kept.seconds.toFixed(0)}s): ${kept.kept}`,
+    );
   }
 }
 console.log(`\ntotal: ${passes}/${total}`);

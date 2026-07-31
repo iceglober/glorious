@@ -26,6 +26,12 @@ export interface RunSummary {
   readonly cachedInputTokens: number;
   readonly commands: number;
   readonly failedCommands: number;
+  /**
+   * Wall clock between the first and last event. A step stamps the clock once,
+   * so this is step-granular — but a goal spans many steps, and how long one
+   * took is the half of its cost that tokens do not describe.
+   */
+  readonly seconds: number;
   /** Highest review round any command belongs to; 0 means the plan sufficed. */
   readonly rounds: number;
 }
@@ -48,8 +54,12 @@ export const summarizeRun = <S extends SchemaDef>(log: Iterable<AnyEvent<S>>): R
   let commands = 0;
   let failedCommands = 0;
   let rounds = 0;
+  let firstAt = "";
+  let lastAt = "";
 
   for (const event of log) {
+    if (firstAt === "") firstAt = event.at;
+    lastAt = event.at;
     const type = event.type as string;
     if (type === "llm.requested") {
       const payload = event.payload as { requestId: string; request: unknown };
@@ -98,6 +108,7 @@ export const summarizeRun = <S extends SchemaDef>(log: Iterable<AnyEvent<S>>): R
     commands,
     failedCommands,
     rounds,
+    seconds: Math.max(0, (Date.parse(lastAt) - Date.parse(firstAt)) / 1000) || 0,
   };
 };
 
@@ -121,8 +132,9 @@ export const formatRunSummary = (summary: RunSummary): string => {
     summary.failedCommands === 0
       ? `${summary.commands} command(s)`
       : `${summary.commands} command(s), ${summary.failedCommands} failed`;
+  const took = summary.seconds >= 1 ? ` in ${summary.seconds.toFixed(0)}s` : "";
   return [
-    `${calls} over ${summary.rounds + 1} round(s)`,
+    `${calls} over ${summary.rounds + 1} round(s)${took}`,
     tokens,
     `context sent: ${thousands(summary.sentChars)} chars` +
       (summary.savedChars === 0 ? "" : `, ${thousands(summary.savedChars)} saved by cache`),

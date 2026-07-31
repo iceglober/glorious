@@ -1,0 +1,10 @@
+import { expect, test } from "bun:test";
+import { heading, note } from "./report";
+
+test("heading upper-cases the trimmed value", () => {
+  expect(heading("  hello  ")).toBe("HELLO");
+});
+
+test("note prefixes the trimmed value", () => {
+  expect(note("  hello  ")).toBe("note: hello");
+});
