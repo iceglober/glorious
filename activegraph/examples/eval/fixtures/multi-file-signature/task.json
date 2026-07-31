@@ -1,4 +1,4 @@
 {
   "goal": "Give format(value) an optional second parameter prefix that defaults to an empty string and is placed before the value, then update every caller to pass 'note: ' where the tests expect it, and run bun test",
-  "check": "bun test 2>&1 | grep -q '0 fail'"
+  "check": "bun test 2>&1 | grep -q '0 fail' && test $(bun test 2>&1 | grep -oE '[0-9]+ pass' | grep -oE '[0-9]+') -ge 2"
 }

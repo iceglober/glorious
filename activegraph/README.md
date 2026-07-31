@@ -205,6 +205,12 @@ it. Both are properties rather than mechanisms — a check requiring the tool's 
 failed a run where the model redacted the value itself before the tool ever saw it, which is the
 property holding by a route the check had not imagined.
 
+A check that "the tests pass" is a check an agent can satisfy by rewriting the tests, so the three
+fixtures phrased that way also pin what the tests are: one diffs the test file against the copy it
+started with, the others require the count that was there to still be passing. Each was then run
+against a deliberate cheat — the failing tests replaced by trivially passing ones — and against an
+honest fix, because a check is only known to work when it has been seen to fail.
+
 Checks test behaviour, not the shape of the solution. One of these fixtures first grepped for
 `export const first` and scored 0/3 against an agent that had written `export function first`,
 tested it, and reported honestly — a benchmark that fails correct work is worse than none, since it

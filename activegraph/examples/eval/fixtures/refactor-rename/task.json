@@ -1,5 +1,5 @@
 {
   "goal": "Rename the exported function shout to exclaim everywhere it is used, then run bun test",
-  "check": "bun test 2>&1 | grep -q '0 fail' && ! grep -rq 'shout' src",
+  "check": "bun test 2>&1 | grep -q '0 fail' && test $(bun test 2>&1 | grep -oE '[0-9]+ pass' | grep -oE '[0-9]+') -ge 1 && ! grep -rq 'shout' src",
   "maxCalls": 5
 }
