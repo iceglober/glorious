@@ -9,6 +9,11 @@
     "test": "bun test .",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@ai-sdk/azure": "^4.0.11",
+    "ai": "^7.0.22",
+    "dotenv": "^17.4.2"
+  },
   "peerDependencies": {
     "zod": "^4"
   }

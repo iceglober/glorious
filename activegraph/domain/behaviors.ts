@@ -65,6 +65,18 @@ export interface AnyBehavior<S extends SchemaDef> {
 }
 
 /** Every string anywhere in a payload — how relation behaviors detect endpoint references. */
+const parseLlmJson = (text: string): unknown => {
+  let candidate = text.trim();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const fenced = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1];
+    if (fenced !== undefined) candidate = fenced.trim();
+    const parsed: unknown = JSON.parse(candidate);
+    if (typeof parsed !== "string") return parsed;
+    candidate = parsed.trim();
+  }
+  return JSON.parse(candidate);
+};
+
 const referencedIds = (payload: unknown, into: Set<string> = new Set()): Set<string> => {
   if (typeof payload === "string") into.add(payload);
   else if (Array.isArray(payload)) for (const item of payload) referencedIds(item, into);
@@ -147,7 +159,7 @@ export const createKit = <S extends SchemaDef>(schema: S): Kit<S> => {
           }
           let parsedJson: unknown;
           try {
-            parsedJson = JSON.parse(response.value.text);
+            parsedJson = parseLlmJson(response.value.text);
           } catch {
             throw new Error(`llm output is not JSON: ${response.value.text.slice(0, 200)}`);
           }

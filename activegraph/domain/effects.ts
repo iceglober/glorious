@@ -19,8 +19,23 @@ export interface LlmRequest {
   readonly temperature?: number;
 }
 
+/**
+ * Provider-reported token counts, when the adapter can supply them. Recorded
+ * inside `llm.responded`, so what a run cost is durable and replayable rather
+ * than something you have to reconstruct from a dashboard.
+ */
+export interface LlmUsage {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  /** Reasoning tokens, billed as output by the models that expose them. */
+  readonly reasoningTokens?: number;
+  /** Input tokens the provider served from its own prompt cache. */
+  readonly cachedInputTokens?: number;
+}
+
 export interface LlmResponse {
   readonly text: string;
+  readonly usage?: LlmUsage;
 }
 
 export type LlmError =

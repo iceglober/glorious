@@ -94,6 +94,76 @@ The full executable version of this walkthrough lives in [`example.ts`](example.
 [`shell/runtime.test.ts`](shell/runtime.test.ts); a narrated demo with printed traces is
 [`examples/rpa-repair.demo.ts`](examples/rpa-repair.demo.ts).
 
+## Running the coding agent
+
+The coding-agent example uses the Azure adapter and persists its event log to `coding-agent.db`.
+Configure an Azure deployment, then run:
+
+```bash
+# Copy .env.example to .env and fill in the values, or export them in your shell.
+cp .env.example .env
+bun activegraph/examples/run-coding-agent.ts "Inspect this project"
+```
+
+The runner loads `.env` automatically with `dotenv`; shell environment variables still take precedence. See `.env.example` for the supported variables. Set `ACTIVEGRAPH_DB` to choose another SQLite file. Commands run in the current working directory;
+the example blocks several destructive command patterns. It prints the ActiveGraph lifecycle as events
+are appended, plans, executes, reviews, records the results, and exits. Command output
+is limited to `ACTIVEGRAPH_MAX_OUTPUT` characters (4,000 by default); set that variable to change the
+limit.
+
+Five behaviors close the loop. `recorder` folds the sampled workspace into the graph, `planner` turns
+the goal into commands, `executor` runs each one and
+writes its output back into the graph, `finisher` settles the task once the newest round of commands
+is terminal, and `reviewer` reads that output and either reports done or proposes another round —
+which is what lets a failed command be retried instead of just recorded. Rounds are capped by
+`ACTIVEGRAPH_MAX_ROUNDS` (2 by default; `0` reviews without ever adding work), each command's output
+is clipped to 2,000 characters inside the reviewer's prompt, and the task's status follows the newest
+round, so a successful retry moves a `failed` task back to `completed` while the failed round stays in
+the graph as history.
+
+Goals accumulate. The log outlives a run, so `planner` is shown the last `ACTIVEGRAPH_HISTORY` (3)
+finished goals from this directory — request and reviewer report, each clipped to 400 characters — and
+a second goal can build on the first instead of rediscovering the project. History is scoped by the
+task's recorded `cwd`, because one event log may serve several directories and another project's work
+is misleading there. Set `ACTIVEGRAPH_HISTORY=0` to plan with no memory. Like the workspace and the
+model, history reaches the model through the request, so it is part of the cache key by construction:
+a goal issued against a log that has grown re-plans rather than replaying its own earlier answer,
+while a true replay of a recorded log still serves every completion from the recording.
+
+Every run ends with what it cost, folded out of the log by
+[`run-summary.ts`](examples/run-summary.ts): calls made, how many the log's own cache answered,
+characters of context sent and saved, commands run, and the provider's token counts — including
+reasoning tokens, which are otherwise invisible and were 40% of the output on a one-command goal.
+The Azure adapter records `usage` inside `llm.responded`, so the numbers are durable: `summarizeRun`
+is a pure fold and works on last week's branch as well as on the run that just finished. The runner
+counts only the events this run appended, not the whole branch.
+
+Commands run under an explicit contract. `executor` puts the workspace directory and the limits into
+the tool input, and [`shell-tool.ts`](examples/shell-tool.ts) enforces them: the command runs in that
+directory rather than wherever the process happens to be, `ACTIVEGRAPH_COMMAND_TIMEOUT_MS` (120s)
+kills one that overruns, and `ACTIVEGRAPH_MAX_OUTPUT_BYTES` (1MB) kills one that floods — which also
+bounds what a single command can append to the durable log. Because the contract travels in the
+input, every `tool.requested` event records where its command ran and under which limits.
+
+Before planning, the runner samples a `Workspace` — cwd, top-level entry names, and, inside a
+repository, the git root, the checked-out branch, and the porcelain status lines for uncommitted work
+(capped at 20, with the overflow counted rather than dropped in silence) — and emits it as a
+`workspace.sampled` event. Knowing the branch and what is dirty is what keeps a plan from checking
+out over work in progress; the planner is told to treat uncommitted changes as work it must not
+discard unless the goal says so. A `recorder` behavior folds it into the graph, and the
+planner, executor, and reviewer all read it from there; the deployment name rides in the request
+alongside it. Behaviors never read `process.cwd()`, so they stay pure functions of their inputs, and
+because the workspace is an event rather than constructor config, **the log holds everything the plan
+depended on**: `replayStrict` re-derives a recorded branch knowing only which model to name, even
+across sessions whose directory contents differed. Nothing sampled, nothing guessed — with no
+`workspace.sampled` on the log the executor fails its commands with a message saying so rather than
+running somewhere the plan never saw. This is also what keeps caching correct: completions are keyed on the request bytes (see
+[The determinism contract](#the-determinism-contract)), so a plan is reused only when the goal, the
+directory, *and* the model all match. Point `ACTIVEGRAPH_DB` at one shared file across two projects,
+or change `ACTIVEGRAPH_MODEL` against an existing log, and the agent re-plans instead of replaying
+the previous answer. The Azure adapter honours `LlmRequest.model` and falls back to the deployment it
+was constructed with, so a behavior can name the model it wants.
+
 ## Errors: two spellings, pick per call site
 
 Every fallible call returns a typed `Result<T, E>` and never throws. Handle it explicitly, or
@@ -124,7 +194,7 @@ ports/       interfaces: EventStore, GraphStore, Clock, IdStrategy, LlmPort +
              CompletionCache, ToolExecutor, TracerSink
 adapters/    implementations; the only layer touching bun:/node: APIs.
              memory + bun:sqlite event stores (one shared contract suite),
-             memory graph store, clocks, fake/scripted LLMs, completion cache,
+             memory graph store, clocks, fake/scripted/Azure LLMs, completion cache,
              recorded replay ports
 shell/       the thin impure interpreter. runtime.ts (ports only), replay.ts,
              fork.ts, trace.ts, defaults.ts (the composition root)
@@ -148,7 +218,10 @@ The pieces that make it hold:
 - behaviors run sequentially in registry order; settle ordering is pure and canonical;
 - LLM calls are hashed (canonical-JSON FNV-1a), logged as `llm.requested`/`llm.responded`
   events, and served from a cache seeded by the branch's own log — so **replay and forks never
-  re-call a provider**.
+  re-call a provider**;
+- rehydration restores the dispatch count, so a branch grown by successive processes — the case a
+  persistent store exists for — replays as one continuous run instead of diverging on the
+  `processed` field of its own `runtime.idle` events.
 
 On top of that contract:
 
@@ -171,15 +244,15 @@ declared in the schema. Every event carries `causedBy` — the provenance chain 
 
 ## Scope (v1)
 
-Faithful core, tight fence: no CLI, no packs system, no Prometheus, no Postgres/FalkorDB
-adapters, no embedding providers, and no real LLM provider adapter (the `LlmPort` seam plus
-deterministic fakes and the caching decorator ship instead; an ai-sdk adapter is a clean later
-addition). Approvals have minimal semantics: a mutation marked `requiresApproval` parks behind
+Faithful core, tight fence: no packs system, no Prometheus, no Postgres/FalkorDB adapters, and no
+embedding providers. The Azure AI SDK adapter is included for the coding-agent example; the
+`LlmPort` seam, deterministic fakes, and caching decorator remain available for other providers.
+Approvals have minimal semantics: a mutation marked `requiresApproval` parks behind
 `approval.proposed` until `grantApproval` releases it through the normal pipeline.
 
 ## Tests
 
-`bun test activegraph` — 135+ colocated tests, including the compile-time contract suite
+`bun test activegraph` — 160+ colocated tests, including the compile-time contract suite
 (`domain/types.test.ts`, `@ts-expect-error` regressions), the store contract run against both
 adapters, byte-identical-log determinism, strict-replay divergence detection, fork/promote
 conflicts, and the mechanical hexagon check.

@@ -11,6 +11,9 @@
  * README.md and example.ts for the canonical walkthrough.
  */
 
+export type { AzureLlmOptions } from "./adapters/ai-sdk-llm";
+// Adapters
+export { createAzureLlm } from "./adapters/ai-sdk-llm";
 export { createFixedClock, createLogicalClock, createSystemClock } from "./adapters/clocks";
 export { createFakeLlm, createScriptedLlm, createUnreachableLlm } from "./adapters/fake-llm";
 export {
@@ -18,7 +21,6 @@ export {
   seedCacheFromLog,
   withCompletionCache,
 } from "./adapters/llm-cache";
-// Adapters
 export { createMemoryEventStore } from "./adapters/memory-event-store";
 export { createMemoryGraphStore } from "./adapters/memory-graph-store";
 export { createRecordedStamps, createRecordedTools } from "./adapters/replay-ports";

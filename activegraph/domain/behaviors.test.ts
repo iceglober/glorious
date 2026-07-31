@@ -151,6 +151,32 @@ describe("llmBehavior", () => {
     expect(mutations[0]).toMatchObject({ kind: "addObject", objectType: "note" });
   });
 
+  test("unwraps JSON encoded as a JSON string", async () => {
+    const withLlm: BehaviorContext<S1> = {
+      ...ctx(),
+      llm: async () =>
+        ok({
+          text: JSON.stringify(JSON.stringify({ text: "market is growing", confidence: 0.7 })),
+        }),
+    };
+    const mutations = await claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), withLlm);
+    expect(mutations).toHaveLength(1);
+  });
+
+  test("unwraps JSON strings containing a fenced JSON response", async () => {
+    const withLlm: BehaviorContext<S1> = {
+      ...ctx(),
+      llm: async () =>
+        ok({
+          text: JSON.stringify(
+            `\`\`\`json\n${JSON.stringify({ text: "market is growing", confidence: 0.7 })}\n\`\`\``,
+          ),
+        }),
+    };
+    const mutations = await claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), withLlm);
+    expect(mutations).toHaveLength(1);
+  });
+
   test("throws (→ behavior.failed) on malformed or schema-failing output", async () => {
     const notJson: BehaviorContext<S1> = { ...ctx(), llm: async () => ok({ text: "not json" }) };
     expect(claimBehavior().run(ev(4, "task.completed", { taskId: "t1" }), notJson)).rejects.toThrow(

@@ -165,6 +165,13 @@ export const createRuntime = async <S extends SchemaDef>(
     graph: project(rehydrated),
     log: rehydrated,
     nextEventId: (rehydrated[rehydrated.length - 1]?.id ?? 0) + 1,
+    // Every appended event is queued too, so a session that drained to idle
+    // dispatched all of them. Carrying the count forward is what lets a log
+    // written across sessions replay: `processed` rides in the runtime.idle
+    // payload, and a replay of the whole branch counts from zero, so a
+    // rehydrated runtime that restarted at zero would record a lower number
+    // than the replay derives and diverge on its own log.
+    processed: rehydrated.length,
     pendingApprovals: pendingFromLog(rehydrated),
   };
   graphStore.reset(state.graph);

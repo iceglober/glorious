@@ -15,6 +15,11 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# ActiveGraph event logs written by the coding-agent example
+*.db
+*.db-shm
+*.db-wal
+
 # Editor
 .vscode/
 .idea/

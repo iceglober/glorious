@@ -39,6 +39,37 @@ describe("replayStrict", () => {
     expect(verdict.ok).toBe(true);
   });
 
+  test("a branch written across two runtime sessions still replays", async () => {
+    // The case a persistent store exists for: a log grown by successive
+    // processes. `processed` rides in the runtime.idle payload but counts
+    // dispatches, so a session that restarted it at zero would record a number
+    // the whole-branch replay can never derive, and the log would diverge
+    // against its own behaviors.
+    const eventStore = createMemoryEventStore<ExampleSchema>();
+    const graphStore = createMemoryGraphStore<ExampleSchema>();
+    const session = async () =>
+      unwrap(
+        await createRuntime({
+          schema: exampleSchema,
+          behaviors: exampleBehaviors,
+          eventStore,
+          graphStore,
+          clock: createFixedClock(),
+        }),
+      );
+
+    unwrap(await (await session()).runGoal("Evaluate this startup idea"));
+    unwrap(await (await session()).runGoal("Evaluate a second startup idea"));
+
+    const verdict = await replayStrict({
+      schema: exampleSchema,
+      behaviors: exampleBehaviors,
+      store: eventStore,
+      branch: "main",
+    });
+    expect(verdict).toEqual({ ok: true, value: undefined });
+  });
+
   test("a swapped behavior variant diverges at the exact first differing event", async () => {
     const { eventStore, runtime } = await recordExampleRun();
     const variantResearcher = exampleKit.behavior({
