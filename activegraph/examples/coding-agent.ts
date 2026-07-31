@@ -199,8 +199,28 @@ const review = z
  * still cannot run unseen — without pretending to stop a determined one, and
  * without teaching the model to work around the guard.
  */
-export const RISKY_COMMAND =
-  /\b(?:sudo|mkfs|shutdown|reboot|dd)\b|rm\s+-[a-z]*[rf]|git\s+reset\s+--hard|git\s+clean\s+-[a-z]*f|git\s+push\s+.*(?:--force|-f)\b/i;
+/**
+ * Where the next word is a program being run: the start of the line, after a
+ * separator, or handed to something that execs its argument. Requiring one of
+ * these is what keeps `grep -r "sudo" .` and `cat notes/dd/readme.md` quiet —
+ * a prompt that cries wolf is one the operator stops reading, and reading it
+ * is the entire mechanism.
+ */
+const COMMAND_POSITION = String.raw`(?:^|[\n;|&(]|\$\(|\x60|(?:^|\s)(?:-exec|-execdir|xargs|env|nohup|time|-c)\s+)\s*['"]?\s*`;
+
+/** Programs that are destructive whatever their arguments. */
+const RISKY_PROGRAM = String.raw`(?:sudo|mkfs\S*|dd|shutdown|reboot)\s`;
+
+/**
+ * Actions that are destructive in a particular form. Anchored the same way, so
+ * `echo "rm -rf is dangerous"` is prose and `find . -exec rm -rf {} +` is not.
+ */
+const RISKY_ACTION = String.raw`(?:\brm\s+-[a-z]*[rf]|\bgit\s+reset\s+--hard|\bgit\s+clean\s+-[a-z]*f|\bgit\s+push\s+[^;|&]*(?:--force|-f)(?:\s|$))`;
+
+export const RISKY_COMMAND = new RegExp(
+  `${COMMAND_POSITION}(?:${RISKY_PROGRAM}|${RISKY_ACTION})`,
+  "i",
+);
 
 export const looksDestructive = (command: string): boolean => RISKY_COMMAND.test(command);
 

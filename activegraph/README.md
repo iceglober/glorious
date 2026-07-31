@@ -147,7 +147,12 @@ counts only the events this run appended, not the whole branch.
 
 A risky-looking command always waits for a person, whatever the configuration: `looksDestructive`
 matches `sudo`, `mkfs`, `dd`, `rm -rf`, `git reset --hard`, `git clean -f`, and force-pushes, and
-those commands park behind an approval while everything else runs untouched. This replaces the
+those commands park behind an approval while everything else runs untouched. It matches only in
+command position — line start, after a separator, or handed to something that execs its argument, so
+`find … -exec rm -rf {} +` and `xargs rm -f` are caught while `grep -r "sudo" .` and
+`cat notes/dd/readme.md` are not. The examples are the specification and live in
+[`risky-command.test.ts`](examples/risky-command.test.ts): a miss runs something unseen, and a false
+alarm trains the operator to stop reading the prompt, which costs more than the alarm was worth. This replaces the
 blocklist the shell tool used to carry, which was wrong twice over — it matched text rather than
 intent, and a flat refusal is the very signal that provokes a rewrite. Asking still covers the
 accident (a careless `rm -rf` cannot run unseen) without pretending to stop a determined model. The
