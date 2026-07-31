@@ -48,6 +48,22 @@ export const createHeartbeat = (options: {
 /** Longest command shown before eliding the middle; keeps the line scannable. */
 const MAX_COMMAND = 100;
 
+/**
+ * What to print for a command about to run.
+ *
+ * A coding agent writes files with heredocs, and a heredoc flattened onto one
+ * line is gibberish — which is the moment the operator most wants to know what
+ * is happening to their repository. So a command that will not survive being
+ * put on a line gives way to the planner's own description of it.
+ */
+export const announce = (command: string, description?: string): string => {
+  const oneLine = command.trim();
+  const readable = !oneLine.includes("\n") && oneLine.length <= MAX_COMMAND;
+  if (readable) return oneLine;
+  const label = description?.trim() ?? "";
+  return label === "" || label === oneLine ? elide(command, MAX_COMMAND) : label;
+};
+
 const took = (ms: number): string => (ms >= 100 ? ` (${(ms / 1000).toFixed(1)}s)` : "");
 
 export const withProgress = (
@@ -61,10 +77,10 @@ export const withProgress = (
   const now = options.now ?? (() => Date.now());
   return {
     execute: async (name, input) => {
-      const command = (input as { command?: string }).command;
+      const { command, description } = input as { command?: string; description?: string };
       if (command === undefined) return inner.execute(name, input);
 
-      options.write(`$ ${elide(command, MAX_COMMAND)}`);
+      options.write(`$ ${announce(command, description)}`);
       const beat = createHeartbeat({
         everyMs: options.everyMs ?? 5_000,
         write: options.write,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolExecutor } from "../ports/tools";
 import { elide } from "./coding-agent";
-import { createHeartbeat, withProgress } from "./tool-progress";
+import { announce, createHeartbeat, withProgress } from "./tool-progress";
 
 const lines: string[] = [];
 const write = (line: string) => {
@@ -77,6 +77,34 @@ describe("tool progress", () => {
 
     expect(await tool.execute("other", { nothing: true })).toEqual({ ok: true, value: "out" });
     expect(lines).toEqual([]);
+  });
+
+  test("a heredoc gives way to the planner's description of it", () => {
+    const heredoc = "python3 - <<'PY'\nPath('src/text.ts').write_text(new_source)\nPY";
+
+    expect(announce(heredoc, "add slugify and a test")).toBe("add slugify and a test");
+    // With nothing better to say, the elided command is still better than a
+    // blank line — it at least shows both ends.
+    expect(announce(heredoc, "")).toContain("python3");
+    // A description that just echoes the command is no description at all.
+    expect(announce(heredoc, heredoc).split("\n")).toHaveLength(1);
+  });
+
+  test("a short command speaks for itself", () => {
+    expect(announce("bun test", "run the tests")).toBe("bun test");
+    expect(announce("  wc -w README.md  ", undefined)).toBe("wc -w README.md");
+  });
+
+  test("the description reaches the line the operator reads", async () => {
+    lines.length = 0;
+    const tool = withProgress(slowTool(1), { write, now: () => 0 });
+
+    await tool.execute("bash", {
+      command: "python3 - <<'PY'\nprint(1)\nPY",
+      description: "write the file",
+    });
+
+    expect(lines[0]).toBe("$ write the file");
   });
 
   test("elides a long command from the middle, keeping both ends", () => {

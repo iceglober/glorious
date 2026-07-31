@@ -117,6 +117,13 @@ rather than nested JSON — see [`trace-view.ts`](examples/trace-view.ts). `ACTI
 that for the full event stream with canonical payloads, which is what you want when debugging the
 runtime rather than the run.
 
+Each command is announced by the planner's description of it rather than its text when the text will
+not survive being put on a line — a coding agent writes files with heredocs, and a flattened heredoc
+tells the operator nothing at the moment they most want to know what is happening to their
+repository. The description travels in the tool input, so it reaches `tool.requested` too, and the
+planner is asked for a short phrase in plain words rather than a copy of the command, which is what
+it produces when nobody says otherwise.
+
 Commands narrate themselves separately, through [`tool-progress.ts`](examples/tool-progress.ts),
 because the events cannot do it: `tool.requested` and `tool.responded` are collected inside the
 behavior and materialized when the step settles, so both carry the step's single clock stamp. A

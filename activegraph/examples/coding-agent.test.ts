@@ -220,7 +220,15 @@ describe("coding agent", () => {
 
     expect(calls[0]).toEqual({
       name: "bash",
-      input: { command: "ls", cwd: "/repo", timeoutMs: 1_234, maxOutputBytes: 5_678 },
+      input: {
+        command: "ls",
+        // The planner's label travels with the command, so the layer that
+        // shows it to a person has something readable to show.
+        description: "inspect the project",
+        cwd: "/repo",
+        timeoutMs: 1_234,
+        maxOutputBytes: 5_678,
+      },
     });
   });
 
