@@ -189,13 +189,29 @@ const review = z
   }));
 
 /**
+ * Commands that always wait for a person, whatever the configuration.
+ *
+ * This used to be a blocklist in the shell tool, which was the wrong answer
+ * twice over. It matched text rather than intent, so a model told "no" to
+ * `rm -rf` returned the same deletion in Python and walked straight past it;
+ * and a flat refusal is exactly the signal that provokes the rewrite. Asking
+ * instead of refusing keeps the accident case covered — a careless `rm -rf`
+ * still cannot run unseen — without pretending to stop a determined one, and
+ * without teaching the model to work around the guard.
+ */
+export const RISKY_COMMAND =
+  /\b(?:sudo|mkfs|shutdown|reboot|dd)\b|rm\s+-[a-z]*[rf]|git\s+reset\s+--hard|git\s+clean\s+-[a-z]*f|git\s+push\s+.*(?:--force|-f)\b/i;
+
+export const looksDestructive = (command: string): boolean => RISKY_COMMAND.test(command);
+
+/**
  * One round's worth of command objects, each hung off the task.
  *
- * Under `approveCommands` both mutations park behind `approval.proposed`
- * instead of applying. Nothing runs, because the executor fires on
- * `object.created` and that event never happens until the gate is released —
- * so the operator sees the shell commands before the shell does. The relation
- * is gated too: it cannot attach to an object that does not exist yet.
+ * A gated command parks both mutations behind `approval.proposed` instead of
+ * applying. Nothing runs, because the executor fires on `object.created` and
+ * that event never happens until the gate is released — so the operator sees
+ * the shell command before the shell does. The relation is gated too: it
+ * cannot attach to an object that does not exist yet.
  */
 const commandMutations = (
   taskId: ObjectId<"task">,
@@ -206,7 +222,8 @@ const commandMutations = (
   commands.flatMap((item, index) => {
     const commandId = objectId<"command">(`command_${taskId}_r${round}_${index}`);
     const { m } = codingAgentKit;
-    const approval = gate ? ({ requiresApproval: true } as const) : {};
+    const approval =
+      gate || looksDestructive(item.command) ? ({ requiresApproval: true } as const) : {};
     return [
       m.addObject("command", { ...item, status: "pending", round }, { id: commandId, ...approval }),
       m.addRelation("has_command", taskId, commandId, approval),

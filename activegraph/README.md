@@ -106,7 +106,7 @@ bun activegraph/examples/run-coding-agent.ts "Inspect this project"
 ```
 
 The runner loads `.env` automatically with `dotenv`; shell environment variables still take precedence. See `.env.example` for the supported variables. Set `ACTIVEGRAPH_DB` to choose another SQLite file. Commands run in the current working directory;
-the example blocks several destructive command patterns. It prints the ActiveGraph lifecycle as events
+destructive-looking ones stop for approval first. It prints the ActiveGraph lifecycle as events
 are appended, plans, executes, reviews, records the results, and exits. Command output
 is limited to `ACTIVEGRAPH_MAX_OUTPUT` characters (4,000 by default); set that variable to change the
 limit.
@@ -138,7 +138,16 @@ The Azure adapter records `usage` inside `llm.responded`, so the numbers are dur
 is a pure fold and works on last week's branch as well as on the run that just finished. The runner
 counts only the events this run appended, not the whole branch.
 
-`ACTIVEGRAPH_APPROVE=1` makes the agent ask before it runs anything. The planner marks each command
+A risky-looking command always waits for a person, whatever the configuration: `looksDestructive`
+matches `sudo`, `mkfs`, `dd`, `rm -rf`, `git reset --hard`, `git clean -f`, and force-pushes, and
+those commands park behind an approval while everything else runs untouched. This replaces the
+blocklist the shell tool used to carry, which was wrong twice over — it matched text rather than
+intent, and a flat refusal is the very signal that provokes a rewrite. Asking still covers the
+accident (a careless `rm -rf` cannot run unseen) without pretending to stop a determined model. The
+tool itself now refuses nothing, because a tool that rejects an already-approved command is answering
+a question the operator has already answered.
+
+`ACTIVEGRAPH_APPROVE=1` extends that from risky commands to every command. The planner marks each command
 mutation `requiresApproval`, so it parks behind an `approval.proposed` event instead of applying —
 and because `executor` fires on `object.created`, an event that never happens, the shell sees nothing
 until you release it with `grantApproval`. A non-interactive stdin declines: for something holding a

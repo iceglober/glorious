@@ -400,6 +400,34 @@ describe("coding agent", () => {
     expect(failures(runtime)).toEqual([]);
   });
 
+  test("a risky-looking command parks even with the gate off", async () => {
+    const { calls, tools } = recordingTools();
+    const { runtime, status } = await runAgent({
+      tools,
+      llm: createFakeLlm((request) =>
+        isReview(request)
+          ? doneJson
+          : JSON.stringify({
+              summary: "Tidy up",
+              commands: [
+                { description: "harmless", command: "ls" },
+                { description: "destructive", command: "rm -rf build" },
+              ],
+            }),
+      ),
+    });
+
+    // The safe one ran without ceremony; the other is waiting on a person.
+    expect(calls).toHaveLength(1);
+    expect(
+      runtime
+        .view()
+        .objects("command")
+        .map((command) => command.data.command),
+    ).toEqual(["ls"]);
+    expect(status.pendingApprovals.length).toBeGreaterThan(0);
+  });
+
   test("under approveCommands nothing runs until the gate is released", async () => {
     const { calls, tools } = recordingTools();
     const { runtime, status } = await runAgent({

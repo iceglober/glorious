@@ -102,12 +102,14 @@ describe("shell tool", () => {
     expect(unmasked.ok ? unmasked.value : "").toContain(secret);
   });
 
-  test("destructive patterns are refused before a shell sees them", async () => {
-    const result = await run({ command: "rm -rf /tmp/definitely-not-real" });
+  test("refuses nothing: judging a command is the agent's job, not the tool's", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "shell-tool-"));
+    writeFileSync(join(dir, "doomed.txt"), "bye\n");
 
-    expect(result).toEqual({
-      ok: false,
-      error: { reason: "tool_error", message: "Blocked potentially destructive command" },
-    });
+    // The agent parks this behind an approval (see `looksDestructive`); by the
+    // time the tool sees it, the operator has already said yes.
+    const result = await run({ command: "rm -rf doomed.txt && echo gone", cwd: dir });
+
+    expect(result).toEqual({ ok: true, value: "gone" });
   });
 });

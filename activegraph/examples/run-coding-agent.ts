@@ -171,7 +171,9 @@ const settleApprovals = async (): Promise<void> => {
   }
 };
 
-if (process.env.ACTIVEGRAPH_APPROVE === "1") await settleApprovals();
+// Always: even with the gate off, a risky-looking command parks, and leaving
+// it parked without asking would be a silent no.
+await settleApprovals();
 
 const failures = runtime.log().filter((event) => (event.type as string) === "behavior.failed");
 for (const failure of failures) {

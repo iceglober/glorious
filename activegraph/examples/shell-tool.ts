@@ -6,6 +6,12 @@
  * output ceiling, the secret redaction — are testable without driving a whole
  * agent.
  *
+ * It refuses nothing. Deciding whether a command should run is the agent's
+ * job, one layer up, where a risky-looking command parks behind an approval
+ * (see `looksDestructive`) rather than being rejected outright — a tool that
+ * refused an already-approved command would be answering a question the
+ * operator has already answered.
+ *
  * Redaction matters more here than in a throwaway shell. Command output is
  * appended to a durable event log *and* replayed into the reviewer's prompt,
  * so a single `cat .env` would write a live credential to disk forever and
@@ -15,9 +21,6 @@
 
 import type { ToolExecutor } from "../ports/tools";
 import type { BashInput } from "./coding-agent";
-
-/** Patterns refused outright, before a shell ever sees them. */
-const BLOCKED = /\b(?:sudo|mkfs|shutdown|reboot)\b|rm\s+-rf|git\s+reset\s+--hard/i;
 
 /** Variable names whose values must never reach the log or the model. */
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH/i;
@@ -49,12 +52,6 @@ export const createShellTool = (options: ShellToolOptions = {}): ToolExecutor =>
   return {
     execute: async (_name, rawInput) => {
       const input = rawInput as BashInput;
-      if (BLOCKED.test(input.command)) {
-        return {
-          ok: false,
-          error: { reason: "tool_error", message: "Blocked potentially destructive command" },
-        };
-      }
 
       const child = Bun.spawn(["bash", "-lc", input.command], {
         cwd: input.cwd,
