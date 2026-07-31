@@ -477,6 +477,32 @@ const describeEarlierRounds = (
   return `Earlier rounds, already reviewed:\n${lines.join("\n")}\n\n`;
 };
 
+/**
+ * Whether the round that just ran failed exactly as the one before it did.
+ *
+ * A reviewer is shown earlier rounds as one line each, which is enough to know
+ * what was tried and nowhere near enough to notice it is going in circles. A
+ * person spots "same error again" instantly and stops varying the same idea;
+ * an identical failure string is the cheap, certain form of that signal.
+ */
+const describeRepeatedFailure = (
+  commands: readonly GraphObject<CodingAgentSchema, "command">[],
+): string => {
+  const newest = Math.max(0, ...commands.map((command) => command.data.round ?? 0));
+  if (newest === 0) return "";
+  const failuresIn = (round: number) =>
+    commands
+      .filter((command) => (command.data.round ?? 0) === round && command.data.status === "failed")
+      .map((command) => command.data.output ?? "");
+  const previous = new Set(failuresIn(newest - 1));
+  if (!failuresIn(newest).some((output) => previous.has(output))) return "";
+  return (
+    `Note: round ${newest} failed exactly as round ${newest - 1} did, character for character. ` +
+    "Whatever you changed did not alter the outcome, so a variation of it will not either — " +
+    "either diagnose why the change had no effect, or say the work needs the operator.\n\n"
+  );
+};
+
 const describeDeclined = (declined: readonly string[] | undefined): string =>
   declined === undefined || declined.length === 0
     ? ""
@@ -721,6 +747,7 @@ export const reviewer = codingAgentKit.llmBehavior({
         `Plan: ${task?.data.summary ?? "(unknown)"}\n` +
         `Rounds used: ${round} of ${maxRounds}\n\n` +
         describeDeclined(task?.data.declined) +
+        describeRepeatedFailure(commands) +
         describeEarlierRounds(commands) +
         `Commands run:\n${
           commands.length === 0 ? "(none)" : latestRound(commands).map(describeCommand).join("\n\n")

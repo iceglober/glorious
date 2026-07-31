@@ -413,6 +413,91 @@ describe("coding agent", () => {
     expect(prompts[1]).toContain("second-command");
   });
 
+  test("the reviewer is told when a round failed exactly as the last one did", async () => {
+    const prompts: string[] = [];
+    let reviews = 0;
+    await runAgent({
+      config: { ...config, maxRounds: 3 },
+      // The same error every time: an edit that claims success but changes
+      // nothing, which is what a guarded in-place edit does on a retry.
+      tools: {
+        execute: async (_name, input) =>
+          (input as { command: string }).command === "run-the-tests"
+            ? { ok: false, error: { reason: "tool_error", message: "describe is not defined" } }
+            : { ok: true, value: "edited" },
+      },
+      llm: createFakeLlm((request) => {
+        if (!isReview(request)) {
+          return JSON.stringify({
+            summary: "Add it",
+            commands: [
+              { description: "edit", command: "edit-the-file" },
+              { description: "test", command: "run-the-tests" },
+            ],
+          });
+        }
+        prompts.push(request.prompt);
+        reviews += 1;
+        return reviews > 2
+          ? doneJson
+          : JSON.stringify({
+              done: false,
+              report: "fixing the import",
+              commands: [
+                { description: "edit again", command: "edit-the-file" },
+                { description: "test", command: "run-the-tests" },
+              ],
+            });
+      }),
+    });
+
+    // Round 0 has nothing to compare against; round 1 repeats round 0 exactly.
+    expect(prompts[0]).not.toContain("failed exactly as");
+    expect(prompts[1]).toContain("round 1 failed exactly as round 0 did");
+    expect(prompts[2]).toContain("round 2 failed exactly as round 1 did");
+  });
+
+  test("a different failure is not reported as a repeat", async () => {
+    const prompts: string[] = [];
+    let attempts = 0;
+    let reviews = 0;
+    await runAgent({
+      config: { ...config, maxRounds: 2 },
+      tools: {
+        execute: async (_name, input) => {
+          if ((input as { command: string }).command !== "run-the-tests") {
+            return { ok: true, value: "edited" };
+          }
+          attempts += 1;
+          return {
+            ok: false,
+            error: { reason: "tool_error", message: `failure number ${attempts}` },
+          };
+        },
+      },
+      llm: createFakeLlm((request) => {
+        if (!isReview(request)) {
+          return JSON.stringify({
+            summary: "Add it",
+            commands: [{ description: "test", command: "run-the-tests" }],
+          });
+        }
+        prompts.push(request.prompt);
+        reviews += 1;
+        return reviews > 1
+          ? doneJson
+          : JSON.stringify({
+              done: false,
+              report: "trying something else",
+              commands: [{ description: "test", command: "run-the-tests" }],
+            });
+      }),
+    });
+
+    // Progress, of a sort: the error changed, so nothing is flagged.
+    expect(prompts[1]).not.toContain("failed exactly as");
+  });
+
   test("review rounds stop at maxRounds", async () => {
     let reviews = 0;
     const llm = createFakeLlm((request) => {
