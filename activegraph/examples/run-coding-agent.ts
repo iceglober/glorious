@@ -12,16 +12,22 @@ import {
 } from "./coding-agent";
 import { formatRunSummary, summarizeRun } from "./run-summary";
 import { createShellTool } from "./shell-tool";
+import { describeChanges } from "./workspace-diff";
 
 const goal = process.argv.slice(2).join(" ") || "Inspect this project";
 const model = process.env.ACTIVEGRAPH_MODEL ?? "gpt-4o-mini";
 const MAX_ENTRIES = 60;
 const MAX_DIRTY = 20;
 
-/** Trimmed stdout of a git command, or "" when it is not a repository. */
+/**
+ * Stdout of a git command, or "" when it is not a repository. Only trailing
+ * whitespace goes: a porcelain status line begins with two status columns, so
+ * ` M README.md` loses its meaning — and its first path character — if the
+ * leading space is trimmed away.
+ */
 const git = (...args: readonly string[]): string => {
   const result = Bun.spawnSync(["git", ...args], { stdout: "pipe", stderr: "ignore" });
-  return result.exitCode === 0 ? result.stdout.toString().trim() : "";
+  return result.exitCode === 0 ? result.stdout.toString().trimEnd() : "";
 };
 
 /** Cap a list, saying how much was dropped rather than truncating in silence. */
@@ -85,7 +91,8 @@ const before = runtime.status().headEventId;
 console.error(`Planning with ${model}...`);
 // The workspace is external input, so it enters through an event: the log
 // then holds everything the plan depended on and can be replayed on its own.
-const sampled = await runtime.emit("workspace.sampled", sampleWorkspace());
+const workspaceBefore = sampleWorkspace();
+const sampled = await runtime.emit("workspace.sampled", workspaceBefore);
 if (!sampled.ok) {
   console.error(`Could not record the workspace: ${JSON.stringify(sampled.error)}`);
   process.exit(1);
@@ -211,6 +218,15 @@ for (const command of runtime.view().objects("command")) {
   if (command.data.output) console.log(truncate(command.data.output, maxOutput));
 }
 if (task?.data.report !== undefined) console.log(`\nreport: ${task.data.report}`);
+
+// Re-sample and record it, so the log holds the state the run left behind as
+// well as the one it started from. A command that writes a file usually
+// prints nothing, so its output cannot answer "what changed?".
+const workspaceAfter = sampleWorkspace();
+const resampled = await runtime.emit("workspace.sampled", workspaceAfter);
+if (resampled.ok) await runtime.runUntilIdle();
+const changes = describeChanges(workspaceBefore, workspaceAfter);
+console.log(changes === null ? "\nworking tree: unchanged" : `\nworking tree:\n  ${changes}`);
 const appended = runtime.log().filter((event) => event.id > before);
 console.error(`\n[activegraph] this run:\n  ${formatRunSummary(summarizeRun(appended))}`);
 

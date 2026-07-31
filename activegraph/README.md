@@ -130,7 +130,14 @@ model, history reaches the model through the request, so it is part of the cache
 a goal issued against a log that has grown re-plans rather than replaying its own earlier answer,
 while a true replay of a recorded log still serves every completion from the recording.
 
-Every run ends with what it cost, folded out of the log by
+Every run ends by saying what it did to the working tree. The runner re-samples the workspace, emits
+it as a second `workspace.sampled` so the log holds the state the run left as well as the one it
+started from, and [`workspace-diff.ts`](examples/workspace-diff.ts) reports what appeared, what went
+away, and what is newly uncommitted. Command output cannot answer that question — a command that
+writes a file usually prints nothing — and "working tree: unchanged" after a read-only goal is worth
+as much as the list after a destructive one.
+
+Every run also ends with what it cost, folded out of the log by
 [`run-summary.ts`](examples/run-summary.ts): calls made, how many the log's own cache answered,
 characters of context sent and saved, commands run, and the provider's token counts — including
 reasoning tokens, which are otherwise invisible and were 40% of the output on a one-command goal.
