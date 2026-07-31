@@ -124,7 +124,8 @@ are appended, plans, executes, reviews, records the results, and exits. Command 
 is limited to `ACTIVEGRAPH_MAX_OUTPUT` characters (4,000 by default); set that variable to change the
 limit.
 
-Five behaviors close the loop. `recorder` folds the sampled workspace into the graph, `planner` turns
+Seven behaviors close the loop. `settingsRecorder` and `recorder` fold the operator's knobs and the
+sampled workspace into the graph, `declineRecorder` records a refusal, `planner` turns
 the goal into commands, `executor` runs each one and
 writes its output back into the graph, `finisher` settles the task once the newest round of commands
 is terminal, and `reviewer` reads that output and either reports done or proposes another round —
@@ -223,10 +224,14 @@ repository, the git root, the checked-out branch, and the porcelain status lines
 out over work in progress; the planner is told to treat uncommitted changes as work it must not
 discard unless the goal says so. A `recorder` behavior folds it into the graph, and the
 planner, executor, and reviewer all read it from there; the deployment name rides in the request
-alongside it. Behaviors never read `process.cwd()`, so they stay pure functions of their inputs, and
-because the workspace is an event rather than constructor config, **the log holds everything the plan
-depended on**: `replayStrict` re-derives a recorded branch knowing only which model to name, even
-across sessions whose directory contents differed. Nothing sampled, nothing guessed — with no
+alongside it. Behaviors never read `process.cwd()`, so they stay pure functions of their inputs. The operator's
+knobs — model, review rounds, history depth, command limits, whether commands need approval — arrive
+the same way, as a `settings.configured` event, with defaults living in code. So **the log holds
+everything the run depended on**: `replayStrict` re-derives a recorded branch from the branch alone,
+no arguments, even across sessions whose directory contents differed. Constructor arguments are
+exactly what a self-contained log must not depend on — a branch recorded under `approveCommands`
+replayed as an ungated one while that flag lived in a function call, because the planner's mutations
+were no longer marked and `approval.proposed` never appeared. Nothing sampled, nothing guessed — with no
 `workspace.sampled` on the log the executor fails its commands with a message saying so rather than
 running somewhere the plan never saw. This is also what keeps caching correct: completions are keyed on the request bytes (see
 [The determinism contract](#the-determinism-contract)), so a plan is reused only when the goal, the

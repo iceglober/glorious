@@ -38,7 +38,7 @@ const twoRuns = async () => {
     const runtime = unwrap(
       await createRuntime<CodingAgentSchema>({
         schema: codingAgentSchema,
-        behaviors: createCodingAgentBehaviors(config),
+        behaviors: createCodingAgentBehaviors(),
         eventStore,
         graphStore,
         clock: createFixedClock(),
@@ -46,6 +46,7 @@ const twoRuns = async () => {
         tools: { execute: async () => ({ ok: true, value: "out" }) },
       }),
     );
+    unwrap(await runtime.emit("settings.configured", config));
     unwrap(await runtime.emit("workspace.sampled", workspace));
     unwrap(await runtime.runGoal(goal));
     return runtime;

@@ -11,7 +11,7 @@ import type { ToolExecutor } from "../ports/tools";
 import { replayStrict } from "../shell/replay";
 import { createRuntime } from "../shell/runtime";
 import {
-  type AgentConfig,
+  type AgentSettings,
   type CodingAgentSchema,
   codingAgentSchema,
   createCodingAgentBehaviors,
@@ -21,7 +21,7 @@ import {
 
 const workspace: Workspace = { cwd: "/repo", gitRoot: "/repo", entries: ["README.md", "src/"] };
 const elsewhere: Workspace = { cwd: "/elsewhere", entries: ["Cargo.toml"] };
-const config: AgentConfig = { model: "planner-model" };
+const config: AgentSettings = { model: "planner-model" };
 
 const planJson = JSON.stringify({
   summary: "Add a greeting",
@@ -41,7 +41,7 @@ const planThenDone = () => createFakeLlm((request) => (isReview(request) ? doneJ
 const runAgent = async (options: {
   readonly llm: LlmPort;
   readonly tools: ToolExecutor;
-  readonly config?: AgentConfig;
+  readonly config?: AgentSettings;
   readonly goal?: string;
   /** Omit to run without ever sampling a workspace. */
   readonly workspace?: Workspace | null;
@@ -49,7 +49,7 @@ const runAgent = async (options: {
   const runtime = unwrap(
     await createRuntime<CodingAgentSchema>({
       schema: codingAgentSchema,
-      behaviors: createCodingAgentBehaviors(options.config ?? config),
+      behaviors: createCodingAgentBehaviors(),
       eventStore: createMemoryEventStore<CodingAgentSchema>(),
       graphStore: createMemoryGraphStore<CodingAgentSchema>(),
       clock: createFixedClock(),
@@ -57,6 +57,7 @@ const runAgent = async (options: {
       tools: options.tools,
     }),
   );
+  unwrap(await runtime.emit("settings.configured", options.config ?? config));
   const sampled = options.workspace === undefined ? workspace : options.workspace;
   if (sampled !== null) unwrap(await runtime.emit("workspace.sampled", sampled));
   const status = unwrap(await runtime.runGoal(options.goal ?? "Add a greeting to the project"));
@@ -85,11 +86,11 @@ const sharedLogRunner = (requests: LlmRequest[]) => {
     requests.push(request);
     return isReview(request) ? doneJson : planJson;
   });
-  const run = async (next: AgentConfig, goal: string, where: Workspace = workspace) => {
+  const run = async (next: AgentSettings, goal: string, where: Workspace = workspace) => {
     const runtime = unwrap(
       await createRuntime<CodingAgentSchema>({
         schema: codingAgentSchema,
-        behaviors: createCodingAgentBehaviors(next),
+        behaviors: createCodingAgentBehaviors(),
         eventStore: store,
         graphStore,
         clock: createFixedClock(),
@@ -97,6 +98,7 @@ const sharedLogRunner = (requests: LlmRequest[]) => {
         tools: { execute: async () => ({ ok: true, value: "" }) },
       }),
     );
+    unwrap(await runtime.emit("settings.configured", next));
     unwrap(await runtime.emit("workspace.sampled", where));
     unwrap(await runtime.runGoal(goal));
   };
@@ -143,7 +145,7 @@ describe("coding agent", () => {
     await runAgent({
       tools,
       llm: planThenDone(),
-      config: { ...config, limits: { timeoutMs: 1_234, maxOutputBytes: 5_678 } },
+      config: { ...config, timeoutMs: 1_234, maxOutputBytes: 5_678 },
     });
 
     expect(calls[0]).toEqual({
@@ -308,7 +310,7 @@ describe("coding agent", () => {
     expect(
       await replayStrict({
         schema: codingAgentSchema,
-        behaviors: createCodingAgentBehaviors(config),
+        behaviors: createCodingAgentBehaviors(),
         store,
         branch: "main",
       }),
@@ -334,7 +336,7 @@ describe("coding agent", () => {
   test("the request hash discriminates on workspace and model", async () => {
     // Fresh logs, so history is constant and the only variables are the ones
     // under test. Equal hashes are exactly what the completion cache serves.
-    const planFor = async (next: AgentConfig, where: Workspace): Promise<LlmRequest> => {
+    const planFor = async (next: AgentSettings, where: Workspace): Promise<LlmRequest> => {
       const requests: LlmRequest[] = [];
       await runAgent({
         goal: "Summarize this project",
@@ -374,7 +376,7 @@ describe("coding agent", () => {
     expect(
       await replayStrict({
         schema: codingAgentSchema,
-        behaviors: createCodingAgentBehaviors({ model: config.model }),
+        behaviors: createCodingAgentBehaviors(),
         store,
         branch: "main",
       }),

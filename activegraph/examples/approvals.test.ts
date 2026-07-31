@@ -6,16 +6,17 @@ import { createMemoryGraphStore } from "../adapters/memory-graph-store";
 import type { LlmRequest } from "../domain/effects";
 import { unwrap } from "../lib/fp";
 import type { ToolExecutor } from "../ports/tools";
+import { replayStrict } from "../shell/replay";
 import { createRuntime } from "../shell/runtime";
 import { pendingCommands } from "./approvals";
 import {
-  type AgentConfig,
+  type AgentSettings,
   type CodingAgentSchema,
   codingAgentSchema,
   createCodingAgentBehaviors,
 } from "./coding-agent";
 
-const config: AgentConfig = { model: "planner-model", approveCommands: true };
+const config: AgentSettings = { model: "planner-model", approveCommands: true };
 const workspace = { cwd: "/repo", entries: ["README.md"] };
 const planJson = JSON.stringify({
   summary: "Do the thing",
@@ -38,7 +39,7 @@ const gatedAgent = async () => {
   const runtime = unwrap(
     await createRuntime<CodingAgentSchema>({
       schema: codingAgentSchema,
-      behaviors: createCodingAgentBehaviors(config),
+      behaviors: createCodingAgentBehaviors(),
       eventStore: createMemoryEventStore<CodingAgentSchema>(),
       graphStore: createMemoryGraphStore<CodingAgentSchema>(),
       clock: createFixedClock(),
@@ -46,6 +47,7 @@ const gatedAgent = async () => {
       tools,
     }),
   );
+  unwrap(await runtime.emit("settings.configured", config));
   unwrap(await runtime.emit("workspace.sampled", workspace));
   const status = unwrap(await runtime.runGoal("Do the thing"));
   return { runtime, ran, status };
@@ -91,7 +93,7 @@ describe("pending command approvals", () => {
     const runtime = unwrap(
       await createRuntime<CodingAgentSchema>({
         schema: codingAgentSchema,
-        behaviors: createCodingAgentBehaviors(config),
+        behaviors: createCodingAgentBehaviors(),
         eventStore: createMemoryEventStore<CodingAgentSchema>(),
         graphStore: createMemoryGraphStore<CodingAgentSchema>(),
         clock: createFixedClock(),
@@ -120,6 +122,7 @@ describe("pending command approvals", () => {
         },
       }),
     );
+    unwrap(await runtime.emit("settings.configured", config));
     unwrap(await runtime.emit("workspace.sampled", workspace));
     const status = unwrap(await runtime.runGoal("Fetch it"));
 
@@ -140,6 +143,42 @@ describe("pending command approvals", () => {
     expect(pendingCommands(runtime.log(), runtime.status().pendingApprovals).at(-1)?.command).toBe(
       "curl -sSf -o out.txt url",
     );
+  });
+
+  test("a gated branch replays with no arguments at all", async () => {
+    // The reason settings are an event. When `approveCommands` lived in a
+    // constructor argument, replaying this log with the defaults produced
+    // `object.created` where the recording has `approval.proposed`, and every
+    // gated run on disk was unreplayable.
+    const store = createMemoryEventStore<CodingAgentSchema>();
+    const runtime = unwrap(
+      await createRuntime<CodingAgentSchema>({
+        schema: codingAgentSchema,
+        behaviors: createCodingAgentBehaviors(),
+        eventStore: store,
+        graphStore: createMemoryGraphStore<CodingAgentSchema>(),
+        clock: createFixedClock(),
+        llm: createFakeLlm((request) => (isReview(request) ? doneJson : planJson)),
+        tools: { execute: async () => ({ ok: true, value: "out" }) },
+      }),
+    );
+    unwrap(await runtime.emit("settings.configured", config));
+    unwrap(await runtime.emit("workspace.sampled", workspace));
+    const status = unwrap(await runtime.runGoal("Do the thing"));
+    for (const approvalId of pendingCommands(runtime.log(), status.pendingApprovals)[0]
+      ?.approvalIds ?? []) {
+      unwrap(await runtime.grantApproval(approvalId));
+    }
+    unwrap(await runtime.runUntilIdle());
+
+    expect(
+      await replayStrict({
+        schema: codingAgentSchema,
+        behaviors: createCodingAgentBehaviors(),
+        store,
+        branch: "main",
+      }),
+    ).toEqual({ ok: true, value: undefined });
   });
 
   test("ignores approvals that are no longer pending", async () => {

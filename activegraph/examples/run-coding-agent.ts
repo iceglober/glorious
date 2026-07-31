@@ -4,6 +4,7 @@ import { readdirSync } from "node:fs";
 import { createAzureLlm, createConsoleTracer, unwrap } from "../index";
 import { pendingCommands } from "./approvals";
 import {
+  type AgentSettings,
   createCodingAgent,
   DEFAULT_HISTORY_LIMIT,
   DEFAULT_LIMITS,
@@ -63,25 +64,23 @@ const sampleWorkspace = (): Workspace => {
   };
 };
 
+/** The operator's knobs, which reach the agent as an event like everything else. */
+const settings: AgentSettings = {
+  model,
+  maxRounds: parseInteger(process.env.ACTIVEGRAPH_MAX_ROUNDS, DEFAULT_MAX_ROUNDS, 0),
+  historyLimit: parseInteger(process.env.ACTIVEGRAPH_HISTORY, DEFAULT_HISTORY_LIMIT, 0),
+  approveCommands: process.env.ACTIVEGRAPH_APPROVE === "1",
+  timeoutMs: parseInteger(process.env.ACTIVEGRAPH_COMMAND_TIMEOUT_MS, DEFAULT_LIMITS.timeoutMs, 1),
+  maxOutputBytes: parseInteger(
+    process.env.ACTIVEGRAPH_MAX_OUTPUT_BYTES,
+    DEFAULT_LIMITS.maxOutputBytes,
+    1,
+  ),
+};
+
 const { runtime } = await unwrap(
   createCodingAgent({
     llm: createAzureLlm({ model }),
-    model,
-    maxRounds: parseInteger(process.env.ACTIVEGRAPH_MAX_ROUNDS, DEFAULT_MAX_ROUNDS, 0),
-    historyLimit: parseInteger(process.env.ACTIVEGRAPH_HISTORY, DEFAULT_HISTORY_LIMIT, 0),
-    approveCommands: process.env.ACTIVEGRAPH_APPROVE === "1",
-    limits: {
-      timeoutMs: parseInteger(
-        process.env.ACTIVEGRAPH_COMMAND_TIMEOUT_MS,
-        DEFAULT_LIMITS.timeoutMs,
-        1,
-      ),
-      maxOutputBytes: parseInteger(
-        process.env.ACTIVEGRAPH_MAX_OUTPUT_BYTES,
-        DEFAULT_LIMITS.maxOutputBytes,
-        1,
-      ),
-    },
     store: { sqlite: process.env.ACTIVEGRAPH_DB ?? "coding-agent.db" },
     tracer: rawTrace
       ? createConsoleTracer((line) => console.error(`[activegraph] ${line}`))
@@ -102,8 +101,14 @@ const { runtime } = await unwrap(
 const before = runtime.status().headEventId;
 
 console.error(`model: ${model}`);
-// The workspace is external input, so it enters through an event: the log
-// then holds everything the plan depended on and can be replayed on its own.
+// Settings and workspace are both external input, so both enter through
+// events: the log then holds everything the run depended on and replays on
+// its own, with no arguments to reconstruct.
+const configured = await runtime.emit("settings.configured", settings);
+if (!configured.ok) {
+  console.error(`Could not record the settings: ${JSON.stringify(configured.error)}`);
+  process.exit(1);
+}
 const workspaceBefore = sampleWorkspace();
 const sampled = await runtime.emit("workspace.sampled", workspaceBefore);
 if (!sampled.ok) {

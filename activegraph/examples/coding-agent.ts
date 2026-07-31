@@ -5,17 +5,19 @@
  * a graph object, so execution, failures, and the final task state are all
  * durable events that can be replayed and inspected.
  *
- * Five behaviors close a loop: `recorder` folds the sampled workspace into the
- * graph, `planner` turns the goal into commands, `executor` runs each one and
- * writes the output back into the graph, `finisher` settles the task once the
- * newest round of commands is terminal, and `reviewer` reads that output and
- * either reports done or proposes another round. Rounds are bounded by
- * `AgentConfig.maxRounds`.
+ * The loop: `settingsRecorder` and `recorder` fold the operator's knobs and
+ * the sampled workspace into the graph, `planner` turns the goal into
+ * commands, `executor` runs each one and writes the output back, `finisher`
+ * settles the task once the newest round of commands is terminal, `reviewer`
+ * reads that output and either reports done or proposes another round, and
+ * `declineRecorder` records what the operator refused so the reviewer can
+ * adapt rather than repeat itself.
  *
- * Nothing the agent observes is closed over at construction time. The
- * filesystem arrives as a `workspace.sampled` event, prior goals come from the
- * log, command output comes from the graph — so the branch is self-contained
- * and `replayStrict` re-derives it knowing only which model to name.
+ * Nothing the agent depends on is closed over at construction time. The
+ * filesystem arrives as `workspace.sampled`, the knobs as `settings.configured`
+ * (defaults live in code, which replay already requires to match), prior goals
+ * come from the log, command output from the graph — so the branch is
+ * self-contained and `replayStrict` re-derives it from the branch alone.
  *
  * That is also what keeps the completion cache honest: it is keyed on the
  * request bytes, so anything the plan depends on has to be *in* the request.
@@ -56,8 +58,27 @@ const workspaceShape = z.object({
 });
 export type Workspace = z.infer<typeof workspaceShape>;
 
+/**
+ * The operator's knobs. They reach the agent as an event for the same reason
+ * the workspace does: a branch recorded under `approveCommands` replays as an
+ * ungated one if the flag lives in a constructor argument, because the
+ * planner's mutations are no longer marked and `approval.proposed` never
+ * appears. Defaults live in code, which replay already requires to match;
+ * invocation arguments are what a log must not depend on.
+ */
+const settingsShape = z.object({
+  model: z.string(),
+  maxRounds: z.number().optional(),
+  historyLimit: z.number().optional(),
+  approveCommands: z.boolean().optional(),
+  timeoutMs: z.number().optional(),
+  maxOutputBytes: z.number().optional(),
+});
+export type AgentSettings = z.infer<typeof settingsShape>;
+
 export const codingAgentSchema = defineSchema({
   objects: {
+    settings: settingsShape,
     workspace: workspaceShape,
     task: z.object({
       request: z.string(),
@@ -85,6 +106,7 @@ export const codingAgentSchema = defineSchema({
     has_command: { source: "task", target: "command" },
   },
   events: {
+    "settings.configured": settingsShape,
     "workspace.sampled": workspaceShape,
     /** The operator refused a parked command. Emitted by the composition root. */
     "command.declined": z.object({
@@ -100,6 +122,51 @@ export const codingAgentKit = createKit(codingAgentSchema);
 
 /** The single current workspace; a later sample patches it in place. */
 export const WORKSPACE_ID = objectId<"workspace">("workspace");
+export const SETTINGS_ID = objectId<"settings">("settings");
+
+export const DEFAULT_MAX_ROUNDS = 2;
+export const DEFAULT_HISTORY_LIMIT = 3;
+/**
+ * One re-ask when a reply is not usable JSON. A reviewer that fails to parse
+ * is the expensive case: its commands have already run, so losing the round
+ * means a re-run repeats all of that work.
+ */
+export const DEFAULT_RETRIES = 1;
+export const DEFAULT_LIMITS = { timeoutMs: 120_000, maxOutputBytes: 1_000_000 } as const;
+
+/** Settings as the behaviors see them: recorded values over coded defaults. */
+export interface ResolvedSettings {
+  readonly model: string;
+  readonly maxRounds: number;
+  readonly historyLimit: number;
+  readonly approveCommands: boolean;
+  readonly timeoutMs: number;
+  readonly maxOutputBytes: number;
+}
+
+export const settingsIn = (view: GraphView<CodingAgentSchema>): ResolvedSettings => {
+  const stored = view.object(SETTINGS_ID)?.data;
+  return {
+    model: stored?.model ?? "",
+    maxRounds: stored?.maxRounds ?? DEFAULT_MAX_ROUNDS,
+    historyLimit: stored?.historyLimit ?? DEFAULT_HISTORY_LIMIT,
+    approveCommands: stored?.approveCommands ?? false,
+    timeoutMs: stored?.timeoutMs ?? DEFAULT_LIMITS.timeoutMs,
+    maxOutputBytes: stored?.maxOutputBytes ?? DEFAULT_LIMITS.maxOutputBytes,
+  };
+};
+
+/** Fold the operator's knobs into the graph, exactly as `recorder` does. */
+export const settingsRecorder = codingAgentKit.behavior({
+  name: "settingsRecorder",
+  on: ["settings.configured"],
+  run: (event, ctx) => {
+    if (event.type !== "settings.configured") return [];
+    return ctx.view.object(SETTINGS_ID) === undefined
+      ? [ctx.m.addObject("settings", event.payload, { id: SETTINGS_ID })]
+      : [ctx.m.patchObject("settings", SETTINGS_ID, event.payload)];
+  },
+});
 
 /**
  * Fold the sampled workspace into the graph. Behaviors read it from there, so
@@ -351,142 +418,100 @@ const describeWorkspace = (workspace: Workspace | undefined): string =>
       ].join("\n");
 
 /**
- * The execution contract the planner is promised. It travels in the tool
- * input rather than living in the tool implementation, so every `tool.requested`
- * event records where a command ran and under what limits.
+ * What `executor` sends to the "bash" tool; see `examples/shell-tool.ts`. The
+ * limits travel in the input rather than living in the tool, so every
+ * `tool.requested` event records where a command ran and under what ceilings.
  */
-export interface CommandLimits {
+export interface BashInput {
+  readonly command: string;
+  readonly cwd: string;
   /** Wall-clock ceiling; the tool kills the command when it is reached. */
   readonly timeoutMs: number;
-  /** Output ceiling, which also bounds what a command can write into the log. */
+  /** Output ceiling, which also bounds what a command can write to the log. */
   readonly maxOutputBytes: number;
 }
 
-export const DEFAULT_LIMITS: CommandLimits = { timeoutMs: 120_000, maxOutputBytes: 1_000_000 };
-
-/** What `executor` sends to the "bash" tool; see `examples/shell-tool.ts`. */
-export interface BashInput extends CommandLimits {
-  readonly command: string;
-  readonly cwd: string;
-}
-
-/**
- * Knobs that are genuinely the operator's choice. Everything the agent
- * observes — the workspace, prior goals, command output — comes from the graph
- * instead, so a recorded branch replays without reconstructing any of it.
- */
-export interface AgentConfig {
-  /**
-   * Deployment to plan with. Named in the request rather than left to the port
-   * so that swapping models re-plans instead of replaying the other model's
-   * answer — the adapter honours it (see `adapters/ai-sdk-llm.ts`).
-   */
-  readonly model: string;
-  /** Follow-up rounds the reviewer may add after the initial plan. */
-  readonly maxRounds?: number;
-  /** Limits attached to every command this agent runs. */
-  readonly limits?: CommandLimits;
-  /** Earlier goals from this directory to show the planner. 0 disables it. */
-  readonly historyLimit?: number;
-  /**
-   * Park every command behind `approval.proposed` instead of running it. The
-   * operator reads the shell commands, then releases them with
-   * `runtime.grantApproval`. Off by default, which is the behavior every
-   * earlier version had.
-   */
-  readonly approveCommands?: boolean;
-}
-
-export const DEFAULT_MAX_ROUNDS = 2;
-export const DEFAULT_HISTORY_LIMIT = 3;
-/**
- * One re-ask when a reply is not usable JSON. A reviewer that fails to parse
- * is the expensive case: its commands have already run, so losing the round
- * means a re-run repeats all of that work.
- */
-export const DEFAULT_RETRIES = 1;
-
 /** Ask the model for a bounded, structured implementation plan. */
-export const createPlanner = ({
-  model,
-  historyLimit = DEFAULT_HISTORY_LIMIT,
-  approveCommands = false,
-}: AgentConfig) =>
-  codingAgentKit.llmBehavior({
-    name: "planner",
-    on: ["goal.created"],
-    prompt: (event, view) => ({
-      model,
-      system:
-        "You are a careful coding agent with shell access to the current working directory through the commands you return. " +
-        "Return JSON only with summary and commands. Commands must be non-interactive and directly useful for the requested change. " +
-        "Plan for the workspace described in the message; prefer the paths listed there over guesses, and do not assume files that are not listed. " +
-        "Treat uncommitted changes as work in progress: never discard, stash, or check out over them unless the goal says to. " +
-        "Build on the earlier goals when they are relevant, and do not redo work they already finished. " +
-        "Do not claim that files, repository contents, or shell access are unavailable. " +
-        "The summary must describe the work the commands will perform, not pretend that commands have already been run.",
-      prompt:
-        `Workspace:\n${describeWorkspace(workspaceIn(view))}\n\n` +
-        describeHistory(view, workspaceIn(view)?.cwd, historyLimit) +
-        `Goal: ${event.payload.text}\n\n` +
-        "Create a concise command plan. The commands will be executed in that working directory after you respond, and their output will be shown separately.",
-    }),
-    output: plan,
-    retries: DEFAULT_RETRIES,
-    andThen: (output, event, ctx) => {
-      const taskId = objectId<"task">(`task_${event.payload.goalId}`);
-      return [
-        ctx.m.addObject(
-          "task",
-          {
-            request: event.payload.text,
-            summary: output.summary,
-            status: "planned",
-            ...(workspaceIn(ctx.view) === undefined ? {} : { cwd: workspaceIn(ctx.view)?.cwd }),
-            round: 0,
-          },
-          { id: taskId },
-        ),
-        ...commandMutations(taskId, 0, output.commands, approveCommands),
-      ];
-    },
-  });
+export const planner = codingAgentKit.llmBehavior({
+  name: "planner",
+  on: ["goal.created"],
+  prompt: (event, view) => ({
+    model: settingsIn(view).model,
+    system:
+      "You are a careful coding agent with shell access to the current working directory through the commands you return. " +
+      "Return JSON only with summary and commands. Commands must be non-interactive and directly useful for the requested change. " +
+      "Plan for the workspace described in the message; prefer the paths listed there over guesses, and do not assume files that are not listed. " +
+      "Treat uncommitted changes as work in progress: never discard, stash, or check out over them unless the goal says to. " +
+      "Build on the earlier goals when they are relevant, and do not redo work they already finished. " +
+      "Do not claim that files, repository contents, or shell access are unavailable. " +
+      "The summary must describe the work the commands will perform, not pretend that commands have already been run.",
+    prompt:
+      `Workspace:\n${describeWorkspace(workspaceIn(view))}\n\n` +
+      describeHistory(view, workspaceIn(view)?.cwd, settingsIn(view).historyLimit) +
+      `Goal: ${event.payload.text}\n\n` +
+      "Create a concise command plan. The commands will be executed in that working directory after you respond, and their output will be shown separately.",
+  }),
+  output: plan,
+  retries: DEFAULT_RETRIES,
+  andThen: (output, event, ctx) => {
+    const taskId = objectId<"task">(`task_${event.payload.goalId}`);
+    return [
+      ctx.m.addObject(
+        "task",
+        {
+          request: event.payload.text,
+          summary: output.summary,
+          status: "planned",
+          ...(workspaceIn(ctx.view) === undefined ? {} : { cwd: workspaceIn(ctx.view)?.cwd }),
+          round: 0,
+        },
+        { id: taskId },
+      ),
+      ...commandMutations(taskId, 0, output.commands, settingsIn(ctx.view).approveCommands),
+    ];
+  },
+});
 
 /**
  * Execute each planned command through the injected ToolExecutor port, in the
  * directory the planner was shown and under the configured limits — so the
  * prompt's promise about where commands run is enforced, not assumed.
  */
-export const createExecutor = ({ limits = DEFAULT_LIMITS }: AgentConfig) =>
-  codingAgentKit.behavior({
-    name: "executor",
-    on: ["object.created"],
-    where: (event) => event.payload.objectType === "command",
-    run: async (event, ctx) => {
-      if (event.type !== "object.created" || event.payload.objectType !== "command") return [];
-      const command = event.payload.data;
-      const workspace = workspaceIn(ctx.view);
-      // Refuse rather than guess: running somewhere the plan never saw is
-      // worse than a recorded failure that says why.
-      if (workspace === undefined) {
-        return [
-          ctx.m.patchObject("command", event.payload.objectId, {
-            status: "failed",
-            output: "No workspace has been sampled; emit workspace.sampled before the goal.",
-          }),
-        ];
-      }
-      const input: BashInput = { command: command.command, cwd: workspace.cwd, ...limits };
-      const result = await ctx.tool("bash", input);
-      const output = result.ok ? stringify(result.value) : stringify(result.error);
+export const executor = codingAgentKit.behavior({
+  name: "executor",
+  on: ["object.created"],
+  where: (event) => event.payload.objectType === "command",
+  run: async (event, ctx) => {
+    if (event.type !== "object.created" || event.payload.objectType !== "command") return [];
+    const command = event.payload.data;
+    const workspace = workspaceIn(ctx.view);
+    // Refuse rather than guess: running somewhere the plan never saw is
+    // worse than a recorded failure that says why.
+    if (workspace === undefined) {
       return [
         ctx.m.patchObject("command", event.payload.objectId, {
-          status: result.ok ? "completed" : "failed",
-          output,
+          status: "failed",
+          output: "No workspace has been sampled; emit workspace.sampled before the goal.",
         }),
       ];
-    },
-  });
+    }
+    const { timeoutMs, maxOutputBytes } = settingsIn(ctx.view);
+    const input: BashInput = {
+      command: command.command,
+      cwd: workspace.cwd,
+      timeoutMs,
+      maxOutputBytes,
+    };
+    const result = await ctx.tool("bash", input);
+    const output = result.ok ? stringify(result.value) : stringify(result.error);
+    return [
+      ctx.m.patchObject("command", event.payload.objectId, {
+        status: result.ok ? "completed" : "failed",
+        output,
+      }),
+    ];
+  },
+});
 
 /**
  * Mark the task once the newest round's commands have all reached a terminal
@@ -536,92 +561,93 @@ export const finisher = codingAgentKit.behavior({
  * Bounded by `maxRounds`, and self-limiting by construction: it only fires when
  * a task *becomes* terminal, and its own follow-up patch sets `running`.
  */
-export const createReviewer = ({
-  model,
-  maxRounds = DEFAULT_MAX_ROUNDS,
-  approveCommands = false,
-}: AgentConfig) =>
-  codingAgentKit.llmBehavior({
-    name: "reviewer",
-    on: ["object.patched"],
-    where: (event) =>
-      event.payload.objectType === "task" &&
-      (event.payload.patch.status === "completed" || event.payload.patch.status === "failed"),
-    prompt: (event, view) => {
-      const task = view.object(event.payload.objectId as ObjectId<"task">);
-      const commands = commandsOf(view, event.payload.objectId as ObjectId<"task">);
-      const round = task?.data.round ?? 0;
-      return {
-        model,
-        system:
-          "You are reviewing a coding agent's finished commands. " +
-          "Return JSON only with done, report, and commands. " +
-          "Set done to true when the goal is met or nothing further can usefully be run, and leave commands empty. " +
-          "Set done to false and return follow-up commands only when the output shows work still to do — a failed command to fix, or a next step the output makes obvious. " +
-          "A refused command was rejected by the operator: do not propose it again. " +
-          "Do not reach the same effect by other means either — a different tool or language for the same action is still the refused action. " +
-          "Propose a narrower step, one that shows what would change without changing it, or set done to true and say the work needs the operator. " +
-          "The report must describe what the output actually shows; never claim a result the output does not support.",
-        prompt:
-          `Workspace:\n${describeWorkspace(workspaceIn(view))}\n\n` +
-          `Goal: ${task?.data.request ?? "(unknown)"}\n` +
-          `Plan: ${task?.data.summary ?? "(unknown)"}\n` +
-          `Rounds used: ${round} of ${maxRounds}\n\n` +
-          describeDeclined(task?.data.declined) +
-          `Commands run:\n${
-            commands.length === 0 ? "(none)" : commands.map(describeCommand).join("\n\n")
-          }`,
-      };
-    },
-    output: review,
-    retries: DEFAULT_RETRIES,
-    andThen: (output, event, ctx) => {
-      const taskId = event.payload.objectId as ObjectId<"task">;
-      const task = ctx.view.object(taskId);
-      if (task === undefined) return [];
-      const round = task.data.round ?? 0;
-      const exhausted = round >= maxRounds;
-      if (output.done || output.commands.length === 0 || exhausted) {
-        const note =
-          output.done || output.commands.length === 0
-            ? ""
-            : `\n\n(Stopped after ${maxRounds} round(s) with follow-up work still proposed.)`;
-        return [ctx.m.patchObject("task", taskId, { report: `${output.report}${note}` })];
-      }
-      return [
-        ctx.m.patchObject("task", taskId, {
-          status: "running",
-          round: round + 1,
-          report: output.report,
-        }),
-        ...commandMutations(taskId, round + 1, output.commands, approveCommands),
-      ];
-    },
-  });
+export const reviewer = codingAgentKit.llmBehavior({
+  name: "reviewer",
+  on: ["object.patched"],
+  where: (event) =>
+    event.payload.objectType === "task" &&
+    (event.payload.patch.status === "completed" || event.payload.patch.status === "failed"),
+  prompt: (event, view) => {
+    const task = view.object(event.payload.objectId as ObjectId<"task">);
+    const commands = commandsOf(view, event.payload.objectId as ObjectId<"task">);
+    const round = task?.data.round ?? 0;
+    const { model, maxRounds } = settingsIn(view);
+    return {
+      model,
+      system:
+        "You are reviewing a coding agent's finished commands. " +
+        "Return JSON only with done, report, and commands. " +
+        "Set done to true when the goal is met or nothing further can usefully be run, and leave commands empty. " +
+        "Set done to false and return follow-up commands only when the output shows work still to do — a failed command to fix, or a next step the output makes obvious. " +
+        "A refused command was rejected by the operator: do not propose it again. " +
+        "Do not reach the same effect by other means either — a different tool or language for the same action is still the refused action. " +
+        "Propose a narrower step, one that shows what would change without changing it, or set done to true and say the work needs the operator. " +
+        "The report must describe what the output actually shows; never claim a result the output does not support.",
+      prompt:
+        `Workspace:\n${describeWorkspace(workspaceIn(view))}\n\n` +
+        `Goal: ${task?.data.request ?? "(unknown)"}\n` +
+        `Plan: ${task?.data.summary ?? "(unknown)"}\n` +
+        `Rounds used: ${round} of ${maxRounds}\n\n` +
+        describeDeclined(task?.data.declined) +
+        `Commands run:\n${
+          commands.length === 0 ? "(none)" : commands.map(describeCommand).join("\n\n")
+        }`,
+    };
+  },
+  output: review,
+  retries: DEFAULT_RETRIES,
+  andThen: (output, event, ctx) => {
+    const taskId = event.payload.objectId as ObjectId<"task">;
+    const task = ctx.view.object(taskId);
+    if (task === undefined) return [];
+    const round = task.data.round ?? 0;
+    const { maxRounds, approveCommands } = settingsIn(ctx.view);
+    const exhausted = round >= maxRounds;
+    if (output.done || output.commands.length === 0 || exhausted) {
+      const note =
+        output.done || output.commands.length === 0
+          ? ""
+          : `\n\n(Stopped after ${maxRounds} round(s) with follow-up work still proposed.)`;
+      return [ctx.m.patchObject("task", taskId, { report: `${output.report}${note}` })];
+    }
+    return [
+      ctx.m.patchObject("task", taskId, {
+        status: "running",
+        round: round + 1,
+        report: output.report,
+      }),
+      ...commandMutations(taskId, round + 1, output.commands, approveCommands),
+    ];
+  },
+});
 
-export const createCodingAgentBehaviors = (
-  config: AgentConfig,
-): readonly AnyBehavior<CodingAgentSchema>[] => [
+export const codingAgentBehaviors: readonly AnyBehavior<CodingAgentSchema>[] = [
+  settingsRecorder,
   recorder,
   declineRecorder,
-  createPlanner(config),
-  createExecutor(config),
+  planner,
+  executor,
   finisher,
-  createReviewer(config),
+  reviewer,
 ];
 
+/**
+ * Kept as a function for call sites that read better that way; there is
+ * nothing left to configure, because the settings now arrive as an event.
+ */
+export const createCodingAgentBehaviors = (): readonly AnyBehavior<CodingAgentSchema>[] =>
+  codingAgentBehaviors;
+
 /** Compose the agent with an LLM and a sandbox/tool implementation. */
-export const createCodingAgent = (
-  options: AgentConfig & {
-    readonly llm: LlmPort;
-    readonly tools: ToolExecutor;
-    readonly store?: "memory" | { readonly sqlite: string };
-    readonly tracer?: TracerSink<CodingAgentSchema>;
-  },
-) =>
+export const createCodingAgent = (options: {
+  readonly llm: LlmPort;
+  readonly tools: ToolExecutor;
+  readonly store?: "memory" | { readonly sqlite: string };
+  readonly tracer?: TracerSink<CodingAgentSchema>;
+}) =>
   createDefaultRuntime({
     schema: codingAgentSchema,
-    behaviors: createCodingAgentBehaviors(options),
+    behaviors: codingAgentBehaviors,
     llm: options.llm,
     tools: options.tools,
     store: options.store,
