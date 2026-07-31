@@ -366,9 +366,10 @@ kills one that overruns, and `ACTIVEGRAPH_MAX_OUTPUT_BYTES` (1MB) kills one that
 bounds what a single command can append to the durable log. Because the contract travels in the
 input, every `tool.requested` event records where its command ran and under which limits.
 
-Before planning, the runner samples a `Workspace` — cwd, top-level entry names (less `.git`,
+Before planning, the runner samples a `Workspace` — cwd, entry names two levels deep (less `.git`,
 `node_modules`, and the event log, which sits in the working directory by default and is the agent's
-own history rather than part of the project), and, inside a repository, the git root, the
+own history rather than part of the project), budgeted eight children to a directory so one crowded
+folder cannot crowd out the rest, and, inside a repository, the git root, the
 checked-out branch, and the porcelain status lines for uncommitted work
 (capped at 20, with the overflow counted rather than dropped in silence) — and emits it as a
 `workspace.sampled` event. Knowing the branch and what is dirty is what keeps a plan from checking

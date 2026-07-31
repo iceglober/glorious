@@ -112,17 +112,18 @@ const unreachableProvider = (dbPath: string): boolean => {
 /** What the run spent, from the usage the adapter recorded in the log. */
 const cost = async (
   dbPath: string,
-): Promise<{ tokensIn: number; tokensOut: number; calls: number }> => {
-  if (!existsSync(dbPath)) return { tokensIn: 0, tokensOut: 0, calls: 0 };
+): Promise<{ tokensIn: number; tokensOut: number; calls: number; commands: number }> => {
+  if (!existsSync(dbPath)) return { tokensIn: 0, tokensOut: 0, calls: 0, commands: 0 };
   const store = createSqliteEventStore<CodingAgentSchema>(dbPath);
   try {
     const log = await store.read({ branch: "main" });
-    if (!log.ok) return { tokensIn: 0, tokensOut: 0, calls: 0 };
+    if (!log.ok) return { tokensIn: 0, tokensOut: 0, calls: 0, commands: 0 };
     const summary = summarizeRun(log.value);
     return {
       tokensIn: summary.inputTokens,
       tokensOut: summary.outputTokens,
       calls: summary.llmCalls,
+      commands: summary.commands,
     };
   } finally {
     store.close();
@@ -195,6 +196,8 @@ interface Attempt {
   readonly tokensIn: number;
   readonly tokensOut: number;
   readonly calls: number;
+  /** Shell commands run — the other thing a plan spends. */
+  readonly commands: number;
   /** The provider could not be reached, so this attempt measured nothing. */
   readonly unreachable: boolean;
   /**
@@ -353,7 +356,7 @@ for (const task of tasks) {
   console.log(
     ` ${task.name}: ${won}/${scored.length}${lost === 0 ? "" : ` (+${lost} unreachable)`}` +
       ` (${(elapsed / results.length).toFixed(0)}s avg, ${Math.max(...times).toFixed(0)}s worst,` +
-      ` ${mean((attempt) => attempt.calls)} calls,` +
+      ` ${mean((attempt) => attempt.calls)} calls, ${mean((attempt) => attempt.commands)} commands,` +
       ` ${mean((attempt) => attempt.tokensIn)}/${mean((attempt) => attempt.tokensOut)} tokens in/out` +
       `${replayedCount === scored.length ? "" : `, ${replayedCount}/${scored.length} replay`})`,
   );

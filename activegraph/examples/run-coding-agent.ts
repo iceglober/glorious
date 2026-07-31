@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { createAzureLlm, createConsoleTracer } from "../index";
 import { pendingCommands } from "./approvals";
 import {
@@ -26,6 +27,8 @@ const rawTrace = process.env.ACTIVEGRAPH_TRACE === "1";
 const model = process.env.ACTIVEGRAPH_MODEL ?? "gpt-4o-mini";
 const MAX_ENTRIES = 60;
 const MAX_DIRTY = 20;
+/** Children shown per directory, so one crowded folder cannot crowd out the rest. */
+const MAX_CHILDREN = 8;
 
 /**
  * Entries the workspace listing leaves out.
@@ -94,10 +97,26 @@ const sampleWorkspace = (): Workspace => {
   const branch = gitRoot === "" ? "" : git("rev-parse", "--abbrev-ref", "HEAD");
   const status = gitRoot === "" ? "" : git("status", "--porcelain");
   const dirty = status === "" ? [] : capped(status.split("\n"), MAX_DIRTY);
+  // Two levels, not one: almost every plan opened with a `find` or an `ls`
+  // that rediscovered what the listing had already said, and a directory's
+  // second level is usually where its source lives.
+  //
+  // The depth is budgeted per directory rather than across the listing. A
+  // single crowded directory otherwise eats the whole allowance — this
+  // repository has enough changesets to fill sixty entries alphabetically and
+  // push every other top-level name off the end, which would tell the planner
+  // less than one level did.
+  const children = (name: string): readonly string[] => {
+    const inside = readdirSync(join(cwd, name), { withFileTypes: true })
+      .filter((entry) => !hidden.has(entry.name))
+      .map((entry) => `${name}/${entry.name}${entry.isDirectory() ? "/" : ""}`)
+      .sort();
+    return inside.length === 0 ? [`${name}/`] : capped(inside, MAX_CHILDREN);
+  };
   const names = readdirSync(cwd, { withFileTypes: true })
     .filter((entry) => !hidden.has(entry.name))
-    .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
-    .sort();
+    .sort((left, right) => (left.name < right.name ? -1 : 1))
+    .flatMap((entry) => (entry.isDirectory() ? children(entry.name) : [entry.name]));
   return {
     cwd,
     entries: capped(names, MAX_ENTRIES),
