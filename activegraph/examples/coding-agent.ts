@@ -124,6 +124,15 @@ export const codingAgentKit = createKit(codingAgentSchema);
 export const WORKSPACE_ID = objectId<"workspace">("workspace");
 export const SETTINGS_ID = objectId<"settings">("settings");
 
+/**
+ * Two follow-up rounds.
+ *
+ * Measured against four on `multi-file-signature`, the one eval task the agent
+ * fails intermittently: eight runs each, 7/8 both ways. More rounds bought
+ * nothing and cost time — the failures at four rounds ran to 67s. A first
+ * comparison of three runs each read 2/3 against 3/3, which is what changing a
+ * default on three runs looks like.
+ */
 export const DEFAULT_MAX_ROUNDS = 2;
 export const DEFAULT_HISTORY_LIMIT = 3;
 /**
