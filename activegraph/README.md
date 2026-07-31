@@ -197,6 +197,12 @@ away, and what is newly uncommitted. Command output cannot answer that question 
 writes a file usually prints nothing — and "working tree: unchanged" after a read-only goal is worth
 as much as the list after a destructive one.
 
+When a goal does not land and the run modified tracked files, it also says how to undo exactly what
+it changed. Only files that were clean when the run started are offered: a file the operator had
+already modified is work in progress, and `git restore` on it would destroy work the agent never
+touched, so a suggestion that cannot tell the two apart is worse than none. Untracked files are left
+out for the same reason — undoing those means deleting them, and they are already named as created.
+
 Every run also ends with what it cost, folded out of the log by
 [`run-summary.ts`](examples/run-summary.ts): calls made, how many the log's own cache answered,
 characters of context sent and saved, commands run, and the provider's token counts — including

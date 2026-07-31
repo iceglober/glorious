@@ -45,3 +45,20 @@ export const describeChanges = (before: Workspace, after: Workspace): string | n
   ].filter((line) => line !== "");
   return lines.length === 0 ? null : lines.join("\n  ");
 };
+
+/**
+ * How to undo the file changes this run made, when that is safe to say.
+ *
+ * Only files that were clean when the run started qualify. A file the operator
+ * had already modified is their work in progress, and `git restore` on it
+ * would destroy work the agent never touched — so a suggestion that cannot
+ * distinguish the two is worse than none. Untracked files are left out too:
+ * they are already named as created, and undoing them means deletion.
+ */
+export const undoHint = (before: Workspace, after: Workspace): string | null => {
+  if (after.gitRoot === undefined) return null;
+  const restorable = workspaceChanges(before, after)
+    .newlyDirty.filter((line) => !line.startsWith("??"))
+    .map(pathOf);
+  return restorable.length === 0 ? null : `git restore -- ${restorable.join(" ")}`;
+};

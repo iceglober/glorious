@@ -17,7 +17,7 @@ import { formatRunSummary, summarizeRun } from "./run-summary";
 import { createShellTool } from "./shell-tool";
 import { withProgress } from "./tool-progress";
 import { innermostMessage, renderEvent } from "./trace-view";
-import { describeChanges } from "./workspace-diff";
+import { describeChanges, undoHint } from "./workspace-diff";
 
 /** A goal on the command line runs once; without one, the runner opens a session. */
 const goal = process.argv.slice(2).join(" ").trim();
@@ -288,6 +288,9 @@ const runOneGoal = async (goal: string): Promise<void> => {
   if (resampled.ok) await runtime.runUntilIdle();
   const changes = describeChanges(workspaceBefore, workspaceAfter);
   console.log(changes === null ? "\nworking tree: unchanged" : `\nworking tree:\n  ${changes}`);
+  // Only when the goal did not land: after a success these edits are the point.
+  const undo = task?.data.status === "completed" ? null : undoHint(workspaceBefore, workspaceAfter);
+  if (undo !== null) console.log(`  to undo what this run changed: ${undo}`);
 
   const appended = runtime.log().filter((event) => event.id > before);
   console.error(`\n[activegraph] this goal:\n  ${formatRunSummary(summarizeRun(appended))}`);

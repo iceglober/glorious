@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Workspace } from "./coding-agent";
-import { describeChanges, workspaceChanges } from "./workspace-diff";
+import { describeChanges, undoHint, workspaceChanges } from "./workspace-diff";
 
 const base: Workspace = {
   cwd: "/repo",
@@ -50,5 +50,41 @@ describe("workspace changes", () => {
     const after: Workspace = { ...outside, entries: ["a.txt", "b.txt"] };
 
     expect(describeChanges(outside, after)).toBe("created: b.txt");
+  });
+});
+
+describe("undoHint", () => {
+  const clean: Workspace = {
+    cwd: "/repo",
+    gitRoot: "/repo",
+    branch: "main",
+    dirty: [],
+    entries: [],
+  };
+
+  test("names the files the run dirtied, and nothing else", () => {
+    const after: Workspace = { ...clean, dirty: [" M src/text.ts", " M src/text.test.ts"] };
+
+    expect(undoHint(clean, after)).toBe("git restore -- src/text.ts src/text.test.ts");
+  });
+
+  test("never offers to restore work the operator had already started", () => {
+    // ` M notes.md` was dirty before the run: restoring it would destroy work
+    // the agent never touched.
+    const before: Workspace = { ...clean, dirty: [" M notes.md"] };
+    const after: Workspace = { ...clean, dirty: [" M notes.md", " M src/text.ts"] };
+
+    expect(undoHint(before, after)).toBe("git restore -- src/text.ts");
+  });
+
+  test("leaves untracked files alone, since undoing them means deleting them", () => {
+    const after: Workspace = { ...clean, dirty: ["?? scratch.txt"] };
+
+    expect(undoHint(clean, after)).toBeNull();
+  });
+
+  test("says nothing when there is no repository or nothing changed", () => {
+    expect(undoHint(clean, clean)).toBeNull();
+    expect(undoHint({ cwd: "/tmp/x", entries: [] }, { cwd: "/tmp/x", entries: [] })).toBeNull();
   });
 });
