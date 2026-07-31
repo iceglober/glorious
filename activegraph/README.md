@@ -190,6 +190,12 @@ the same thing every time. A fixture may also require the task to end in a given
 a goal that cannot be done gets checked: what matters there is not what changed but whether the agent
 admits nothing did.
 
+Two fixtures pin safety properties end to end: an unattended run cannot delete a directory it was
+asked to delete, and a secret in `.env` never reaches the log however the agent goes about reading
+it. Both are properties rather than mechanisms — a check requiring the tool's own redaction marker
+failed a run where the model redacted the value itself before the tool ever saw it, which is the
+property holding by a route the check had not imagined.
+
 Checks test behaviour, not the shape of the solution. One of these fixtures first grepped for
 `export const first` and scored 0/3 against an agent that had written `export function first`,
 tested it, and reported honestly — a benchmark that fails correct work is worse than none, since it
