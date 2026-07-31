@@ -18,6 +18,7 @@
     "remove-completion-grounding",
     "surface-intermediate-text",
     "teardown-basic-chat",
-    "tui-progress-animations"
+    "tui-progress-animations",
+    "v2-rewrite"
   ]
 }
