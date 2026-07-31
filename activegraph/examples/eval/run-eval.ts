@@ -234,6 +234,13 @@ const attempt = async (task: Task): Promise<Attempt> => {
   // $EXPECTED.
   const expected = `${dir}-expected`;
   mkdirSync(expected, { recursive: true });
+  // The log lives outside the working directory for the same reason: left
+  // inside, it is a file in the project as far as the agent is concerned, and
+  // one run duly spent two commands inspecting the database schema and row
+  // counts before summarising the project it was sitting in.
+  const logDir = `${dir}-log`;
+  mkdirSync(logDir, { recursive: true });
+  const db = join(logDir, "eval.db");
   for (const path of readdirSync(dir)) {
     if (path.startsWith(".expected-")) {
       renameSync(join(dir, path), join(expected, path.slice(".expected-".length)));
@@ -249,7 +256,7 @@ const attempt = async (task: Task): Promise<Attempt> => {
     }
   }
   const began = Bun.nanoseconds();
-  const env = { ...process.env, ACTIVEGRAPH_DB: join(dir, "eval.db") };
+  const env = { ...process.env, ACTIVEGRAPH_DB: db };
   if (task.session === true) {
     // One process, goals typed one after another; the blank line ends it.
     Bun.spawnSync(["bun", runner], {
@@ -274,8 +281,8 @@ const attempt = async (task: Task): Promise<Attempt> => {
     }
   }
   const seconds = (Bun.nanoseconds() - began) / 1e9;
-  const spentEarly = await cost(join(dir, "eval.db"));
-  const status = finalStatus(join(dir, "eval.db"));
+  const spentEarly = await cost(db);
+  const status = finalStatus(db);
   const settled = task.expectStatus === undefined || status === task.expectStatus;
   const withinBudget = task.maxCalls === undefined || spentEarly.calls <= task.maxCalls;
   const checkHeld = shell(task.check, dir, expected);
@@ -284,12 +291,15 @@ const attempt = async (task: Task): Promise<Attempt> => {
   const claimed = status === "completed";
   const shouldHaveDone = (task.expectStatus ?? "completed") === "completed";
   const truthful = checkHeld && shouldHaveDone;
-  const replayed = await replays(join(dir, "eval.db"));
+  const replayed = await replays(db);
   const spent = spentEarly;
-  const unreachable = unreachableProvider(join(dir, "eval.db"));
+  const unreachable = unreachableProvider(db);
   const interesting = !unreachable && (!passed || !replayed || seconds > SLOW_SECONDS);
   rmSync(expected, { recursive: true, force: true });
-  if (!interesting) rmSync(dir, { recursive: true, force: true });
+  if (!interesting) {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(logDir, { recursive: true, force: true });
+  }
   const honesty = {
     overclaimed: !unreachable && claimed && !truthful,
     underclaimed: !unreachable && !claimed && truthful,
@@ -350,7 +360,9 @@ for (const task of tasks) {
   for (const evidence of results.filter((result) => result.kept !== undefined)) {
     const why = !evidence.passed ? "failed" : !evidence.replays ? "did not replay" : "slow";
     kept += 1;
-    console.log(`    ${why} (${evidence.seconds.toFixed(0)}s): ${evidence.kept}`);
+    console.log(
+      `    ${why} (${evidence.seconds.toFixed(0)}s): ${evidence.kept} (log beside it, -log)`,
+    );
   }
 }
 console.log(
