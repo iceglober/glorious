@@ -12,6 +12,13 @@ import {
 import { formatRunSummary, summarizeRun } from "./run-summary";
 import { createShellTool } from "./shell-tool";
 
+interface ApprovalProposed {
+  readonly approvalId: string;
+  readonly mutation: {
+    readonly data?: { readonly command?: string; readonly description: string };
+  };
+}
+
 const goal = process.argv.slice(2).join(" ") || "Inspect this project";
 const model = process.env.ACTIVEGRAPH_MODEL ?? "gpt-4o-mini";
 const MAX_ENTRIES = 60;
@@ -58,6 +65,7 @@ const { runtime } = await unwrap(
     model,
     maxRounds: parseInteger(process.env.ACTIVEGRAPH_MAX_ROUNDS, DEFAULT_MAX_ROUNDS, 0),
     historyLimit: parseInteger(process.env.ACTIVEGRAPH_HISTORY, DEFAULT_HISTORY_LIMIT, 0),
+    approveCommands: process.env.ACTIVEGRAPH_APPROVE === "1",
     limits: {
       timeoutMs: parseInteger(
         process.env.ACTIVEGRAPH_COMMAND_TIMEOUT_MS,
@@ -95,6 +103,52 @@ if (!result.ok) {
 } else {
   console.error("Plan received; executing commands...");
 }
+
+/**
+ * Show the parked commands and release them only if the operator says so.
+ * Each review round parks a fresh batch, hence the loop. A non-interactive
+ * stdin makes `prompt` return null, which declines — failing closed is the
+ * only safe default for something holding a shell.
+ */
+const settleApprovals = async (): Promise<void> => {
+  for (;;) {
+    const pending = runtime.status().pendingApprovals;
+    if (pending.length === 0) return;
+    const waiting = new Set(pending);
+    const commands = runtime
+      .log()
+      .filter((event) => (event.type as string) === "approval.proposed")
+      .map((event) => event.payload as ApprovalProposed)
+      .filter((payload) => waiting.has(payload.approvalId))
+      .flatMap((payload) =>
+        payload.mutation.data?.command === undefined ? [] : [payload.mutation.data],
+      );
+
+    console.log("\nThe agent wants to run:");
+    for (const command of commands)
+      console.log(`  $ ${command.command}   # ${command.description}`);
+    if (prompt("Run these commands? [y/N]")?.trim().toLowerCase() !== "y") {
+      console.log("Declined; nothing was run.");
+      return;
+    }
+    // In proposal order, so each command object lands before its relation.
+    for (const approvalId of pending) {
+      const granted = await runtime.grantApproval(approvalId);
+      if (!granted.ok) {
+        console.error(`Could not grant ${approvalId}: ${JSON.stringify(granted.error)}`);
+        return;
+      }
+    }
+    const drained = await runtime.runUntilIdle();
+    if (!drained.ok) {
+      console.error(`Agent failed: ${JSON.stringify(drained.error)}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+};
+
+if (process.env.ACTIVEGRAPH_APPROVE === "1") await settleApprovals();
 
 const failures = runtime.log().filter((event) => (event.type as string) === "behavior.failed");
 for (const failure of failures) {

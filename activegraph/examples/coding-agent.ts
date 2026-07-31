@@ -141,18 +141,28 @@ const review = z
     commands: normalize(value.commands),
   }));
 
-/** One round's worth of command objects, each hung off the task. */
+/**
+ * One round's worth of command objects, each hung off the task.
+ *
+ * Under `approveCommands` both mutations park behind `approval.proposed`
+ * instead of applying. Nothing runs, because the executor fires on
+ * `object.created` and that event never happens until the gate is released —
+ * so the operator sees the shell commands before the shell does. The relation
+ * is gated too: it cannot attach to an object that does not exist yet.
+ */
 const commandMutations = (
   taskId: ObjectId<"task">,
   round: number,
   commands: readonly PlannedCommand[],
+  gate: boolean,
 ): readonly Mutation<CodingAgentSchema>[] =>
   commands.flatMap((item, index) => {
     const commandId = objectId<"command">(`command_${taskId}_r${round}_${index}`);
     const { m } = codingAgentKit;
+    const approval = gate ? ({ requiresApproval: true } as const) : {};
     return [
-      m.addObject("command", { ...item, status: "pending", round }, { id: commandId }),
-      m.addRelation("has_command", taskId, commandId),
+      m.addObject("command", { ...item, status: "pending", round }, { id: commandId, ...approval }),
+      m.addRelation("has_command", taskId, commandId, approval),
     ];
   });
 
@@ -287,6 +297,13 @@ export interface AgentConfig {
   readonly limits?: CommandLimits;
   /** Earlier goals from this directory to show the planner. 0 disables it. */
   readonly historyLimit?: number;
+  /**
+   * Park every command behind `approval.proposed` instead of running it. The
+   * operator reads the shell commands, then releases them with
+   * `runtime.grantApproval`. Off by default, which is the behavior every
+   * earlier version had.
+   */
+  readonly approveCommands?: boolean;
 }
 
 export const DEFAULT_MAX_ROUNDS = 2;
@@ -299,7 +316,11 @@ export const DEFAULT_HISTORY_LIMIT = 3;
 export const DEFAULT_RETRIES = 1;
 
 /** Ask the model for a bounded, structured implementation plan. */
-export const createPlanner = ({ model, historyLimit = DEFAULT_HISTORY_LIMIT }: AgentConfig) =>
+export const createPlanner = ({
+  model,
+  historyLimit = DEFAULT_HISTORY_LIMIT,
+  approveCommands = false,
+}: AgentConfig) =>
   codingAgentKit.llmBehavior({
     name: "planner",
     on: ["goal.created"],
@@ -335,7 +356,7 @@ export const createPlanner = ({ model, historyLimit = DEFAULT_HISTORY_LIMIT }: A
           },
           { id: taskId },
         ),
-        ...commandMutations(taskId, 0, output.commands),
+        ...commandMutations(taskId, 0, output.commands, approveCommands),
       ];
     },
   });
@@ -424,7 +445,11 @@ export const finisher = codingAgentKit.behavior({
  * Bounded by `maxRounds`, and self-limiting by construction: it only fires when
  * a task *becomes* terminal, and its own follow-up patch sets `running`.
  */
-export const createReviewer = ({ model, maxRounds = DEFAULT_MAX_ROUNDS }: AgentConfig) =>
+export const createReviewer = ({
+  model,
+  maxRounds = DEFAULT_MAX_ROUNDS,
+  approveCommands = false,
+}: AgentConfig) =>
   codingAgentKit.llmBehavior({
     name: "reviewer",
     on: ["object.patched"],
@@ -472,7 +497,7 @@ export const createReviewer = ({ model, maxRounds = DEFAULT_MAX_ROUNDS }: AgentC
           round: round + 1,
           report: output.report,
         }),
-        ...commandMutations(taskId, round + 1, output.commands),
+        ...commandMutations(taskId, round + 1, output.commands, approveCommands),
       ];
     },
   });

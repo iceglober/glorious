@@ -400,6 +400,38 @@ describe("coding agent", () => {
     expect(failures(runtime)).toEqual([]);
   });
 
+  test("under approveCommands nothing runs until the gate is released", async () => {
+    const { calls, tools } = recordingTools();
+    const { runtime, status } = await runAgent({
+      tools,
+      llm: planThenDone(),
+      config: { ...config, approveCommands: true },
+    });
+
+    // The plan exists and is readable; the shell has seen none of it.
+    expect(runtime.view().objects("task")[0]?.data.summary).toBe("Add a greeting");
+    expect(runtime.view().objects("command")).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(status.pendingApprovals.length).toBeGreaterThan(0);
+    const proposed = runtime
+      .log()
+      .filter((event) => (event.type as string) === "approval.proposed")
+      .map((event) => (event.payload as { mutation: { data?: { command?: string } } }).mutation)
+      .flatMap((mutation) => (mutation.data?.command === undefined ? [] : [mutation.data.command]));
+    expect(proposed).toEqual(["ls", "printf hello"]);
+
+    // Released in proposal order, so each command lands before its relation.
+    for (const approvalId of status.pendingApprovals) {
+      unwrap(await runtime.grantApproval(approvalId));
+    }
+    const released = unwrap(await runtime.runUntilIdle());
+
+    expect(released.pendingApprovals).toEqual([]);
+    expect(calls).toHaveLength(2);
+    expect(runtime.view().objects("task")[0]?.data.status).toBe("completed");
+    expect(failures(runtime)).toEqual([]);
+  });
+
   test("without a sampled workspace the agent refuses to run commands", async () => {
     const { calls, tools } = recordingTools();
     const { runtime } = await runAgent({ tools, llm: planThenDone(), workspace: null });
