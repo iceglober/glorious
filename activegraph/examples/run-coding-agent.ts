@@ -75,8 +75,18 @@ const capped = (values: readonly string[], limit: number): readonly string[] =>
     : [...values.slice(0, limit), `…and ${values.length - limit} more`];
 
 /**
- * Sample the directory the plan will run in: what is on disk, which branch is
- * checked out, and what is uncommitted. This is the agent's whole view of the
+ * Sample the directory the plan will run in: names, not contents.
+ *
+ * Putting the README's head and the manifest's script names in here is the
+ * obvious next step — nearly every plan spends a command reading them — and it
+ * was tried. Commands did not drop: three tasks at two runs each ran 3, 3 and 2
+ * either way, while the input tokens rose by what the README weighs. Worse, a
+ * goal about the date now carried a README's contents into the prompt: file
+ * content that enters only when the agent chooses to read it is a smaller
+ * target than file content that always arrives, and this repository has a
+ * fixture whose README asks the agent to delete everything.
+ *
+ * What is on disk, which branch is checked out, and what is uncommitted. This is the agent's whole view of the
  * world, and it enters through an event, so the log keeps it.
  *
  * The platform is deliberately absent. Models reach for GNU coreutils flags
