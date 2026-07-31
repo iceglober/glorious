@@ -194,7 +194,8 @@ a goal that cannot be done gets checked: what matters there is not what changed 
 admits nothing did.
 
 A fixture may give a sequence of goals rather than one, run as separate invocations against the same
-directory and log — which is how memory is tested rather than assumed. The first goal counts lines
+directory and log — which is how memory is tested rather than assumed — or, with `session`, typed one
+after another into a single process, which is the only automated exercise the session loop gets. The first goal counts lines
 and creates nothing; the second is asked what it was told to do before, with only the log able to
 answer, since nothing on disk records it.
 

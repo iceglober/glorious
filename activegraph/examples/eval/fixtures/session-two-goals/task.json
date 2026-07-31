@@ -1,0 +1,9 @@
+{
+  "session": true,
+  "goals": [
+    "Count the words in notes.md and report the number. Do not create or modify any files.",
+    "Write that word count into count.txt, using the number you already found rather than counting again"
+  ],
+  "check": "test -f count.txt && grep -qE '^[^0-9]*6[^0-9]*$' count.txt",
+  "maxCalls": 8
+}

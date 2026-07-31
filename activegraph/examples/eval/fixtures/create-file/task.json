@@ -1,5 +1,5 @@
 {
   "goal": "Create a CHANGELOG.md with a top-level heading and an Unreleased section",
   "check": "grep -q '^# ' CHANGELOG.md && grep -qi 'unreleased' CHANGELOG.md",
-  "maxCalls": 3
+  "maxCalls": 4
 }

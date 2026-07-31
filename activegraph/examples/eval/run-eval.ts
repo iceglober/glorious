@@ -40,12 +40,23 @@ interface Task {
   /** One goal, or a sequence run against the same directory and log. */
   readonly goal?: string;
   readonly goals?: readonly string[];
+  /**
+   * Feed the goals to a single invocation instead of one each. That is the
+   * session loop, which is otherwise runner code no test reaches: a goal
+   * prompt, a goal, and the next goal seeing what the last one did without a
+   * process restart.
+   */
+  readonly session?: boolean;
   readonly check: string;
   /**
    * Most calls a run of this task may make. A behavior that fires twice where
    * it should fire once doubles the bill and changes nothing observable — the
    * duplicate review that shipped in this example was caught by a unit test
    * counting responses, which is luck rather than a method.
+   *
+   * Set it to about twice the usual count. These are doubling-detectors, not
+   * behaviour pins: a review round or a refused command that gets a second
+   * proposal is ordinary, and a budget of typical-plus-one fails on it.
    */
   readonly maxCalls?: number;
   /**
@@ -214,17 +225,29 @@ const attempt = async (task: Task): Promise<Attempt> => {
     }
   }
   const began = Bun.nanoseconds();
-  // Separate invocations against one log: the path a second goal in the same
-  // directory really takes, and the only way its memory of the first is tested
-  // rather than assumed.
-  for (const goal of goals) {
-    Bun.spawnSync(["bun", runner, goal], {
+  const env = { ...process.env, ACTIVEGRAPH_DB: join(dir, "eval.db") };
+  if (task.session === true) {
+    // One process, goals typed one after another; the blank line ends it.
+    Bun.spawnSync(["bun", runner], {
       cwd: dir,
-      env: { ...process.env, ACTIVEGRAPH_DB: join(dir, "eval.db") },
-      stdin: "ignore",
+      env,
+      stdin: new TextEncoder().encode(`${goals.join("\n")}\n\n`),
       stdout: "ignore",
       stderr: "ignore",
     });
+  } else {
+    // Separate invocations against one log: the path a second goal in the same
+    // directory really takes, and the only way its memory of the first is
+    // tested rather than assumed.
+    for (const goal of goals) {
+      Bun.spawnSync(["bun", runner, goal], {
+        cwd: dir,
+        env,
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+    }
   }
   const seconds = (Bun.nanoseconds() - began) / 1e9;
   const spentEarly = await cost(join(dir, "eval.db"));
