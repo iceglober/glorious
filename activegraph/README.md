@@ -105,10 +105,18 @@ cp .env.example .env
 bun activegraph/examples/run-coding-agent.ts "Inspect this project"
 ```
 
-A run narrates itself: which behavior is thinking, each command as it starts, whether it succeeded,
-and any failure as the provider's own sentence rather than nested JSON — see
-[`trace-view.ts`](examples/trace-view.ts). `ACTIVEGRAPH_TRACE=1` swaps that for the full event stream
-with canonical payloads, which is what you want when debugging the runtime rather than the run.
+A run narrates itself: which behavior is thinking, and any failure as the provider's own sentence
+rather than nested JSON — see [`trace-view.ts`](examples/trace-view.ts). `ACTIVEGRAPH_TRACE=1` swaps
+that for the full event stream with canonical payloads, which is what you want when debugging the
+runtime rather than the run.
+
+Commands narrate themselves separately, through [`tool-progress.ts`](examples/tool-progress.ts),
+because the events cannot do it: `tool.requested` and `tool.responded` are collected inside the
+behavior and materialized when the step settles, so both carry the step's single clock stamp. A
+twelve-second command appends two events with identical timestamps, after it has already finished —
+the log knows a command ran, not how long it took, and nothing appends while it is running. So the
+tool decorator announces the command, says "still running" every five seconds, and reports the real
+elapsed time.
 
 The runner loads `.env` automatically with `dotenv`; shell environment variables still take precedence. See `.env.example` for the supported variables. Set `ACTIVEGRAPH_DB` to choose another SQLite file. Commands run in the current working directory;
 destructive-looking ones stop for approval first. It prints the ActiveGraph lifecycle as events

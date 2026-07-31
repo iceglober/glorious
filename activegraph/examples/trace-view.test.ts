@@ -13,41 +13,27 @@ const event = (type: string, payload: unknown): AnyEvent<never> =>
   }) as never;
 
 describe("trace view", () => {
-  test("shows the command that is about to run", () => {
-    expect(renderEvent(event("tool.requested", { input: { command: "wc -w README.md" } }))).toBe(
-      "$ wc -w README.md",
-    );
-  });
-
-  test("folds a multi-line command onto one line", () => {
-    const command = `python3 - <<'PY'\nimport shutil\nshutil.rmtree('build')\nPY`;
-    const rendered = renderEvent(event("tool.requested", { input: { command } })) ?? "";
-
-    expect(rendered).toBe("$ python3 - <<'PY' import shutil shutil.rmtree('build') PY");
-  });
-
-  test("elides the middle of a command too long to scan", () => {
-    const command = `find . -maxdepth 3 -type f ${"-not -path './node_modules/*' ".repeat(5)}-print`;
-    const rendered = renderEvent(event("tool.requested", { input: { command } })) ?? "";
-
-    expect(rendered).not.toContain("\n");
-    expect(rendered.length).toBeLessThanOrEqual(103);
-    expect(rendered).toContain("…");
-    // Both ends survive, which is what makes an elided command recognisable.
-    expect(rendered.startsWith("$ find . -maxdepth 3")).toBe(true);
-    expect(rendered.endsWith("-print")).toBe(true);
-  });
-
-  test("marks how each command ended", () => {
-    expect(renderEvent(event("tool.responded", { isError: false }))).toBe("  ok");
-    expect(renderEvent(event("tool.responded", { isError: true }))).toBe("  failed");
-  });
-
   test("says which behavior is thinking, and stays quiet about the rest", () => {
     expect(renderEvent(event("behavior.started", { behavior: "planner" }))).toBe("planning…");
+    expect(renderEvent(event("behavior.started", { behavior: "reviewer" }))).toBe(
+      "reviewing the output…",
+    );
     expect(renderEvent(event("behavior.started", { behavior: "finisher" }))).toBeNull();
     expect(renderEvent(event("object.created", { objectType: "command" }))).toBeNull();
     expect(renderEvent(event("llm.requested", { request: {} }))).toBeNull();
+  });
+
+  test("commands are left to withProgress, which knows when they started", () => {
+    expect(
+      renderEvent(event("tool.requested", { requestId: "r1", input: { command: "ls" } })),
+    ).toBeNull();
+    expect(renderEvent(event("tool.responded", { requestId: "r1", isError: false }))).toBeNull();
+  });
+
+  test("says when something is waiting on a person", () => {
+    expect(renderEvent(event("approval.proposed", { approvalId: "a1" }))).toBe(
+      "  waiting for approval",
+    );
   });
 
   test("digs the provider's own sentence out of a nested failure", () => {

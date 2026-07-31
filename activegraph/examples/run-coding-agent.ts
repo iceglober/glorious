@@ -12,6 +12,7 @@ import {
 } from "./coding-agent";
 import { formatRunSummary, summarizeRun } from "./run-summary";
 import { createShellTool } from "./shell-tool";
+import { withProgress } from "./tool-progress";
 import { innermostMessage, renderEvent } from "./trace-view";
 import { describeChanges } from "./workspace-diff";
 
@@ -90,7 +91,9 @@ const { runtime } = await unwrap(
             if (line !== null) console.error(line);
           },
         },
-    tools: createShellTool(),
+    // Commands narrate themselves: the log only learns about them once they
+    // have finished, so it cannot say what is running now or for how long.
+    tools: withProgress(createShellTool(), { write: (line) => console.error(line) }),
   }),
 );
 
