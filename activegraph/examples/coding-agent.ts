@@ -83,7 +83,14 @@ export const codingAgentSchema = defineSchema({
     task: z.object({
       request: z.string(),
       summary: z.string(),
-      status: z.enum(["planned", "running", "completed", "failed"]),
+      /**
+       * `reviewing` is the honest gap between the commands finishing and the
+       * reviewer judging them. `finisher` reads exit codes, which say whether
+       * a shell was happy and not whether the goal was met, so it hands over
+       * rather than deciding — and a reviewer that never returns leaves the
+       * task visibly unjudged instead of quietly `completed`.
+       */
+      status: z.enum(["planned", "running", "reviewing", "completed", "failed"]),
       /** Directory the task ran in; scopes the history a later goal is shown. */
       cwd: z.string().optional(),
       /** How many review rounds have added commands. 0 is the initial plan. */
@@ -220,10 +227,10 @@ export const declineRecorder = codingAgentKit.behavior({
       ctx.m.patchObject("task", taskId, {
         declined,
         // Nothing from this round survived the gate, so no command patch will
-        // ever arrive to let `finisher` settle it.
+        // ever arrive to let `finisher` hand the task over for judgement.
         ...(outstanding || task.data.status === "completed" || task.data.status === "failed"
           ? {}
-          : { status: "failed" as const }),
+          : { status: "reviewing" as const }),
       }),
     ];
   },
@@ -431,7 +438,11 @@ export const unfinishedTasks = (
     .objects("task")
     .filter(
       (task) =>
-        task.data.cwd === cwd && (task.data.status === "planned" || task.data.status === "running"),
+        task.data.cwd === cwd &&
+        (task.data.status === "planned" ||
+          task.data.status === "running" ||
+          // Left mid-judgement: the commands ran and nothing recorded a verdict.
+          task.data.status === "reviewing"),
     )
     .map((task) => ({
       request: task.data.request,
@@ -703,8 +714,18 @@ export const finisher = codingAgentKit.behavior({
       .find((relation) => relation.target === event.payload.objectId);
     if (edge === undefined) return [];
     const task = ctx.view.object(edge.source);
-    if (task === undefined || task.data.status === "completed" || task.data.status === "failed")
+    // Every command's patch wakes this behavior, and by the time the first one
+    // is dispatched the rest have usually settled too — so without counting
+    // `reviewing` as already-handed-over, a two-command round hands over twice
+    // and pays for two reviews.
+    if (
+      task === undefined ||
+      task.data.status === "reviewing" ||
+      task.data.status === "completed" ||
+      task.data.status === "failed"
+    ) {
       return [];
+    }
     const commands = latestRound(commandsOf(ctx.view, edge.source));
     if (
       commands.some(
@@ -715,13 +736,9 @@ export const finisher = codingAgentKit.behavior({
         ? [ctx.m.patchObject("task", task.id, { status: "running" })]
         : [];
     }
-    return [
-      ctx.m.patchObject("task", task.id, {
-        status: commands.some((command) => command.data.status === "failed")
-          ? "failed"
-          : "completed",
-      }),
-    ];
+    // Every command of the newest round has settled; what that means for the
+    // goal is the reviewer's call, not an exit code's.
+    return [ctx.m.patchObject("task", task.id, { status: "reviewing" })];
   },
 });
 
@@ -742,7 +759,7 @@ export const reviewer = codingAgentKit.llmBehavior({
     // `finisher` patches status alone; a patch carrying a report is this
     // behavior's own verdict landing, and reviewing that again would not end.
     event.payload.patch.report === undefined &&
-    (event.payload.patch.status === "completed" || event.payload.patch.status === "failed"),
+    event.payload.patch.status === "reviewing",
   prompt: (event, view) => {
     const task = view.object(event.payload.objectId as ObjectId<"task">);
     const commands = commandsOf(view, event.payload.objectId as ObjectId<"task">);

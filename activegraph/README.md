@@ -146,7 +146,10 @@ is terminal, and `reviewer` reads that output and either reports done or propose
 which is what lets a failed command be retried instead of just recorded. The reviewer's verdict also
 settles the task: `finisher` can only read exit codes, and a goal that turned out to be impossible
 leaves a trail of commands that all exited zero while achieving nothing, so `achieved` is asked for
-separately from `done` and decides whether the task ends `completed` or `failed`. A plan is a sequence, not a
+separately from `done` and decides whether the task ends `completed` or `failed`. `finisher` hands
+over to a `reviewing` state rather than guessing, which means a reviewer that never returns a verdict
+— unparseable output twice over — leaves the task visibly unjudged instead of quietly `completed`,
+and the next run in that directory reports it as unfinished. A plan is a sequence, not a
 set, so one failure ends the round: the commands after it are recorded `skipped` rather than run,
 because "create the directory, then write into it" is broken the moment the first step fails and
 running on can do damage the reviewer then has to undo. Rounds are capped by

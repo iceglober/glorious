@@ -210,6 +210,23 @@ describe("coding agent", () => {
     expect(unfinishedTasks(runtime.view(), "/repo")).toEqual([]);
   });
 
+  test("a reviewer that never renders a verdict leaves the task visibly unjudged", async () => {
+    const { tools } = recordingTools();
+    const { runtime } = await runAgent({
+      tools,
+      // Prose where JSON was asked for, twice — the retry and then the throw.
+      llm: createFakeLlm((request) => (isReview(request) ? "I could not decide." : planJson)),
+    });
+
+    // Not `completed`: the commands exited zero, which says the shell was
+    // happy and nothing about whether the goal was met.
+    expect(runtime.view().objects("task")[0]?.data.status).toBe("reviewing");
+    expect(unfinishedTasks(runtime.view(), "/repo")).toEqual([
+      { request: "Add a greeting to the project", status: "reviewing", outstanding: 0 },
+    ]);
+    expect(failures(runtime).length).toBeGreaterThan(0);
+  });
+
   test("a tool that throws still leaves a settled task, not a stranded one", async () => {
     const { runtime } = await runAgent({
       llm: planThenDone(),
