@@ -412,6 +412,25 @@ const describeHistory = (
   return `Earlier goals in this workspace, oldest first:\n${lines.join("\n")}\n\n`;
 };
 
+/**
+ * Earlier rounds as one line each. Their full output is already spent: the
+ * reviewer decided about it when the round settled, and re-sending it every
+ * round is the resent-context that dominates what a run costs. What still
+ * matters is what was tried and how it went.
+ */
+const describeEarlierRounds = (
+  commands: readonly GraphObject<CodingAgentSchema, "command">[],
+): string => {
+  const newest = Math.max(0, ...commands.map((command) => command.data.round ?? 0));
+  const earlier = commands.filter((command) => (command.data.round ?? 0) < newest);
+  if (earlier.length === 0) return "";
+  const lines = earlier.map(
+    (command) =>
+      `- [round ${command.data.round ?? 0}, ${command.data.status}] ${clip(command.data.command, 120)}`,
+  );
+  return `Earlier rounds, already reviewed:\n${lines.join("\n")}\n\n`;
+};
+
 const describeDeclined = (declined: readonly string[] | undefined): string =>
   declined === undefined || declined.length === 0
     ? ""
@@ -640,13 +659,14 @@ export const reviewer = codingAgentKit.llmBehavior({
         "Propose a narrower step, one that shows what would change without changing it, or set done to true and say the work needs the operator. " +
         "The report must describe what the output actually shows; never claim a result the output does not support.",
       prompt:
-        `Workspace:\n${describeWorkspace(workspaceIn(view))}\n\n` +
+        `Workspace, as sampled before the commands ran:\n${describeWorkspace(workspaceIn(view))}\n\n` +
         `Goal: ${task?.data.request ?? "(unknown)"}\n` +
         `Plan: ${task?.data.summary ?? "(unknown)"}\n` +
         `Rounds used: ${round} of ${maxRounds}\n\n` +
         describeDeclined(task?.data.declined) +
+        describeEarlierRounds(commands) +
         `Commands run:\n${
-          commands.length === 0 ? "(none)" : commands.map(describeCommand).join("\n\n")
+          commands.length === 0 ? "(none)" : latestRound(commands).map(describeCommand).join("\n\n")
         }`,
     };
   },

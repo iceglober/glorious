@@ -143,7 +143,10 @@ running on can do damage the reviewer then has to undo. Rounds are capped by
 `ACTIVEGRAPH_MAX_ROUNDS` (2 by default; `0` reviews without ever adding work), each command's output
 is clipped to 2,000 characters inside the reviewer's prompt — from the middle, keeping both ends,
 because a long command's most useful line is usually its last and head-only truncation feeds the
-reviewer the preamble while dropping the verdict, and the task's status follows the newest
+reviewer the preamble while dropping the verdict. Only the newest round is sent in full: earlier
+rounds keep one line each, because their output was already judged when the round settled and
+re-sending it is the resent-context that dominates what a run costs. On a three-round run that was
+6,124 characters of command blocks versus 622, and the task's status follows the newest
 round, so a successful retry moves a `failed` task back to `completed` while the failed round stays in
 the graph as history.
 

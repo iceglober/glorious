@@ -302,6 +302,42 @@ describe("coding agent", () => {
     expect(failures(runtime)).toEqual([]);
   });
 
+  test("a later round is not re-sent the earlier round's output", async () => {
+    const prompts: string[] = [];
+    let reviews = 0;
+    await runAgent({
+      tools: {
+        execute: async () => ({ ok: true, value: "OUTPUT-THAT-SHOULD-NOT-REPEAT" }),
+      },
+      llm: createFakeLlm((request) => {
+        if (!isReview(request)) {
+          return JSON.stringify({
+            summary: "First",
+            commands: [{ description: "round zero", command: "first-command" }],
+          });
+        }
+        prompts.push(request.prompt);
+        reviews += 1;
+        return reviews === 1
+          ? JSON.stringify({
+              done: false,
+              report: "more to do",
+              commands: [{ description: "round one", command: "second-command" }],
+            })
+          : doneJson;
+      }),
+    });
+
+    expect(reviews).toBe(2);
+    // Round 0's output is in the first review and spent by the second.
+    expect(prompts[0]).toContain("OUTPUT-THAT-SHOULD-NOT-REPEAT");
+    expect(prompts[1]?.match(/OUTPUT-THAT-SHOULD-NOT-REPEAT/g) ?? []).toHaveLength(1);
+    // What it did keeps its one line, so the reviewer still knows it happened.
+    expect(prompts[1]).toContain("Earlier rounds, already reviewed:");
+    expect(prompts[1]).toContain("[round 0, completed] first-command");
+    expect(prompts[1]).toContain("second-command");
+  });
+
   test("review rounds stop at maxRounds", async () => {
     let reviews = 0;
     const llm = createFakeLlm((request) => {
