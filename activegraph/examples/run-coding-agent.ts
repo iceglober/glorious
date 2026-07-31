@@ -104,6 +104,12 @@ if (!result.ok) {
  * stdin makes `prompt` return null, which declines — failing closed is the
  * only safe default for something holding a shell.
  */
+const currentTaskId = (): string =>
+  runtime
+    .view()
+    .objects("task")
+    .findLast((candidate) => candidate.data.request === goal)?.id ?? "";
+
 const settleApprovals = async (): Promise<void> => {
   const declined = new Set<string>();
   for (;;) {
@@ -125,12 +131,20 @@ const settleApprovals = async (): Promise<void> => {
         ? "y"
         : (prompt("    run it? [y/N/a=yes to all]") ?? "").trim().toLowerCase();
       if (answer === "a") rest = true;
-      if (rest || answer === "y") granting.push(...group.approvalIds);
-      else for (const approvalId of group.approvalIds) declined.add(approvalId);
-    }
-    if (granting.length === 0) {
-      console.log("Nothing approved; no commands were run.");
-      return;
+      if (rest || answer === "y") {
+        granting.push(...group.approvalIds);
+        continue;
+      }
+      for (const approvalId of group.approvalIds) declined.add(approvalId);
+      // Tell the agent, not just the gate: the reviewer reads refusals and
+      // gets a round to propose something you might actually allow.
+      const refused = await runtime.emit("command.declined", {
+        taskId: currentTaskId(),
+        command: group.command,
+      });
+      if (!refused.ok) {
+        console.error(`Could not record the refusal: ${JSON.stringify(refused.error)}`);
+      }
     }
     // In proposal order, so each command object lands before its relation.
     for (const approvalId of granting) {
@@ -140,11 +154,19 @@ const settleApprovals = async (): Promise<void> => {
         return;
       }
     }
+    // Drains the grants and any refusals recorded above, either of which can
+    // wake the reviewer for another round.
     const drained = await runtime.runUntilIdle();
     if (!drained.ok) {
       console.error(`Agent failed: ${JSON.stringify(drained.error)}`);
       process.exitCode = 1;
       return;
+    }
+    if (
+      granting.length === 0 &&
+      runtime.status().pendingApprovals.every((id) => declined.has(id))
+    ) {
+      console.log("Nothing approved.");
     }
   }
 };

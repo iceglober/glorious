@@ -69,6 +69,8 @@ export const codingAgentSchema = defineSchema({
       round: z.number().optional(),
       /** The reviewer's verdict once it has read the command output. */
       report: z.string().optional(),
+      /** Commands the operator refused; the reviewer is told, so it can adapt. */
+      declined: z.array(z.string()).readonly().optional(),
     }),
     command: z.object({
       description: z.string(),
@@ -82,7 +84,15 @@ export const codingAgentSchema = defineSchema({
   relations: {
     has_command: { source: "task", target: "command" },
   },
-  events: { "workspace.sampled": workspaceShape },
+  events: {
+    "workspace.sampled": workspaceShape,
+    /** The operator refused a parked command. Emitted by the composition root. */
+    "command.declined": z.object({
+      taskId: z.string(),
+      command: z.string(),
+      reason: z.string().optional(),
+    }),
+  },
 });
 export type CodingAgentSchema = typeof codingAgentSchema;
 
@@ -103,6 +113,43 @@ export const recorder = codingAgentKit.behavior({
     return ctx.view.object(WORKSPACE_ID) === undefined
       ? [ctx.m.addObject("workspace", event.payload, { id: WORKSPACE_ID })]
       : [ctx.m.patchObject("workspace", WORKSPACE_ID, event.payload)];
+  },
+});
+
+/**
+ * Record a refusal on the task, and settle the task when the refusal left it
+ * with nothing to run. That settle is what turns the gate from a veto into a
+ * conversation: a terminal task wakes `reviewer`, which is told what was
+ * refused and gets to propose something else within the usual round budget.
+ */
+export const declineRecorder = codingAgentKit.behavior({
+  name: "declineRecorder",
+  on: ["command.declined"],
+  run: (event, ctx) => {
+    if (event.type !== "command.declined") return [];
+    const taskId = event.payload.taskId as ObjectId<"task">;
+    const task = ctx.view.object(taskId);
+    if (task === undefined) return [];
+    const declined = [
+      ...(task.data.declined ?? []),
+      event.payload.reason === undefined
+        ? event.payload.command
+        : `${event.payload.command} (${event.payload.reason})`,
+    ];
+    const round = task.data.round ?? 0;
+    const outstanding = commandsOf(ctx.view, taskId).some(
+      (command) => (command.data.round ?? 0) === round,
+    );
+    return [
+      ctx.m.patchObject("task", taskId, {
+        declined,
+        // Nothing from this round survived the gate, so no command patch will
+        // ever arrive to let `finisher` settle it.
+        ...(outstanding || task.data.status === "completed" || task.data.status === "failed"
+          ? {}
+          : { status: "failed" as const }),
+      }),
+    ];
   },
 });
 
@@ -223,6 +270,13 @@ const describeHistory = (
   );
   return `Earlier goals in this workspace, oldest first:\n${lines.join("\n")}\n\n`;
 };
+
+const describeDeclined = (declined: readonly string[] | undefined): string =>
+  declined === undefined || declined.length === 0
+    ? ""
+    : `Refused by the operator, do not propose these again:\n${declined
+        .map((command) => `- ${command}`)
+        .join("\n")}\n\n`;
 
 /** Commands from the newest round — the ones the task's status reflects. */
 const latestRound = <T extends { readonly data: { readonly round?: number } }>(
@@ -467,13 +521,19 @@ export const createReviewer = ({
           "Return JSON only with done, report, and commands. " +
           "Set done to true when the goal is met or nothing further can usefully be run, and leave commands empty. " +
           "Set done to false and return follow-up commands only when the output shows work still to do — a failed command to fix, or a next step the output makes obvious. " +
+          "A refused command was rejected by the operator: do not propose it again. " +
+          "Do not reach the same effect by other means either — a different tool or language for the same action is still the refused action. " +
+          "Propose a narrower step, one that shows what would change without changing it, or set done to true and say the work needs the operator. " +
           "The report must describe what the output actually shows; never claim a result the output does not support.",
         prompt:
           `Workspace:\n${describeWorkspace(workspaceIn(view))}\n\n` +
           `Goal: ${task?.data.request ?? "(unknown)"}\n` +
           `Plan: ${task?.data.summary ?? "(unknown)"}\n` +
           `Rounds used: ${round} of ${maxRounds}\n\n` +
-          `Commands run:\n${commands.map(describeCommand).join("\n\n")}`,
+          describeDeclined(task?.data.declined) +
+          `Commands run:\n${
+            commands.length === 0 ? "(none)" : commands.map(describeCommand).join("\n\n")
+          }`,
       };
     },
     output: review,
@@ -506,6 +566,7 @@ export const createCodingAgentBehaviors = (
   config: AgentConfig,
 ): readonly AnyBehavior<CodingAgentSchema>[] => [
   recorder,
+  declineRecorder,
   createPlanner(config),
   createExecutor(config),
   finisher,

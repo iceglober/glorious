@@ -151,6 +151,15 @@ release covers both, in proposal order, since an edge cannot attach to an object
 yet. A declined command simply never becomes an object, so the task settles on the work that was
 allowed to happen, and each review round asks about its own batch.
 
+A refusal is fed back rather than just enforced. The runner emits `command.declined`, which records
+the command on the task and — when the refusal left the round with nothing to run — settles the task,
+which is what wakes `reviewer`. It is shown what was refused and gets a round to propose something
+you might allow. Note what that does *not* mean: told "no" to `find … -exec rm -rf`, a model will
+happily offer the same deletion in Python, which sails past the destructive-command regex. The
+reviewer is instructed that a different tool for the same action is still the refused action, and in
+practice it now stops and says the work needs the operator — but the instruction is a nudge, not a
+control. The per-command gate is the control.
+
 A reply that is not usable JSON costs a re-ask rather than the run. `llmBehavior` takes `retries`
 (the agent uses 1) and re-asks with the complaint appended — a distinct request, so it is logged and
 hashed like any other and replays from the recording. The reviewer is the case that makes this worth
