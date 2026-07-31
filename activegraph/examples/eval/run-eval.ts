@@ -42,6 +42,13 @@ interface Task {
   readonly goals?: readonly string[];
   readonly check: string;
   /**
+   * Most calls a run of this task may make. A behavior that fires twice where
+   * it should fire once doubles the bill and changes nothing observable — the
+   * duplicate review that shipped in this example was caught by a unit test
+   * counting responses, which is luck rather than a method.
+   */
+  readonly maxCalls?: number;
+  /**
    * The status the task must end in. Set it to "failed" for a goal that cannot
    * be done: the interesting question there is not what the agent changed but
    * whether it admits the work did not happen, and a filesystem check cannot
@@ -91,14 +98,20 @@ const unreachableProvider = (dbPath: string): boolean => {
 };
 
 /** What the run spent, from the usage the adapter recorded in the log. */
-const cost = async (dbPath: string): Promise<{ tokensIn: number; tokensOut: number }> => {
-  if (!existsSync(dbPath)) return { tokensIn: 0, tokensOut: 0 };
+const cost = async (
+  dbPath: string,
+): Promise<{ tokensIn: number; tokensOut: number; calls: number }> => {
+  if (!existsSync(dbPath)) return { tokensIn: 0, tokensOut: 0, calls: 0 };
   const store = createSqliteEventStore<CodingAgentSchema>(dbPath);
   try {
     const log = await store.read({ branch: "main" });
-    if (!log.ok) return { tokensIn: 0, tokensOut: 0 };
+    if (!log.ok) return { tokensIn: 0, tokensOut: 0, calls: 0 };
     const summary = summarizeRun(log.value);
-    return { tokensIn: summary.inputTokens, tokensOut: summary.outputTokens };
+    return {
+      tokensIn: summary.inputTokens,
+      tokensOut: summary.outputTokens,
+      calls: summary.llmCalls,
+    };
   } finally {
     store.close();
   }
@@ -165,6 +178,7 @@ interface Attempt {
   /** Provider tokens the run spent, read back off its own log. */
   readonly tokensIn: number;
   readonly tokensOut: number;
+  readonly calls: number;
   /** The provider could not be reached, so this attempt measured nothing. */
   readonly unreachable: boolean;
   /** Kept when the attempt was interesting, so there is something to look at. */
@@ -213,11 +227,13 @@ const attempt = async (task: Task): Promise<Attempt> => {
     });
   }
   const seconds = (Bun.nanoseconds() - began) / 1e9;
+  const spentEarly = await cost(join(dir, "eval.db"));
   const settled =
     task.expectStatus === undefined || finalStatus(join(dir, "eval.db")) === task.expectStatus;
-  const passed = settled && shell(task.check, dir);
+  const withinBudget = task.maxCalls === undefined || spentEarly.calls <= task.maxCalls;
+  const passed = settled && withinBudget && shell(task.check, dir);
   const replayed = await replays(join(dir, "eval.db"));
-  const spent = await cost(join(dir, "eval.db"));
+  const spent = spentEarly;
   const unreachable = unreachableProvider(join(dir, "eval.db"));
   const interesting = !unreachable && (!passed || !replayed || seconds > SLOW_SECONDS);
   if (!interesting) rmSync(dir, { recursive: true, force: true });
@@ -265,6 +281,7 @@ for (const task of tasks) {
   console.log(
     ` ${task.name}: ${won}/${scored.length}${lost === 0 ? "" : ` (+${lost} unreachable)`}` +
       ` (${(elapsed / results.length).toFixed(0)}s avg, ${Math.max(...times).toFixed(0)}s worst,` +
+      ` ${mean((attempt) => attempt.calls)} calls,` +
       ` ${mean((attempt) => attempt.tokensIn)}/${mean((attempt) => attempt.tokensOut)} tokens in/out` +
       `${replayedCount === scored.length ? "" : `, ${replayedCount}/${scored.length} replay`})`,
   );

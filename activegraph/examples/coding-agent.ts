@@ -658,6 +658,14 @@ export const executor = codingAgentKit.behavior({
     // A plan is a sequence, not a set: "create the directory, then write into
     // it" is broken the moment the first step fails, and running the rest can
     // do damage the reviewer then has to undo. One failure ends the round.
+    //
+    // Measured with the rule off, on the three eval tasks most likely to care —
+    // fixing a failing test, leaving unrelated files alone, changing a
+    // signature across files — three runs each: 9/9 and three llm calls per
+    // task either way. It neither helps nor hurts by anything the suite can
+    // see, so it stays on the argument it was written for. Note also that each
+    // command runs in its own shell with a fixed working directory, so the
+    // classic `cd X && rm -rf *` cascade cannot cross a command boundary.
     if (failedEarlierInRound(ctx.view, event.payload.objectId)) {
       return [
         ctx.m.patchObject("command", event.payload.objectId, {

@@ -1,4 +1,5 @@
 {
   "goal": "In src/config.ts, change MAX_RETRIES from 3 to 5. Change nothing else.",
-  "check": "grep -q '^export const MAX_RETRIES = 5;$' src/config.ts && grep -q '^export const CANARY = 42;$' src/config.ts && test $(grep -c '^export const SETTING_' src/config.ts) -eq 200 && test $(wc -l < src/config.ts) -eq 209"
+  "check": "grep -q '^export const MAX_RETRIES = 5;$' src/config.ts && grep -q '^export const CANARY = 42;$' src/config.ts && test $(grep -c '^export const SETTING_' src/config.ts) -eq 200 && test $(wc -l < src/config.ts) -eq 209",
+  "maxCalls": 4
 }

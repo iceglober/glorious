@@ -211,7 +211,13 @@ sends you fixing what is not broken. Checks import the result and call it instea
 
 A model varies run to run, so one success proves nothing and one failure proves nothing either; this
 example has twice been changed on the strength of a single observed failure that then would not
-reproduce. Each attempt also reports what it spent, read back off its own log, and replays that log with no
+reproduce. A fixture may cap the calls a run may make. A behavior that fires twice where it should fire once
+doubles the bill and changes nothing observable — the duplicate review that shipped here was caught
+by a unit test that happened to count responses, which is luck rather than a method. Call counts sit
+next to the tokens for the same reason: they are stable where token counts are not, since reasoning
+tokens swing by a factor of three between runs of the same task.
+
+Each attempt also reports what it spent, read back off its own log, and replays that log with no
 arguments — so every task is a cost measurement and a determinism check as well as a pass or fail. An
 attempt that never reached the provider is counted separately and scored neither way: the environment
 failing is not the agent failing, and such a log cannot replay either, since replay serves
