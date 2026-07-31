@@ -14,7 +14,7 @@
  *   bun activegraph/examples/eval/run-eval.ts [runs-per-task] [task-name…]
  */
 
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +23,8 @@ interface Task {
   readonly goal: string;
   readonly check: string;
 }
+
+const FIXTURE_SUFFIX = ".fixture";
 
 const here = import.meta.dir;
 const runner = join(here, "..", "run-coding-agent.ts");
@@ -61,6 +63,14 @@ interface Attempt {
 const attempt = async (task: Task): Promise<Attempt> => {
   const dir = mkdtempSync(join(tmpdir(), `eval-${task.name}-`));
   cpSync(join(fixtures, task.name, "files"), dir, { recursive: true });
+  // A fixture's tests are data, not this repository's tests — one of them is
+  // meant to fail — so they are stored with a suffix that `bun test` ignores
+  // and given their real names on the way into the copy.
+  for (const path of readdirSync(dir, { recursive: true, encoding: "utf8" })) {
+    if (path.endsWith(FIXTURE_SUFFIX)) {
+      renameSync(join(dir, path), join(dir, path.slice(0, -FIXTURE_SUFFIX.length)));
+    }
+  }
   const began = Bun.nanoseconds();
   Bun.spawnSync(["bun", runner, task.goal], {
     cwd: dir,
