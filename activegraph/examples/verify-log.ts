@@ -15,6 +15,7 @@
  * Exits non-zero on divergence, so it can gate anything that cares.
  */
 
+import { existsSync } from "node:fs";
 import { createSqliteEventStore } from "../adapters/sqlite-event-store";
 import { unwrap } from "../lib/fp";
 import { replayStrict } from "../shell/replay";
@@ -28,6 +29,13 @@ import { formatRunSummary, summarizeRun } from "./run-summary";
 
 const path = process.argv[2] ?? "coding-agent.db";
 const branch = process.argv[3] ?? "main";
+
+// The store would happily create the file, so a typo would report an empty
+// branch and leave a stray database behind.
+if (!existsSync(path)) {
+  console.error(`${path}: no such event log`);
+  process.exit(1);
+}
 
 const store = createSqliteEventStore<CodingAgentSchema>(path);
 const log = unwrap(await store.read({ branch }));

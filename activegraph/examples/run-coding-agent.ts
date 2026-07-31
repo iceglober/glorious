@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { existsSync, readdirSync } from "node:fs";
-import { createAzureLlm, createConsoleTracer, unwrap } from "../index";
+import { createAzureLlm, createConsoleTracer } from "../index";
 import { pendingCommands } from "./approvals";
 import {
   type AgentSettings,
@@ -91,23 +91,27 @@ const settings: AgentSettings = {
   ),
 };
 
-const { runtime } = await unwrap(
-  createCodingAgent({
-    llm: createAzureLlm({ model }),
-    store: { sqlite: process.env.ACTIVEGRAPH_DB ?? "coding-agent.db" },
-    tracer: rawTrace
-      ? createConsoleTracer((line) => console.error(`[activegraph] ${line}`))
-      : {
-          onEvent: (event) => {
-            const line = renderEvent(event);
-            if (line !== null) console.error(line);
-          },
+const created = await createCodingAgent({
+  llm: createAzureLlm({ model }),
+  store: { sqlite: process.env.ACTIVEGRAPH_DB ?? "coding-agent.db" },
+  tracer: rawTrace
+    ? createConsoleTracer((line) => console.error(`[activegraph] ${line}`))
+    : {
+        onEvent: (event) => {
+          const line = renderEvent(event);
+          if (line !== null) console.error(line);
         },
-    // Commands narrate themselves: the log only learns about them once they
-    // have finished, so it cannot say what is running now or for how long.
-    tools: withProgress(createShellTool(), { write: (line) => console.error(line) }),
-  }),
-);
+      },
+  // Commands narrate themselves: the log only learns about them once they
+  // have finished, so it cannot say what is running now or for how long.
+  tools: withProgress(createShellTool(), { write: (line) => console.error(line) }),
+});
+if (!created.ok) {
+  // Almost always a path that cannot be opened; a stack trace helps nobody.
+  console.error(`Could not start: ${JSON.stringify(created.error)}`);
+  process.exit(1);
+}
+const { runtime } = created.value;
 
 // Settings are external input like everything else, and one recording serves
 // every goal in the session: the graph holds them from here on.

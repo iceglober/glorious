@@ -38,10 +38,31 @@ export const createDefaultRuntime = async <S extends SchemaDef>(
 ): Promise<
   Result<{ readonly runtime: Runtime<S>; readonly eventStore: EventStore<S> }, RuntimeError>
 > => {
-  const eventStore =
-    options.store === undefined || options.store === "memory"
-      ? createMemoryEventStore<S>()
-      : createSqliteEventStore<S>(options.store.sqlite);
+  // Opening a database file is the one wiring step that can fail on the
+  // world's terms — a missing directory, a read-only volume, a typo in a
+  // path. Every other failure here is already a Result, so this one becomes
+  // one rather than escaping as an exception from a function that promises
+  // not to throw.
+  let eventStore: EventStore<S>;
+  try {
+    eventStore =
+      options.store === undefined || options.store === "memory"
+        ? createMemoryEventStore<S>()
+        : createSqliteEventStore<S>(options.store.sqlite);
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        reason: "store_error",
+        error: {
+          reason: "io_error",
+          message: `could not open the event store: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        },
+      },
+    };
+  }
   const created = await createRuntime({
     schema: options.schema,
     behaviors: options.behaviors,

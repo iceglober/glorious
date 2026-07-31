@@ -40,4 +40,19 @@ describe("createDefaultRuntime (the composition root)", () => {
     expect(status.status).toBe("idle");
     expect(composed.runtime.view().objects("task")).toHaveLength(2);
   });
+
+  test("a database that cannot be opened is a Result, not an exception", async () => {
+    // A typo in a path, a missing directory, a read-only volume. Every other
+    // failure here is already a Result; this one used to escape as a throw
+    // from a function whose signature promises it will not.
+    const created = await createDefaultRuntime({
+      schema: exampleSchema,
+      behaviors: [],
+      store: { sqlite: "/nope/does/not/exist/run.db" },
+    });
+
+    expect(created.ok).toBe(false);
+    expect(created.ok ? "" : created.error.reason).toBe("store_error");
+    expect(JSON.stringify(created.ok ? "" : created.error)).toContain("could not open");
+  });
 });
