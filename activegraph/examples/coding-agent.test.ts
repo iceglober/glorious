@@ -336,7 +336,7 @@ describe("coding agent", () => {
     expect(runtime.view().objects("task")[0]?.data.report).toBe("the commands did what was asked");
   });
 
-  test("one failed command ends the round; the rest are skipped, not run", async () => {
+  test("a failed command does not stop the ones after it", async () => {
     const ran: string[] = [];
     const { runtime } = await runAgent({
       llm: createFakeLlm((request) =>
@@ -345,9 +345,11 @@ describe("coding agent", () => {
           : JSON.stringify({
               summary: "Three steps",
               commands: [
-                { description: "works", command: "first" },
-                { description: "breaks", command: "second" },
-                { description: "never happens", command: "third" },
+                { description: "look", command: "first" },
+                // "Run the failing test suite" is a plan step whose failure is
+                // the point; stopping there costs a whole round.
+                { description: "see the failure", command: "second" },
+                { description: "fix it", command: "third" },
               ],
             }),
       ),
@@ -362,17 +364,13 @@ describe("coding agent", () => {
       },
     });
 
-    // The third command never reached a shell.
-    expect(ran).toEqual(["first", "second"]);
+    expect(ran).toEqual(["first", "second", "third"]);
     expect(
       runtime
         .view()
         .objects("command")
         .map((command) => command.data.status),
-    ).toEqual(["completed", "failed", "skipped"]);
-    expect(runtime.view().objects("command")[2]?.data.output).toContain("Skipped");
-    // A skipped command is terminal, so the task still settles — as failed.
-    expect(runtime.view().objects("task")[0]?.data.status).toBe("failed");
+    ).toEqual(["completed", "failed", "completed"]);
   });
 
   test("a follow-up round can bring a failed task back to completed", async () => {

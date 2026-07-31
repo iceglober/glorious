@@ -149,10 +149,10 @@ leaves a trail of commands that all exited zero while achieving nothing, so `ach
 separately from `done` and decides whether the task ends `completed` or `failed`. `finisher` hands
 over to a `reviewing` state rather than guessing, which means a reviewer that never returns a verdict
 — unparseable output twice over — leaves the task visibly unjudged instead of quietly `completed`,
-and the next run in that directory reports it as unfinished. A plan is a sequence, not a
-set, so one failure ends the round: the commands after it are recorded `skipped` rather than run,
-because "create the directory, then write into it" is broken the moment the first step fails and
-running on can do damage the reviewer then has to undo. Rounds are capped by
+and the next run in that directory reports it as unfinished. A failed command does not stop the ones after it, because a plan that begins "run the failing test
+suite" is asking for a failure on purpose, and skipping the rest costs a whole round before any work
+happens. Each command runs in its own shell with a fixed working directory, so the cascade this once
+guarded against cannot cross a command boundary in the first place. Rounds are capped by
 `ACTIVEGRAPH_MAX_ROUNDS` (2 by default; `0` reviews without ever adding work), each command's output
 is clipped to 2,000 characters inside the reviewer's prompt — from the middle, keeping both ends,
 because a long command's most useful line is usually its last and head-only truncation feeds the
