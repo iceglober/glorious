@@ -197,7 +197,13 @@ sends you fixing what is not broken. Checks import the result and call it instea
 
 A model varies run to run, so one success proves nothing and one failure proves nothing either; this
 example has twice been changed on the strength of a single observed failure that then would not
-reproduce. A failing attempt keeps its directory and its event log and prints the path, because a
+reproduce. Each attempt also reports what it spent, read back off its own log, and replays that log with no
+arguments — so every task is a cost measurement and a determinism check as well as a pass or fail. An
+attempt that never reached the provider is counted separately and scored neither way: the environment
+failing is not the agent failing, and such a log cannot replay either, since replay serves
+completions from the recording and a request that got no answer left none.
+
+A failing attempt keeps its directory and its event log and prints the path, because a
 score with no evidence is a scoreboard rather than a diagnosis — and the log replays, so the failure
 can be examined without spending another call. A run that takes more than a minute is kept for the
 same reason: these tasks cluster around ten seconds and the occasional one takes minutes, which an

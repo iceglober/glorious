@@ -33,6 +33,7 @@ import {
   codingAgentSchema,
   createCodingAgentBehaviors,
 } from "../coding-agent";
+import { summarizeRun } from "../run-summary";
 
 interface Task {
   readonly name: string;
@@ -63,6 +64,43 @@ const load = (): readonly Task[] =>
         "name"
       >),
     }));
+
+/**
+ * Whether the run died because the provider could not be reached.
+ *
+ * That is the environment failing, not the agent: scoring it as a failed task
+ * quietly depresses the pass rate, and the log cannot replay either, because
+ * replay serves completions from the recording and a request that never got an
+ * answer left none. Both would otherwise read as regressions.
+ */
+const unreachableProvider = (dbPath: string): boolean => {
+  if (!existsSync(dbPath)) return false;
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    return (
+      db
+        .query("select body from events where type = 'behavior.failed'")
+        .all()
+        .filter((row) => (row as { body: string }).body.includes("provider_error")).length > 0
+    );
+  } finally {
+    db.close();
+  }
+};
+
+/** What the run spent, from the usage the adapter recorded in the log. */
+const cost = async (dbPath: string): Promise<{ tokensIn: number; tokensOut: number }> => {
+  if (!existsSync(dbPath)) return { tokensIn: 0, tokensOut: 0 };
+  const store = createSqliteEventStore<CodingAgentSchema>(dbPath);
+  try {
+    const log = await store.read({ branch: "main" });
+    if (!log.ok) return { tokensIn: 0, tokensOut: 0 };
+    const summary = summarizeRun(log.value);
+    return { tokensIn: summary.inputTokens, tokensOut: summary.outputTokens };
+  } finally {
+    store.close();
+  }
+};
 
 /** The status the agent settled its last task on, read back from the log. */
 const finalStatus = (dbPath: string): string => {
@@ -122,6 +160,11 @@ interface Attempt {
   /** Whether the branch this run wrote re-derives from itself. */
   readonly replays: boolean;
   readonly seconds: number;
+  /** Provider tokens the run spent, read back off its own log. */
+  readonly tokensIn: number;
+  readonly tokensOut: number;
+  /** The provider could not be reached, so this attempt measured nothing. */
+  readonly unreachable: boolean;
   /** Kept when the attempt was interesting, so there is something to look at. */
   readonly kept?: string;
 }
@@ -166,11 +209,13 @@ const attempt = async (task: Task): Promise<Attempt> => {
     task.expectStatus === undefined || finalStatus(join(dir, "eval.db")) === task.expectStatus;
   const passed = settled && shell(task.check, dir);
   const replayed = await replays(join(dir, "eval.db"));
-  const interesting = !passed || !replayed || seconds > SLOW_SECONDS;
+  const spent = await cost(join(dir, "eval.db"));
+  const unreachable = unreachableProvider(join(dir, "eval.db"));
+  const interesting = !unreachable && (!passed || !replayed || seconds > SLOW_SECONDS);
   if (!interesting) rmSync(dir, { recursive: true, force: true });
   return interesting
-    ? { passed, replays: replayed, seconds, kept: dir }
-    : { passed, replays: replayed, seconds };
+    ? { passed, replays: replayed, seconds, ...spent, unreachable, kept: dir }
+    : { passed, replays: replayed, seconds, ...spent, unreachable };
 };
 
 const runs = Number(process.argv[2] ?? 2);
@@ -183,31 +228,45 @@ console.log(
 let passes = 0;
 let total = 0;
 let replaysAll = true;
+let spentIn = 0;
+let spentOut = 0;
 for (const task of tasks) {
   const results: Attempt[] = [];
   for (let run = 0; run < runs; run += 1) {
     const outcome = await attempt(task);
     results.push(outcome);
-    process.stdout.write(outcome.passed ? "." : "x");
+    process.stdout.write(outcome.unreachable ? "-" : outcome.passed ? "." : "x");
   }
-  const won = results.filter((result) => result.passed).length;
+  // An attempt that never reached the provider measured nothing, so it is not
+  // scored either way — counted and named, so the score is never quietly short.
+  const scored = results.filter((result) => !result.unreachable);
+  const lost = results.length - scored.length;
+  const won = scored.filter((result) => result.passed).length;
   const times = results.map((result) => result.seconds);
   const elapsed = times.reduce((sum, seconds) => sum + seconds, 0);
   passes += won;
-  total += results.length;
+  total += scored.length;
   // The worst run, not only the mean: one attempt in ten takes minutes, and an
   // average over three hides it inside a plausible-looking number.
-  const replayedCount = results.filter((result) => result.replays).length;
-  replaysAll = replaysAll && replayedCount === results.length;
+  const replayedCount = scored.filter((result) => result.replays).length;
+  replaysAll = replaysAll && replayedCount === scored.length;
+  const mean = (pick: (attempt: Attempt) => number) =>
+    Math.round(results.reduce((sum, result) => sum + pick(result), 0) / results.length);
+  spentIn += results.reduce((sum, result) => sum + result.tokensIn, 0);
+  spentOut += results.reduce((sum, result) => sum + result.tokensOut, 0);
   console.log(
-    ` ${task.name}: ${won}/${results.length}` +
-      ` (${(elapsed / results.length).toFixed(0)}s avg, ${Math.max(...times).toFixed(0)}s worst` +
-      `${replayedCount === results.length ? "" : `, ${replayedCount}/${results.length} replay`})`,
+    ` ${task.name}: ${won}/${scored.length}${lost === 0 ? "" : ` (+${lost} unreachable)`}` +
+      ` (${(elapsed / results.length).toFixed(0)}s avg, ${Math.max(...times).toFixed(0)}s worst,` +
+      ` ${mean((attempt) => attempt.tokensIn)}/${mean((attempt) => attempt.tokensOut)} tokens in/out` +
+      `${replayedCount === scored.length ? "" : `, ${replayedCount}/${scored.length} replay`})`,
   );
   for (const kept of results.filter((result) => result.kept !== undefined)) {
     const why = !kept.passed ? "failed" : !kept.replays ? "did not replay" : "slow";
     console.log(`    ${why} (${kept.seconds.toFixed(0)}s): ${kept.kept}`);
   }
 }
-console.log(`\ntotal: ${passes}/${total}${replaysAll ? ", every log replays" : ""}`);
+console.log(
+  `\ntotal: ${passes}/${total}${replaysAll ? ", every log replays" : ""}` +
+    `, ${spentIn.toLocaleString("en-US")} tokens in and ${spentOut.toLocaleString("en-US")} out`,
+);
 process.exit(passes === total && replaysAll ? 0 : 1);
