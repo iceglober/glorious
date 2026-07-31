@@ -232,7 +232,13 @@ hashed like any other and replays from the recording. The reviewer is the case t
 having: its commands have already run by then, so losing the round to a parse failure means a re-run
 repeats all of that work.
 
-Command output is redacted before anything sees it. The log is durable and the reviewer's prompt is
+Command output is cleaned before anything sees it. Terminal control sequences are stripped — they
+are presentation, not content, and would otherwise write cursor moves into a durable log and a
+model's prompt — and output that is not text at all is replaced by a one-line summary. `cat` on an
+image would otherwise spend the log's space and the reviewer's context on mojibake, and the escapes
+among those bytes garble the terminal they print to.
+
+Command output is also redacted before anything sees it. The log is durable and the reviewer's prompt is
 sent to a provider, so one `cat .env` would otherwise write a live credential to disk forever and
 hand it to the model. [`shell-tool.ts`](examples/shell-tool.ts) masks by *value*, not by name: every
 environment variable whose name looks secret (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`,

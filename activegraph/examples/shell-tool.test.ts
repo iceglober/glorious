@@ -102,6 +102,30 @@ describe("shell tool", () => {
     expect(unmasked.ok ? unmasked.value : "").toContain(secret);
   });
 
+  test("binary output is summarised, not poured into the log", async () => {
+    // `cat` on an image, or a grep that walks into one. The bytes would spend
+    // the log's space and the model's context on mojibake, and the escapes
+    // among them would garble the terminal they print to.
+    const result = await run({ command: "head -c 400 /dev/urandom" });
+
+    expect(result.ok).toBe(true);
+    const value = result.ok ? String(result.value) : "";
+    expect(value).toMatch(/^\(binary output suppressed: \d+ characters of non-text data\)$/);
+    expect(value).not.toContain("\u0000");
+  });
+
+  test("terminal control sequences are stripped, the text is kept", async () => {
+    const result = await run({ command: String.raw`printf 'plain\033[31mred\033[0m end\n'` });
+
+    expect(result).toEqual({ ok: true, value: "plainred end" });
+  });
+
+  test("ordinary text with a stray tab or newline is not mistaken for binary", async () => {
+    const result = await run({ command: String.raw`printf 'one\ttwo\nthree\r\n'` });
+
+    expect(result).toEqual({ ok: true, value: "one\ttwo\nthree" });
+  });
+
   test("a working directory that is gone is an error, not a throw", async () => {
     // A coding agent can delete or move the directory it was told to run in.
     const result = await run({ command: "echo hi", cwd: "/definitely/not/here" });

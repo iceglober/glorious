@@ -46,6 +46,32 @@ const secretsIn = (environment: Record<string, string | undefined>): readonly st
 const redactWith = (secrets: readonly string[], text: string): string =>
   secrets.reduce((masked, secret) => masked.split(secret).join("[redacted]"), text);
 
+/**
+ * Terminal control sequences are presentation, not content. Most tools drop
+ * them when stdout is a pipe, but the ones that do not would write cursor
+ * moves and colour codes into a durable log, a model's prompt, and the
+ * operator's terminal.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point
+const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g;
+
+/**
+ * Whether output is not text at all. `cat` on an image, or a `grep` that walks
+ * into one, otherwise spends the log's space and the model's context on
+ * mojibake — and a NUL or a stray escape can garble the terminal it prints to.
+ */
+const looksBinary = (text: string): boolean => {
+  if (text.length === 0) return false;
+  if (text.includes("\u0000")) return true;
+  const controls = text.match(CONTROL)?.length ?? 0;
+  // Invalid UTF-8 decodes to replacement characters; a few can be legitimate.
+  const replacements = text.split("\ufffd").length - 1;
+  return (controls + replacements) / text.length > 0.02;
+};
+
 export const createShellTool = (options: ShellToolOptions = {}): ToolExecutor => {
   const secrets = secretsIn(options.environment ?? process.env);
   const redact = (text: string) => redactWith(secrets, text);
@@ -82,9 +108,12 @@ export const createShellTool = (options: ShellToolOptions = {}): ToolExecutor =>
         new Response(child.stderr).text(),
         child.exited,
       ]);
-      // Redact once, here, so no caller can forget: everything downstream —
-      // the graph, the log, the reviewer's prompt — reads this string.
-      const output = redact(`${stdout}${stderr}`.trim());
+      // Clean once, here, so no caller can forget: everything downstream —
+      // the graph, the log, the reviewer's prompt, the terminal — reads this.
+      const decoded = `${stdout}${stderr}`.replace(ANSI, "").trim();
+      const output = looksBinary(decoded)
+        ? `(binary output suppressed: ${decoded.length} characters of non-text data)`
+        : redact(decoded);
 
       // A signal means Bun enforced a limit rather than the command finishing.
       const signal = child.signalCode;
