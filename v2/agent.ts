@@ -41,7 +41,6 @@ const fetchWithDeadline = async (
 type Setup = Parameters<typeof systemPrompt>[0] & {
   root: string;
   model: string;
-  onTool: (event: ToolEvent) => void;
   askQuestions: AskQuestions;
   skillTools: import("./skills").Skills;
 };
@@ -57,10 +56,12 @@ export const createAgent = (setup: Setup) => {
     );
 
   const model = createAzure({ apiKey, fetch: fetchWithDeadline as typeof fetch })(setup.model);
-  const runSubagent: RunSubagent = async (task, context, signal) => {
-    const result = await generateText({
-      model,
-      instructions: `<identity>
+
+  const toolsFor = (onTool: (event: ToolEvent) => void) => {
+    const runSubagent: RunSubagent = async (task, context, signal) => {
+      const result = await generateText({
+        model,
+        instructions: `<identity>
   You are a dedicated subagent working for Glorious.
 </identity>
 
@@ -77,21 +78,22 @@ ${setup.rules}
 </rules>
 
 The context above is your complete starting brief; do not assume access to the parent conversation, plan, or tool results. Work only on the task above. Inspect the repository when needed, make the requested changes, and verify them with focused checks. Do not ask the user questions. Do not delegate further. Return a concise summary of what you did and any checks that ran.`,
-      tools: createTools(setup.root, setup.onTool, setup.askQuestions, setup.skillTools),
-      stopWhen: [stepCountIs(SUBAGENT_STEP_LIMIT)],
-      maxOutputTokens: SUBAGENT_OUTPUT_TOKENS,
-      maxRetries: 5,
-      providerOptions: { openai: { reasoningEffort: "medium", textVerbosity: "low" } },
-      messages: [{ role: "user", content: task }],
-      abortSignal: signal,
-    });
-    return result.text;
+        tools: createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
+        stopWhen: [stepCountIs(SUBAGENT_STEP_LIMIT)],
+        maxOutputTokens: SUBAGENT_OUTPUT_TOKENS,
+        maxRetries: 5,
+        providerOptions: { openai: { reasoningEffort: "medium", textVerbosity: "low" } },
+        messages: [{ role: "user", content: task }],
+        abortSignal: signal,
+      });
+      return result.text;
+    };
+    return createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, runSubagent);
   };
 
   const settings = {
     model,
     instructions: systemPrompt(setup),
-    tools: createTools(setup.root, setup.onTool, setup.askQuestions, setup.skillTools, runSubagent),
     stopWhen: [stepCountIs(STEP_LIMIT)],
     maxRetries: 5,
     providerOptions: { openai: { reasoningEffort: "medium", textVerbosity: "low" } },
@@ -104,11 +106,13 @@ The context above is your complete starting brief; do not assume access to the p
       turn: {
         signal: AbortSignal;
         onStep: (step: { text: string; contextTokens: number }) => void;
+        onTool: (event: ToolEvent) => void;
       },
     ) => {
       const sent: ModelMessage[] = [...history, { role: "user", content: prompt }];
       const result = await generateText({
         ...settings,
+        tools: toolsFor(turn.onTool),
         messages: sent,
         abortSignal: turn.signal,
         onLanguageModelCallEnd: ({ content, usage }) =>

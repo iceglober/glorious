@@ -1,10 +1,12 @@
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
 import { errorText } from "./render";
+import type { ToolEvent } from "./tools";
 
 export type ChatEvent =
   | { type: "user"; text: string }
   | { type: "assistant"; text: string }
+  | { type: "tool"; tool: ToolEvent }
   | { type: "empty" }
   | { type: "notice"; text: string }
   | { type: "error"; text: string }
@@ -41,6 +43,7 @@ export const createChat = (
     const done = await agent
       .run(prompt, history, {
         signal: stop.signal,
+        onTool: (tool) => announce({ type: "tool", tool }),
         onStep: (step) => {
           announce({ type: "usage", tokens: step.contextTokens });
           if (step.text.trim() === "") return;

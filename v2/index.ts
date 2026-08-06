@@ -24,7 +24,6 @@ import {
   saveSession,
 } from "./session";
 import { loadSkills } from "./skills";
-import type { ToolEvent } from "./tools";
 import { createScreen, pickSession } from "./ui";
 
 const FRAME_MS = 90;
@@ -114,20 +113,6 @@ const main = async (): Promise<void> => {
     );
   };
 
-  const onTool = (event: ToolEvent): void => {
-    const now = Date.now();
-    if (event.phase === "start") {
-      running.push({ id: event.id, name: event.name, detail: event.detail, since: now });
-      repaint();
-      return;
-    }
-    const slot = running.findIndex((tool) => tool.id === event.id);
-    const [started] = running.splice(slot, 1);
-    produced = true;
-    screen.print([toolRow(event.name, started.detail, now - started.since, event.ok)], false);
-    repaint();
-  };
-
   const agent = createAgent({
     root,
     model,
@@ -138,7 +123,6 @@ const main = async (): Promise<void> => {
     git,
     skills: skills.catalog,
     skillTools: skills,
-    onTool,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
   });
 
@@ -157,6 +141,22 @@ const main = async (): Promise<void> => {
         produced = true;
         screen.print(assistantBlock(event.text), true);
         break;
+      case "tool": {
+        const now = Date.now();
+        if (event.tool.phase === "start") {
+          const { id, name, detail } = event.tool;
+          running.push({ id, name, detail, since: now });
+          break;
+        }
+        const slot = running.findIndex((tool) => tool.id === event.tool.id);
+        const [started] = running.splice(slot, 1);
+        produced = true;
+        screen.print(
+          [toolRow(event.tool.name, started.detail, now - started.since, event.tool.ok)],
+          false,
+        );
+        break;
+      }
       case "empty":
         if (!produced) screen.print(noticeBlock("(no response)"), false);
         break;
