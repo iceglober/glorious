@@ -90,7 +90,7 @@ const discover = async (root: string): Promise<Skill[]> => {
   for (const base of skillRoots(root)) {
     const entries = await readdir(base, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
       const location = resolve(base, entry.name, "SKILL.md");
       const skill = parseSkill(
         await Bun.file(location)
@@ -121,7 +121,7 @@ const createSkillTool = (skills: Skill[]) => {
     execute: async ({ name }) => {
       const skill = byName.get(name);
       if (!skill) return `ERROR: unknown skill: ${name}`;
-      return `<skill_content name="${escapeXml(skill.name)}">\n${skill.body}\n\nSkill directory: ${escape(dirname(skill.location))}\n</skill_content>`;
+      return `<skill_content name="${escapeXml(skill.name)}">\n${skill.body}\n\nSkill directory: ${escapeXml(dirname(skill.location))}\n</skill_content>`;
     },
   });
 };
