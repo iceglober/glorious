@@ -13,7 +13,6 @@
   "files": [
     "bin",
     "v2",
-    "README.md",
     "LICENSE"
   ],
   "publishConfig": {
