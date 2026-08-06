@@ -2,10 +2,10 @@ import type { KeyEvent, Renderable } from "@opentui/core";
 import { commands } from "../commands";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
-import { type Chrome, dimHex, edgeHex, type Host, panelHex } from "./chrome";
+import { type Chrome, dimHex, type Host, panelHeight, panelHex } from "./chrome";
 
-export const createOverlays = (chrome: Chrome, host: Host) => {
-  const { tui, renderer, columns, textNode, stack, styled } = chrome;
+export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () => void) => {
+  const { tui, renderer, textNode, styled, panel, panelWidth, panelRows } = chrome;
   let view: Renderable | null = null;
   let scroll: InstanceType<typeof tui.ScrollBoxRenderable> | null = null;
 
@@ -28,40 +28,27 @@ export const createOverlays = (chrome: Chrome, host: Host) => {
 
   const showHelp = (): void => {
     if (view) return;
-    const body = textNode({
-      content: styled([
-        [{ text: "Slash commands", tone: "accent", bold: true }],
-        [{ text: "Type / anywhere after whitespace to open autocomplete." }],
-        [{ text: "Use ↑/↓ to move, Tab to complete, and Enter to run." }],
-        [{ text: "" }],
-        ...commands.map(
-          (command): Line => [
-            { text: `/${command.name}`, tone: "highlight", bold: true },
-            { text: `  ${command.description}` },
-          ],
-        ),
-        [{ text: "" }],
-        [{ text: "Esc closes this help", tone: "muted" }],
-      ]),
-      width: "100%",
-      wrapMode: "word",
-    });
+    const lines: Line[] = [
+      [{ text: "Slash commands", tone: "accent", bold: true }],
+      [{ text: "Type / anywhere after whitespace to open autocomplete." }],
+      [{ text: "Use ↑/↓ to move, Tab to complete, and Enter to run." }],
+      [{ text: "" }],
+      ...commands.map(
+        (command): Line => [
+          { text: `/${command.name}`, tone: "highlight", bold: true },
+          { text: `  ${command.description}` },
+        ],
+      ),
+      [{ text: "" }],
+      [{ text: "Esc closes this help", tone: "muted" }],
+    ];
+    const body = textNode({ content: styled(lines), width: "100%", wrapMode: "word" });
     open(
-      stack(
+      panel(
         {
-          position: "absolute",
-          top: 2,
-          left: 4,
-          width: Math.max(1, columns() - 8),
-          height: 9,
-          paddingX: 2,
-          paddingY: 1,
-          backgroundColor: panelHex,
-          border: true,
-          borderColor: edgeHex,
-          title: " Help ",
-          titleColor: "#67d4e8",
-          zIndex: 10,
+          title: "Help",
+          width: panelWidth(),
+          height: panelHeight(Math.min(lines.length, panelRows())),
         },
         [body],
       ),
@@ -70,7 +57,7 @@ export const createOverlays = (chrome: Chrome, host: Host) => {
 
   const showSkills = (summaries: readonly SkillSummary[]): void => {
     if (view) return;
-    const modalWidth = Math.min(100, Math.max(1, columns() - 8));
+    const modalWidth = panelWidth();
     const contentWidth = Math.max(1, modalWidth - 6);
     const skillLines: Line[] =
       summaries.length === 0
@@ -92,9 +79,7 @@ export const createOverlays = (chrome: Chrome, host: Host) => {
               ...(index + 1 < summaries.length ? [[{ text: "" }]] : []),
             ];
           });
-    const skillRows = Math.max(1, skillLines.length);
-    const listHeight = Math.max(1, Math.min(skillRows, renderer.terminalHeight - 10));
-    const modalHeight = listHeight + 6;
+    const listHeight = Math.max(1, Math.min(skillLines.length, panelRows() - 2));
     const header = textNode({
       content: styled([[{ text: "Available skills", tone: "accent", bold: true }]]),
       width: "100%",
@@ -112,30 +97,17 @@ export const createOverlays = (chrome: Chrome, host: Host) => {
     });
     scroll.add(textNode({ content: styled(skillLines), width: "100%", wrapMode: "none" }));
     const footer = textNode({
-      content: "↑/↓ scroll · Esc closes this list",
+      content: "↑/↓ scroll · r reload · Esc closes this list",
       width: "100%",
       height: 1,
       fg: dimHex,
     });
     open(
-      stack(
-        {
-          position: "absolute",
-          top: Math.max(0, Math.floor((renderer.terminalHeight - modalHeight) / 2)),
-          left: Math.max(0, Math.floor((columns() - modalWidth) / 2)),
-          width: modalWidth,
-          height: modalHeight,
-          paddingX: 2,
-          paddingY: 1,
-          backgroundColor: panelHex,
-          border: true,
-          borderColor: edgeHex,
-          title: " Skills ",
-          titleColor: "#67d4e8",
-          zIndex: 10,
-        },
-        [header, scroll, footer],
-      ),
+      panel({ title: "Skills", width: modalWidth, height: panelHeight(listHeight + 2) }, [
+        header,
+        scroll,
+        footer,
+      ]),
     );
   };
 
@@ -144,6 +116,10 @@ export const createOverlays = (chrome: Chrome, host: Host) => {
     if (event.name === "escape" || (event.ctrl && event.name === "c")) {
       event.stopPropagation();
       close();
+    } else if (event.name === "r") {
+      event.stopPropagation();
+      close();
+      onSkillsReload();
     } else if (scroll && event.name === "up") {
       event.stopPropagation();
       scroll.scrollTop = Math.max(0, scroll.scrollTop - 1);

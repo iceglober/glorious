@@ -18,6 +18,12 @@ export const fillHex = "#383f47";
 export const panelHex = "#20252b";
 export const edgeHex = "#4b5563";
 export const dimHex = "#8b929c";
+export const accentHex = tones.accent[0];
+
+const panelChrome = 4;
+const panelMaxWidth = 100;
+
+export const panelHeight = (contentRows: number): number => contentRows + panelChrome;
 
 export type Chrome = ReturnType<typeof createChrome>;
 
@@ -51,15 +57,41 @@ export const createChrome = (tui: Tui, renderer: Renderer) => {
     return piece;
   };
 
+  const stack = (options: BoxOptions, kids: Renderable[]) => {
+    const parent = new tui.BoxRenderable(renderer, options);
+    for (const kid of kids) parent.add(kid);
+    return parent;
+  };
+
   return {
     tui,
     renderer,
     columns,
     textNode: (options: TextOptions) => new tui.TextRenderable(renderer, options),
-    stack: (options: BoxOptions, kids: Renderable[]) => {
-      const parent = new tui.BoxRenderable(renderer, options);
-      for (const kid of kids) parent.add(kid);
-      return parent;
+    stack,
+    panelWidth: (): number => Math.max(1, Math.min(panelMaxWidth, columns() - 8)),
+    panelRows: (): number => Math.max(1, renderer.terminalHeight - 10),
+    panel: (options: { title: string; width: number; height: number }, kids: Renderable[]) => {
+      const width = Math.max(1, Math.min(options.width, columns()));
+      const height = Math.max(3, Math.min(options.height, renderer.terminalHeight));
+      return stack(
+        {
+          position: "absolute",
+          top: Math.max(0, Math.floor((renderer.terminalHeight - height) / 2)),
+          left: Math.max(0, Math.floor((columns() - width) / 2)),
+          width,
+          height,
+          paddingX: 2,
+          paddingY: 1,
+          backgroundColor: panelHex,
+          border: true,
+          borderColor: edgeHex,
+          title: ` ${options.title} `,
+          titleColor: accentHex,
+          zIndex: 10,
+        },
+        kids,
+      );
     },
     styled: (lines: readonly Line[]) =>
       new tui.StyledText(

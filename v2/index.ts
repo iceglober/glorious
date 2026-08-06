@@ -72,7 +72,7 @@ const main = async (): Promise<void> => {
   const promptHistory = await loadPromptHistory();
   const rules = join(root, "AGENTS.md");
   const model = process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna";
-  const skills = await loadSkills(root);
+  let skills = await loadSkills(root);
 
   let frame = 0;
   let tokens = session.contextTokens ?? null;
@@ -179,6 +179,14 @@ const main = async (): Promise<void> => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       repaint();
+    },
+    onSkillsReload: () => {
+      void loadSkills(root).then((refreshed) => {
+        skills = refreshed;
+        agent.setSkills(refreshed);
+        screen.showSkills(skills.summaries);
+        repaint();
+      });
     },
     onEscape: () => interrupt(),
     onResize: () => repaint(),

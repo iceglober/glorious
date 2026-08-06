@@ -111,11 +111,13 @@ const escapeXml = (text: string): string =>
 
 const createSkillTool = (skills: Skill[]) => {
   if (skills.length === 0) return undefined;
-  const names = skills.map(({ name }) => name) as [string, ...string[]];
   const byName = new Map(skills.map((skill) => [skill.name, skill]));
   return tool({
-    description: `Load the full instructions for an available skill. Available skills: ${names.join(", ")}`,
-    inputSchema: z.object({ name: z.enum(names).describe("Skill name to activate") }),
+    description:
+      "Load the full instructions for an available skill. The skills available to you are listed in the <skills> block of the current message; pass one of those names exactly.",
+    inputSchema: z.object({
+      name: z.string().min(1).describe("Skill name to activate, exactly as listed in <skills>"),
+    }),
     execute: async ({ name }) => {
       const skill = byName.get(name);
       if (!skill) return `ERROR: unknown skill: ${name}`;

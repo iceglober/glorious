@@ -18,6 +18,7 @@ export const createScreen = async (callbacks: {
   onPromptHistory?: (history: string[]) => void;
   onSubmit: (text: string) => void;
   onCommand: (name: string) => void;
+  onSkillsReload: () => void;
   onEscape: () => void;
   onResize: () => void;
   onQuit: () => void;
@@ -131,7 +132,7 @@ export const createScreen = async (callbacks: {
     focusComposer: () => input.focus(),
     blurComposer: () => input.blur(),
   };
-  const overlays = createOverlays(chrome, host);
+  const overlays = createOverlays(chrome, host, callbacks.onSkillsReload);
   const questions = createQuestions(chrome, host);
 
   const painter = (node: TextRenderable) => {

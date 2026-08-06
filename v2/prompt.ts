@@ -1,4 +1,4 @@
-export const systemPrompt = (ctx: { rules: string; skills: string }): string => `
+export const systemPrompt = (ctx: { rules: string }): string => `
 <identity>
   You are Glorious, a coding agent that completes work for the user.
 </identity>
@@ -207,16 +207,17 @@ export const systemPrompt = (ctx: { rules: string; skills: string }): string => 
 ${ctx.rules}
 </repo-rules>
 
-${
-  ctx.skills === ""
+`;
+
+export const skillsPrompt = (catalog: string): string =>
+  catalog === ""
     ? ""
     : `<skills>
   The following skills provide specialized instructions for specific tasks.
   When a task matches a skill description, call activate_skill with its name
   before proceeding. Resolve paths referenced by a skill from its skill directory.
-  ${ctx.skills}
-</skills>`
-}`;
+${catalog}
+</skills>`;
 
 export const environmentPrompt = (ctx: {
   cwd: string;

@@ -25,10 +25,14 @@ export const messageText = (message: ModelMessage): string => {
     .join("\n");
 };
 
-const environmentBlock = /^<where-you-are>\n[\s\S]*?\n<\/where-you-are>\n\n/u;
+const preambleBlock =
+  /^(?:<where-you-are>\n[\s\S]*?\n<\/where-you-are>|<skills>\n[\s\S]*?\n<\/skills>)\n\n/u;
 
-export const typedText = (message: ModelMessage): string =>
-  messageText(message).replace(environmentBlock, "");
+export const typedText = (message: ModelMessage): string => {
+  let text = messageText(message);
+  while (preambleBlock.test(text)) text = text.replace(preambleBlock, "");
+  return text;
+};
 
 export const eventsFromMessages = (messages: readonly ModelMessage[]): SessionEvent[] => {
   if (messages.length === 0) return [];

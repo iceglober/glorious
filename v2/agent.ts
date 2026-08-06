@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { environmentPrompt, systemPrompt } from "./prompt";
+import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -46,6 +46,7 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     root: string;
     model: string;
     sessionId: string;
+    skills: string;
     askQuestions: AskQuestions;
     skillTools: import("./skills").Skills;
   };
@@ -62,6 +63,9 @@ export const createAgent = (setup: Setup) => {
 
   const model = createAzure({ apiKey, fetch: fetchWithDeadline as typeof fetch })(setup.model);
   const environment = environmentPrompt(setup);
+  let preamble = [environment, skillsPrompt(setup.skills)]
+    .filter((part) => part !== "")
+    .join("\n\n");
   const cacheKey = (scope: string): string =>
     createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
 
@@ -119,6 +123,12 @@ The brief you are given is your complete starting context; do not assume access 
   };
 
   return {
+    setSkills: (skills: Setup["skillTools"]): void => {
+      setup.skillTools = skills;
+      preamble = [environment, skillsPrompt(skills.catalog)]
+        .filter((part) => part !== "")
+        .join("\n\n");
+    },
     run: async (
       prompt: string,
       history: ModelMessage[],
@@ -130,7 +140,7 @@ The brief you are given is your complete starting context; do not assume access 
     ) => {
       const sent: ModelMessage[] = [
         ...history,
-        { role: "user", content: `${environment}\n\n${prompt}` },
+        { role: "user", content: `${preamble}\n\n${prompt}` },
       ];
       const result = await generateText({
         ...settings,

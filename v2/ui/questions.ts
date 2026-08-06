@@ -2,7 +2,7 @@ import type { KeyEvent, Renderable, TextareaRenderable, TextRenderable } from "@
 import { composerKeyBindings } from "../composer";
 import { width } from "../render";
 import type { Question } from "../tools";
-import { type Chrome, dimHex, edgeHex, fillHex, type Host, panelHex } from "./chrome";
+import { accentHex, type Chrome, dimHex, edgeHex, fillHex, type Host, panelHex } from "./chrome";
 
 export const createQuestions = (chrome: Chrome, host: Host) => {
   const { tui, renderer, columns, textNode, stack, styled } = chrome;
@@ -156,7 +156,7 @@ export const createQuestions = (chrome: Chrome, host: Host) => {
           border: true,
           borderColor: edgeHex,
           title: " Questions ",
-          titleColor: "#67d4e8",
+          titleColor: accentHex,
         },
         [title, optionsLabel, options, noteLabel, note, help],
       );

@@ -61,6 +61,15 @@ describe("typedText", () => {
     expect(typedText(sent)).toBe("fix the bug");
   });
 
+  test("strips the skills catalog the agent prepends alongside it", () => {
+    const sent: ModelMessage = {
+      role: "user",
+      content:
+        "<where-you-are>\nDarwin\ndir /repo\ngit main clean\n</where-you-are>\n\n<skills>\n  guidance\n<available_skills>\n  <skill><name>verify</name></skill>\n</available_skills>\n</skills>\n\nfix the bug",
+    };
+    expect(typedText(sent)).toBe("fix the bug");
+  });
+
   test("leaves a plain prompt untouched", () => {
     expect(typedText({ role: "user", content: "fix the bug" })).toBe("fix the bug");
   });
