@@ -4,10 +4,27 @@ import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
 import { z } from "zod";
 import { errorText } from "./render";
+import type { Skills } from "./skills";
 
 export type ToolEvent =
   | { id: number; name: string; detail: string; phase: "start" }
   | { id: number; name: string; detail: string; phase: "end"; ok: boolean };
+
+export type Question = {
+  question: string;
+  options: string[];
+};
+
+export type AskQuestions = (
+  questions: Question[],
+  signal: AbortSignal | undefined,
+) => Promise<string>;
+
+export type RunSubagent = (
+  task: string,
+  context: string,
+  signal: AbortSignal | undefined,
+) => Promise<string>;
 
 const RESULT_LIMIT = 30_000;
 const STDOUT_LIMIT = 20_000;
@@ -105,7 +122,13 @@ const patch = (text: string, edit: z.infer<typeof swap>, where: string): string 
   return text.slice(0, at) + edit.new_string + text.slice(at + edit.old_string.length);
 };
 
-export const createTools = (root: string, onEvent: (event: ToolEvent) => void): ToolSet => {
+export const createTools = (
+  root: string,
+  onEvent: (event: ToolEvent) => void,
+  askQuestions: AskQuestions,
+  skills: Skills,
+  runSubagent?: RunSubagent,
+): ToolSet => {
   const base = resolve(root);
   let seq = 0;
 
@@ -133,7 +156,11 @@ export const createTools = (root: string, onEvent: (event: ToolEvent) => void): 
       execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
         const raw = input as Record<string, string | undefined>;
         seq += 1;
-        const step = { id: seq, name, detail: raw.command ?? raw.pattern ?? raw.path ?? "" };
+        const step = {
+          id: seq,
+          name,
+          detail: raw.command ?? raw.pattern ?? raw.path ?? raw.task ?? "",
+        };
         announce({ ...step, phase: "start" });
         const told = await body(input, call.abortSignal).catch((bad) => `ERROR: ${errorText(bad)}`);
         const result = capText(told, RESULT_LIMIT);
@@ -141,6 +168,41 @@ export const createTools = (root: string, onEvent: (event: ToolEvent) => void): 
         return result;
       },
     });
+
+  const askUser = define(
+    "ask_user",
+    "Ask the user one or more questions. Each question must include concise options. The user can choose an option, add a note, or do both. Ask related questions together so the user can answer them in one batch. Use the answers to continue the current task.",
+    z.object({
+      questions: z
+        .array(
+          z.object({
+            question: z.string().min(1).describe("Question to show the user"),
+            options: z.array(z.string().min(1)).min(1).max(10).describe("Selectable answers"),
+          }),
+        )
+        .min(1)
+        .max(20),
+    }),
+    async ({ questions }, signal) => askQuestions(questions, signal),
+  );
+
+  const runSubagentTool = runSubagent
+    ? define(
+        "run_subagent",
+        "Launch a dedicated coding agent for one focused task. Before calling it, provide a standalone brief with the goal, current findings, relevant files and symbols, constraints, non-goals, acceptance criteria, and checks to run. Include precise paths or snippets; it starts without the parent conversation, plan, or earlier tool results. It can inspect or edit the project with the regular file tools. Do not use it for decisions that need the user.",
+        z.object({
+          task: z.string().min(1).max(4_000).describe("Self-contained task for the subagent"),
+          context: z
+            .string()
+            .min(1)
+            .max(30_000)
+            .describe(
+              "Standalone brief: goal, current findings, relevant paths and symbols, constraints, non-goals, acceptance criteria, and checks; do not include unrelated conversation history",
+            ),
+        }),
+        async ({ task, context }, signal) => runSubagent(task, context, signal),
+      )
+    : undefined;
 
   const bash = define(
     "bash",
@@ -245,5 +307,15 @@ export const createTools = (root: string, onEvent: (event: ToolEvent) => void): 
     },
   );
 
-  return { bash, read, write, edit, grep, glob };
+  return {
+    askUser,
+    bash,
+    read,
+    write,
+    edit,
+    grep,
+    glob,
+    ...(skills.tool ? { activate_skill: skills.tool } : {}),
+    ...(runSubagentTool ? { run_subagent: runSubagentTool } : {}),
+  };
 };

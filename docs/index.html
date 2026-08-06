@@ -67,7 +67,10 @@ export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource</code></pre>
 <p>Start a session in any git repository:</p>
 <pre><code>glorious</code></pre>
-<p><code>GLORIOUS_MODEL</code> overrides the default model (<code>gpt-5.6-luna</code>).</p>
+<p><code>GLORIOUS_MODEL</code> overrides the default model (<code>gpt-5.6-luna</code>). Session history is</p>
+<p>encrypted by default with a key in the macOS Keychain; set</p>
+<p><code>GLORIOUS_SESSION_ENCRYPTION=0</code> to disable it. Run <code>glorious --resume</code> to choose</p>
+<p>an earlier session, or pass its ID directly.</p>
 <details><summary>Keys</summary>
 <ul><li>Enter submits; Shift+Enter inserts a newline.</li><li>Esc removes the newest queued message, then interrupts the running turn.</li><li>Ctrl+C clears the composer; twice on an empty composer exits.</li><li>Up/Down browse prompt history.</li><li>Mouse-select copies to the clipboard.</li></ul>
 </details>

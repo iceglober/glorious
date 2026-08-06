@@ -22,7 +22,10 @@ Start a session in any git repository:
 glorious
 ```
 
-`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`).
+`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`). Session history is
+encrypted by default with a key in the macOS Keychain; set
+`GLORIOUS_SESSION_ENCRYPTION=0` to disable it. Run `glorious --resume` to choose
+an earlier session, or pass its ID directly.
 
 :::details Keys
 

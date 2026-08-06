@@ -1,4 +1,4 @@
-export type Tone = "accent" | "muted" | "success" | "warning" | "danger";
+export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
 
 export type Span = {
   text: string;
@@ -47,7 +47,7 @@ const clean = (text: string): string =>
 
 const flatten = (text: string): string => clean(text).replaceAll("\n", " ").trim();
 
-const clip = (text: string, limit: number): string => {
+export const clip = (text: string, limit: number): string => {
   if (limit <= 0) return "";
   if (width(text) <= limit) return text;
   let room = limit - 1;
@@ -66,7 +66,7 @@ export const userBlock = (text: string): Line[] => {
     [{ text: " ", fill: true }],
     [
       { text: " ", fill: true },
-      { text: "❯", tone: "accent", bold: true, fill: true },
+      { text: "❯", tone: "prompt", bold: true, fill: true },
       { text: ` ${lead}`, bold: true, fill: true },
     ],
     ...rest.map((row): Line => [{ text: ` ${row}`, bold: true, fill: true }]),
@@ -85,7 +85,9 @@ const inline = (row: string): Line =>
         return { text: piece.slice(2, -2), bold: true };
       }
       const body = piece.slice(1, -1);
-      return piece.startsWith("`") ? { text: body, tone: "accent" } : { text: body, italic: true };
+      return piece.startsWith("`")
+        ? { text: body, tone: "highlight" }
+        : { text: body, italic: true };
     })
     .filter((span) => span.text.length > 0);
 
@@ -107,7 +109,7 @@ export const assistantBlock = (text: string): Line[] => {
     if (at > close) close = fenced.indexOf(true, at + 1);
     return [{ text: row, tone: "muted" }];
   });
-  return lines.with(0, [{ text: "● ", tone: "accent" }, ...lines[0]]);
+  return lines.with(0, [{ text: "● ", tone: "highlight" }, ...lines[0]]);
 };
 
 export const noticeBlock = (text: string, tone: Tone = "muted"): Line[] =>
@@ -152,7 +154,8 @@ const vuMeter = (frame: number): string =>
     return ramp[Math.round((1 - Math.cos(turns * 2 * Math.PI)) * 3.5)];
   }).join("");
 
-const tokenCount = (tokens: number): string => {
+const tokenCount = (tokens: number | null): string => {
+  if (tokens === null) return "unknown";
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}m`;
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
   return `${Math.max(0, Math.round(tokens))}`;
@@ -162,16 +165,18 @@ export const statusLine = (
   state: {
     root: string;
     model: string;
-    tokens: number;
+    tokens: number | null;
     busy: boolean;
     queued: number;
     frame: number;
+    sessionId: string;
   },
   columns: number,
-): Line => {
+): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
   const waiting = state.queued > 0 ? ` · ${state.queued} queued` : "";
-  const hint = state.busy ? `   ${vuMeter(state.frame)}  Esc interrupt${waiting}` : "";
+  const wave = vuMeter(state.frame);
+  const hint = state.busy ? `   ${wave}  Esc interrupt${waiting}` : "";
   const room = Math.max(0, limit - width(hint));
   const root = flatten(state.root);
   const ctx = `ctx ${tokenCount(state.tokens)}`;
@@ -184,6 +189,9 @@ export const statusLine = (
   ];
   const body = ladder.find((option) => width(option) <= room) ?? ctx;
   const line: Line = [{ text: clip(body, room), tone: "muted" }];
-  if (hint) line.push({ text: clip(hint, limit), tone: "accent" });
-  return line;
+  if (hint) {
+    line.push({ text: `   ${wave}`, tone: "accent" });
+    line.push({ text: clip(`  Esc interrupt${waiting}`, limit), tone: "muted" });
+  }
+  return [line, [{ text: state.sessionId, tone: "muted" }]];
 };

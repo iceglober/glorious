@@ -14,9 +14,13 @@ export type ChatEvent =
 
 const NOTE_CHARS = 160;
 
-export const createChat = (agent: Agent, onEvent: (event: ChatEvent) => void) => {
+export const createChat = (
+  agent: Agent,
+  onEvent: (event: ChatEvent) => void,
+  options: { history?: ModelMessage[]; onHistory?: (history: ModelMessage[]) => void } = {},
+) => {
   const queue: string[] = [];
-  let history: ModelMessage[] = [];
+  let history: ModelMessage[] = options.history?.slice() ?? [];
   let live: AbortController | null = null;
   let note = "";
 
@@ -58,6 +62,7 @@ export const createChat = (agent: Agent, onEvent: (event: ChatEvent) => void) =>
       announce({ type: "error", text: failed });
     } else {
       history = done.messages;
+      options.onHistory?.(history);
       if (done.text.trim() !== "" && done.text !== spoken) {
         spoken = done.text;
         announce({ type: "assistant", text: spoken });

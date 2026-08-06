@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { ModelMessage } from "ai";
 import { createAgent } from "./agent";
 import { type ChatEvent, createChat } from "./chat";
 import {
@@ -15,8 +16,16 @@ import {
   toolRow,
   userBlock,
 } from "./render";
+import {
+  createSession,
+  loadPromptHistory,
+  openSession,
+  savePromptHistory,
+  saveSession,
+} from "./session";
+import { loadSkills } from "./skills";
 import type { ToolEvent } from "./tools";
-import { createScreen } from "./ui";
+import { createScreen, pickSession } from "./ui";
 
 const FRAME_MS = 90;
 const SETTLE_MS = 250;
@@ -50,13 +59,34 @@ const probe = () => {
   };
 };
 
+const messageText = (message: ModelMessage): string => {
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
+};
+
 const main = async (): Promise<void> => {
+  const args = process.argv.slice(2);
+  let resumeId: string | undefined;
+  if (args.length > 0) {
+    if (args[0] !== "--resume" || args.length > 2)
+      throw new Error("Usage: glorious [--resume [session-id]]");
+    resumeId = args[1];
+  }
   const { root, os, git, label } = probe();
+  const session =
+    resumeId === undefined && args.length === 0
+      ? await createSession(root)
+      : await openSession(resumeId, pickSession);
+  const promptHistory = await loadPromptHistory();
   const rules = join(root, "AGENTS.md");
   const model = process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna";
+  const skills = await loadSkills(root);
 
   let frame = 0;
-  let tokens = 0;
+  let tokens = session.contextTokens ?? null;
   let produced = false;
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
 
@@ -70,7 +100,15 @@ const main = async (): Promise<void> => {
     screen.setProgress(progress);
     screen.setStatus(
       statusLine(
-        { root: label, model, tokens, busy: chat.busy, queued: chat.queued.length, frame },
+        {
+          root: label,
+          model,
+          tokens,
+          busy: chat.busy,
+          queued: chat.queued.length,
+          frame,
+          sessionId: session.id,
+        },
         screen.columns(),
       ),
     );
@@ -98,13 +136,18 @@ const main = async (): Promise<void> => {
     os,
     date: new Date().toISOString().slice(0, 10),
     git,
+    skills: skills.catalog,
+    skillTools: skills,
     onTool,
+    askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
   });
 
   const render = (event: ChatEvent): void => {
     switch (event.type) {
       case "usage":
         tokens = event.tokens;
+        session.contextTokens = event.tokens;
+        void saveSession(session);
         break;
       case "user":
         produced = false;
@@ -132,8 +175,18 @@ const main = async (): Promise<void> => {
   };
 
   const screen = await createScreen({
+    promptHistory,
+    sessionId: session.id,
+    onPromptHistory: (prompts) => {
+      void savePromptHistory(prompts);
+    },
     onSubmit: (text) => {
       chat.send(text);
+      repaint();
+    },
+    onCommand: (name) => {
+      if (name === "help") screen.showHelp();
+      if (name === "skills") screen.showSkills(skills.summaries);
       repaint();
     },
     onEscape: () => interrupt(),
@@ -141,7 +194,21 @@ const main = async (): Promise<void> => {
     onQuit: () => quit(),
   });
 
-  const chat = createChat(agent, render);
+  for (const message of session.messages) {
+    if (message.role !== "user" && message.role !== "assistant") continue;
+    const text = messageText(message);
+    if (text !== "")
+      screen.print(message.role === "user" ? userBlock(text) : assistantBlock(text), true);
+  }
+
+  const chat = createChat(agent, render, {
+    history: session.messages,
+    onHistory: (history: ModelMessage[]) => {
+      session.messages = history;
+      session.updatedAt = new Date().toISOString();
+      void saveSession(session);
+    },
+  });
 
   let release = (): void => {};
   const closed = new Promise<void>((resolve) => {
