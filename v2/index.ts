@@ -2,19 +2,17 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ModelMessage } from "ai";
 import { createAgent } from "./agent";
-import { type ChatEvent, createChat } from "./chat";
+import { type ChatSignal, createChat } from "./chat";
+import { messagesOf, type SessionEvent } from "./events";
 import {
-  assistantBlock,
   errorText,
+  eventBlock,
   type Line,
   noticeBlock,
   queuedRow,
   runningRow,
   statusLine,
-  toolRow,
-  userBlock,
 } from "./render";
 import {
   createSession,
@@ -56,14 +54,6 @@ const probe = () => {
     git: `${branch === "" ? "HEAD" : branch} ${dirty === 0 ? "clean" : `${dirty} files changed`}`,
     label: root === home || root.startsWith(`${home}/`) ? `~${root.slice(home.length)}` : root,
   };
-};
-
-const messageText = (message: ModelMessage): string => {
-  if (typeof message.content === "string") return message.content;
-  return message.content
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n");
 };
 
 const main = async (): Promise<void> => {
@@ -129,50 +119,47 @@ const main = async (): Promise<void> => {
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
   });
 
-  const render = (event: ChatEvent): void => {
-    switch (event.type) {
-      case "usage":
-        tokens = event.tokens;
-        cached = event.cached;
-        session.contextTokens = event.tokens;
-        void saveSession(session);
-        break;
-      case "user":
-        produced = false;
-        screen.print(userBlock(event.text), true);
-        break;
-      case "assistant":
-        produced = true;
-        screen.print(assistantBlock(event.text), true);
-        break;
+  const record = (event: SessionEvent): void => {
+    session.events.push(event);
+    session.updatedAt = new Date().toISOString();
+    if (event.type === "usage" || event.type === "turn") void saveSession(session);
+  };
+
+  const render = (event: SessionEvent): void => {
+    record(event);
+    if (event.type === "usage") {
+      tokens = event.tokens;
+      cached = event.cached;
+      session.contextTokens = event.tokens;
+    }
+    if (event.type === "user") produced = false;
+    if (event.type === "assistant" || event.type === "tool") produced = true;
+    const { lines, gap } = eventBlock(event);
+    if (lines.length > 0) screen.print(lines, gap);
+    repaint();
+  };
+
+  const react = (value: ChatSignal): void => {
+    switch (value.type) {
       case "tool": {
-        const now = Date.now();
-        if (event.tool.phase === "start") {
-          const { id, name, detail } = event.tool;
-          running.push({ id, name, detail, since: now });
+        if (value.tool.phase === "start") {
+          const { id, name, detail } = value.tool;
+          running.push({ id, name, detail, since: Date.now() });
           break;
         }
-        const slot = running.findIndex((tool) => tool.id === event.tool.id);
-        const [started] = running.splice(slot, 1);
-        produced = true;
-        screen.print(
-          [toolRow(event.tool.name, started.detail, now - started.since, event.tool.ok)],
-          false,
-        );
+        const slot = running.findIndex((tool) => tool.id === value.tool.id);
+        if (slot >= 0) running.splice(slot, 1);
         break;
       }
       case "empty":
         if (!produced) screen.print(noticeBlock("(no response)"), false);
         break;
-      case "notice":
-        screen.print(noticeBlock(event.text), false);
-        break;
-      case "error":
-        screen.print(noticeBlock(event.text, "danger"), false);
-        break;
       case "dequeued":
-        screen.restoreInput(event.text);
-        screen.print(noticeBlock(`(dequeued) ${event.text.split("\n")[0].slice(0, 60)}`), false);
+        screen.restoreInput(value.text);
+        screen.print(noticeBlock(`(dequeued) ${value.text.split("\n")[0].slice(0, 60)}`), false);
+        break;
+      case "idle":
+        void saveSession(session);
         break;
     }
     repaint();
@@ -198,20 +185,15 @@ const main = async (): Promise<void> => {
     onQuit: () => quit(),
   });
 
-  for (const message of session.messages) {
-    if (message.role !== "user" && message.role !== "assistant") continue;
-    const text = messageText(message);
-    if (text !== "")
-      screen.print(message.role === "user" ? userBlock(text) : assistantBlock(text), true);
+  for (const event of session.events) {
+    const { lines, gap } = eventBlock(event);
+    if (lines.length > 0) screen.print(lines, gap);
   }
 
-  const chat = createChat(agent, render, {
-    history: session.messages,
-    onHistory: (history: ModelMessage[]) => {
-      session.messages = history;
-      session.updatedAt = new Date().toISOString();
-      void saveSession(session);
-    },
+  const chat = createChat(agent, {
+    onEvent: render,
+    onSignal: react,
+    history: messagesOf(session.events),
   });
 
   let release = (): void => {};

@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { ModelMessage } from "ai";
+import { contextTokensOf, eventsFromMessages, type SessionEvent } from "./events";
 
 const execFile = promisify(execFileCallback);
 const directory = join(
@@ -18,12 +19,18 @@ const encryptionDisabled = /^(0|false|off)$/iu.test(process.env.GLORIOUS_SESSION
 const algorithm = "aes-256-gcm";
 
 type StoredSession = {
+  schema: 2;
   id: string;
   createdAt: string;
   updatedAt: string;
   cwd: string;
-  messages: ModelMessage[];
+  events: SessionEvent[];
   contextTokens?: number;
+};
+
+type LegacySession = Omit<StoredSession, "schema" | "events"> & {
+  schema?: undefined;
+  messages: ModelMessage[];
 };
 
 type EncryptedSession = {
@@ -112,33 +119,36 @@ const decode = async (text: string): Promise<unknown> => {
   );
 };
 
-const messageText = (message: ModelMessage): string => {
-  if (typeof message.content === "string") return message.content;
-  return message.content
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n");
-};
-
-const titleOf = (messages: ModelMessage[]): string => {
-  const last = messages.findLast((message) => message.role === "user");
-  if (!last) return "New session";
-  return messageText(last).replaceAll(/\s+/g, " ").trim().slice(0, 72) || "New session";
+const titleOf = (events: readonly SessionEvent[]): string => {
+  const last = events.findLast((event) => event.type === "user");
+  if (last?.type !== "user") return "New session";
+  return last.text.replaceAll(/\s+/g, " ").trim().slice(0, 72) || "New session";
 };
 
 const load = async (file: string): Promise<Session | null> => {
   try {
-    const stored = (await decode(await readFile(join(directory, file), "utf8"))) as StoredSession;
+    const stored = (await decode(await readFile(join(directory, file), "utf8"))) as
+      | StoredSession
+      | LegacySession;
     if (
       typeof stored.id !== "string" ||
       typeof stored.createdAt !== "string" ||
       typeof stored.updatedAt !== "string" ||
       typeof stored.cwd !== "string" ||
-      !Array.isArray(stored.messages) ||
       (stored.contextTokens !== undefined && typeof stored.contextTokens !== "number")
     )
       return null;
-    return { ...stored, title: titleOf(stored.messages) };
+    const migrated: StoredSession =
+      stored.schema === 2
+        ? stored
+        : {
+            ...stored,
+            schema: 2,
+            events: eventsFromMessages(stored.messages ?? []),
+            contextTokens: stored.contextTokens,
+          };
+    if (!Array.isArray(migrated.events)) return null;
+    return { ...migrated, title: titleOf(migrated.events) };
   } catch {
     return null;
   }
@@ -176,23 +186,25 @@ export const openSession = async (
 export const createSession = async (cwd: string): Promise<Session> => {
   const now = new Date().toISOString();
   const session: StoredSession = {
+    schema: 2,
     id: randomUUID().slice(0, 8),
     createdAt: now,
     updatedAt: now,
     cwd,
-    messages: [],
+    events: [],
     contextTokens: 0,
   };
   await saveSession(session);
-  return { ...session, title: titleOf(session.messages) };
+  return { ...session, title: titleOf(session.events) };
 };
 
 export const saveSession = async (session: StoredSession): Promise<void> => {
   await mkdir(directory, { recursive: true });
-  const { id, createdAt, updatedAt, cwd, messages, contextTokens } = session;
+  const { id, createdAt, updatedAt, cwd, events } = session;
+  const contextTokens = session.contextTokens ?? contextTokensOf(events);
   await writeFile(
     join(directory, `${id}.json`),
-    await encode({ id, createdAt, updatedAt, cwd, messages, contextTokens }),
+    await encode({ schema: 2, id, createdAt, updatedAt, cwd, events, contextTokens }),
     "utf8",
   );
 };

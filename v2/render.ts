@@ -1,3 +1,5 @@
+import type { SessionEvent } from "./events";
+
 export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
 
 export type Span = {
@@ -129,6 +131,26 @@ export const toolRow = (name: string, detail: string, elapsedMs: number, ok: boo
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
   return [...activity(mark, name, detail, "  "), { text: `  ${took}`, tone: "muted" }];
 };
+
+export const eventBlock = (event: SessionEvent): { lines: Line[]; gap: boolean } => {
+  switch (event.type) {
+    case "user":
+      return { lines: userBlock(event.text), gap: true };
+    case "assistant":
+      return { lines: assistantBlock(event.text), gap: true };
+    case "tool":
+      return { lines: [toolRow(event.name, event.detail, event.elapsedMs, event.ok)], gap: false };
+    case "notice":
+      return { lines: noticeBlock(event.text), gap: false };
+    case "error":
+      return { lines: noticeBlock(event.text, "danger"), gap: false };
+    default:
+      return { lines: [], gap: false };
+  }
+};
+
+export const transcript = (events: readonly SessionEvent[]): Line[] =>
+  events.flatMap((event) => eventBlock(event).lines);
 
 const sweep = (frame: number): string => {
   const step = Math.abs(frame) % 16;

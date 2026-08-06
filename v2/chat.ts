@@ -1,16 +1,12 @@
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
+import type { SessionEvent } from "./events";
 import { errorText } from "./render";
 import type { ToolEvent } from "./tools";
 
-export type ChatEvent =
-  | { type: "user"; text: string }
-  | { type: "assistant"; text: string }
+export type ChatSignal =
   | { type: "tool"; tool: ToolEvent }
   | { type: "empty" }
-  | { type: "notice"; text: string }
-  | { type: "error"; text: string }
-  | { type: "usage"; tokens: number; cached: number }
   | { type: "dequeued"; text: string }
   | { type: "idle" };
 
@@ -18,18 +14,44 @@ const NOTE_CHARS = 160;
 
 export const createChat = (
   agent: Agent,
-  onEvent: (event: ChatEvent) => void,
-  options: { history?: ModelMessage[]; onHistory?: (history: ModelMessage[]) => void } = {},
+  wiring: {
+    onEvent: (event: SessionEvent) => void;
+    onSignal: (signal: ChatSignal) => void;
+    history?: ModelMessage[];
+  },
 ) => {
   const queue: string[] = [];
-  let history: ModelMessage[] = options.history?.slice() ?? [];
+  let history: ModelMessage[] = wiring.history?.slice() ?? [];
   let live: AbortController | null = null;
   let note = "";
 
-  const announce = (event: ChatEvent): void => {
+  const announce = (event: SessionEvent): void => {
     try {
-      onEvent(event);
+      wiring.onEvent(event);
     } catch {}
+  };
+
+  const signal = (value: ChatSignal): void => {
+    try {
+      wiring.onSignal(value);
+    } catch {}
+  };
+
+  const onTool = (started: Map<number, number>, tool: ToolEvent): void => {
+    signal({ type: "tool", tool });
+    if (tool.phase === "start") {
+      started.set(tool.id, Date.now());
+      return;
+    }
+    const since = started.get(tool.id);
+    started.delete(tool.id);
+    announce({
+      type: "tool",
+      name: tool.name,
+      detail: tool.detail,
+      elapsedMs: since === undefined ? 0 : Date.now() - since,
+      ok: tool.ok,
+    });
   };
 
   const turn = async (text: string): Promise<void> => {
@@ -38,12 +60,14 @@ export const createChat = (
     announce({ type: "user", text });
     const prompt = note === "" ? text : `${note}\n\n${text}`;
     note = "";
+    const started = new Map<number, number>();
+    const before = history.length;
     let spoken = "";
     let failed = "";
     const done = await agent
       .run(prompt, history, {
         signal: stop.signal,
-        onTool: (tool) => announce({ type: "tool", tool }),
+        onTool: (tool) => onTool(started, tool),
         onStep: (step) => {
           announce({ type: "usage", tokens: step.contextTokens, cached: step.cachedTokens });
           if (step.text.trim() === "") return;
@@ -65,18 +89,18 @@ export const createChat = (
       announce({ type: "error", text: failed });
     } else {
       history = done.messages;
-      options.onHistory?.(history);
+      announce({ type: "turn", messages: done.messages.slice(before) });
       if (done.text.trim() !== "" && done.text !== spoken) {
         spoken = done.text;
         announce({ type: "assistant", text: spoken });
       }
-      if (spoken === "") announce({ type: "empty" });
+      if (spoken === "") signal({ type: "empty" });
       if (done.stoppedAtStepLimit) {
         note = "[note] Your last turn ran out of steps and stopped before finishing.";
         announce({ type: "notice", text: '(step limit reached — send "continue" to resume)' });
       }
     }
-    announce({ type: "idle" });
+    signal({ type: "idle" });
   };
 
   const drain = async (): Promise<void> => {
@@ -104,7 +128,7 @@ export const createChat = (
     dequeue: (): string | null => {
       if (queue.length < 2) return null;
       const [dropped] = queue.splice(-1);
-      announce({ type: "dequeued", text: dropped });
+      signal({ type: "dequeued", text: dropped });
       return dropped;
     },
   };

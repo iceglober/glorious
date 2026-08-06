@@ -27,7 +27,7 @@
   "scripts": {
     "dev": "bun v2/index.ts",
     "glorious": "bun v2/index.ts",
-    "test": "bun test docs",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
     "format": "biome format --write .",
