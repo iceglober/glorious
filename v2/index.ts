@@ -86,6 +86,7 @@ const main = async (): Promise<void> => {
 
   let frame = 0;
   let tokens = session.contextTokens ?? null;
+  let cached: number | null = null;
   let produced = false;
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
 
@@ -103,6 +104,7 @@ const main = async (): Promise<void> => {
           root: label,
           model,
           tokens,
+          cached,
           busy: chat.busy,
           queued: chat.queued.length,
           frame,
@@ -116,6 +118,7 @@ const main = async (): Promise<void> => {
   const agent = createAgent({
     root,
     model,
+    sessionId: session.id,
     rules: existsSync(rules) ? readFileSync(rules, "utf8") : "",
     cwd: root,
     os,
@@ -130,6 +133,7 @@ const main = async (): Promise<void> => {
     switch (event.type) {
       case "usage":
         tokens = event.tokens;
+        cached = event.cached;
         session.contextTokens = event.tokens;
         void saveSession(session);
         break;

@@ -1,11 +1,4 @@
-export const systemPrompt = (ctx: {
-  cwd: string;
-  os: string;
-  date: string;
-  git: string;
-  rules: string;
-  skills: string;
-}): string => `
+export const systemPrompt = (ctx: { rules: string; skills: string }): string => `
 <identity>
   You are Glorious, a coding agent that completes work for the user.
 </identity>
@@ -223,9 +216,14 @@ ${
   before proceeding. Resolve paths referenced by a skill from its skill directory.
   ${ctx.skills}
 </skills>`
-}
+}`;
 
-<where-you-are>
+export const environmentPrompt = (ctx: {
+  cwd: string;
+  os: string;
+  date: string;
+  git: string;
+}): string => `<where-you-are>
 ${ctx.os} · ${ctx.date}
 dir ${ctx.cwd}
 git ${ctx.git}

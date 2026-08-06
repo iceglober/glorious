@@ -10,7 +10,7 @@ export type ChatEvent =
   | { type: "empty" }
   | { type: "notice"; text: string }
   | { type: "error"; text: string }
-  | { type: "usage"; tokens: number }
+  | { type: "usage"; tokens: number; cached: number }
   | { type: "dequeued"; text: string }
   | { type: "idle" };
 
@@ -45,7 +45,7 @@ export const createChat = (
         signal: stop.signal,
         onTool: (tool) => announce({ type: "tool", tool }),
         onStep: (step) => {
-          announce({ type: "usage", tokens: step.contextTokens });
+          announce({ type: "usage", tokens: step.contextTokens, cached: step.cachedTokens });
           if (step.text.trim() === "") return;
           spoken = step.text;
           announce({ type: "assistant", text: spoken });

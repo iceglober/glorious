@@ -166,6 +166,7 @@ export const statusLine = (
     root: string;
     model: string;
     tokens: number | null;
+    cached: number | null;
     busy: boolean;
     queued: number;
     frame: number;
@@ -179,7 +180,11 @@ export const statusLine = (
   const hint = state.busy ? `   ${wave}  Esc interrupt${waiting}` : "";
   const room = Math.max(0, limit - width(hint));
   const root = flatten(state.root);
-  const ctx = `ctx ${tokenCount(state.tokens)}`;
+  const hits =
+    state.tokens !== null && state.tokens > 0 && state.cached !== null && state.cached > 0
+      ? ` · ${Math.round((state.cached / state.tokens) * 100)}% cached`
+      : "";
+  const ctx = `ctx ${tokenCount(state.tokens)}${hits}`;
   const named = `${flatten(state.model)} · ${ctx}`;
   const ladder = [
     `${root} · ${named}`,

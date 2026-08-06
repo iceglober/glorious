@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { systemPrompt } from "./prompt";
+import { environmentPrompt, systemPrompt } from "./prompt";
 import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -14,6 +15,8 @@ const RETRY_NAMES = new Set([
   "ConnectTimeoutError",
   "SocketError",
 ]);
+
+const CACHE_KEY_CHARS = 32;
 
 const worthRetrying = (failure: unknown): boolean =>
   failure instanceof TypeError || (failure instanceof Error && RETRY_NAMES.has(failure.name));
@@ -38,12 +41,14 @@ const fetchWithDeadline = async (
   }
 };
 
-type Setup = Parameters<typeof systemPrompt>[0] & {
-  root: string;
-  model: string;
-  askQuestions: AskQuestions;
-  skillTools: import("./skills").Skills;
-};
+type Setup = Parameters<typeof systemPrompt>[0] &
+  Parameters<typeof environmentPrompt>[0] & {
+    root: string;
+    model: string;
+    sessionId: string;
+    askQuestions: AskQuestions;
+    skillTools: import("./skills").Skills;
+  };
 
 export const createAgent = (setup: Setup) => {
   const apiKey =
@@ -56,34 +61,42 @@ export const createAgent = (setup: Setup) => {
     );
 
   const model = createAzure({ apiKey, fetch: fetchWithDeadline as typeof fetch })(setup.model);
+  const environment = environmentPrompt(setup);
+  const cacheKey = (scope: string): string =>
+    createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
 
-  const toolsFor = (onTool: (event: ToolEvent) => void) => {
-    const runSubagent: RunSubagent = async (task, context, signal) => {
-      const result = await generateText({
-        model,
-        instructions: `<identity>
+  const subagentInstructions = `<identity>
   You are a dedicated subagent working for Glorious.
 </identity>
-
-<task>
-${task}
-</task>
-
-<context>
-${context}
-</context>
 
 <rules>
 ${setup.rules}
 </rules>
 
-The context above is your complete starting brief; do not assume access to the parent conversation, plan, or tool results. Work only on the task above. Inspect the repository when needed, make the requested changes, and verify them with focused checks. Do not ask the user questions. Do not delegate further. Return a concise summary of what you did and any checks that ran.`,
+The brief you are given is your complete starting context; do not assume access to the parent conversation, plan, or tool results. Work only on the task in that brief. Inspect the repository when needed, make the requested changes, and verify them with focused checks. Do not ask the user questions. Do not delegate further. Return a concise summary of what you did and any checks that ran.`;
+
+  const toolsFor = (onTool: (event: ToolEvent) => void) => {
+    const runSubagent: RunSubagent = async (task, context, signal) => {
+      const result = await generateText({
+        model,
+        instructions: subagentInstructions,
         tools: createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
         stopWhen: [stepCountIs(SUBAGENT_STEP_LIMIT)],
         maxOutputTokens: SUBAGENT_OUTPUT_TOKENS,
         maxRetries: 5,
-        providerOptions: { openai: { reasoningEffort: "medium", textVerbosity: "low" } },
-        messages: [{ role: "user", content: task }],
+        providerOptions: {
+          openai: {
+            reasoningEffort: "medium",
+            textVerbosity: "low",
+            promptCacheKey: cacheKey("subagent"),
+          },
+        },
+        messages: [
+          {
+            role: "user",
+            content: `<task>\n${task}\n</task>\n\n<context>\n${context}\n</context>`,
+          },
+        ],
         abortSignal: signal,
       });
       return result.text;
@@ -96,7 +109,13 @@ The context above is your complete starting brief; do not assume access to the p
     instructions: systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT)],
     maxRetries: 5,
-    providerOptions: { openai: { reasoningEffort: "medium", textVerbosity: "low" } },
+    providerOptions: {
+      openai: {
+        reasoningEffort: "medium",
+        textVerbosity: "low",
+        promptCacheKey: cacheKey(setup.sessionId),
+      },
+    },
   };
 
   return {
@@ -105,11 +124,14 @@ The context above is your complete starting brief; do not assume access to the p
       history: ModelMessage[],
       turn: {
         signal: AbortSignal;
-        onStep: (step: { text: string; contextTokens: number }) => void;
+        onStep: (step: { text: string; contextTokens: number; cachedTokens: number }) => void;
         onTool: (event: ToolEvent) => void;
       },
     ) => {
-      const sent: ModelMessage[] = [...history, { role: "user", content: prompt }];
+      const sent: ModelMessage[] = [
+        ...history,
+        { role: "user", content: `${environment}\n\n${prompt}` },
+      ];
       const result = await generateText({
         ...settings,
         tools: toolsFor(turn.onTool),
@@ -119,6 +141,7 @@ The context above is your complete starting brief; do not assume access to the p
           turn.onStep({
             text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
             contextTokens: usage?.inputTokens ?? 0,
+            cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
           }),
       });
       return {
