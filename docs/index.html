@@ -52,27 +52,91 @@ nav.toc .nav-h2 { padding-left:1.5rem; }
 </head>
 <body>
 <div class="layout">
-<nav class="toc" aria-label="Sections"><a class="nav-h1" href="#glorious">glorious</a><a class="nav-h2" href="#quickstart">Quickstart</a></nav>
+<nav class="toc" aria-label="Sections"><a class="nav-h1" href="#glorious">glorious</a><a class="nav-h2" href="#quickstart">Quickstart</a><a class="nav-h2" href="#tools">Tools</a><a class="nav-h2" href="#slash-commands">Slash commands</a><a class="nav-h2" href="#keys">Keys</a><a class="nav-h2" href="#project-rules">Project rules</a><a class="nav-h2" href="#skills">Skills</a></nav>
 <main>
 <h1 id="glorious">glorious</h1>
-<p>A terminal coding agent, stripped to the studs: a chat TUI over an agent with</p>
-<p><strong>bash</strong>, <strong>read</strong>, <strong>edit</strong>, and <strong>search</strong> tools, driven by an Azure-hosted</p>
-<p>model. No modes, no permission prompts, no configuration — you talk, it reads</p>
-<p>and edits files and runs commands in your repo.</p>
+<p>A terminal-based coding agent.</p>
 <h2 id="quickstart">Quickstart</h2>
-<p>Install (you need <a href="https://bun.sh">Bun</a> and git), then set your Azure key in</p>
-<p>the environment:</p>
+<p>You need <a href="https://bun.sh">Bun</a> and git. Install, then set your Azure key:</p>
 <pre><code>bun add --global @glrs-dev/glorious@next
 export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource</code></pre>
 <p>Start a session in any git repository:</p>
 <pre><code>glorious</code></pre>
-<p><code>GLORIOUS_MODEL</code> overrides the default model (<code>gpt-5.6-luna</code>). Session history is</p>
-<p>encrypted by default with a key in the macOS Keychain; set</p>
-<p><code>GLORIOUS_SESSION_ENCRYPTION=0</code> to disable it. Run <code>glorious --resume</code> to choose</p>
-<p>an earlier session, or pass its ID directly.</p>
-<details><summary>Keys</summary>
-<ul><li>Enter submits; Shift+Enter inserts a newline.</li><li>Esc removes the newest queued message, then interrupts the running turn.</li><li>Ctrl+C clears the composer; twice on an empty composer exits.</li><li>Up/Down browse prompt history.</li><li>Mouse-select copies to the clipboard.</li></ul>
+<p><code>glorious --resume</code> reopens an earlier session; pass a session ID to skip the</p>
+<p>picker. Sessions are stored under <code>$XDG_DATA_HOME/glorious/sessions</code> and</p>
+<p>encrypted with a key from the macOS Keychain — set <code>GLORIOUS_SESSION_ENCRYPTION=0</code></p>
+<p>to turn that off.</p>
+<h2 id="tools">Tools</h2>
+<p>The agent has ten tools:</p>
+<p>| tool | does |</p>
+<p>| --- | --- |</p>
+<p>| <code>bash</code> | Runs a command in the project root. Killed after 10 minutes; an interrupt kills the process group. |</p>
+<p>| <code>read</code> | Reads a UTF-8 file, each line prefixed <code>N|</code>. |</p>
+<p>| <code>write</code> | Writes a file, creating parent directories. |</p>
+<p>| <code>edit</code> | Exact string replacements across one or more files in a single call. |</p>
+<p>| <code>grep</code> | ripgrep over file contents, confined to the project root. |</p>
+<p>| <code>glob</code> | Lists files matching a pattern, newest first. |</p>
+<p>| <code>web_fetch</code> | Fetches up to ten pages and returns their content as markdown. |</p>
+<p>| <code>ask_user</code> | Asks you questions with selectable options. |</p>
+<p>| <code>run_subagent</code> | Runs one focused task in a second agent and returns its summary. |</p>
+<p>| <code>activate_skill</code> | Loads a skill's full instructions. Present only when skills exist. |</p>
+<p><code>edit</code> takes a list of files, each with its own replacements. Every replacement</p>
+<p>in every file is resolved before anything is written, so a failure leaves the</p>
+<p>whole tree untouched, and each file is swapped in by rename rather than</p>
+<p>rewritten in place.</p>
+<p>Tool output over 30,000 characters is truncated.</p>
+<h2 id="slash-commands">Slash commands</h2>
+<p>| command | does |</p>
+<p>| --- | --- |</p>
+<p>| <code>/help</code> | Keys and commands. |</p>
+<p>| <code>/models</code> | Switch the active model. |</p>
+<p>| <code>/skills</code> | List discovered skills. Press <code>r</code> to reload from disk. |</p>
+<p>| <code>/mcp</code> | List connected MCP servers. |</p>
+<h2 id="keys">Keys</h2>
+<ul><li><strong>Enter</strong> submits, <strong>Shift+Enter</strong> inserts a newline.</li><li><strong>Esc</strong> removes the newest queued message, then interrupts the running turn.</li><li><strong>Ctrl+C</strong> clears the composer; twice on an empty composer exits.</li><li><strong>↑/↓</strong> or <strong>Ctrl+P/N</strong> browse prompt history.</li><li><strong>!</strong> as the first character switches to shell mode, running the line</li></ul>
+<p>  directly instead of sending it to the model. <strong>Backspace</strong> on an empty line</p>
+<p>  leaves.</p>
+<ul><li>Mouse-select copies to the clipboard.</li></ul>
+<h2 id="project-rules">Project rules</h2>
+<p>At startup glorious reads <code>AGENTS.md</code>, <code>AGENT.md</code> or <code>CLAUDE.md</code> from the</p>
+<p>working directory upwards to your home directory, plus system-wide and</p>
+<p><code>~/.config/amp</code> locations. Nearer files come last, so a nested directory's</p>
+<p>rules override the ones above it.</p>
+<h2 id="skills">Skills</h2>
+<p>A skill is a directory holding a <code>SKILL.md</code> with <code>name</code> and <code>description</code></p>
+<p>frontmatter. Only those two fields go into the prompt; the body loads when the</p>
+<p>agent calls <code>activate_skill</code>, so an unused skill costs almost nothing.</p>
+<p>Skills are discovered from <code>.agents/skills</code> and <code>.claude/skills</code> in every</p>
+<p>directory from the working directory up to home, plus <code>.glorious/skills</code> in the</p>
+<p>project and the usual home-level locations. First name wins.</p>
+<details><summary>MCP servers</summary>
+<p>Configure servers in <code>.glorious/mcp.json</code>, in the project or in <code>~/.glorious</code>:</p>
+<pre><code>{
+  &quot;mcpServers&quot;: {
+    &quot;serena&quot;: {
+      &quot;command&quot;: &quot;uvx&quot;,
+      &quot;args&quot;: [&quot;--from&quot;, &quot;git+https://github.com/oraios/serena&quot;,
+               &quot;serena&quot;, &quot;start-mcp-server&quot;, &quot;--transport&quot;, &quot;stdio&quot;,
+               &quot;--project-from-cwd&quot;],
+      &quot;tools&quot;: [&quot;find_symbol&quot;, &quot;find_referencing_symbols&quot;, &quot;rename_symbol&quot;]
+    }
+  }
+}</code></pre>
+<p><code>tools</code> is an allowlist — omit it to take everything the server offers. A</p>
+<p>built-in always wins a name collision, and anything dropped is reported at</p>
+<p>startup. Servers are connected once when glorious starts, so the tool set stays</p>
+<p>fixed for the session.</p>
+</details>
+<details><summary>Environment</summary>
+<ul><li><code>AZURE_FOUNDRY_API_KEY</code> / <code>AZURE_API_KEY</code> / <code>AZURE_OPENAI_API_KEY</code> — the model key. First one set wins.</li><li><code>AZURE_RESOURCE_NAME</code> — your Azure AI Foundry resource.</li><li><code>GLORIOUS_MODEL</code> — model override; the default is <code>gpt-5.6-luna</code>.</li><li><code>GLORIOUS_SESSION_ENCRYPTION</code> — set to <code>0</code> to store sessions unencrypted.</li><li><code>XDG_DATA_HOME</code> — where sessions are kept; defaults to <code>~/.local/share</code>.</li></ul>
+</details>
+<details><summary>Optional binaries</summary>
+<p>Neither is required; both improve a tool when present.</p>
+<ul><li><strong>Chrome or Chromium</strong> — <code>web_fetch</code> renders with it, so pages that build</li></ul>
+<p>  their content with JavaScript work. Without it, a plain fetch is used.</p>
+<ul><li><strong><code>uv</code></strong> — <code>web_fetch</code> extracts article text with trafilatura through <code>uvx</code>.</li></ul>
+<p>  Without it, markup is stripped instead.</p>
 </details>
 <footer>Reference generated from the glorious source. Rebuild with <code>bun run docs</code>.</footer>
 </main>

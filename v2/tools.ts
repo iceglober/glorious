@@ -1,4 +1,5 @@
-import { stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, rename, rm, stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
@@ -7,6 +8,17 @@ import { loadAgentRules } from "./guidance";
 import { errorText } from "./render";
 import type { Skills } from "./skills";
 import { fetchPages, MAX_PAGES } from "./web";
+
+let events = 0;
+
+// Every tool event in the process draws from one counter. chat.ts pairs start
+// with end by id inside a single turn, and a turn can be running the parent's
+// tools, several subagents' tools, and MCP tools at once — a per-instance
+// counter made those collide.
+export const nextToolEventId = (): number => {
+  events += 1;
+  return events;
+};
 
 export type ToolEvent =
   | { id: number; name: string; detail: string; phase: "start" }
@@ -141,14 +153,37 @@ const swap = z.object({
   replace_all: z.boolean().optional(),
 });
 
-const patch = (text: string, edit: z.infer<typeof swap>, where: string): string => {
+// Replace a file in one step. Bun.write truncates in place, so a crash or a
+// full disk partway through leaves the file half-written; writing beside it and
+// renaming means a reader sees either the old file or the new one.
+const replaceFile = async (target: string, text: string): Promise<void> => {
+  const temp = `${target}.glorious-${randomUUID().slice(0, 8)}`;
+  try {
+    await Bun.write(temp, text);
+    await chmod(temp, (await stat(target)).mode);
+    await rename(temp, target);
+  } catch (thrown) {
+    await rm(temp, { force: true }).catch(() => {});
+    throw thrown;
+  }
+};
+
+const patch = (
+  text: string,
+  edit: z.infer<typeof swap>,
+  where: string,
+  batched: boolean,
+): string => {
   const at = text.indexOf(edit.old_string);
   if (at < 0)
-    throw new Error(`${where}: old_string not found. Nothing was written. Re-read the file.`);
-  if (edit.replace_all) return text.split(edit.old_string).join(edit.new_string);
-  if (text.includes(edit.old_string, at + edit.old_string.length))
     throw new Error(
-      `${where}: old_string is not unique. Nothing was written. Add context or set replace_all.`,
+      `${where}: old_string not found${batched ? ", after the earlier edits in this call were applied" : ""}. Nothing was written. Re-read the file.`,
+    );
+  if (edit.replace_all) return text.split(edit.old_string).join(edit.new_string);
+  const hits = text.split(edit.old_string).length - 1;
+  if (hits > 1)
+    throw new Error(
+      `${where}: old_string occurs ${hits} times. Nothing was written. Add surrounding lines to make it unique, or set replace_all.`,
     );
   return text.slice(0, at) + edit.new_string + text.slice(at + edit.old_string.length);
 };
@@ -160,18 +195,22 @@ const firstDetail = (raw: Record<string, unknown>): string => {
   }
   const urls = raw.urls;
   if (Array.isArray(urls)) return urls.length === 1 ? String(urls[0]) : `${urls.length} pages`;
+  const files = raw.files;
+  if (Array.isArray(files))
+    return files.length === 1
+      ? String((files[0] as { path?: unknown })?.path ?? "")
+      : `${files.length} files`;
   return "";
 };
 
 export const createTools = (
   root: string,
   onEvent: (event: ToolEvent) => void,
-  askQuestions: AskQuestions,
+  askQuestions: AskQuestions | null,
   skills: Skills,
   runSubagent?: RunSubagent,
 ): ToolSet => {
   const base = resolve(root);
-  let seq = 0;
 
   const announce = (event: ToolEvent): void => {
     try {
@@ -196,9 +235,8 @@ export const createTools = (
       inputSchema,
       execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
         const raw = input as Record<string, unknown>;
-        seq += 1;
         const step = {
-          id: seq,
+          id: nextToolEventId(),
           name,
           detail: firstDetail(raw),
         };
@@ -210,22 +248,25 @@ export const createTools = (
       },
     });
 
-  const askUser = define(
-    "ask_user",
-    "Ask the user one or more questions. Each question must include concise options. The user can choose an option, add a note, or do both. Ask related questions together so the user can answer them in one batch. Use the answers to continue the current task.",
-    z.object({
-      questions: z
-        .array(
+  const askUser =
+    askQuestions === null
+      ? undefined
+      : define(
+          "ask_user",
+          "Ask the user one or more questions. Each question must include concise options. The user can choose an option, add a note, or do both. Ask related questions together so the user can answer them in one batch. Use the answers to continue the current task.",
           z.object({
-            question: z.string().min(1).describe("Question to show the user"),
-            options: z.array(z.string().min(1)).min(1).max(10).describe("Selectable answers"),
+            questions: z
+              .array(
+                z.object({
+                  question: z.string().min(1).describe("Question to show the user"),
+                  options: z.array(z.string().min(1)).min(1).max(10).describe("Selectable answers"),
+                }),
+              )
+              .min(1)
+              .max(20),
           }),
-        )
-        .min(1)
-        .max(20),
-    }),
-    async ({ questions }, signal) => askQuestions(questions, signal),
-  );
+          async ({ questions }, signal) => askQuestions(questions, signal),
+        );
 
   const runSubagentTool = runSubagent
     ? define(
@@ -293,18 +334,39 @@ export const createTools = (
 
   const edit = define(
     "edit",
-    "Change a file with exact string replacements applied in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set — add surrounding lines to make it unique. If any replacement fails nothing is written. Never include the `N|` prefixes shown by read.",
+    "Change one or more files in a single call. Each entry names a file and the exact string replacements to apply to it, in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set — add surrounding lines to make it unique. Every edit in every file is resolved before anything is written, so if one fails no file changes, and each file is swapped into place rather than rewritten. Prefer one call covering every file you need to touch. Never include the `N|` prefixes shown by read.",
     z.object({
-      path: z.string().describe("File to edit, relative to the project root or absolute"),
-      edits: z.array(swap).min(1),
+      files: z
+        .array(
+          z.object({
+            path: z.string().describe("File to change, relative to the project root or absolute"),
+            edits: z.array(swap).min(1),
+          }),
+        )
+        .min(1)
+        .describe("Files to change, each with its own edits"),
     }),
-    async ({ path, edits }) => {
-      const target = within(path);
-      const before = await Bun.file(target).text();
-      const tag = (n: number): string => `edit ${n + 1}/${edits.length}`;
-      const after = edits.reduce((text, edit, n) => patch(text, edit, tag(n)), before);
-      await Bun.write(target, after);
-      return `applied ${edits.length} edit(s) to ${path}`;
+    async ({ files }) => {
+      // resolve every file first, so one bad edit cannot leave the tree
+      // half-changed the way separate per-file calls would
+      const staged = await Promise.all(
+        files.map(async (entry, n) => {
+          const target = within(entry.path);
+          const before = await Bun.file(target).text();
+          const where = files.length === 1 ? "" : `file ${n + 1}/${files.length} (${entry.path}) `;
+          const after = entry.edits.reduce(
+            (text, swapped, i) =>
+              patch(text, swapped, `${where}edit ${i + 1}/${entry.edits.length}`, i > 0),
+            before,
+          );
+          return { target, after };
+        }),
+      );
+      for (const { target, after } of staged) await replaceFile(target, after);
+      const count = files.reduce((sum, entry) => sum + entry.edits.length, 0);
+      return files.length === 1
+        ? `applied ${count} edit(s) to ${files[0].path}`
+        : `applied ${count} edit(s) across ${files.length} file(s)`;
     },
   );
 
@@ -367,7 +429,7 @@ export const createTools = (
   );
 
   return {
-    ask_user: askUser,
+    ...(askUser ? { ask_user: askUser } : {}),
     bash,
     read,
     write,

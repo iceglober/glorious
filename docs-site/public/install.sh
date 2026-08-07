@@ -77,5 +77,6 @@ fi
 
 log ""
 ok "done. set your model key, then run 'glorious' in any git repo:"
-dim "glorious config set --secret agent.llm.providers.azure.apiKey"
+dim "export AZURE_OPENAI_API_KEY=..."
+dim "export AZURE_RESOURCE_NAME=..."
 dim "glorious"

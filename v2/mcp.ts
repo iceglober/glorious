@@ -2,12 +2,11 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { jsonSchema, type ToolSet, tool } from "ai";
-import { BUILT_IN_TOOL_NAMES, type ToolEvent } from "./tools";
+import { BUILT_IN_TOOL_NAMES, nextToolEventId, type ToolEvent } from "./tools";
 
 const PROTOCOL_VERSION = "2025-06-18";
 const REQUEST_MS = 45_000;
 const RESULT_LIMIT = 30_000;
-const EVENT_BASE = 1_000_000;
 
 export type McpServerConfig = {
   command: string;
@@ -182,7 +181,6 @@ export const startMcp = async (
   const shutdowns: Array<() => void> = [];
   const taken = new Set<string>(BUILT_IN_TOOL_NAMES);
   const loadedSkills = new Map<string, Record<string, McpServerConfig>>();
-  let events = EVENT_BASE;
 
   const load = async (configured: Record<string, McpServerConfig>): Promise<void> => {
     for (const [name, config] of Object.entries(configured)) {
@@ -274,12 +272,11 @@ export const startMcp = async (
           },
         ),
         execute: async (input: unknown) => {
-          events += 1;
           const raw = (input ?? {}) as Record<string, unknown>;
           const detail = String(
             raw.name_path ?? raw.relative_path ?? raw.name ?? raw.pattern ?? "",
           );
-          const step = { id: events, name: entry.name, detail };
+          const step = { id: nextToolEventId(), name: entry.name, detail };
           try {
             onEvent({ ...step, phase: "start" });
           } catch {}

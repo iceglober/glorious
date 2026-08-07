@@ -3,10 +3,15 @@
 ## Install
 
 ```sh
-bun add --global @glrs-dev/glorious@next
+curl -fsSL https://glrs.dev/install.sh | bash
 ```
 
-Requires [Bun](https://bun.sh) ≥ 1.2 and git. See [install](/install).
+That checks for [Bun](https://bun.sh) and git, offers to install Bun if it is
+missing, then installs glorious. Or do it yourself:
+
+```sh
+bun add --global @glrs-dev/glorious@next
+```
 
 ## Set the model key
 
@@ -26,14 +31,31 @@ glorious
 ```
 
 Type, and the agent reads and edits files and runs commands as you chat.
+`glorious --resume` reopens an earlier session.
+
+## Slash commands
+
+- `/help` — keys and commands.
+- `/models` — switch the active model.
+- `/skills` — list discovered skills; press `r` to reload from disk.
+- `/mcp` — list connected MCP servers.
 
 ## Keys
 
 - **Enter** submits; **Shift+Enter** inserts a newline.
 - **Esc** removes the newest queued message, then interrupts the running turn.
 - **Ctrl+C** clears the composer; twice on an empty composer exits.
-- **Up/Down** browse prompt history.
+- **↑/↓** or **Ctrl+P/N** browse prompt history.
+- **!** as the first character runs the line as a shell command instead of
+  sending it to the model. **Backspace** on an empty line leaves.
 - Mouse-select copies to the clipboard.
+
+## Project rules and skills
+
+glorious reads `AGENTS.md`, `AGENT.md` or `CLAUDE.md` from the working
+directory upwards, nearer files last. Skills — a directory with a `SKILL.md`
+carrying `name` and `description` frontmatter — are discovered the same way;
+only the name and description are loaded until the agent activates one.
 
 ## Next
 

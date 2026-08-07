@@ -1,0 +1,26 @@
+{
+  "volatileInSystemPrompt": {
+    "first": {
+      "input": 3102,
+      "cached": 0,
+      "share": 0
+    },
+    "second": {
+      "input": 3116,
+      "cached": 0,
+      "share": 0
+    }
+  },
+  "volatileInUserMessage": {
+    "first": {
+      "input": 3102,
+      "cached": 0,
+      "share": 0
+    },
+    "second": {
+      "input": 3153,
+      "cached": 3092,
+      "share": 98
+    }
+  }
+}
