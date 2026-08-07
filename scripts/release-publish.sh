@@ -6,10 +6,6 @@
 # that's already on npm and fails the run (which also skips the latest-dist-tag
 # sync step). Skip when the current version is already published; publish
 # otherwise. In pre-release mode we publish under the `next` tag.
-#
-# npm rather than bun: the registry's `readme` field, which npmjs.com renders,
-# is set by the publishing client. bun publish ships README.md inside the
-# tarball but leaves that field empty, so the package page comes up blank.
 set -euo pipefail
 
 pkg="$(node -p 'require("./package.json").name')"
@@ -18,5 +14,5 @@ version="$(node -p 'require("./package.json").version')"
 if npm view "$pkg@$version" version > /dev/null 2>&1; then
   echo "$pkg@$version already on npm — nothing to publish"
 else
-  npm publish --access public --tag next
+  bun publish --access public --tag next
 fi
