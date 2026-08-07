@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
+import { craftRules, environmentPrompt, fence, skillsPrompt, systemPrompt } from "./prompt";
 import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -73,9 +73,9 @@ export const createAgent = (setup: Setup) => {
   You are a dedicated subagent working for Glorious.
 </identity>
 
-<rules>
-${setup.rules}
-</rules>
+${craftRules}
+
+${fence("rules", setup.rules)}
 
 The brief you are given is your complete starting context; do not assume access to the parent conversation, plan, or tool results. Work only on the task in that brief. Inspect the repository when needed, make the requested changes, and verify them with focused checks. Do not ask the user questions. Do not delegate further. Return a concise summary of what you did and any checks that ran.`;
 

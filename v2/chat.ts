@@ -1,6 +1,7 @@
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
 import type { SessionEvent } from "./events";
+import { reminder } from "./prompt";
 import { errorText } from "./render";
 import type { ToolEvent } from "./tools";
 
@@ -82,10 +83,10 @@ export const createChat = (
     live = null;
     const asked = text.slice(0, NOTE_CHARS);
     if (done === null && stop.signal.aborted) {
-      note = `[note] The user interrupted your last turn, which was answering: "${asked}".`;
+      note = reminder(`The user interrupted your last turn, which was answering: "${asked}".`);
       announce({ type: "notice", text: "(interrupted)" });
     } else if (done === null) {
-      note = `[note] Your last turn on "${asked}" failed: ${failed.slice(0, NOTE_CHARS)}.`;
+      note = reminder(`Your last turn on "${asked}" failed: ${failed.slice(0, NOTE_CHARS)}.`);
       announce({ type: "error", text: failed });
     } else {
       history = done.messages;
@@ -96,7 +97,7 @@ export const createChat = (
       }
       if (spoken === "") signal({ type: "empty" });
       if (done.stoppedAtStepLimit) {
-        note = "[note] Your last turn ran out of steps and stopped before finishing.";
+        note = reminder("Your last turn ran out of steps and stopped before finishing.");
         announce({ type: "notice", text: '(step limit reached — send "continue" to resume)' });
       }
     }

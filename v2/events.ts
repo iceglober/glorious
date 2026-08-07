@@ -26,7 +26,7 @@ export const messageText = (message: ModelMessage): string => {
 };
 
 const preambleBlock =
-  /^(?:<where-you-are>\n[\s\S]*?\n<\/where-you-are>|<skills>\n[\s\S]*?\n<\/skills>)\n\n/u;
+  /^(?:<where-you-are>\n[\s\S]*?\n<\/where-you-are>|<skills>\n[\s\S]*?\n<\/skills>|\[system-reminder\]\n[\s\S]*?\n\[\/system-reminder\])\n\n/u;
 
 export const typedText = (message: ModelMessage): string => {
   let text = messageText(message);
