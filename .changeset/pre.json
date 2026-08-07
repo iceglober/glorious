@@ -11,6 +11,7 @@
     "ctrl-c-exit-hint",
     "gemini-prompt-addendum",
     "initial-release",
+    "model-switching-and-tui",
     "permissions-acl",
     "picker-provider-catalog",
     "plan-build-and-models",
