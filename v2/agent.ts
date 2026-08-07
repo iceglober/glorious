@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
+import { createModel, type ModelOption } from "./models";
 import {
   craftRules,
   environmentPrompt,
@@ -8,7 +9,6 @@ import {
   skillsPrompt,
   systemPrompt,
 } from "./prompt";
-import { createModel, type ModelOption } from "./models";
 import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
