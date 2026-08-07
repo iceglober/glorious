@@ -13,6 +13,7 @@ describe("tool summaries", () => {
       "edit",
       "grep",
       "glob",
+      "web_fetch",
       "run_subagent",
     ]);
   });
