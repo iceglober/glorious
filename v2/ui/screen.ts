@@ -1,8 +1,8 @@
 import type { KeyEvent, TextRenderable } from "@opentui/core";
 import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
-import type { Line } from "../render";
 import type { McpServerSummary } from "../mcp";
+import type { Line } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";

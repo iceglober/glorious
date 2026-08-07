@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { createAgent } from "./agent";
-import { loadAgentRules } from "./guidance";
 import { type ChatSignal, createChat } from "./chat";
 import { messagesOf, type SessionEvent } from "./events";
+import { loadAgentRules } from "./guidance";
 import { readMcpConfig, startMcp } from "./mcp";
 import {
   errorText,
@@ -11,9 +11,9 @@ import {
   type Line,
   noticeBlock,
   queuedRow,
-  userBlock,
   runningRow,
   statusLine,
+  userBlock,
 } from "./render";
 import {
   createSession,

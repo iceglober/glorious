@@ -1,7 +1,7 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { commands } from "../commands";
-import { clip, type Line } from "../render";
 import type { McpServerSummary } from "../mcp";
+import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
 import { type Chrome, dimHex, type Host, listChrome, panelHeight, panelHex } from "./chrome";
 

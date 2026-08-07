@@ -2,8 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSkills } from "./skills";
 import type { McpServerConfig, McpSession } from "./mcp";
+import { loadSkills } from "./skills";
 
 const base = await mkdtemp(join(tmpdir(), "glorious-skills-"));
 // a space in the path is what catches percent-encoding of the reported directory
