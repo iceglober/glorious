@@ -19,26 +19,31 @@ Documentation: [glrs.dev](https://glrs.dev)
 The goal was to start from first-principles and make deliberate decisions about
 the glorious implementation. Here are some of them.
 
-- **Edit tool: multi.** One call edits any number of files. Everything resolves
-  before anything is written; files are swapped in by rename.
-  - Across four files: 1 call vs 4, 4 steps vs 7, 3.1k vs 6.3k input tokens.
-  - Within one file, identical to per-file batching.
-  - Accuracy unchanged — 16/16 either way. The win is cost. ([`eval/edit`](eval/edit))
-- **Web fetch: installed Chrome, then trafilatura.** Renders JavaScript, so SPAs
-  return content.
-  - No new dependencies. puppeteer would have added its own ~300MB Chromium.
-  - No browser falls back to plain fetch; no `uv` falls back to a tag strip.
-  - Cross-host redirects are reported, not followed.
-- **Serena for semantic code tools, curated to 11.** Symbols, not line offsets,
-  so results survive an edit.
-  - Its file and shell tools duplicate built-ins; only symbol tools admitted.
-  - Built-ins win name collisions.
-  - The model kept reaching for `grep` until the prompt named grep's failure mode.
-- **Caching: nothing volatile in the system prompt.** Working directory, git
-  state and skills ride in the per-turn message instead.
-  - Resumed session: 98% cached, against 0% before.
-  - Skills reload mid-session: 91%, against 0%.
-  - A test fails if anything volatile reappears.
+- **`edit` tool: extended batched edits across files to achieve 51% fewer input
+  tokens.** ([`eval/edit`](eval/edit))
+  - Against per-file batching, on work spanning four files. Also 1 call vs 4,
+    4 steps vs 7.
+  - No accuracy difference — 16/16 either way. The win is cost.
+- **Caching: moved volatile content out of the system prompt to achieve 98%
+  cache reuse on a resumed turn, against 0%.** ([`eval/caching`](eval/caching))
+  - Environment, git state and skills ride in the per-turn message, frozen into
+    history when written.
+  - A test fails if anything volatile reappears in the system prompt.
+- **`web_fetch` tool: slimmed down
+  [pi-web-fetch](https://github.com/georgebashi/pi-web-fetch) to achieve zero
+  new dependencies.** Not benchmarked.
+  - Drives an already-installed Chrome instead of puppeteer's own ~300MB
+    Chromium. Still renders JavaScript.
+  - Dropped its extension hooks and in-tool summarisation; `run_subagent`
+    already covers the latter.
+  - Falls back to plain fetch without a browser, to a tag strip without `uv`.
+- **Semantic code tools: curated
+  [Serena](https://github.com/oraios/serena) to achieve 11 tools instead of
+  ~30.** Not benchmarked.
+  - The rest duplicate built-ins that already enforce path confinement, output
+    caps and process-group kill.
+  - Adoption needed prompting: the model kept reaching for `grep` until the
+    prompt named grep's failure mode.
 
 ## Development
 
