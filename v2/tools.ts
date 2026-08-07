@@ -3,8 +3,8 @@ import { dirname, resolve, sep } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { errorText } from "./render";
 import { loadAgentRules } from "./guidance";
+import { errorText } from "./render";
 import type { Skills } from "./skills";
 import { fetchPages, MAX_PAGES } from "./web";
 
@@ -42,66 +42,6 @@ export const BUILT_IN_TOOL_NAMES = [
 ] as const;
 
 export type BuiltInToolName = (typeof BUILT_IN_TOOL_NAMES)[number];
-
-export type ToolSummary = {
-  name: string;
-  description: string;
-  source: string;
-};
-
-const toolSummaries: readonly ToolSummary[] = [
-  {
-    name: "ask_user",
-    description: "Ask the user questions with selectable options.",
-    source: "built-in",
-  },
-  { name: "bash", description: "Run a command in the project root.", source: "built-in" },
-  { name: "read", description: "Read a UTF-8 text file.", source: "built-in" },
-  { name: "write", description: "Write a UTF-8 text file.", source: "built-in" },
-  { name: "edit", description: "Apply exact string replacements to a file.", source: "built-in" },
-  {
-    name: "grep",
-    description: "Search file contents with a regular expression.",
-    source: "built-in",
-  },
-  { name: "glob", description: "List files matching a glob pattern.", source: "built-in" },
-  {
-    name: "web_fetch",
-    description: "Fetch web pages and return their main content as markdown.",
-    source: "built-in",
-  },
-];
-
-export const availableToolSummaries = (
-  skills: Skills,
-  runSubagent = false,
-  mcp: readonly { name: string; server: string; description: string }[] = [],
-): ToolSummary[] => [
-  ...toolSummaries,
-  ...(skills.tool
-    ? [
-        {
-          name: "activate_skill" as const,
-          description: "Load instructions for an available skill.",
-          source: "skills",
-        },
-      ]
-    : []),
-  ...(runSubagent
-    ? [
-        {
-          name: "run_subagent" as const,
-          description: "Launch a focused coding agent.",
-          source: "built-in",
-        },
-      ]
-    : []),
-  ...mcp.map((entry) => ({
-    name: entry.name,
-    description: entry.description,
-    source: `mcp/${entry.server}`,
-  })),
-];
 
 const RESULT_LIMIT = 30_000;
 const STDOUT_LIMIT = 20_000;

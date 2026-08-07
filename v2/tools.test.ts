@@ -1,35 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import { availableToolSummaries, createTools } from "./tools";
+import { loadSkills } from "./skills";
+import { BUILT_IN_TOOL_NAMES, createTools } from "./tools";
 
-const noSkills = { catalog: "", summaries: [], tool: undefined } as const;
+const registry = async (withSubagent: boolean): Promise<string[]> => {
+  const skills = await loadSkills(process.cwd());
+  return Object.keys(
+    createTools(
+      "/tmp",
+      () => {},
+      async () => "",
+      skills,
+      withSubagent ? async () => "" : undefined,
+    ),
+  );
+};
 
-describe("tool summaries", () => {
-  test("lists built-in tools and conditional subagents", () => {
-    expect(availableToolSummaries(noSkills, true).map((tool) => tool.name)).toEqual([
-      "ask_user",
-      "bash",
-      "read",
-      "write",
-      "edit",
-      "grep",
-      "glob",
-      "web_fetch",
-      "run_subagent",
-    ]);
+describe("BUILT_IN_TOOL_NAMES", () => {
+  // mcp.ts uses this list to refuse an MCP tool that would shadow a built-in.
+  // If it drifts from the real registry, a server silently overrides a built-in.
+  test("names every tool the agent can actually be given", async () => {
+    for (const name of await registry(true))
+      expect(BUILT_IN_TOOL_NAMES as readonly string[]).toContain(name);
   });
 
-  test("shows one row per tool the agent actually has", async () => {
-    const { loadSkills } = await import("./skills");
-    const skills = await loadSkills(process.cwd());
-    const registry = Object.keys(
-      createTools(
-        "/tmp",
-        () => {},
-        async () => "",
-        skills,
-        async () => "",
-      ),
-    );
-    expect(availableToolSummaries(skills, true)).toHaveLength(registry.length);
+  test("names nothing the registry cannot produce", async () => {
+    const everything = await registry(true);
+    for (const name of BUILT_IN_TOOL_NAMES) expect(everything).toContain(name);
+  });
+
+  test("run_subagent is withheld when delegation is not wired", async () => {
+    expect(await registry(false)).not.toContain("run_subagent");
   });
 });
