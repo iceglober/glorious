@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chromeBinary, clearWebCache, fetchPage, fetchPages, MAX_PAGES } from "./web";
+import {
+  chromeBinary,
+  clearWebCache,
+  extractorAvailable,
+  fetchPage,
+  fetchPages,
+  MAX_PAGES,
+} from "./web";
 
 const serve = (
   handler: (request: Request) => Response | Promise<Response>,
@@ -48,13 +55,22 @@ describe("input handling", () => {
 });
 
 describe("extraction", () => {
-  test("returns the article text and drops chrome around it", async () => {
+  test("returns the article text without its markup", async () => {
     const site = serve(() => page("<p>The quick brown fox jumps.</p>"));
     try {
       const out = await fetchPage(site.url(), undefined);
       expect(out).toContain("The quick brown fox jumps.");
       expect(out).not.toContain("<p>");
-      expect(out).not.toContain("skip me");
+    } finally {
+      site.stop();
+    }
+  });
+
+  // Dropping navigation needs trafilatura; the tag-strip fallback keeps it.
+  test.if(extractorAvailable())("drops the boilerplate around the article", async () => {
+    const site = serve(() => page("<p>The quick brown fox jumps.</p>"));
+    try {
+      expect(await fetchPage(site.url(), undefined)).not.toContain("skip me");
     } finally {
       site.stop();
     }
