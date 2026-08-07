@@ -152,14 +152,22 @@ const swap = z.object({
   replace_all: z.boolean().optional(),
 });
 
-const patch = (text: string, edit: z.infer<typeof swap>, where: string): string => {
+const patch = (
+  text: string,
+  edit: z.infer<typeof swap>,
+  where: string,
+  batched: boolean,
+): string => {
   const at = text.indexOf(edit.old_string);
   if (at < 0)
-    throw new Error(`${where}: old_string not found. Nothing was written. Re-read the file.`);
-  if (edit.replace_all) return text.split(edit.old_string).join(edit.new_string);
-  if (text.includes(edit.old_string, at + edit.old_string.length))
     throw new Error(
-      `${where}: old_string is not unique. Nothing was written. Add context or set replace_all.`,
+      `${where}: old_string not found${batched ? ", after the earlier edits in this call were applied" : ""}. Nothing was written. Re-read the file.`,
+    );
+  if (edit.replace_all) return text.split(edit.old_string).join(edit.new_string);
+  const hits = text.split(edit.old_string).length - 1;
+  if (hits > 1)
+    throw new Error(
+      `${where}: old_string occurs ${hits} times. Nothing was written. Add surrounding lines to make it unique, or set replace_all.`,
     );
   return text.slice(0, at) + edit.new_string + text.slice(at + edit.old_string.length);
 };
@@ -314,7 +322,7 @@ export const createTools = (
       const target = within(path);
       const before = await Bun.file(target).text();
       const tag = (n: number): string => `edit ${n + 1}/${edits.length}`;
-      const after = edits.reduce((text, edit, n) => patch(text, edit, tag(n)), before);
+      const after = edits.reduce((text, edit, n) => patch(text, edit, tag(n), n > 0), before);
       await Bun.write(target, after);
       return `applied ${edits.length} edit(s) to ${path}`;
     },
