@@ -5,6 +5,7 @@ import { type ToolSet, tool } from "ai";
 import { z } from "zod";
 import { errorText } from "./render";
 import type { Skills } from "./skills";
+import { fetchPages, MAX_PAGES } from "./web";
 
 export type ToolEvent =
   | { id: number; name: string; detail: string; phase: "start" }
@@ -34,6 +35,7 @@ export const BUILT_IN_TOOL_NAMES = [
   "edit",
   "grep",
   "glob",
+  "web_fetch",
   "activate_skill",
   "run_subagent",
 ] as const;
@@ -62,6 +64,11 @@ const toolSummaries: readonly ToolSummary[] = [
     source: "built-in",
   },
   { name: "glob", description: "List files matching a glob pattern.", source: "built-in" },
+  {
+    name: "web_fetch",
+    description: "Fetch web pages and return their main content as markdown.",
+    source: "built-in",
+  },
 ];
 
 export const availableToolSummaries = (
@@ -191,6 +198,16 @@ const patch = (text: string, edit: z.infer<typeof swap>, where: string): string 
   return text.slice(0, at) + edit.new_string + text.slice(at + edit.old_string.length);
 };
 
+const firstDetail = (raw: Record<string, unknown>): string => {
+  for (const key of ["command", "pattern", "path", "task"]) {
+    const value = raw[key];
+    if (typeof value === "string") return value;
+  }
+  const urls = raw.urls;
+  if (Array.isArray(urls)) return urls.length === 1 ? String(urls[0]) : `${urls.length} pages`;
+  return "";
+};
+
 export const createTools = (
   root: string,
   onEvent: (event: ToolEvent) => void,
@@ -223,12 +240,12 @@ export const createTools = (
       description,
       inputSchema,
       execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
-        const raw = input as Record<string, string | undefined>;
+        const raw = input as Record<string, unknown>;
         seq += 1;
         const step = {
           id: seq,
           name,
-          detail: raw.command ?? raw.pattern ?? raw.path ?? raw.task ?? "",
+          detail: firstDetail(raw),
         };
         announce({ ...step, phase: "start" });
         const told = await body(input, call.abortSignal).catch((bad) => `ERROR: ${errorText(bad)}`);
@@ -376,6 +393,19 @@ export const createTools = (
     },
   );
 
+  const webFetch = define(
+    "web_fetch",
+    `Fetch web pages and return their main content as markdown, with navigation, boilerplate and markup removed. Read-only: it retrieves public pages and sends nothing. Renders with headless Chrome when one is installed, so pages that build their content with JavaScript work. Pass up to ${MAX_PAGES} URLs to fetch them together. A URL that redirects to a different host is reported rather than followed, so a login wall or shortener does not silently become the answer. Results are cached for 15 minutes.`,
+    z.object({
+      urls: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(MAX_PAGES)
+        .describe("Absolute http(s) URLs to fetch"),
+    }),
+    async ({ urls }, signal) => fetchPages(urls, signal),
+  );
+
   return {
     ask_user: askUser,
     bash,
@@ -384,6 +414,7 @@ export const createTools = (
     edit,
     grep,
     glob,
+    web_fetch: webFetch,
     ...(skills.tool ? { activate_skill: skills.tool } : {}),
     ...(runSubagentTool ? { run_subagent: runSubagentTool } : {}),
   };
