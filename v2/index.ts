@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
+import packageJson from "../package.json";
 import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
 import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
-import { currentModel, loadModels, modelLabel } from "./models";
 import { readMcpConfig, startMcp } from "./mcp";
+import { currentModel, loadModels, modelLabel } from "./models";
 import {
   errorText,
   eventBlock,
@@ -29,6 +30,8 @@ import { createScreen, pickSession } from "./ui";
 
 const FRAME_MS = 90;
 const SETTLE_MS = 250;
+const PACKAGE_NAME = "@glrs-dev/glorious";
+const VERSION = packageJson.version;
 
 const probe = () => {
   const cwd = process.cwd();
@@ -63,10 +66,18 @@ const probe = () => {
 
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
+  if (args.length === 1 && args[0] === "--version") {
+    process.stdout.write(`glorious ${VERSION}\n`);
+    return;
+  }
+  if (args.length === 1 && args[0] === "update") {
+    execFileSync("bun", ["add", "-g", `${PACKAGE_NAME}@next`], { stdio: "inherit" });
+    return;
+  }
   let resumeId: string | undefined;
   if (args.length > 0) {
     if (args[0] !== "--resume" || args.length > 2)
-      throw new Error("Usage: glorious [--resume [session-id]]");
+      throw new Error("Usage: glorious [--version | update | --resume [session-id]]");
     resumeId = args[1];
   }
   const { root, os, branch, worktree, git, label } = probe();
