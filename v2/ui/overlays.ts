@@ -3,7 +3,7 @@ import { commands } from "../commands";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
 import type { ToolSummary } from "../tools";
-import { type Chrome, dimHex, type Host, panelHeight, panelHex } from "./chrome";
+import { type Chrome, dimHex, type Host, listChrome, panelHeight, panelHex } from "./chrome";
 
 export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () => void) => {
   const { tui, renderer, textNode, styled, panel, panelWidth, panelRows } = chrome;
@@ -58,6 +58,8 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
     );
   };
 
+  const gap = () => textNode({ content: "", width: "100%", height: 1 });
+
   const showSkills = (summaries: readonly SkillSummary[]): void => {
     if (view) return;
     const modalWidth = panelWidth();
@@ -82,7 +84,10 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
               ...(index + 1 < summaries.length ? [[{ text: "" }]] : []),
             ];
           });
-    const listHeight = Math.max(1, Math.min(skillLines.length, panelRows() - 2));
+    const listHeight = Math.max(
+      1,
+      Math.min(skillLines.length, Math.max(3, panelRows() - listChrome)),
+    );
     const header = textNode({
       content: styled([[{ text: "Available skills", tone: "accent", bold: true }]]),
       width: "100%",
@@ -106,9 +111,11 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
       fg: dimHex,
     });
     open(
-      panel({ title: "Skills", width: modalWidth, height: panelHeight(listHeight + 2) }, [
+      panel({ title: "Skills", width: modalWidth, height: panelHeight(listHeight + listChrome) }, [
         header,
+        gap(),
         scroll,
+        gap(),
         footer,
       ]),
       true,
@@ -136,7 +143,10 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
         ...(index + 1 < summaries.length ? [[{ text: "" }]] : []),
       ];
     });
-    const listHeight = Math.max(1, Math.min(toolLines.length, panelRows() - 2));
+    const listHeight = Math.max(
+      1,
+      Math.min(toolLines.length, Math.max(3, panelRows() - listChrome)),
+    );
     const header = textNode({
       content: styled([[{ text: "Available tools", tone: "accent", bold: true }]]),
       width: "100%",
@@ -160,9 +170,11 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
       fg: dimHex,
     });
     open(
-      panel({ title: "Tools", width: modalWidth, height: panelHeight(listHeight + 2) }, [
+      panel({ title: "Tools", width: modalWidth, height: panelHeight(listHeight + listChrome) }, [
         header,
+        gap(),
         scroll,
+        gap(),
         footer,
       ]),
     );

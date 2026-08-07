@@ -20,8 +20,13 @@ export const edgeHex = "#4b5563";
 export const dimHex = "#8b929c";
 export const accentHex = tones.accent[0];
 
+// border + vertical padding, above and below the content
 const panelChrome = 4;
 const panelMaxWidth = 100;
+// a modal takes three eighths of the viewport, however much content it holds
+const panelShare = 3 / 8;
+// a list sits between a header and a key legend, each with a blank row of its own
+export const listChrome = 4;
 
 export const panelHeight = (contentRows: number): number => contentRows + panelChrome;
 
@@ -70,7 +75,8 @@ export const createChrome = (tui: Tui, renderer: Renderer) => {
     textNode: (options: TextOptions) => new tui.TextRenderable(renderer, options),
     stack,
     panelWidth: (): number => Math.max(1, Math.min(panelMaxWidth, columns() - 8)),
-    panelRows: (): number => Math.max(1, renderer.terminalHeight - 10),
+    panelRows: (): number =>
+      Math.max(1, Math.round(renderer.terminalHeight * panelShare) - panelChrome),
     panel: (options: { title: string; width: number; height: number }, kids: Renderable[]) => {
       const width = Math.max(1, Math.min(options.width, columns()));
       const height = Math.max(3, Math.min(options.height, renderer.terminalHeight));
