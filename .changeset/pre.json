@@ -13,6 +13,7 @@
     "gemini-prompt-addendum",
     "initial-release",
     "model-switching-and-tui",
+    "multi-file-edit-and-subagents",
     "permissions-acl",
     "picker-provider-catalog",
     "plan-build-and-models",
