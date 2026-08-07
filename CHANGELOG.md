@@ -1,5 +1,11 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.5
+
+### Patch Changes
+
+- 24aa2c2: Add `glorious --version` and `glorious update`. The update command installs the latest published `next` release explicitly, avoiding stale global package pins.
+
 ## 1.0.0-next.4
 
 ### Minor Changes
