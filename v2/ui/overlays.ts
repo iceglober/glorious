@@ -1,6 +1,7 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { commands } from "../commands";
 import type { McpServerSummary } from "../mcp";
+import type { ModelOption } from "../models";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
 import { type Chrome, dimHex, type Host, listChrome, panelHeight, panelHex } from "./chrome";
@@ -16,6 +17,12 @@ export const createOverlays = (
   let scroll: InstanceType<typeof tui.ScrollBoxRenderable> | null = null;
   let toolSearch: { focused: boolean; activate: (text: string) => void } | null = null;
   let toolList: { moveUp: () => void; moveDown: () => void } | null = null;
+  let modelSearch: {
+    picker: InstanceType<typeof tui.SelectRenderable>;
+    models: readonly ModelOption[];
+    query: string;
+    header: TextRenderable;
+  } | null = null;
   let reloadSkills = false;
   let reloadMcp = false;
   let mcpLoading = false;
@@ -31,6 +38,7 @@ export const createOverlays = (
     scroll = null;
     toolSearch = null;
     toolList = null;
+    modelSearch = null;
     reloadMcp = false;
     mcpLoading = false;
     if (mcpTimer) clearInterval(mcpTimer);
@@ -141,6 +149,145 @@ export const createOverlays = (
     );
   };
 
+  const modelScore = (query: string, model: ModelOption): number | null => {
+    const needle = query.trim().toLowerCase();
+    if (needle === "") return 0;
+    const fields = [model.provider, model.modelId, model.name].map((field) => field.toLowerCase());
+    let best: number | null = null;
+    for (const field of fields) {
+      const exact = field === needle ? 1000 : null;
+      const prefix = field.startsWith(needle) ? 700 - field.length : null;
+      const included = field.includes(needle) ? 500 - field.length : null;
+      let at = 0;
+      let consecutive = 0;
+      let score = 0;
+      for (const char of needle) {
+        const found = field.indexOf(char, at);
+        if (found < 0) {
+          score = -1;
+          break;
+        }
+        score += found === at ? 12 : 2;
+        if (found === at) consecutive += 1;
+        at = found + 1;
+      }
+      const subsequence = score < 0 ? null : 100 + score + consecutive * 4 - field.length / 100;
+      const candidate = Math.max(
+        exact ?? -Infinity,
+        prefix ?? -Infinity,
+        included ?? -Infinity,
+        subsequence ?? -Infinity,
+      );
+      if (candidate !== -Infinity && (best === null || candidate > best)) best = candidate;
+    }
+    return best;
+  };
+
+  const showModelVariants = (model: ModelOption, onSelect: (model: ModelOption) => void): void => {
+    const variants = [...new Set(model.variants ?? [])];
+    const picker = new tui.SelectRenderable(renderer, {
+      width: "100%",
+      height: Math.max(3, Math.min(variants.length + 1, panelRows())),
+      showScrollIndicator: true,
+      options: [
+        { name: "Default", description: "Use the provider default", value: "" },
+        ...variants.map((variant) => ({
+          name: variant,
+          description: `Use ${variant} reasoning effort`,
+          value: variant,
+        })),
+      ],
+    });
+    picker.on("itemSelected", () => {
+      const variant = picker.getSelectedOption()?.value as string | undefined;
+      close();
+      onSelect({ ...model, variant: variant || undefined });
+    });
+    open(
+      panel(
+        { title: `${model.name} variant`, width: panelWidth(), height: panelHeight(picker.height) },
+        [picker],
+      ),
+    );
+    picker.focus();
+  };
+
+  const showModels = (
+    models: readonly ModelOption[],
+    onSelect: (model: ModelOption) => void,
+  ): void => {
+    if (view) return;
+    const modelOptions = (query: string) =>
+      models
+        .map((model, index) => ({ model, index, score: modelScore(query, model) }))
+        .filter(
+          (item): item is { model: ModelOption; index: number; score: number } =>
+            item.score !== null,
+        )
+        .sort((a, b) => b.score - a.score || a.index - b.index)
+        .map(({ model }) => ({
+          name: model.name,
+          description: [
+            `${model.provider}/${model.modelId}`,
+            model.inputCost !== undefined && model.outputCost !== undefined
+              ? `$${model.inputCost}/$${model.outputCost} per 1M tokens`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          value: model,
+        }));
+    const listHeight = Math.max(3, panelRows() - listChrome);
+    const header = textNode({ content: "", width: "100%", height: 1, fg: dimHex });
+    const picker = new tui.SelectRenderable(renderer, {
+      width: "100%",
+      height: listHeight,
+      showScrollIndicator: true,
+      options: modelOptions(""),
+    });
+    const renderSearch = (): void => {
+      const query = modelSearch?.query ?? "";
+      picker.options = modelOptions(query);
+      picker.selectedIndex = 0;
+      header.content = styled([
+        [{ text: query === "" ? "Type to search models" : `Search: ${query}`, tone: "accent" }],
+      ]);
+      host.draw();
+    };
+    modelSearch = { picker, models, query: "", header };
+    picker.on("itemSelected", () => {
+      const selected = picker.getSelectedOption()?.value as ModelOption | undefined;
+      close();
+      if (!selected) return;
+      if ((selected.variants?.length ?? 0) > 0) showModelVariants(selected, onSelect);
+      else onSelect(selected);
+    });
+    renderSearch();
+    const footer = textNode({
+      content: "Type to filter · ↑/↓ select · Enter switch · Esc closes",
+      width: "100%",
+      height: 1,
+      fg: dimHex,
+    });
+    open(
+      panel(
+        { title: "Models", width: panelWidth(), height: panelHeight(listHeight + listChrome) },
+        [header, gap(), picker, gap(), footer],
+      ),
+    );
+    picker.focus();
+  };
+
+  const showModelError = (message: string): void => {
+    if (view) return;
+    const body = textNode({
+      content: styled([[{ text: message, tone: "danger" }]]),
+      width: "100%",
+      wrapMode: "word",
+    });
+    open(panel({ title: "Models", width: panelWidth(), height: panelHeight(1) }, [body]));
+  };
+
   const showMcp = (servers: readonly McpServerSummary[], notes: readonly string[]): void => {
     if (view) return;
     const modalWidth = panelWidth();
@@ -222,6 +369,63 @@ export const createOverlays = (
 
   const handleKey = (event: KeyEvent): boolean => {
     if (!view) return false;
+    if (modelSearch && !event.ctrl && !event.meta && !event.option) {
+      if (event.name === "backspace") {
+        event.stopPropagation();
+        modelSearch.query = modelSearch.query.slice(0, -1);
+        modelSearch.header.content = styled([
+          [
+            {
+              text:
+                modelSearch.query === "" ? "Type to search models" : `Search: ${modelSearch.query}`,
+              tone: "accent",
+            },
+          ],
+        ]);
+        modelSearch.picker.options = modelSearch.models
+          .map((model, index) => ({
+            model,
+            index,
+            score: modelScore(modelSearch?.query ?? "", model),
+          }))
+          .filter(
+            (item): item is { model: ModelOption; index: number; score: number } =>
+              item.score !== null,
+          )
+          .sort((a, b) => b.score - a.score || a.index - b.index)
+          .map(({ model }) => ({
+            name: model.name,
+            description: `${model.provider}/${model.modelId}`,
+            value: model,
+          }));
+        modelSearch.picker.selectedIndex = 0;
+        host.draw();
+      } else if (event.sequence.length === 1 && event.name.length === 1) {
+        event.stopPropagation();
+        modelSearch.query += event.sequence;
+        modelSearch.header.content = styled([
+          [{ text: `Search: ${modelSearch.query}`, tone: "accent" }],
+        ]);
+        modelSearch.picker.options = modelSearch.models
+          .map((model, index) => ({
+            model,
+            index,
+            score: modelScore(modelSearch?.query ?? "", model),
+          }))
+          .filter(
+            (item): item is { model: ModelOption; index: number; score: number } =>
+              item.score !== null,
+          )
+          .sort((a, b) => b.score - a.score || a.index - b.index)
+          .map(({ model }) => ({
+            name: model.name,
+            description: `${model.provider}/${model.modelId}`,
+            value: model,
+          }));
+        modelSearch.picker.selectedIndex = 0;
+        host.draw();
+      }
+    }
     if (toolList && event.name === "up") {
       event.stopPropagation();
       toolList.moveUp();
@@ -264,5 +468,14 @@ export const createOverlays = (
     return true;
   };
 
-  return { showHelp, showSkills, showMcp, handleKey, close, isOpen: () => view !== null };
+  return {
+    showHelp,
+    showSkills,
+    showMcp,
+    showModels,
+    showModelError,
+    handleKey,
+    close,
+    isOpen: () => view !== null,
+  };
 };

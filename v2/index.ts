@@ -4,6 +4,7 @@ import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
 import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
+import { currentModel, loadModels, modelLabel } from "./models";
 import { readMcpConfig, startMcp } from "./mcp";
 import {
   errorText,
@@ -53,6 +54,8 @@ const probe = () => {
   return {
     root,
     os,
+    branch: branch === "" ? "HEAD" : branch,
+    worktree: root === cwd ? null : cwd.slice(`${root}/`.length),
     git: `${branch === "" ? "HEAD" : branch} ${dirty === 0 ? "clean" : `${dirty} files changed`}`,
     label: root === home || root.startsWith(`${home}/`) ? `~${root.slice(home.length)}` : root,
   };
@@ -66,20 +69,33 @@ const main = async (): Promise<void> => {
       throw new Error("Usage: glorious [--resume [session-id]]");
     resumeId = args[1];
   }
-  const { root, os, git, label } = probe();
+  const { root, os, branch, worktree, git, label } = probe();
   const session =
     resumeId === undefined && args.length === 0
       ? await createSession(root)
       : await openSession(resumeId, pickSession);
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
-  const model = process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna";
+  let model = currentModel();
   const mcp = await startMcp(root, await readMcpConfig(root));
   let skills = await loadSkills(root, mcp);
 
   let frame = 0;
-  let tokens = session.contextTokens ?? null;
-  let cached: number | null = null;
+  const lastUsage = session.events.findLast((event) => event.type === "usage");
+  let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
+  let cached: number | null = lastUsage?.type === "usage" ? lastUsage.cached : null;
+  let totalTokensIn = session.events.reduce(
+    (total, event) => (event.type === "usage" ? total + (event.input ?? event.tokens) : total),
+    0,
+  );
+  let totalTokensOut = session.events.reduce(
+    (total, event) => (event.type === "usage" ? total + (event.output ?? 0) : total),
+    0,
+  );
+  let totalCachedTokens = session.events.reduce(
+    (total, event) => (event.type === "usage" ? total + event.cached : total),
+    0,
+  );
   let produced = false;
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
 
@@ -91,13 +107,21 @@ const main = async (): Promise<void> => {
     }
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
+    screen.setWave(frame, chat.busy, chat.queued.length);
     screen.setStatus(
       statusLine(
         {
-          root: label,
-          model,
+          cwd: label,
+          worktree,
+          branch,
+          model: `${modelLabel(model)}${model.variant ? ` (${model.variant})` : ""}`,
           tokens,
+          percentUsed:
+            model.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
           cached,
+          totalTokensIn,
+          totalTokensOut,
+          totalCachedTokens,
           busy: chat.busy,
           queued: chat.queued.length,
           frame,
@@ -134,6 +158,9 @@ const main = async (): Promise<void> => {
     if (event.type === "usage") {
       tokens = event.tokens;
       cached = event.cached;
+      totalTokensIn += event.input ?? event.tokens;
+      totalTokensOut += event.output ?? 0;
+      totalCachedTokens += event.cached;
       session.contextTokens = event.tokens;
     }
     if (event.type === "user") produced = false;
@@ -191,6 +218,17 @@ const main = async (): Promise<void> => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
+      if (name === "models") {
+        void loadModels(model)
+          .then((options) =>
+            screen.showModels(options, (next) => {
+              model = next;
+              agent.setModel(next);
+              repaint();
+            }),
+          )
+          .catch((failure) => screen.showModelError(errorText(failure)));
+      }
       repaint();
     },
     onSkillsReload: () => {
@@ -220,6 +258,16 @@ const main = async (): Promise<void> => {
     const { lines, gap } = eventBlock(event);
     if (lines.length > 0) screen.print(lines, gap);
   }
+
+  void loadModels(model)
+    .then((options) => {
+      const metadata = options.find((option) => modelLabel(option) === modelLabel(model));
+      if (metadata) {
+        model = metadata;
+        repaint();
+      }
+    })
+    .catch(() => {});
 
   const chat = createChat(agent, {
     onEvent: render,

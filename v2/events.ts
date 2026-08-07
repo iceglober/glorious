@@ -6,7 +6,7 @@ export type SessionEvent =
   | { type: "tool"; name: string; detail: string; elapsedMs: number; ok: boolean }
   | { type: "notice"; text: string }
   | { type: "error"; text: string }
-  | { type: "usage"; tokens: number; cached: number }
+  | { type: "usage"; tokens: number; cached: number; input?: number; output?: number }
   | { type: "turn"; messages: ModelMessage[] };
 
 export const messagesOf = (events: readonly SessionEvent[]): ModelMessage[] =>

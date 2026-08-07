@@ -46,7 +46,7 @@ export const createChrome = (tui: Tui, renderer: Renderer) => {
     const shown = line.filter((span) => span.text !== "");
     if (!shown.some((span) => span.fill)) return shown;
     const room = columns() - shown.reduce((sum, span) => sum + width(span.text), 0);
-    return room > 0 ? [...shown, { text: " ".repeat(room), fill: true }] : shown;
+    return room > 0 ? [...shown, { text: "\u00a0".repeat(room), fill: true }] : shown;
   };
 
   const chunk = (span: Span): TextChunk => {

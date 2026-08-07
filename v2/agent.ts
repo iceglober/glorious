@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
 import {
   craftRules,
@@ -9,6 +8,7 @@ import {
   skillsPrompt,
   systemPrompt,
 } from "./prompt";
+import { createModel, type ModelOption } from "./models";
 import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -51,7 +51,7 @@ const fetchWithDeadline = async (
 type Setup = Parameters<typeof systemPrompt>[0] &
   Parameters<typeof environmentPrompt>[0] & {
     root: string;
-    model: string;
+    model: ModelOption;
     sessionId: string;
     skills: string;
     askQuestions: AskQuestions;
@@ -60,16 +60,7 @@ type Setup = Parameters<typeof systemPrompt>[0] &
   };
 
 export const createAgent = (setup: Setup) => {
-  const apiKey =
-    process.env.AZURE_FOUNDRY_API_KEY ||
-    process.env.AZURE_API_KEY ||
-    process.env.AZURE_OPENAI_API_KEY;
-  if (!apiKey)
-    throw new Error(
-      "Azure API key missing: set AZURE_FOUNDRY_API_KEY, AZURE_API_KEY, or AZURE_OPENAI_API_KEY.",
-    );
-
-  const model = createAzure({ apiKey, fetch: fetchWithDeadline as typeof fetch })(setup.model);
+  let model = createModel(setup.model, fetchWithDeadline as typeof fetch);
   const environment = environmentPrompt(setup);
   let navigation = navigationPrompt(setup.mcp?.summaries ?? []);
   let preamble = [environment, navigation, skillsPrompt(setup.skills)]
@@ -77,6 +68,11 @@ export const createAgent = (setup: Setup) => {
     .join("\n\n");
   const cacheKey = (scope: string): string =>
     createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
+  const openaiOptions = (scope: string) => ({
+    ...(setup.model.variant ? { reasoningEffort: setup.model.variant } : {}),
+    textVerbosity: "low" as const,
+    promptCacheKey: cacheKey(scope),
+  });
 
   const subagentInstructions = `<identity>
   You are a dedicated subagent working for Glorious.
@@ -97,13 +93,7 @@ The brief you are given is your complete starting context; do not assume access 
         stopWhen: [stepCountIs(SUBAGENT_STEP_LIMIT)],
         maxOutputTokens: SUBAGENT_OUTPUT_TOKENS,
         maxRetries: 5,
-        providerOptions: {
-          openai: {
-            reasoningEffort: "medium",
-            textVerbosity: "low",
-            promptCacheKey: cacheKey("subagent"),
-          },
-        },
+        providerOptions: { openai: openaiOptions("subagent") },
         messages: [
           {
             role: "user",
@@ -120,21 +110,19 @@ The brief you are given is your complete starting context; do not assume access 
     };
   };
 
-  const settings = {
+  const settings = () => ({
     model,
     instructions: systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT)],
     maxRetries: 5,
-    providerOptions: {
-      openai: {
-        reasoningEffort: "medium",
-        textVerbosity: "low",
-        promptCacheKey: cacheKey(setup.sessionId),
-      },
-    },
-  };
+    providerOptions: { openai: openaiOptions(setup.sessionId) },
+  });
 
   return {
+    setModel: (next: ModelOption): void => {
+      setup.model = next;
+      model = createModel(next, fetchWithDeadline as typeof fetch);
+    },
     setSkills: (skills: Setup["skillTools"]): void => {
       setup.skillTools = skills;
       preamble = [environment, navigation, skillsPrompt(skills.catalog)]
@@ -153,7 +141,12 @@ The brief you are given is your complete starting context; do not assume access 
       history: ModelMessage[],
       turn: {
         signal: AbortSignal;
-        onStep: (step: { text: string; contextTokens: number; cachedTokens: number }) => void;
+        onStep: (step: {
+          text: string;
+          contextTokens: number;
+          cachedTokens: number;
+          outputTokens: number;
+        }) => void;
         onTool: (event: ToolEvent) => void;
       },
     ) => {
@@ -162,7 +155,7 @@ The brief you are given is your complete starting context; do not assume access 
         { role: "user", content: `${preamble}\n\n${prompt}` },
       ];
       const result = await generateText({
-        ...settings,
+        ...settings(),
         tools: toolsFor(turn.onTool),
         messages: sent,
         abortSignal: turn.signal,
@@ -171,6 +164,7 @@ The brief you are given is your complete starting context; do not assume access 
             text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
             contextTokens: usage?.inputTokens ?? 0,
             cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
           }),
       });
       return {

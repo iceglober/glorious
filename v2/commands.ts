@@ -1,13 +1,14 @@
 export type Command = {
   name: string;
   description: string;
-  run: "help" | "skills" | "mcp";
+  run: "help" | "skills" | "mcp" | "models";
 };
 
 export const commands: readonly Command[] = [
   { name: "help", description: "Show help and tips", run: "help" },
   { name: "skills", description: "List available skills", run: "skills" },
   { name: "mcp", description: "List active MCP servers", run: "mcp" },
+  { name: "models", description: "Switch the active model", run: "models" },
 ];
 
 const score = (query: string, candidate: string): number | null => {

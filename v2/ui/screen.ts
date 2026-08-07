@@ -1,8 +1,9 @@
-import type { KeyEvent, TextRenderable } from "@opentui/core";
+import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { McpServerSummary } from "../mcp";
-import type { Line } from "../render";
+import { type Line, statusWave } from "../render";
+import type { ModelOption } from "../models";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
@@ -56,6 +57,7 @@ export const createScreen = async (callbacks: {
   });
   const progress = textNode({ content: "", wrapMode: "word", width: "100%" });
   const status = textNode({ content: "", wrapMode: "word", width: "100%" });
+  const waterline = textNode({ content: "", width: "100%", height: 1 });
   const caret = textNode({
     content: styled([[{ text: "› ", tone: "prompt", bold: true }]]),
     bg: fillHex,
@@ -101,7 +103,7 @@ export const createScreen = async (callbacks: {
       flexDirection: "row",
       width: columns(),
       minWidth: 0,
-      marginTop: 1,
+      marginTop: 0,
       paddingTop: 1,
       paddingX: 1,
       backgroundColor: fillHex,
@@ -112,6 +114,7 @@ export const createScreen = async (callbacks: {
   const footer = stack({ flexDirection: "column", flexShrink: 0, width: "100%" }, [
     progress,
     autocomplete,
+    waterline,
     composerRow,
     status,
   ]);
@@ -119,7 +122,7 @@ export const createScreen = async (callbacks: {
     stack({ flexDirection: "column", width: "100%", height: "100%" }, [view, footer]),
   );
 
-  const log: Array<{ lines: Line[]; gap: boolean; node: TextRenderable }> = [];
+  const log: Array<{ lines: Line[]; node: TextRenderable; block: Renderable }> = [];
   const past = callbacks.promptHistory?.slice(-pastLimit) ?? [];
   let cursor: number | null = null;
   let phase: "new" | "live" | "done" = "new";
@@ -349,7 +352,11 @@ export const createScreen = async (callbacks: {
     composerRow.width = columns();
     autocomplete.width = composerWidth();
     input.width = composerWidth();
-    for (const block of log) block.node.content = styled(block.lines);
+    for (const block of log) {
+      block.block.width = columns();
+      block.node.width = columns();
+      block.node.content = styled(block.lines);
+    }
     callbacks.onResize();
     draw();
   };
@@ -396,17 +403,26 @@ export const createScreen = async (callbacks: {
     print: (lines: Line[], gap: boolean) => {
       const spaced = gap && log.length > 0;
       if (spaced) view.add(textNode({ content: "", width: "100%", height: 1 }));
+      const filled = lines.some((line) => line.some((span) => span.fill));
       const node = textNode({
         content: styled(lines),
         wrapMode: "word",
-        width: "100%",
-        bg: lines.some((line) => line.some((span) => span.fill)) ? fillHex : undefined,
+        width: columns(),
+        bg: filled ? fillHex : undefined,
       });
-      view.add(node);
-      log.push({ lines, gap: spaced, node });
+      const block = filled
+        ? stack({ width: columns(), flexShrink: 0, backgroundColor: fillHex }, [node])
+        : node;
+      view.add(block);
+      log.push({ lines, node, block });
       draw();
     },
     setProgress: painter(progress),
+    setWave: (frame: number, busy: boolean, queued: number) => {
+      waterline.content = styled(statusWave(frame, busy, queued, columns()));
+      waterline.visible = busy;
+      draw();
+    },
     setStatus: (lines: Line[]) => {
       statusRows = lines;
       showStatus();
@@ -422,6 +438,9 @@ export const createScreen = async (callbacks: {
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
     showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
       overlays.showMcp(servers, notes),
+    showModels: (models: readonly ModelOption[], onSelect: (model: ModelOption) => void) =>
+      overlays.showModels(models, onSelect),
+    showModelError: (message: string) => overlays.showModelError(message),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
       questions.ask(items, signal),
   };

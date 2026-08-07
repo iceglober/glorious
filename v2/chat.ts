@@ -70,7 +70,13 @@ export const createChat = (
         signal: stop.signal,
         onTool: (tool) => onTool(started, tool),
         onStep: (step) => {
-          announce({ type: "usage", tokens: step.contextTokens, cached: step.cachedTokens });
+          announce({
+            type: "usage",
+            tokens: step.contextTokens,
+            cached: step.cachedTokens,
+            input: step.contextTokens,
+            output: step.outputTokens,
+          });
           if (step.text.trim() === "") return;
           spoken = step.text;
           announce({ type: "assistant", text: spoken });

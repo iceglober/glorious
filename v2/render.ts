@@ -168,13 +168,7 @@ export const queuedRow = (text: string): Line => [
   { text: `  ↳ queued: ${clip(flatten(text), 64)}`, tone: "warning" },
 ];
 
-const ramp = "▁▂▃▄▅▆▇█";
-
-const vuMeter = (frame: number): string =>
-  Array.from({ length: 5 }, (_, bar) => {
-    const turns = (frame + bar * 2.5) / 11;
-    return ramp[Math.round((1 - Math.cos(turns * 2 * Math.PI)) * 3.5)];
-  }).join("");
+const water = " ▁▂▃▄▅▆▇█";
 
 const tokenCount = (tokens: number | null): string => {
   if (tokens === null) return "unknown";
@@ -185,10 +179,16 @@ const tokenCount = (tokens: number | null): string => {
 
 export const statusLine = (
   state: {
-    root: string;
+    cwd: string;
+    worktree: string | null;
+    branch: string;
     model: string;
     tokens: number | null;
+    percentUsed: number | null;
     cached: number | null;
+    totalTokensIn: number;
+    totalTokensOut: number;
+    totalCachedTokens: number;
     busy: boolean;
     queued: number;
     frame: number;
@@ -197,28 +197,42 @@ export const statusLine = (
   columns: number,
 ): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
-  const waiting = state.queued > 0 ? ` · ${state.queued} queued` : "";
-  const wave = vuMeter(state.frame);
-  const hint = state.busy ? `   ${wave}  Esc interrupt${waiting}` : "";
-  const room = Math.max(0, limit - width(hint));
-  const root = flatten(state.root);
-  const hits =
-    state.tokens !== null && state.tokens > 0 && state.cached !== null && state.cached > 0
-      ? ` · ${Math.round((state.cached / state.tokens) * 100)}% cached`
-      : "";
-  const ctx = `ctx ${tokenCount(state.tokens)}${hits}`;
-  const named = `${flatten(state.model)} · ${ctx}`;
-  const ladder = [
-    `${root} · ${named}`,
-    `…${root.slice(root.lastIndexOf("/") + 1)} · ${named}`,
-    named,
-    ctx,
+  const worktree = state.worktree === null ? "" : `:${flatten(state.worktree)}`;
+  const location = `${flatten(state.cwd)}${worktree} (${flatten(state.branch)})`;
+  const percent = state.percentUsed === null ? "unknown" : `${Math.round(state.percentUsed)}%`;
+  const cachedPercent =
+    state.totalTokensIn > 0
+      ? `${Math.round((state.totalCachedTokens / state.totalTokensIn) * 100)}%`
+      : "unknown";
+  const lineOne = `${location} · in ${tokenCount(state.totalTokensIn)} · out ${tokenCount(state.totalTokensOut)}`;
+  const lineTwo = `${state.sessionId} · ${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;
+  const first = clip(lineOne, limit);
+  const second = clip(lineTwo, limit);
+  return [[{ text: first, tone: "muted" }], [{ text: second, tone: "muted" }]];
+};
+
+export const statusWave = (
+  frame: number,
+  busy: boolean,
+  queued: number,
+  columns: number,
+): Line[] => {
+  const limit = Math.max(0, Math.floor(columns));
+  if (!busy || limit === 0) return [[{ text: "" }]];
+  const waiting = queued > 0 ? ` · ${queued} queued` : "";
+  const hint = `Esc interrupt${waiting}`;
+  const room = Math.max(0, limit - width(hint) - 2);
+  const waves = Array.from({ length: room }, (_, index) => {
+    const primary = Math.sin(index / 3 + frame / 5);
+    const ripple = Math.sin(index / 1.7 - frame / 8) * 0.8;
+    const height = Math.max(0, Math.min(water.length - 1, Math.round(4 + primary * 3.5 + ripple)));
+    return water[height];
+  }).join("");
+  return [
+    [
+      { text: waves.slice(0, room), tone: "accent" },
+      { text: "  " },
+      { text: clip(hint, limit), tone: "accent" },
+    ],
   ];
-  const body = ladder.find((option) => width(option) <= room) ?? ctx;
-  const line: Line = [{ text: clip(body, room), tone: "muted" }];
-  if (hint) {
-    line.push({ text: `   ${wave}`, tone: "accent" });
-    line.push({ text: clip(`  Esc interrupt${waiting}`, limit), tone: "muted" });
-  }
-  return [line, [{ text: state.sessionId, tone: "muted" }]];
 };
