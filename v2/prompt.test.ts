@@ -116,6 +116,34 @@ describe("craftRules shared with the subagent", () => {
   });
 });
 
+describe("the prompt agrees with the tool registry", () => {
+  // The prompt named `ask_user` while the ToolSet key was `askUser`, so it was
+  // telling the model to call something it had no way to call. Tool names are
+  // the snake_case tokens in the prompt surfaces; every one must be registered.
+  test("every tool the prompts name is one the model can actually call", async () => {
+    const { createTools } = await import("./tools");
+    const { loadSkills } = await import("./skills");
+    const skills = await loadSkills(process.cwd());
+    const registry = Object.keys(
+      createTools(
+        "/tmp",
+        () => {},
+        async () => "",
+        skills,
+        async () => "",
+      ),
+    );
+    const surfaces = [systemPrompt({ rules: "" }), skillsPrompt("PLACEHOLDER")];
+    const named = new Set(
+      surfaces.flatMap((text) =>
+        [...text.matchAll(/\b[a-z]+(?:_[a-z]+)+\b/gu)].map((match) => match[0]),
+      ),
+    );
+    expect(named.size).toBeGreaterThan(0);
+    for (const name of named) expect(registry).toContain(name);
+  });
+});
+
 describe("skillsPrompt", () => {
   test("emits nothing when there are no skills", () => {
     expect(skillsPrompt("")).toBe("");

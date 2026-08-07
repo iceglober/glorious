@@ -348,7 +348,7 @@ export const createTools = (
   );
 
   return {
-    askUser,
+    ask_user: askUser,
     bash,
     read,
     write,
