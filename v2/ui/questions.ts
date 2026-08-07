@@ -89,83 +89,87 @@ export const createQuestions = (chrome: Chrome, host: Host) => {
   };
 
   const ask = (questions: Question[], signal: AbortSignal | undefined): Promise<string> =>
-    new Promise((resolve) => {
-      items = questions;
-      answers = [];
-      index = 0;
-      resolveWith = resolve;
-      abort = () => finish(JSON.stringify({ cancelled: true }));
-      title = textNode({ content: "", width: "100%", wrapMode: "word" });
-      const optionsLabel = textNode({
-        content: "OPTIONS · choose one",
-        width: "100%",
-        height: 1,
-        fg: dimHex,
-      });
-      options = new tui.SelectRenderable(renderer, {
-        width: "100%",
-        height: 1,
-        backgroundColor: fillHex,
-        focusedBackgroundColor: fillHex,
-        selectedBackgroundColor: edgeHex,
-        selectedTextColor: "#ffffff",
-        showDescription: false,
-        itemSpacing: 0,
-      });
-      options.on("selectionChanged", () => {
-        optionTouched = true;
-      });
-      const noteLabel = textNode({
-        content: "NOTE · optional",
-        width: "100%",
-        height: 1,
-        fg: dimHex,
-      });
-      note = new tui.TextareaRenderable(renderer, {
-        placeholder: "Add context or replace the selection",
-        width: "100%",
-        height: 3,
-        wrapMode: "word",
-        backgroundColor: fillHex,
-        focusedBackgroundColor: fillHex,
-        paddingX: 1,
-        keyBindings: [
-          ...composerKeyBindings(tui.defaultTextareaKeyBindings),
-          { name: "return", action: "submit" },
-          { name: "kpenter", action: "submit" },
-          { name: "return", shift: true, action: "newline" },
-          { name: "kpenter", shift: true, action: "newline" },
-        ],
-        onSubmit: submit,
-      });
-      const help = textNode({
-        content: "Tab note · Enter next · Esc cancel",
-        width: "100%",
-        height: 1,
-        fg: dimHex,
-      });
-      view = stack(
-        {
-          flexDirection: "column",
-          width: "100%",
-          height: 1,
-          paddingX: 2,
-          paddingY: 1,
-          rowGap: 0,
-          backgroundColor: panelHex,
-          border: true,
-          borderColor: edgeHex,
-          title: " Questions ",
-          titleColor: accentHex,
-        },
-        [title, optionsLabel, options, noteLabel, note, help],
-      );
-      renderer.root.add(view);
-      const cancel = (): void => abort?.();
-      signal?.addEventListener("abort", cancel, { once: true });
-      cleanup = () => signal?.removeEventListener("abort", cancel);
-      paint();
-    });
+    // One modal, one asker. Two tool calls in a single step run concurrently, and
+    // without this the second would overwrite resolveWith and strand the first.
+    view !== null
+      ? Promise.resolve(JSON.stringify({ error: "another question is already open" }))
+      : new Promise((resolve) => {
+          items = questions;
+          answers = [];
+          index = 0;
+          resolveWith = resolve;
+          abort = () => finish(JSON.stringify({ cancelled: true }));
+          title = textNode({ content: "", width: "100%", wrapMode: "word" });
+          const optionsLabel = textNode({
+            content: "OPTIONS · choose one",
+            width: "100%",
+            height: 1,
+            fg: dimHex,
+          });
+          options = new tui.SelectRenderable(renderer, {
+            width: "100%",
+            height: 1,
+            backgroundColor: fillHex,
+            focusedBackgroundColor: fillHex,
+            selectedBackgroundColor: edgeHex,
+            selectedTextColor: "#ffffff",
+            showDescription: false,
+            itemSpacing: 0,
+          });
+          options.on("selectionChanged", () => {
+            optionTouched = true;
+          });
+          const noteLabel = textNode({
+            content: "NOTE · optional",
+            width: "100%",
+            height: 1,
+            fg: dimHex,
+          });
+          note = new tui.TextareaRenderable(renderer, {
+            placeholder: "Add context or replace the selection",
+            width: "100%",
+            height: 3,
+            wrapMode: "word",
+            backgroundColor: fillHex,
+            focusedBackgroundColor: fillHex,
+            paddingX: 1,
+            keyBindings: [
+              ...composerKeyBindings(tui.defaultTextareaKeyBindings),
+              { name: "return", action: "submit" },
+              { name: "kpenter", action: "submit" },
+              { name: "return", shift: true, action: "newline" },
+              { name: "kpenter", shift: true, action: "newline" },
+            ],
+            onSubmit: submit,
+          });
+          const help = textNode({
+            content: "Tab note · Enter next · Esc cancel",
+            width: "100%",
+            height: 1,
+            fg: dimHex,
+          });
+          view = stack(
+            {
+              flexDirection: "column",
+              width: "100%",
+              height: 1,
+              paddingX: 2,
+              paddingY: 1,
+              rowGap: 0,
+              backgroundColor: panelHex,
+              border: true,
+              borderColor: edgeHex,
+              title: " Questions ",
+              titleColor: accentHex,
+            },
+            [title, optionsLabel, options, noteLabel, note, help],
+          );
+          renderer.root.add(view);
+          const cancel = (): void => abort?.();
+          signal?.addEventListener("abort", cancel, { once: true });
+          cleanup = () => signal?.removeEventListener("abort", cancel);
+          paint();
+        });
 
   const handleKey = (event: KeyEvent): boolean => {
     if (!view) return false;

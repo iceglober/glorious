@@ -4,8 +4,8 @@ import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
 import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
-import { currentModel, loadModels, modelLabel } from "./models";
 import { readMcpConfig, startMcp } from "./mcp";
+import { currentModel, loadModels, modelLabel } from "./models";
 import {
   errorText,
   eventBlock,

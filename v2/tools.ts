@@ -8,6 +8,17 @@ import { errorText } from "./render";
 import type { Skills } from "./skills";
 import { fetchPages, MAX_PAGES } from "./web";
 
+let events = 0;
+
+// Every tool event in the process draws from one counter. chat.ts pairs start
+// with end by id inside a single turn, and a turn can be running the parent's
+// tools, several subagents' tools, and MCP tools at once — a per-instance
+// counter made those collide.
+export const nextToolEventId = (): number => {
+  events += 1;
+  return events;
+};
+
 export type ToolEvent =
   | { id: number; name: string; detail: string; phase: "start" }
   | { id: number; name: string; detail: string; phase: "end"; ok: boolean };
@@ -166,12 +177,11 @@ const firstDetail = (raw: Record<string, unknown>): string => {
 export const createTools = (
   root: string,
   onEvent: (event: ToolEvent) => void,
-  askQuestions: AskQuestions,
+  askQuestions: AskQuestions | null,
   skills: Skills,
   runSubagent?: RunSubagent,
 ): ToolSet => {
   const base = resolve(root);
-  let seq = 0;
 
   const announce = (event: ToolEvent): void => {
     try {
@@ -196,9 +206,8 @@ export const createTools = (
       inputSchema,
       execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
         const raw = input as Record<string, unknown>;
-        seq += 1;
         const step = {
-          id: seq,
+          id: nextToolEventId(),
           name,
           detail: firstDetail(raw),
         };
@@ -210,22 +219,25 @@ export const createTools = (
       },
     });
 
-  const askUser = define(
-    "ask_user",
-    "Ask the user one or more questions. Each question must include concise options. The user can choose an option, add a note, or do both. Ask related questions together so the user can answer them in one batch. Use the answers to continue the current task.",
-    z.object({
-      questions: z
-        .array(
+  const askUser =
+    askQuestions === null
+      ? undefined
+      : define(
+          "ask_user",
+          "Ask the user one or more questions. Each question must include concise options. The user can choose an option, add a note, or do both. Ask related questions together so the user can answer them in one batch. Use the answers to continue the current task.",
           z.object({
-            question: z.string().min(1).describe("Question to show the user"),
-            options: z.array(z.string().min(1)).min(1).max(10).describe("Selectable answers"),
+            questions: z
+              .array(
+                z.object({
+                  question: z.string().min(1).describe("Question to show the user"),
+                  options: z.array(z.string().min(1)).min(1).max(10).describe("Selectable answers"),
+                }),
+              )
+              .min(1)
+              .max(20),
           }),
-        )
-        .min(1)
-        .max(20),
-    }),
-    async ({ questions }, signal) => askQuestions(questions, signal),
-  );
+          async ({ questions }, signal) => askQuestions(questions, signal),
+        );
 
   const runSubagentTool = runSubagent
     ? define(
@@ -367,7 +379,7 @@ export const createTools = (
   );
 
   return {
-    ask_user: askUser,
+    ...(askUser ? { ask_user: askUser } : {}),
     bash,
     read,
     write,

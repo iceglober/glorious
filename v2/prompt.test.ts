@@ -153,3 +153,25 @@ describe("skillsPrompt", () => {
     expect(skillsPrompt("<available_skills />")).toContain("<skills>");
   });
 });
+
+describe("delegation guidance", () => {
+  test("the main prompt carries it", () => {
+    expect(rendered).toContain("<delegation>");
+    expect(rendered).toContain("run_subagent");
+  });
+
+  test("it names the context cost, which is the argument most often missed", () => {
+    expect(rendered).toContain("30k");
+    expect(rendered).toMatch(/summary/u);
+  });
+
+  test("it states that the parent cannot steer a running subagent", () => {
+    expect(rendered).toMatch(/cannot steer it/u);
+  });
+
+  // craftRules is shared with the subagent, which has no run_subagent tool.
+  test("a subagent is never told to delegate", () => {
+    expect(craftRules).not.toContain("<delegation>");
+    expect(craftRules).not.toContain("run_subagent");
+  });
+});

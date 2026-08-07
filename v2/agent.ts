@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
+import { createModel, type ModelOption } from "./models";
 import {
   craftRules,
   environmentPrompt,
@@ -8,11 +9,10 @@ import {
   skillsPrompt,
   systemPrompt,
 } from "./prompt";
-import { createModel, type ModelOption } from "./models";
 import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
-const SUBAGENT_STEP_LIMIT = 50;
+export const SUBAGENT_STEP_LIMIT = 50;
 const SUBAGENT_OUTPUT_TOKENS = 12_000;
 const DEADLINES_MS = [30 * 60_000, 10 * 60_000, 10 * 60_000];
 const BREATH_MS = 500;
@@ -59,6 +59,17 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     mcp?: import("./mcp").McpSession;
   };
 
+// The main loop turns a step-limited turn into a [system-reminder]; a subagent
+// has no turn of its own, so the same fact has to travel in the result the
+// parent reads. Returning "" would tell the parent nothing at all.
+export const subagentReport = (text: string, steps: number): string => {
+  const summary = text.trim();
+  if (summary !== "") return summary;
+  return steps >= SUBAGENT_STEP_LIMIT
+    ? "ERROR: the subagent used all its steps without reporting back. Narrow the task or split it into smaller briefs."
+    : "ERROR: the subagent finished without reporting anything.";
+};
+
 export const createAgent = (setup: Setup) => {
   let model = createModel(setup.model, fetchWithDeadline as typeof fetch);
   const environment = environmentPrompt(setup);
@@ -82,14 +93,14 @@ ${craftRules}
 
 ${fence("rules", setup.rules)}
 
-The brief you are given is your complete starting context; do not assume access to the parent conversation, plan, or tool results. Work only on the task in that brief. Inspect the repository when needed, make the requested changes, and verify them with focused checks. Do not ask the user questions. Do not delegate further. Return a concise summary of what you did and any checks that ran.`;
+The brief you are given is your complete starting context; do not assume access to the parent conversation, plan, or tool results. Work only on the task in that brief. Inspect the repository when needed, make the requested changes, and verify them with focused checks. You have no way to ask anyone anything and cannot delegate further; decide with what the brief gives you. Return a concise summary of what you did and any checks that ran.`;
 
   const toolsFor = (onTool: (event: ToolEvent) => void) => {
     const runSubagent: RunSubagent = async (task, context, signal) => {
       const result = await generateText({
         model,
         instructions: subagentInstructions,
-        tools: createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
+        tools: createTools(setup.root, onTool, null, setup.skillTools),
         stopWhen: [stepCountIs(SUBAGENT_STEP_LIMIT)],
         maxOutputTokens: SUBAGENT_OUTPUT_TOKENS,
         maxRetries: 5,
@@ -102,7 +113,7 @@ The brief you are given is your complete starting context; do not assume access 
         ],
         abortSignal: signal,
       });
-      return result.text;
+      return subagentReport(result.text, result.steps.length);
     };
     return {
       ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, runSubagent),

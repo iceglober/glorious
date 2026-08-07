@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startMcp } from "./mcp";
 import { navigationPrompt } from "./prompt";
-import { BUILT_IN_TOOL_NAMES, type ToolEvent } from "./tools";
+import { BUILT_IN_TOOL_NAMES, createTools, type ToolEvent } from "./tools";
 
 const dir = await mkdtemp(join(tmpdir(), "glorious-mcp-"));
 
@@ -105,9 +105,23 @@ describe("calling", () => {
   });
 
   test("its event ids cannot collide with built-in tool ids", async () => {
+    // Both draw from one process-wide counter now, so this holds by
+    // construction rather than by MCP starting at a high offset.
     events.length = 0;
+    const builtIn: number[] = [];
+    const tools = createTools(
+      "/tmp",
+      (event) => {
+        if (event.phase === "start") builtIn.push(event.id);
+      },
+      null,
+      { catalog: "", summaries: [], tool: undefined },
+    );
+    const glob = tools.glob?.execute as (i: unknown, o: unknown) => Promise<string>;
+    await glob({ pattern: "*.nothing" }, {});
     await call("find_symbol", { name_path: "x" });
-    expect(events[0].id).toBeGreaterThan(1000);
+    expect(builtIn).toHaveLength(1);
+    expect(events[0].id).not.toBe(builtIn[0]);
   });
 });
 

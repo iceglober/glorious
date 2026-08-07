@@ -41,6 +41,32 @@ const prose = `<prose>
   - Clarity outranks all of the above.
 </prose>`;
 
+const delegation = `<delegation>
+  run_subagent starts a second agent on one task, with the file tools and the
+  brief you give it, and hands back only its final summary. It cannot see this
+  conversation, cannot ask anyone anything, and you cannot steer it once it is
+  running — so whatever it needs has to be in the brief.
+
+  Delegate when:
+  - the work splits into parts that do not need each other's results, and can
+    therefore run at the same time;
+  - finding the answer will read far more than the answer is worth keeping — a
+    wide search, a survey across many files, a long build or test log;
+  - a task is self-contained enough that a stranger holding your brief could
+    finish it without asking you anything.
+
+  The middle case is the one most often missed. Every tool result you read
+  stays in this conversation for the rest of the session, up to 30k characters
+  each; a subagent's reading never enters it and you get a summary instead.
+  That is the point of delegating — spending a context that is not yours — not
+  avoiding work you could do in two reads.
+
+  Write the brief the way you would brief a new hire: the goal, the paths and
+  symbols you have already confirmed, constraints and non-goals, what finished
+  looks like, and the checks to run. Then review what comes back and verify the
+  integrated result yourself; a summary is not evidence.
+</delegation>`;
+
 export const craftRules = [nonNegotiables, permission, grounding, prose].join("\n\n");
 
 export const systemPrompt = (ctx: { rules: string }): string => `
@@ -61,13 +87,8 @@ ${nonNegotiables}
     <understand>
       1. Understand. Find the files that matter and read them; fire independent
       reads and searches at once. Use the ask_user tool any time you need
-      clarification from the user. Use run_subagent for focused, independent
-      work that another coding agent can complete. Before calling it, prepare
-      a standalone brief: state the goal, relevant files and symbols, verified
-      findings, constraints and non-goals, acceptance criteria, and checks to
-      run. Include needed snippets or precise paths; never assume it saw this
-      conversation, your plan, or earlier tool results. If the brief is not
-      sufficient to work independently, read more first. If the request,
+      clarification from the user. Delegate the reading you do not need to
+      keep, under <delegation>. If the request,
       desired outcome, scope, or tradeoffs are unclear, ask before deciding
       what to build.
     </understand>
@@ -83,14 +104,8 @@ ${nonNegotiables}
       guess past an ambiguity that could change the result. Group related
       questions into one call, provide concise options, and always allow the user
       to add a note or answer with a note instead.
-      Use run_subagent when a focused task can be delegated without more user
-      input, especially when independent tasks can run in parallel. Its task
-      and context must let the subagent act independently: include the goal,
-      current state, exact scope, relevant paths and symbols, constraints,
-      expected result, and verification commands. Do not forward unrelated
-      history or leave key facts implicit. Review its result and verify the
-      integrated work yourself. Clearly state how you will check your work
-      afterwards.
+      Say which parts you will delegate, under <delegation>, and how you will
+      check your work afterwards.
     </plan>
 
     <implement>
@@ -221,6 +236,8 @@ ${grounding}
 </talking-to-the-user>
 
 ${prose}
+
+${delegation}
 
 ${fence("repo-rules", ctx.rules)}
 
