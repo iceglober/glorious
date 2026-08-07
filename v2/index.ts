@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
 import { createAgent } from "./agent";
+import { loadAgentRules } from "./guidance";
 import { type ChatSignal, createChat } from "./chat";
 import { messagesOf, type SessionEvent } from "./events";
 import { readMcpConfig, startMcp } from "./mcp";
@@ -12,6 +11,7 @@ import {
   type Line,
   noticeBlock,
   queuedRow,
+  userBlock,
   runningRow,
   statusLine,
 } from "./render";
@@ -23,7 +23,7 @@ import {
   saveSession,
 } from "./session";
 import { loadSkills } from "./skills";
-import { availableToolSummaries } from "./tools";
+import { runShell } from "./tools";
 import { createScreen, pickSession } from "./ui";
 
 const FRAME_MS = 90;
@@ -72,10 +72,10 @@ const main = async (): Promise<void> => {
       ? await createSession(root)
       : await openSession(resumeId, pickSession);
   const promptHistory = await loadPromptHistory();
-  const rules = join(root, "AGENTS.md");
+  const rules = await loadAgentRules(root);
   const model = process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna";
-  let skills = await loadSkills(root);
   const mcp = await startMcp(root, await readMcpConfig(root));
+  let skills = await loadSkills(root, mcp);
 
   let frame = 0;
   let tokens = session.contextTokens ?? null;
@@ -112,7 +112,7 @@ const main = async (): Promise<void> => {
     root,
     model,
     sessionId: session.id,
-    rules: existsSync(rules) ? readFileSync(rules, "utf8") : "",
+    rules,
     cwd: root,
     os,
     date: new Date().toISOString().slice(0, 10),
@@ -179,10 +179,18 @@ const main = async (): Promise<void> => {
       chat.send(text);
       repaint();
     },
+    onShell: (command) => {
+      screen.print(userBlock(`!${command}`), true);
+      void runShell(root, command).then(({ output, ok }) => {
+        if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
+        repaint();
+      });
+    },
+    cwd: root,
     onCommand: (name) => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
-      if (name === "tools") screen.showTools(availableToolSummaries(skills, true, mcp.summaries));
+      if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
       repaint();
     },
     onSkillsReload: () => {
@@ -192,6 +200,16 @@ const main = async (): Promise<void> => {
         screen.showSkills(skills.summaries);
         repaint();
       });
+    },
+    onMcpReload: (setLoading) => {
+      setLoading(true);
+      void mcp
+        .reload()
+        .then(() => {
+          agent.setMcp(mcp);
+          repaint();
+        })
+        .finally(() => setLoading(false));
     },
     onEscape: () => interrupt(),
     onResize: () => repaint(),

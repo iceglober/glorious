@@ -71,7 +71,7 @@ export const createAgent = (setup: Setup) => {
 
   const model = createAzure({ apiKey, fetch: fetchWithDeadline as typeof fetch })(setup.model);
   const environment = environmentPrompt(setup);
-  const navigation = navigationPrompt(setup.mcp?.summaries ?? []);
+  let navigation = navigationPrompt(setup.mcp?.summaries ?? []);
   let preamble = [environment, navigation, skillsPrompt(setup.skills)]
     .filter((part) => part !== "")
     .join("\n\n");
@@ -138,6 +138,13 @@ The brief you are given is your complete starting context; do not assume access 
     setSkills: (skills: Setup["skillTools"]): void => {
       setup.skillTools = skills;
       preamble = [environment, navigation, skillsPrompt(skills.catalog)]
+        .filter((part) => part !== "")
+        .join("\n\n");
+    },
+    setMcp: (mcp: Setup["mcp"]): void => {
+      setup.mcp = mcp;
+      navigation = navigationPrompt(mcp?.summaries ?? []);
+      preamble = [environment, navigation, skillsPrompt(setup.skillTools.catalog)]
         .filter((part) => part !== "")
         .join("\n\n");
     },

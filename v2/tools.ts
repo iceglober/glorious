@@ -1,9 +1,10 @@
 import { stat } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
 import { z } from "zod";
 import { errorText } from "./render";
+import { loadAgentRules } from "./guidance";
 import type { Skills } from "./skills";
 
 export type ToolEvent =
@@ -91,7 +92,7 @@ export const availableToolSummaries = (
   ...mcp.map((entry) => ({
     name: entry.name,
     description: entry.description,
-    source: `mcp · ${entry.server}`,
+    source: `mcp/${entry.server}`,
   })),
 ];
 
@@ -162,6 +163,20 @@ const launch = async (
   settled.abort();
   clearTimeout(escalation);
   return { out, err, code, note };
+};
+
+export const runShell = async (
+  root: string,
+  command: string,
+): Promise<{ output: string; ok: boolean }> => {
+  const got = await launch(["bash", "-lc", command], resolve(root), undefined);
+  const parts = [got.out.trimEnd(), got.err.trimEnd()].filter((part) => part.length > 0);
+  if (got.note) parts.push(got.note);
+  else if (got.code !== 0) parts.push(`[exit ${got.code}]`);
+  return {
+    output: capText(parts.join("\n"), RESULT_LIMIT),
+    ok: got.note === "" && got.code === 0,
+  };
 };
 
 const rgReport = (got: Capture, cap: number, unit: string, blank: string): string => {
@@ -296,8 +311,13 @@ export const createTools = (
       path: z.string().describe("File to read, relative to the project root or absolute"),
     }),
     async ({ path }) => {
-      const text = await Bun.file(within(path)).text();
-      return text.split("\n").reduce((all, row, n) => `${all}${n ? "\n" : ""}${n + 1}|${row}`, "");
+      const target = within(path);
+      const text = await Bun.file(target).text();
+      const numbered = text
+        .split("\n")
+        .reduce((all, row, n) => `${all}${n ? "\n" : ""}${n + 1}|${row}`, "");
+      const rules = await loadAgentRules(base, dirname(target));
+      return rules === "" ? numbered : `${numbered}\n\nAGENTS.md guidance:\n${rules}`;
     },
   );
 

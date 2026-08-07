@@ -2,8 +2,9 @@ import type { KeyEvent, TextRenderable } from "@opentui/core";
 import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { Line } from "../render";
+import type { McpServerSummary } from "../mcp";
 import type { SkillSummary } from "../skills";
-import type { Question, ToolSummary } from "../tools";
+import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
 import { createOverlays } from "./overlays";
 import { createQuestions } from "./questions";
@@ -17,8 +18,11 @@ export const createScreen = async (callbacks: {
   promptHistory?: string[];
   onPromptHistory?: (history: string[]) => void;
   onSubmit: (text: string) => void;
+  onShell: (command: string) => void;
+  cwd: string;
   onCommand: (name: string) => void;
   onSkillsReload: () => void;
+  onMcpReload: (setLoading: (loading: boolean) => void) => void;
   onEscape: () => void;
   onResize: () => void;
   onQuit: () => void;
@@ -55,6 +59,9 @@ export const createScreen = async (callbacks: {
   const caret = textNode({
     content: styled([[{ text: "› ", tone: "prompt", bold: true }]]),
     bg: fillHex,
+    wrapMode: "none",
+    height: 1,
+    flexShrink: 0,
   });
   const input = new tui.TextareaRenderable(renderer, {
     placeholder: "Ask Glorious anything",
@@ -122,6 +129,7 @@ export const createScreen = async (callbacks: {
   let autocompleteItems: ReturnType<typeof matchingCommands> = [];
   let autocompleteIndex = 0;
   let autocompleteOpen = false;
+  let shellMode = false;
 
   const draw = (): void => {
     if (phase === "live") renderer.requestRender();
@@ -132,7 +140,7 @@ export const createScreen = async (callbacks: {
     focusComposer: () => input.focus(),
     blurComposer: () => input.blur(),
   };
-  const overlays = createOverlays(chrome, host, callbacks.onSkillsReload);
+  const overlays = createOverlays(chrome, host, callbacks.onSkillsReload, callbacks.onMcpReload);
   const questions = createQuestions(chrome, host);
 
   const painter = (node: TextRenderable) => {
@@ -162,6 +170,25 @@ export const createScreen = async (callbacks: {
   const compose = (text: string): void => {
     input.setText(text);
     input.cursorOffset = text.length;
+    draw();
+  };
+
+  const syncShellMode = (): void => {
+    if (!shellMode && input.plainText.startsWith("!")) {
+      shellMode = true;
+      input.setText(input.plainText.slice(1));
+      input.cursorOffset = Math.max(0, input.cursorOffset - 1);
+    }
+    caret.content = styled([
+      [
+        {
+          text: shellMode ? `${callbacks.cwd} $ ` : "› ",
+          tone: shellMode ? "warning" : "prompt",
+          bold: true,
+        },
+      ],
+    ]);
+    input.placeholder = shellMode ? "Run shell command" : "Ask Glorious anything";
     draw();
   };
 
@@ -212,6 +239,8 @@ export const createScreen = async (callbacks: {
     return true;
   };
 
+  input.onContentChange = syncShellMode;
+
   const submit = (): void => {
     const text = input.plainText;
     const selected = autocompleteItems[autocompleteIndex]?.name;
@@ -227,6 +256,13 @@ export const createScreen = async (callbacks: {
       autocompleteSlash = null;
       compose("");
       callbacks.onCommand(name);
+      return;
+    }
+    if (shellMode) {
+      shellMode = false;
+      syncShellMode();
+      compose("");
+      callbacks.onShell(text.trim());
       return;
     }
     if (past.at(-1) !== text) past.push(text);
@@ -257,6 +293,12 @@ export const createScreen = async (callbacks: {
     if (phase !== "live") return;
     if (overlays.handleKey(event)) return;
     if (questions.handleKey(event)) return;
+    if (shellMode && input.plainText === "" && event.name === "backspace") {
+      event.stopPropagation();
+      shellMode = false;
+      syncShellMode();
+      return;
+    }
     if (autocompleteOpen) {
       if (event.name === "up") {
         event.stopPropagation();
@@ -378,7 +420,8 @@ export const createScreen = async (callbacks: {
     columns,
     showHelp: overlays.showHelp,
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
-    showTools: (summaries: readonly ToolSummary[]) => overlays.showTools(summaries),
+    showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
+      overlays.showMcp(servers, notes),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
       questions.ask(items, signal),
   };

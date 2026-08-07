@@ -11,8 +11,8 @@ describe("slash commands", () => {
     expect(matchingCommands("hp").map((command) => command.name)).toEqual(["help"]);
   });
 
-  test("includes the tools command", () => {
-    expect(matchingCommands("tools").map((command) => command.name)).toEqual(["tools"]);
+  test("includes the mcp command", () => {
+    expect(matchingCommands("mcp").map((command) => command.name)).toEqual(["mcp"]);
   });
 
   test("parses a command submission", () => {

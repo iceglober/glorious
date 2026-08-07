@@ -1,15 +1,27 @@
-import type { KeyEvent, Renderable } from "@opentui/core";
+import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { commands } from "../commands";
 import { clip, type Line } from "../render";
+import type { McpServerSummary } from "../mcp";
 import type { SkillSummary } from "../skills";
-import type { ToolSummary } from "../tools";
 import { type Chrome, dimHex, type Host, listChrome, panelHeight, panelHex } from "./chrome";
 
-export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () => void) => {
+export const createOverlays = (
+  chrome: Chrome,
+  host: Host,
+  onSkillsReload: () => void,
+  onMcpReload: (setLoading: (loading: boolean) => void) => void,
+) => {
   const { tui, renderer, textNode, styled, panel, panelWidth, panelRows } = chrome;
   let view: Renderable | null = null;
   let scroll: InstanceType<typeof tui.ScrollBoxRenderable> | null = null;
+  let toolSearch: { focused: boolean; activate: (text: string) => void } | null = null;
+  let toolList: { moveUp: () => void; moveDown: () => void } | null = null;
   let reloadSkills = false;
+  let reloadMcp = false;
+  let mcpLoading = false;
+  let mcpFrame = 0;
+  let mcpTimer: ReturnType<typeof setInterval> | null = null;
+  let mcpLoadingView: ((loading: boolean) => void) | null = null;
 
   const close = (): void => {
     if (!view) return;
@@ -17,6 +29,13 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
     view.destroy();
     view = null;
     scroll = null;
+    toolSearch = null;
+    toolList = null;
+    reloadMcp = false;
+    mcpLoading = false;
+    if (mcpTimer) clearInterval(mcpTimer);
+    mcpTimer = null;
+    mcpLoadingView = null;
     host.focusComposer();
     host.draw();
   };
@@ -122,33 +141,41 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
     );
   };
 
-  const showTools = (summaries: readonly ToolSummary[]): void => {
+  const showMcp = (servers: readonly McpServerSummary[], notes: readonly string[]): void => {
     if (view) return;
     const modalWidth = panelWidth();
-    const contentWidth = Math.max(1, modalWidth - 6);
-    const toolLines: Line[] = summaries.flatMap((tool, index): Line[] => {
-      const name = clip(tool.name, contentWidth);
-      const description = clip(tool.description, Math.max(1, contentWidth - 2));
-      const source = clip(tool.source, Math.max(1, contentWidth - 6));
-      return [
+    let mcpBody: TextRenderable | null = null;
+    const render = (): void => {
+      const marker = mcpLoading ? ["◐", "◓", "◑", "◒"][mcpFrame % 4] : "◆";
+      const lines: Line[] =
+        servers.length === 0
+          ? [
+              [
+                { text: `${marker} `, tone: "accent" },
+                { text: "No active MCP servers.", tone: "muted" },
+              ],
+            ]
+          : servers.flatMap((server, index): Line[] => [
+              [
+                { text: `${marker} `, tone: "accent" },
+                { text: server.name, tone: "highlight", bold: true },
+                { text: `  ${server.tools} tools`, tone: "muted" },
+              ],
+              ...(index + 1 < servers.length ? [[{ text: "" }]] : []),
+            ]);
+      const noteLines: Line[] = notes.flatMap((note): Line[] => [
         [
-          { text: "◆ ", tone: "accent" },
-          { text: name, tone: "highlight", bold: true },
+          { text: "! ", tone: "warning" },
+          { text: note, tone: "muted" },
         ],
-        [{ text: "  " }, { text: description, tone: "muted" }],
-        [
-          { text: "  ↳ ", tone: "muted" },
-          { text: source, tone: "muted", italic: true },
-        ],
-        ...(index + 1 < summaries.length ? [[{ text: "" }]] : []),
-      ];
-    });
-    const listHeight = Math.max(
-      1,
-      Math.min(toolLines.length, Math.max(3, panelRows() - listChrome)),
-    );
+      ]);
+      const allLines = [...lines, ...(noteLines.length > 0 ? [[{ text: "" }], ...noteLines] : [])];
+      if (mcpBody) mcpBody.content = styled(allLines);
+      host.draw();
+    };
+    const listHeight = Math.max(3, panelRows() - listChrome);
     const header = textNode({
-      content: styled([[{ text: "Available tools", tone: "accent", bold: true }]]),
+      content: styled([[{ text: "Active MCP servers", tone: "accent", bold: true }]]),
       width: "100%",
       height: 1,
     });
@@ -162,15 +189,17 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
       backgroundColor: panelHex,
       contentOptions: { flexDirection: "column" },
     });
-    scroll.add(textNode({ content: styled(toolLines), width: "100%", wrapMode: "none" }));
+    mcpBody = textNode({ content: "", width: "100%", wrapMode: "none" });
+    scroll.add(mcpBody);
+    render();
     const footer = textNode({
-      content: "↑/↓ scroll · Esc closes this list",
+      content: "↑/↓ scroll · r reload · Esc closes this list",
       width: "100%",
       height: 1,
       fg: dimHex,
     });
     open(
-      panel({ title: "Tools", width: modalWidth, height: panelHeight(listHeight + listChrome) }, [
+      panel({ title: "MCP", width: modalWidth, height: panelHeight(listHeight + listChrome) }, [
         header,
         gap(),
         scroll,
@@ -178,17 +207,51 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
         footer,
       ]),
     );
+    reloadMcp = true;
+    mcpLoadingView = (loading: boolean): void => {
+      mcpLoading = loading;
+      mcpFrame = 0;
+      render();
+    };
+    mcpTimer = setInterval(() => {
+      if (!mcpLoading) return;
+      mcpFrame += 1;
+      render();
+    }, 120);
   };
 
   const handleKey = (event: KeyEvent): boolean => {
     if (!view) return false;
-    if (event.name === "escape" || (event.ctrl && event.name === "c")) {
+    if (toolList && event.name === "up") {
+      event.stopPropagation();
+      toolList.moveUp();
+      host.draw();
+    } else if (toolList && event.name === "down") {
+      event.stopPropagation();
+      toolList.moveDown();
+      host.draw();
+    } else if (
+      toolSearch &&
+      !toolSearch.focused &&
+      !event.ctrl &&
+      !event.meta &&
+      !event.option &&
+      event.sequence.length === 1 &&
+      event.name.length === 1
+    ) {
+      event.stopPropagation();
+      toolSearch.activate(event.sequence);
+    } else if (event.name === "escape" || (event.ctrl && event.name === "c")) {
       event.stopPropagation();
       close();
     } else if (reloadSkills && event.name === "r") {
       event.stopPropagation();
       close();
       onSkillsReload();
+    } else if (reloadMcp && event.name === "r") {
+      event.stopPropagation();
+      if (mcpLoading || !mcpLoadingView) return true;
+      onMcpReload(mcpLoadingView);
     } else if (scroll && event.name === "up") {
       event.stopPropagation();
       scroll.scrollTop = Math.max(0, scroll.scrollTop - 1);
@@ -201,5 +264,5 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
     return true;
   };
 
-  return { showHelp, showSkills, showTools, handleKey, close, isOpen: () => view !== null };
+  return { showHelp, showSkills, showMcp, handleKey, close, isOpen: () => view !== null };
 };

@@ -18,11 +18,15 @@ export type McpServerConfig = {
 };
 
 export type McpToolSummary = { name: string; server: string; description: string };
+export type McpServerSummary = { name: string; tools: number };
 
 export type McpSession = {
   toolsFor: (onEvent: (event: ToolEvent) => void) => ToolSet;
   summaries: readonly McpToolSummary[];
+  servers: readonly McpServerSummary[];
   notes: readonly string[];
+  loadSkillServers: (skill: string, servers: Record<string, McpServerConfig>) => Promise<void>;
+  reload: () => Promise<void>;
   close: () => void;
 };
 
@@ -173,54 +177,88 @@ export const startMcp = async (
     call: (args: Record<string, unknown>) => Promise<string>;
   }> = [];
   const summaries: McpToolSummary[] = [];
+  const serversShown: McpServerSummary[] = [];
   const notes: string[] = [];
   const shutdowns: Array<() => void> = [];
   const taken = new Set<string>(BUILT_IN_TOOL_NAMES);
+  const loadedSkills = new Map<string, Record<string, McpServerConfig>>();
   let events = EVENT_BASE;
 
-  for (const [name, config] of Object.entries(servers)) {
-    if (config.disabled) continue;
-    const client = connect(name, config, root);
-    shutdowns.push(client.close);
-    const listed = await client.start().catch((thrown: unknown) => {
-      notes.push(`${name}: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
-      client.close();
-      return null;
-    });
-    if (listed === null) continue;
-
-    const allowed = config.tools;
-    const admitted = listed
-      .filter((entry) => typeof entry?.name === "string")
-      .filter((entry) => allowed === undefined || allowed.includes(entry.name))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    if (allowed !== undefined) {
-      const missing = allowed.filter((want) => !listed.some((entry) => entry.name === want));
-      if (missing.length > 0) notes.push(`${name}: not offered — ${missing.join(", ")}`);
-    }
-
-    for (const entry of admitted) {
-      if (taken.has(entry.name)) {
-        notes.push(`${name}: ${entry.name} shadowed by a built-in, skipped`);
-        continue;
-      }
-      taken.add(entry.name);
-      const description = entry.description ?? `${entry.name} (via ${name})`;
-      summaries.push({ name: entry.name, server: name, description: firstLine(description) });
-      adopted.push({
-        entry: { ...entry, description },
-        call: (args: Record<string, unknown>) =>
-          client
-            .request("tools/call", { name: entry.name, arguments: args })
-            .then(resultText)
-            .catch(
-              (thrown: unknown) =>
-                `ERROR: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
-            ),
+  const load = async (configured: Record<string, McpServerConfig>): Promise<void> => {
+    for (const [name, config] of Object.entries(configured)) {
+      if (config.disabled) continue;
+      const client = connect(name, config, root);
+      shutdowns.push(client.close);
+      const listed = await client.start().catch((thrown: unknown) => {
+        notes.push(`${name}: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
+        client.close();
+        return null;
       });
+      if (listed === null) continue;
+
+      const allowed = config.tools;
+      const admitted = listed
+        .filter((entry) => typeof entry?.name === "string")
+        .filter((entry) => allowed === undefined || allowed.includes(entry.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      let adoptedCount = 0;
+
+      if (allowed !== undefined) {
+        const missing = allowed.filter((want) => !listed.some((entry) => entry.name === want));
+        if (missing.length > 0) notes.push(`${name}: not offered — ${missing.join(", ")}`);
+      }
+
+      for (const entry of admitted) {
+        if (taken.has(entry.name)) {
+          notes.push(`${name}: ${entry.name} shadowed by a built-in, skipped`);
+          continue;
+        }
+        taken.add(entry.name);
+        adoptedCount += 1;
+        const description = entry.description ?? `${entry.name} (via ${name})`;
+        summaries.push({ name: entry.name, server: name, description: firstLine(description) });
+        adopted.push({
+          entry: { ...entry, description },
+          call: (args: Record<string, unknown>) =>
+            client
+              .request("tools/call", { name: entry.name, arguments: args })
+              .then(resultText)
+              .catch(
+                (thrown: unknown) =>
+                  `ERROR: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+              ),
+        });
+      }
+      serversShown.push({ name, tools: adoptedCount });
     }
-  }
+  };
+
+  await load(servers);
+
+  const loadSkillServers = async (
+    skill: string,
+    configured: Record<string, McpServerConfig>,
+  ): Promise<void> => {
+    if (loadedSkills.has(skill)) return;
+    loadedSkills.set(skill, configured);
+    await load(
+      Object.fromEntries(
+        Object.entries(configured).filter(([name]) => !Object.hasOwn(servers, name)),
+      ),
+    );
+  };
+
+  const reload = async (): Promise<void> => {
+    for (const stop of shutdowns.splice(0)) stop();
+    adopted.splice(0);
+    summaries.splice(0);
+    serversShown.splice(0);
+    notes.splice(0);
+    taken.clear();
+    for (const name of BUILT_IN_TOOL_NAMES) taken.add(name);
+    await load(servers);
+    for (const configured of loadedSkills.values()) await load(configured);
+  };
 
   // Built per turn, like createTools, so events reach the turn's own sink and
   // MCP calls travel the same path to the transcript as the built-ins.
@@ -259,7 +297,10 @@ export const startMcp = async (
   return {
     toolsFor,
     summaries,
+    servers: serversShown,
     notes,
+    loadSkillServers,
+    reload,
     close: () => {
       for (const stop of shutdowns) stop();
     },
