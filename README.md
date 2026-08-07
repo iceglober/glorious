@@ -3,9 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@glrs-dev/glorious/next?label=npm%40next)](https://www.npmjs.com/package/@glrs-dev/glorious)
 [![docs](https://img.shields.io/badge/docs-glrs.dev-67d4e8)](https://glrs.dev)
 
-A terminal coding agent, stripped to the studs: a chat TUI over an agent that
-reads, edits, searches, fetches, and runs commands in your repo. No modes, no
-permission prompts, no configuration files.
+A terminal-based coding agent.
 
 ```sh
 bun add --global @glrs-dev/glorious@next
@@ -14,11 +12,9 @@ export AZURE_RESOURCE_NAME=…
 glorious
 ```
 
-Full documentation at **[glrs.dev](https://glrs.dev)**.
+Documentation: [glrs.dev](https://glrs.dev)
 
 ## Decisions
-
-Things glorious settled deliberately, with the reason.
 
 ### Edit tool: multi
 
@@ -67,7 +63,7 @@ than line offset — so what they return stays valid after an edit moves the fil
   guidance had to name grep's failure — it also matches comments, strings, and
   unrelated identifiers — before the semantic tools were used.
 
-### Prompt caching is a first-class constraint
+### Caching: nothing volatile in the system prompt
 
 The system prompt is byte-identical across turns, sessions, and projects.
 Everything volatile — working directory, git state, skills catalog — rides in
