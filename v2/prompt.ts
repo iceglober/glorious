@@ -226,6 +226,34 @@ ${fence("repo-rules", ctx.rules)}
 
 `;
 
+export const navigationPrompt = (
+  tools: readonly { name: string; description: string }[],
+): string =>
+  tools.length === 0
+    ? ""
+    : `<code-navigation>
+  This project has language-server tools that address code by symbol rather
+  than by text or line offset. Two consequences: they resolve declarations
+  exactly, and what they return stays correct after an edit shifts the file.
+
+  When the question is about a named code symbol, use these instead of grep or
+  read. That covers where a symbol is defined, what references it, what
+  implements it, and what symbols a file contains. Do not grep for a symbol
+  name first — grep also matches comments, strings, imports and unrelated
+  identifiers that merely share the name, so its answer needs verifying and
+  theirs does not.
+
+  Use them to rename, move or delete a symbol across files: one call replaces a
+  grep plus a read and an edit in every file that mentions it, and it will not
+  miss a reference.
+
+  Keep grep and glob for text that is not a code symbol — config, docs, log
+  output, filenames. Keep edit for a small change inside a body you have
+  already read; replacing an entire symbol to alter one line costs several
+  times more than editing that line.
+${tools.map((entry) => `  - ${entry.name}: ${entry.description}`).join("\n")}
+</code-navigation>`;
+
 export const skillsPrompt = (catalog: string): string =>
   catalog === ""
     ? ""

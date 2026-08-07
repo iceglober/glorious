@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { craftRules, environmentPrompt, fence, skillsPrompt, systemPrompt } from "./prompt";
+import {
+  craftRules,
+  environmentPrompt,
+  fence,
+  navigationPrompt,
+  skillsPrompt,
+  systemPrompt,
+} from "./prompt";
 import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -49,6 +56,7 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     skills: string;
     askQuestions: AskQuestions;
     skillTools: import("./skills").Skills;
+    mcp?: import("./mcp").McpSession;
   };
 
 export const createAgent = (setup: Setup) => {
@@ -63,7 +71,8 @@ export const createAgent = (setup: Setup) => {
 
   const model = createAzure({ apiKey, fetch: fetchWithDeadline as typeof fetch })(setup.model);
   const environment = environmentPrompt(setup);
-  let preamble = [environment, skillsPrompt(setup.skills)]
+  const navigation = navigationPrompt(setup.mcp?.summaries ?? []);
+  let preamble = [environment, navigation, skillsPrompt(setup.skills)]
     .filter((part) => part !== "")
     .join("\n\n");
   const cacheKey = (scope: string): string =>
@@ -105,7 +114,10 @@ The brief you are given is your complete starting context; do not assume access 
       });
       return result.text;
     };
-    return createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, runSubagent);
+    return {
+      ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, runSubagent),
+      ...(setup.mcp?.toolsFor(onTool) ?? {}),
+    };
   };
 
   const settings = {
@@ -125,7 +137,7 @@ The brief you are given is your complete starting context; do not assume access 
   return {
     setSkills: (skills: Setup["skillTools"]): void => {
       setup.skillTools = skills;
-      preamble = [environment, skillsPrompt(skills.catalog)]
+      preamble = [environment, navigation, skillsPrompt(skills.catalog)]
         .filter((part) => part !== "")
         .join("\n\n");
     },

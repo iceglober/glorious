@@ -26,6 +26,20 @@ export type RunSubagent = (
   signal: AbortSignal | undefined,
 ) => Promise<string>;
 
+export const BUILT_IN_TOOL_NAMES = [
+  "ask_user",
+  "bash",
+  "read",
+  "write",
+  "edit",
+  "grep",
+  "glob",
+  "activate_skill",
+  "run_subagent",
+] as const;
+
+export type BuiltInToolName = (typeof BUILT_IN_TOOL_NAMES)[number];
+
 export type ToolSummary = {
   name: string;
   description: string;
@@ -50,20 +64,35 @@ const toolSummaries: readonly ToolSummary[] = [
   { name: "glob", description: "List files matching a glob pattern.", source: "built-in" },
 ];
 
-export const availableToolSummaries = (skills: Skills, runSubagent = false): ToolSummary[] => [
+export const availableToolSummaries = (
+  skills: Skills,
+  runSubagent = false,
+  mcp: readonly { name: string; server: string; description: string }[] = [],
+): ToolSummary[] => [
   ...toolSummaries,
   ...(skills.tool
     ? [
         {
-          name: "activate_skill",
+          name: "activate_skill" as const,
           description: "Load instructions for an available skill.",
           source: "skills",
         },
       ]
     : []),
   ...(runSubagent
-    ? [{ name: "run_subagent", description: "Launch a focused coding agent.", source: "built-in" }]
+    ? [
+        {
+          name: "run_subagent" as const,
+          description: "Launch a focused coding agent.",
+          source: "built-in",
+        },
+      ]
     : []),
+  ...mcp.map((entry) => ({
+    name: entry.name,
+    description: entry.description,
+    source: `mcp · ${entry.server}`,
+  })),
 ];
 
 const RESULT_LIMIT = 30_000;
@@ -185,7 +214,7 @@ export const createTools = (
   };
 
   const define = <Schema extends z.ZodType>(
-    name: string,
+    name: BuiltInToolName,
     description: string,
     inputSchema: Schema,
     body: (input: z.infer<Schema>, signal: AbortSignal | undefined) => Promise<string>,

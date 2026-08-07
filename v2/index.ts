@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
 import { messagesOf, type SessionEvent } from "./events";
+import { readMcpConfig, startMcp } from "./mcp";
 import {
   errorText,
   eventBlock,
@@ -74,6 +75,7 @@ const main = async (): Promise<void> => {
   const rules = join(root, "AGENTS.md");
   const model = process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna";
   let skills = await loadSkills(root);
+  const mcp = await startMcp(root, await readMcpConfig(root));
 
   let frame = 0;
   let tokens = session.contextTokens ?? null;
@@ -117,6 +119,7 @@ const main = async (): Promise<void> => {
     git,
     skills: skills.catalog,
     skillTools: skills,
+    mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
   });
 
@@ -179,7 +182,7 @@ const main = async (): Promise<void> => {
     onCommand: (name) => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
-      if (name === "tools") screen.showTools(availableToolSummaries(skills, true));
+      if (name === "tools") screen.showTools(availableToolSummaries(skills, true, mcp.summaries));
       repaint();
     },
     onSkillsReload: () => {
@@ -215,6 +218,7 @@ const main = async (): Promise<void> => {
 
   const quit = (): void => {
     chat.abort();
+    mcp.close();
     release();
   };
 
