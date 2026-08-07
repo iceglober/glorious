@@ -28,8 +28,15 @@ jobs:
           bun-version: "1.3.14"
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test docs
-      - run: bun publish --dry-run --access public --tag next
+      - run: bun run test
+      # scripts/release-publish.sh publishes with npm, which reads its
+      # credentials from ~/.npmrc. NPM_CONFIG_TOKEN is bun's convention and does
+      # not authenticate npm.
+      - name: Authenticate npm
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish --dry-run --access public --tag next
       - uses: changesets/action@v1
         with:
           version: bunx changeset version

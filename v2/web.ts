@@ -15,6 +15,8 @@ const CHROME_PATHS = [
 
 const cache = new Map<string, { at: number; text: string }>();
 
+export const extractorAvailable = (): boolean => Bun.which("uvx") !== null;
+
 export const chromeBinary = (): string | null => {
   for (const path of CHROME_PATHS) if (Bun.file(path).size > 0) return path;
   return Bun.which("google-chrome") ?? Bun.which("chromium") ?? null;
@@ -35,12 +37,23 @@ const pipe = async (
   caller: AbortSignal | undefined,
 ): Promise<{ out: string; failed: string }> => {
   if (caller?.aborted) return { out: "", failed: "[interrupted]" };
-  const child = Bun.spawn(argv, {
-    stdin: input === null ? "ignore" : "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-    detached: true,
-  });
+  // Bun.spawn throws when the binary is absent. Chrome and uvx are both
+  // optional, so a missing one has to read as a failed step and let the caller
+  // fall back rather than take the whole fetch down.
+  const started = (() => {
+    try {
+      return Bun.spawn(argv, {
+        stdin: input === null ? "ignore" : "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        detached: true,
+      });
+    } catch (thrown) {
+      return thrown instanceof Error ? thrown.message : String(thrown);
+    }
+  })();
+  if (typeof started === "string") return { out: "", failed: started };
+  const child = started;
   const clock = AbortSignal.timeout(deadline);
   const stopper = caller ? AbortSignal.any([caller, clock]) : clock;
   const settled = new AbortController();
@@ -140,7 +153,7 @@ const render = async (
       caller,
     );
     if (out.trim() !== "") return { html: out, failed: "" };
-    if (failed !== "") return { html: "", failed };
+    if (caller?.aborted) return { html: "", failed };
   }
   const response = await fetch(url, { signal: caller, headers: { "user-agent": "glorious" } })
     .then((got) => (got.ok ? got.text() : Promise.reject(new Error(`HTTP ${got.status}`))))
