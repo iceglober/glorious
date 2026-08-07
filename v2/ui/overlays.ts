@@ -2,12 +2,14 @@ import type { KeyEvent, Renderable } from "@opentui/core";
 import { commands } from "../commands";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
+import type { ToolSummary } from "../tools";
 import { type Chrome, dimHex, type Host, panelHeight, panelHex } from "./chrome";
 
 export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () => void) => {
   const { tui, renderer, textNode, styled, panel, panelWidth, panelRows } = chrome;
   let view: Renderable | null = null;
   let scroll: InstanceType<typeof tui.ScrollBoxRenderable> | null = null;
+  let reloadSkills = false;
 
   const close = (): void => {
     if (!view) return;
@@ -19,8 +21,9 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
     host.draw();
   };
 
-  const open = (node: Renderable): void => {
+  const open = (node: Renderable, reloadable = false): void => {
     view = node;
+    reloadSkills = reloadable;
     renderer.root.add(node);
     host.blurComposer();
     host.draw();
@@ -108,6 +111,60 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
         scroll,
         footer,
       ]),
+      true,
+    );
+  };
+
+  const showTools = (summaries: readonly ToolSummary[]): void => {
+    if (view) return;
+    const modalWidth = panelWidth();
+    const contentWidth = Math.max(1, modalWidth - 6);
+    const toolLines: Line[] = summaries.flatMap((tool, index): Line[] => {
+      const name = clip(tool.name, contentWidth);
+      const description = clip(tool.description, Math.max(1, contentWidth - 2));
+      const source = clip(tool.source, Math.max(1, contentWidth - 6));
+      return [
+        [
+          { text: "◆ ", tone: "accent" },
+          { text: name, tone: "highlight", bold: true },
+        ],
+        [{ text: "  " }, { text: description, tone: "muted" }],
+        [
+          { text: "  ↳ ", tone: "muted" },
+          { text: source, tone: "muted", italic: true },
+        ],
+        ...(index + 1 < summaries.length ? [[{ text: "" }]] : []),
+      ];
+    });
+    const listHeight = Math.max(1, Math.min(toolLines.length, panelRows() - 2));
+    const header = textNode({
+      content: styled([[{ text: "Available tools", tone: "accent", bold: true }]]),
+      width: "100%",
+      height: 1,
+    });
+    scroll = new tui.ScrollBoxRenderable(renderer, {
+      width: "100%",
+      height: listHeight,
+      minHeight: 1,
+      scrollY: true,
+      stickyScroll: false,
+      stickyStart: "top",
+      backgroundColor: panelHex,
+      contentOptions: { flexDirection: "column" },
+    });
+    scroll.add(textNode({ content: styled(toolLines), width: "100%", wrapMode: "none" }));
+    const footer = textNode({
+      content: "↑/↓ scroll · Esc closes this list",
+      width: "100%",
+      height: 1,
+      fg: dimHex,
+    });
+    open(
+      panel({ title: "Tools", width: modalWidth, height: panelHeight(listHeight + 2) }, [
+        header,
+        scroll,
+        footer,
+      ]),
     );
   };
 
@@ -116,7 +173,7 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
     if (event.name === "escape" || (event.ctrl && event.name === "c")) {
       event.stopPropagation();
       close();
-    } else if (event.name === "r") {
+    } else if (reloadSkills && event.name === "r") {
       event.stopPropagation();
       close();
       onSkillsReload();
@@ -132,5 +189,5 @@ export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () =>
     return true;
   };
 
-  return { showHelp, showSkills, handleKey, close, isOpen: () => view !== null };
+  return { showHelp, showSkills, showTools, handleKey, close, isOpen: () => view !== null };
 };

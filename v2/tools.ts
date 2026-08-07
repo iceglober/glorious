@@ -26,6 +26,46 @@ export type RunSubagent = (
   signal: AbortSignal | undefined,
 ) => Promise<string>;
 
+export type ToolSummary = {
+  name: string;
+  description: string;
+  source: string;
+};
+
+const toolSummaries: readonly ToolSummary[] = [
+  {
+    name: "ask_user",
+    description: "Ask the user questions with selectable options.",
+    source: "built-in",
+  },
+  { name: "bash", description: "Run a command in the project root.", source: "built-in" },
+  { name: "read", description: "Read a UTF-8 text file.", source: "built-in" },
+  { name: "write", description: "Write a UTF-8 text file.", source: "built-in" },
+  { name: "edit", description: "Apply exact string replacements to a file.", source: "built-in" },
+  {
+    name: "grep",
+    description: "Search file contents with a regular expression.",
+    source: "built-in",
+  },
+  { name: "glob", description: "List files matching a glob pattern.", source: "built-in" },
+];
+
+export const availableToolSummaries = (skills: Skills, runSubagent = false): ToolSummary[] => [
+  ...toolSummaries,
+  ...(skills.tool
+    ? [
+        {
+          name: "activate_skill",
+          description: "Load instructions for an available skill.",
+          source: "skills",
+        },
+      ]
+    : []),
+  ...(runSubagent
+    ? [{ name: "run_subagent", description: "Launch a focused coding agent.", source: "built-in" }]
+    : []),
+];
+
 const RESULT_LIMIT = 30_000;
 const STDOUT_LIMIT = 20_000;
 const STDERR_LIMIT = 9_000;

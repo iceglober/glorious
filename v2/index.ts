@@ -22,6 +22,7 @@ import {
   saveSession,
 } from "./session";
 import { loadSkills } from "./skills";
+import { availableToolSummaries } from "./tools";
 import { createScreen, pickSession } from "./ui";
 
 const FRAME_MS = 90;
@@ -178,6 +179,7 @@ const main = async (): Promise<void> => {
     onCommand: (name) => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
+      if (name === "tools") screen.showTools(availableToolSummaries(skills, true));
       repaint();
     },
     onSkillsReload: () => {

@@ -3,7 +3,7 @@ import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { Line } from "../render";
 import type { SkillSummary } from "../skills";
-import type { Question } from "../tools";
+import type { Question, ToolSummary } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
 import { createOverlays } from "./overlays";
 import { createQuestions } from "./questions";
@@ -378,6 +378,7 @@ export const createScreen = async (callbacks: {
     columns,
     showHelp: overlays.showHelp,
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
+    showTools: (summaries: readonly ToolSummary[]) => overlays.showTools(summaries),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
       questions.ask(items, signal),
   };
