@@ -6,11 +6,14 @@
 A terminal-based coding agent.
 
 ```sh
-bun add --global @glrs-dev/glorious@next
+curl -fsSL https://glrs.dev/install.sh | bash
 export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…
 glorious
 ```
+
+The script checks for [Bun](https://bun.sh) and git, offering to install Bun if
+it is missing. To skip it: `bun add --global @glrs-dev/glorious@next`.
 
 Documentation: [glrs.dev](https://glrs.dev)
 
@@ -25,7 +28,7 @@ the glorious implementation. Here are some of them.
     4 steps vs 7.
   - No accuracy difference — 16/16 either way. The win is cost.
 - **Caching: moved volatile content out of the system prompt to achieve 98%
-  cache reuse on a resumed turn, against 0%.** ([`eval/caching`](eval/caching))
+  cache reuse on a resumed turn.** ([`eval/caching`](eval/caching))
   - Environment, git state and skills ride in the per-turn message, frozen into
     history when written.
   - A test fails if anything volatile reappears in the system prompt.
