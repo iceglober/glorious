@@ -6,6 +6,7 @@
   },
   "changesets": [
     "assistant-response-marker",
+    "cli-version-update",
     "cloud-auth-connect",
     "config-tui",
     "ctrl-c-exit-hint",
