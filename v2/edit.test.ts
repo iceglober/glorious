@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadSkills } from "./skills";
@@ -97,5 +97,42 @@ describe("what the model is told when an edit fails", () => {
       { old_string: "missing", new_string: "x" },
     ]);
     expect(out).toContain("3/3");
+  });
+});
+
+describe("how the file is replaced", () => {
+  test("permissions survive the swap", async () => {
+    const name = await fixture("perms.sh", "#!/bin/sh\necho old\n");
+    const full = join(dir, name);
+    await chmod(full, 0o755);
+    await edit(name, [{ old_string: "old", new_string: "new" }]);
+    expect((await stat(full)).mode & 0o777).toBe(0o755);
+  });
+
+  test("no temporary file is left behind", async () => {
+    const name = await fixture("tidy.txt", "a\n");
+    await edit(name, [{ old_string: "a", new_string: "b" }]);
+    expect((await readdir(dir)).filter((f) => f.includes("glorious-"))).toHaveLength(0);
+  });
+
+  test("a failed edit leaves neither a change nor a stray temp file", async () => {
+    const name = await fixture("failed.txt", "a\n");
+    await edit(name, [{ old_string: "nope", new_string: "b" }]);
+    expect(await readFile(join(dir, name), "utf8")).toBe("a\n");
+    expect((await readdir(dir)).filter((f) => f.includes("glorious-"))).toHaveLength(0);
+  });
+});
+
+describe("the file is swapped, not truncated", () => {
+  // The distinguishing observable: renaming a new file over the target gives a
+  // different inode, while writing in place keeps it. In-place truncation is
+  // what makes a crash mid-write able to leave a half-written file.
+  test("the target's inode changes, showing a rename rather than a rewrite", async () => {
+    const name = await fixture("inode.txt", "before\n");
+    const full = join(dir, name);
+    const was = (await stat(full)).ino;
+    await edit(name, [{ old_string: "before", new_string: "after" }]);
+    expect(await readFile(full, "utf8")).toBe("after\n");
+    expect((await stat(full)).ino).not.toBe(was);
   });
 });

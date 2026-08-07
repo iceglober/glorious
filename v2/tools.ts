@@ -1,4 +1,5 @@
-import { stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, rename, rm, stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
@@ -151,6 +152,21 @@ const swap = z.object({
   new_string: z.string(),
   replace_all: z.boolean().optional(),
 });
+
+// Replace a file in one step. Bun.write truncates in place, so a crash or a
+// full disk partway through leaves the file half-written; writing beside it and
+// renaming means a reader sees either the old file or the new one.
+const replaceFile = async (target: string, text: string): Promise<void> => {
+  const temp = `${target}.glorious-${randomUUID().slice(0, 8)}`;
+  try {
+    await Bun.write(temp, text);
+    await chmod(temp, (await stat(target)).mode);
+    await rename(temp, target);
+  } catch (thrown) {
+    await rm(temp, { force: true }).catch(() => {});
+    throw thrown;
+  }
+};
 
 const patch = (
   text: string,
@@ -313,7 +329,7 @@ export const createTools = (
 
   const edit = define(
     "edit",
-    "Change a file with exact string replacements applied in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set — add surrounding lines to make it unique. If any replacement fails nothing is written. Never include the `N|` prefixes shown by read.",
+    "Change a file with exact string replacements applied in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set — add surrounding lines to make it unique. Every edit is resolved before anything is written, so a failure leaves the file untouched, and the file is swapped into place in one step rather than rewritten in place. Never include the `N|` prefixes shown by read.",
     z.object({
       path: z.string().describe("File to edit, relative to the project root or absolute"),
       edits: z.array(swap).min(1),
@@ -323,7 +339,7 @@ export const createTools = (
       const before = await Bun.file(target).text();
       const tag = (n: number): string => `edit ${n + 1}/${edits.length}`;
       const after = edits.reduce((text, edit, n) => patch(text, edit, tag(n), n > 0), before);
-      await Bun.write(target, after);
+      await replaceFile(target, after);
       return `applied ${edits.length} edit(s) to ${path}`;
     },
   );
