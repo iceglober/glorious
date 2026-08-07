@@ -195,6 +195,11 @@ const firstDetail = (raw: Record<string, unknown>): string => {
   }
   const urls = raw.urls;
   if (Array.isArray(urls)) return urls.length === 1 ? String(urls[0]) : `${urls.length} pages`;
+  const files = raw.files;
+  if (Array.isArray(files))
+    return files.length === 1
+      ? String((files[0] as { path?: unknown })?.path ?? "")
+      : `${files.length} files`;
   return "";
 };
 
@@ -329,18 +334,39 @@ export const createTools = (
 
   const edit = define(
     "edit",
-    "Change a file with exact string replacements applied in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set — add surrounding lines to make it unique. Every edit is resolved before anything is written, so a failure leaves the file untouched, and the file is swapped into place in one step rather than rewritten in place. Never include the `N|` prefixes shown by read.",
+    "Change one or more files in a single call. Each entry names a file and the exact string replacements to apply to it, in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set — add surrounding lines to make it unique. Every edit in every file is resolved before anything is written, so if one fails no file changes, and each file is swapped into place rather than rewritten. Prefer one call covering every file you need to touch. Never include the `N|` prefixes shown by read.",
     z.object({
-      path: z.string().describe("File to edit, relative to the project root or absolute"),
-      edits: z.array(swap).min(1),
+      files: z
+        .array(
+          z.object({
+            path: z.string().describe("File to change, relative to the project root or absolute"),
+            edits: z.array(swap).min(1),
+          }),
+        )
+        .min(1)
+        .describe("Files to change, each with its own edits"),
     }),
-    async ({ path, edits }) => {
-      const target = within(path);
-      const before = await Bun.file(target).text();
-      const tag = (n: number): string => `edit ${n + 1}/${edits.length}`;
-      const after = edits.reduce((text, edit, n) => patch(text, edit, tag(n), n > 0), before);
-      await replaceFile(target, after);
-      return `applied ${edits.length} edit(s) to ${path}`;
+    async ({ files }) => {
+      // resolve every file first, so one bad edit cannot leave the tree
+      // half-changed the way separate per-file calls would
+      const staged = await Promise.all(
+        files.map(async (entry, n) => {
+          const target = within(entry.path);
+          const before = await Bun.file(target).text();
+          const where = files.length === 1 ? "" : `file ${n + 1}/${files.length} (${entry.path}) `;
+          const after = entry.edits.reduce(
+            (text, swapped, i) =>
+              patch(text, swapped, `${where}edit ${i + 1}/${entry.edits.length}`, i > 0),
+            before,
+          );
+          return { target, after };
+        }),
+      );
+      for (const { target, after } of staged) await replaceFile(target, after);
+      const count = files.reduce((sum, entry) => sum + entry.edits.length, 0);
+      return files.length === 1
+        ? `applied ${count} edit(s) to ${files[0].path}`
+        : `applied ${count} edit(s) across ${files.length} file(s)`;
     },
   );
 

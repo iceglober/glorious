@@ -2,7 +2,7 @@
   "name": "@glrs-dev/glorious",
   "version": "1.0.0-next.4",
   "private": false,
-  "description": "glorious: a simple terminal coding agent — a barebones chat TUI over an agent with bash/read/write/edit/grep/glob tools. The sole product lives in v2/.",
+  "description": "glorious: a simple terminal coding agent \u2014 a barebones chat TUI over an agent with bash/read/write/edit/grep/glob tools. The sole product lives in v2/.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,6 +13,7 @@
   "files": [
     "bin",
     "v2",
+    "README.md",
     "LICENSE"
   ],
   "publishConfig": {

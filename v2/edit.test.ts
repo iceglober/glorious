@@ -13,10 +13,12 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const edit = async (path: string, edits: unknown[]): Promise<string> => {
-  const execute = tools.edit?.execute as (i: unknown, o: unknown) => Promise<string>;
-  return execute({ path, edits }, {});
-};
+const execute = tools.edit?.execute as (i: unknown, o: unknown) => Promise<string>;
+
+const edit = async (path: string, edits: unknown[]): Promise<string> =>
+  execute({ files: [{ path, edits }] }, {});
+
+const editFiles = async (files: unknown[]): Promise<string> => execute({ files }, {});
 
 const fixture = async (name: string, body: string): Promise<string> => {
   await writeFile(join(dir, name), body);
@@ -134,5 +136,52 @@ describe("the file is swapped, not truncated", () => {
     await edit(name, [{ old_string: "before", new_string: "after" }]);
     expect(await readFile(full, "utf8")).toBe("after\n");
     expect((await stat(full)).ino).not.toBe(was);
+  });
+});
+
+describe("across files", () => {
+  test("one call changes several files", async () => {
+    const a = await fixture("m1.txt", "alpha\n");
+    const b = await fixture("m2.txt", "bravo\n");
+    const out = await editFiles([
+      { path: a, edits: [{ old_string: "alpha", new_string: "ALPHA" }] },
+      { path: b, edits: [{ old_string: "bravo", new_string: "BRAVO" }] },
+    ]);
+    expect(out).not.toStartWith("ERROR:");
+    expect(await readFile(join(dir, a), "utf8")).toBe("ALPHA\n");
+    expect(await readFile(join(dir, b), "utf8")).toBe("BRAVO\n");
+  });
+
+  test("a failure in the last file leaves the earlier ones untouched", async () => {
+    const a = await fixture("r1.txt", "keep\n");
+    const b = await fixture("r2.txt", "keep\n");
+    const out = await editFiles([
+      { path: a, edits: [{ old_string: "keep", new_string: "changed" }] },
+      { path: b, edits: [{ old_string: "absent", new_string: "x" }] },
+    ]);
+    expect(out).toStartWith("ERROR:");
+    expect(await readFile(join(dir, a), "utf8")).toBe("keep\n");
+    expect(await readFile(join(dir, b), "utf8")).toBe("keep\n");
+  });
+
+  test("the failing file is named", async () => {
+    const a = await fixture("n1.txt", "one\n");
+    const b = await fixture("n2.txt", "two\n");
+    const out = await editFiles([
+      { path: a, edits: [{ old_string: "one", new_string: "1" }] },
+      { path: b, edits: [{ old_string: "nope", new_string: "x" }] },
+    ]);
+    expect(out).toContain("n2.txt");
+    expect(out).toContain("2/2");
+  });
+
+  test("a missing file fails the whole call, changing nothing", async () => {
+    const a = await fixture("s1.txt", "here\n");
+    const out = await editFiles([
+      { path: a, edits: [{ old_string: "here", new_string: "gone" }] },
+      { path: "does-not-exist.txt", edits: [{ old_string: "x", new_string: "y" }] },
+    ]);
+    expect(out).toStartWith("ERROR:");
+    expect(await readFile(join(dir, a), "utf8")).toBe("here\n");
   });
 });
