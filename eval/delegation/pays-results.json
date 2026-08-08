@@ -1,0 +1,83 @@
+[
+  {
+    "arm": "solo",
+    "found": 3,
+    "parentInput": 28058,
+    "subInput": 0,
+    "subCalls": 0,
+    "steps": 3,
+    "wall": 9221
+  },
+  {
+    "arm": "delegate",
+    "found": 3,
+    "parentInput": 14485,
+    "subInput": 66303,
+    "subCalls": 1,
+    "steps": 4,
+    "wall": 37916
+  },
+  {
+    "arm": "librarian",
+    "found": 3,
+    "parentInput": 11666,
+    "subInput": 32939,
+    "subCalls": 1,
+    "steps": 3,
+    "wall": 30302
+  },
+  {
+    "arm": "solo",
+    "found": 3,
+    "parentInput": 42552,
+    "subInput": 0,
+    "subCalls": 0,
+    "steps": 4,
+    "wall": 12247
+  },
+  {
+    "arm": "delegate",
+    "found": 3,
+    "parentInput": 23652,
+    "subInput": 32649,
+    "subCalls": 1,
+    "steps": 5,
+    "wall": 30683
+  },
+  {
+    "arm": "librarian",
+    "found": 3,
+    "parentInput": 10075,
+    "subInput": 45846,
+    "subCalls": 1,
+    "steps": 3,
+    "wall": 23092
+  },
+  {
+    "arm": "solo",
+    "found": 3,
+    "parentInput": 36815,
+    "subInput": 0,
+    "subCalls": 0,
+    "steps": 5,
+    "wall": 14843
+  },
+  {
+    "arm": "delegate",
+    "found": 3,
+    "parentInput": 25552,
+    "subInput": 31990,
+    "subCalls": 1,
+    "steps": 4,
+    "wall": 26545
+  },
+  {
+    "arm": "librarian",
+    "found": 3,
+    "parentInput": 30397,
+    "subInput": 64658,
+    "subCalls": 1,
+    "steps": 5,
+    "wall": 39334
+  }
+]
