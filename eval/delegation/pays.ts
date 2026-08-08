@@ -100,6 +100,7 @@ type Run = {
   subInput: number;
   subCalls: number;
   steps: number;
+  endContext: number;
   wall: number;
 };
 
@@ -159,6 +160,7 @@ const runOne = async (arm: string): Promise<Run> => {
     subInput,
     subCalls,
     steps: result.steps.length,
+    endContext: result.steps.at(-1)?.usage.inputTokens ?? 0,
     wall: Date.now() - started,
   };
 };
@@ -169,7 +171,7 @@ for (let seed = 0; seed < SEEDS; seed += 1)
     const row = await runOne(arm);
     rows.push(row);
     console.log(
-      `  ${arm.padEnd(9)} seed${seed}  found ${row.found}/3  parent ${row.parentInput}  sub ${row.subInput} (${row.subCalls} calls)  total ${row.parentInput + row.subInput}  ${Math.round(row.wall / 100) / 10}s`,
+      `  ${arm.padEnd(9)} seed${seed}  found ${row.found}/3  billed ${row.parentInput}  ENDING CONTEXT ${row.endContext}  sub ${row.subInput}  ${Math.round(row.wall / 100) / 10}s`,
     );
   }
 
@@ -178,7 +180,7 @@ for (const arm of ["solo", "delegate", "librarian"]) {
   const g = rows.filter((r) => r.arm === arm);
   const avg = (p: (r: Run) => number) => g.reduce((s, r) => s + p(r), 0) / g.length;
   console.log(
-    `  ${arm.padEnd(9)} correct ${g.filter((r) => r.found === 3).length}/${g.length}  avg found ${avg((r) => r.found).toFixed(1)}/3  parent ${Math.round(avg((r) => r.parentInput))}  total ${Math.round(avg((r) => r.parentInput + r.subInput))}  wall ${(avg((r) => r.wall) / 1000).toFixed(1)}s`,
+    `  ${arm.padEnd(9)} ending context ${Math.round(avg((r) => r.endContext))}  billed ${Math.round(avg((r) => r.parentInput))}  total billed ${Math.round(avg((r) => r.parentInput + r.subInput))}`,
   );
 }
 await Bun.write(join(here, "pays-results.json"), JSON.stringify(rows, null, 2));
