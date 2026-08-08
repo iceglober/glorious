@@ -21,6 +21,7 @@
     "remove-completion-grounding",
     "surface-intermediate-text",
     "teardown-basic-chat",
+    "trim-published-tarball",
     "tui-progress-animations",
     "v2-rewrite",
     "web-fetch-fallback"
