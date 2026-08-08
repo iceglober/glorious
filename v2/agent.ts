@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
 import { createModel, type ModelOption } from "./models";
 import {
+  contextPrompt,
   craftRules,
   environmentPrompt,
   fence,
@@ -73,6 +74,9 @@ export const subagentReport = (text: string, steps: number): string => {
 export const createAgent = (setup: Setup) => {
   let model = createModel(setup.model, fetchWithDeadline as typeof fetch);
   const environment = environmentPrompt(setup);
+  // the last context size the provider reported, handed back to the model on the
+  // next turn so it can see the budget it is spending
+  let observed = 0;
   let navigation = navigationPrompt(setup.mcp?.summaries ?? []);
   let preamble = [environment, navigation, skillsPrompt(setup.skills)]
     .filter((part) => part !== "")
@@ -163,20 +167,27 @@ The brief you are given is your complete starting context; do not assume access 
     ) => {
       const sent: ModelMessage[] = [
         ...history,
-        { role: "user", content: `${preamble}\n\n${prompt}` },
+        {
+          role: "user",
+          content: [preamble, contextPrompt(observed), prompt]
+            .filter((part) => part !== "")
+            .join("\n\n"),
+        },
       ];
       const result = await generateText({
         ...settings(),
         tools: toolsFor(turn.onTool),
         messages: sent,
         abortSignal: turn.signal,
-        onLanguageModelCallEnd: ({ content, usage }) =>
+        onLanguageModelCallEnd: ({ content, usage }) => {
+          observed = usage?.inputTokens ?? observed;
           turn.onStep({
             text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
-            contextTokens: usage?.inputTokens ?? 0,
+            contextTokens: observed,
             cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
             outputTokens: usage?.outputTokens ?? 0,
-          }),
+          });
+        },
       });
       return {
         text: result.text,

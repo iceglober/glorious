@@ -1,4 +1,5 @@
 import type { ModelMessage } from "ai";
+import { PREAMBLE_TAGS } from "./prompt";
 
 export type SessionEvent =
   | { type: "user"; text: string }
@@ -25,8 +26,15 @@ export const messageText = (message: ModelMessage): string => {
     .join("\n");
 };
 
-const preambleBlock =
-  /^(?:<where-you-are>\n[\s\S]*?\n<\/where-you-are>|<skills>\n[\s\S]*?\n<\/skills>|\[system-reminder\]\n[\s\S]*?\n\[\/system-reminder\])\n\n/u;
+// Built from the list prompt.ts owns, so adding a preamble block there cannot
+// leave it leaking into the replayed transcript.
+const preambleBlock = new RegExp(
+  `^(?:${[
+    ...PREAMBLE_TAGS.map((tag) => `<${tag}>\\n[\\s\\S]*?\\n</${tag}>`),
+    "\\[system-reminder\\]\\n[\\s\\S]*?\\n\\[/system-reminder\\]",
+  ].join("|")})\\n\\n`,
+  "u",
+);
 
 export const typedText = (message: ModelMessage): string => {
   let text = messageText(message);

@@ -1,6 +1,11 @@
 export const fence = (tag: string, body: string): string =>
   `<${tag}>\n${body.replaceAll(`</${tag}>`, `<∕${tag}>`)}\n</${tag}>`;
 
+// Every block the agent prepends to a user turn. events.ts strips these when
+// replaying a transcript, so a new preamble block must be named here or it will
+// show up in the session log as if the user typed it.
+export const PREAMBLE_TAGS = ["where-you-are", "skills", "context-budget"] as const;
+
 export const REMINDER_OPEN = "[system-reminder]";
 export const REMINDER_CLOSE = "[/system-reminder]";
 
@@ -213,6 +218,21 @@ export const navigationPrompt = (
   times more than editing that line.
 ${tools.map((entry) => `  - ${entry.name}: ${entry.description}`).join("\n")}
 </code-navigation>`;
+
+export const CONTEXT_BUDGET = Number(process.env.GLORIOUS_CONTEXT_BUDGET ?? 200_000);
+
+// Volatile, so it rides in the per-turn message beside the environment and is
+// frozen into history when written — never in the system prompt, which has to
+// stay byte-identical for the cache.
+export const contextPrompt = (used: number, budget = CONTEXT_BUDGET): string =>
+  used <= 0
+    ? ""
+    : `<context-budget>
+  This conversation is holding ${Math.round(used / 1000)}k of a ${Math.round(budget / 1000)}k token budget.
+  Everything you read lands here and is re-sent on every later turn, and a long
+  conversation answers more slowly. Past about half the budget, prefer
+  delegating the reading you will not need again over doing it here.
+</context-budget>`;
 
 export const skillsPrompt = (catalog: string): string =>
   catalog === ""

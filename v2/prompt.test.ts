@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { typedText } from "./events";
 import {
+  contextPrompt,
   craftRules,
   environmentPrompt,
   fence,
+  PREAMBLE_TAGS,
   reminder,
   skillsPrompt,
   systemPrompt,
@@ -173,5 +175,53 @@ describe("delegation guidance", () => {
   test("a subagent is never told to delegate", () => {
     expect(craftRules).not.toContain("<delegation>");
     expect(craftRules).not.toContain("run_subagent");
+  });
+});
+
+describe("context pressure signal", () => {
+  test("never appears in the system prompt, which must stay byte-identical", () => {
+    expect(rendered).not.toContain("context-budget");
+    expect(rendered).not.toContain("token budget");
+  });
+
+  test("says nothing before a turn has reported usage", () => {
+    expect(contextPrompt(0)).toBe("");
+  });
+
+  test("reports the usage against the budget", () => {
+    const block = contextPrompt(84_000, 200_000);
+    expect(block).toContain("84k");
+    expect(block).toContain("200k");
+  });
+
+  test("is stripped from a replayed transcript like the rest of the preamble", () => {
+    const sent = {
+      role: "user" as const,
+      content: `${env}\n\n${contextPrompt(84_000)}\n\nfix the bug`,
+    };
+    expect(typedText(sent)).toBe("fix the bug");
+  });
+});
+
+describe("preamble blocks and the transcript stripper stay in step", () => {
+  // this pairing has broken four times: <where-you-are>, <skills>,
+  // [system-reminder] and <context-budget> each leaked into a replayed
+  // transcript after being added. events.ts now derives from PREAMBLE_TAGS.
+  test("every declared preamble tag is stripped", () => {
+    for (const tag of PREAMBLE_TAGS) {
+      const sent = {
+        role: "user" as const,
+        content: `<${tag}>\nsome volatile content\n</${tag}>\n\nthe typed text`,
+      };
+      expect(typedText(sent)).toBe("the typed text");
+    }
+  });
+
+  test("the blocks the agent actually builds are all declared", () => {
+    for (const block of [env, contextPrompt(84_000), skillsPrompt("<x />")]) {
+      if (block === "") continue;
+      const tag = /^<([a-z-]+)>/u.exec(block)?.[1];
+      expect(PREAMBLE_TAGS as readonly string[]).toContain(tag);
+    }
   });
 });
