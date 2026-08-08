@@ -221,7 +221,8 @@ describe("preamble blocks and the transcript stripper stay in step", () => {
     for (const block of [env, contextPrompt(84_000), skillsPrompt("<x />")]) {
       if (block === "") continue;
       const tag = /^<([a-z-]+)>/u.exec(block)?.[1];
-      expect(PREAMBLE_TAGS as readonly string[]).toContain(tag);
+      expect(tag).toBeDefined();
+      expect(PREAMBLE_TAGS as readonly string[]).toContain(tag as string);
     }
   });
 });
