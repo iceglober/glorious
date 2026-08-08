@@ -1,0 +1,152 @@
+[
+  {
+    "size": 4000,
+    "found": 3,
+    "startContext": 5186,
+    "steps": 4,
+    "answerChars": 46,
+    "terse": true,
+    "wall": 16171,
+    "failed": ""
+  },
+  {
+    "size": 4000,
+    "found": 3,
+    "startContext": 5186,
+    "steps": 5,
+    "answerChars": 36,
+    "terse": true,
+    "wall": 15708,
+    "failed": ""
+  },
+  {
+    "size": 4000,
+    "found": 3,
+    "startContext": 5186,
+    "steps": 4,
+    "answerChars": 46,
+    "terse": true,
+    "wall": 13586,
+    "failed": ""
+  },
+  {
+    "size": 25000,
+    "found": 3,
+    "startContext": 22317,
+    "steps": 3,
+    "answerChars": 34,
+    "terse": true,
+    "wall": 11608,
+    "failed": ""
+  },
+  {
+    "size": 25000,
+    "found": 3,
+    "startContext": 22317,
+    "steps": 4,
+    "answerChars": 38,
+    "terse": true,
+    "wall": 16214,
+    "failed": ""
+  },
+  {
+    "size": 25000,
+    "found": 3,
+    "startContext": 22317,
+    "steps": 3,
+    "answerChars": 34,
+    "terse": true,
+    "wall": 11717,
+    "failed": ""
+  },
+  {
+    "size": 60000,
+    "found": 3,
+    "startContext": 50560,
+    "steps": 4,
+    "answerChars": 34,
+    "terse": true,
+    "wall": 22228,
+    "failed": ""
+  },
+  {
+    "size": 60000,
+    "found": 3,
+    "startContext": 50560,
+    "steps": 5,
+    "answerChars": 38,
+    "terse": true,
+    "wall": 30031,
+    "failed": ""
+  },
+  {
+    "size": 60000,
+    "found": 3,
+    "startContext": 50560,
+    "steps": 4,
+    "answerChars": 40,
+    "terse": true,
+    "wall": 21450,
+    "failed": ""
+  },
+  {
+    "size": 120000,
+    "found": 3,
+    "startContext": 98249,
+    "steps": 3,
+    "answerChars": 36,
+    "terse": true,
+    "wall": 25233,
+    "failed": ""
+  },
+  {
+    "size": 120000,
+    "found": 3,
+    "startContext": 98249,
+    "steps": 4,
+    "answerChars": 34,
+    "terse": true,
+    "wall": 28688,
+    "failed": ""
+  },
+  {
+    "size": 120000,
+    "found": 3,
+    "startContext": 98249,
+    "steps": 5,
+    "answerChars": 36,
+    "terse": true,
+    "wall": 40905,
+    "failed": ""
+  },
+  {
+    "size": 200000,
+    "found": 2,
+    "startContext": 162606,
+    "steps": 4,
+    "answerChars": 27,
+    "terse": true,
+    "wall": 51788,
+    "failed": ""
+  },
+  {
+    "size": 200000,
+    "found": 3,
+    "startContext": 162606,
+    "steps": 4,
+    "answerChars": 34,
+    "terse": true,
+    "wall": 46761,
+    "failed": ""
+  },
+  {
+    "size": 200000,
+    "found": 3,
+    "startContext": 162606,
+    "steps": 4,
+    "answerChars": 38,
+    "terse": true,
+    "wall": 49506,
+    "failed": ""
+  }
+]
