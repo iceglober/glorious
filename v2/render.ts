@@ -197,7 +197,6 @@ export const statusLine = (
     worktree: string | null;
     branch: string;
     model: string;
-    mode: string;
     tokens: number | null;
     percentUsed: number | null;
     cached: number | null;
@@ -222,9 +221,7 @@ export const statusLine = (
   const lineOneSuffix = `${locationSuffix} · in ${tokenCount(state.totalTokensIn)} · out ${tokenCount(state.totalTokensOut)}`;
   const cwd = rightClip(flatten(state.cwd), Math.max(0, limit - width(lineOneSuffix)));
   const lineOne = `${cwd}${lineOneSuffix}`;
-  // the default mode is the absence of a badge; only a restricted one earns width
-  const badge = state.mode === "build" ? "" : `${flatten(state.mode)} · `;
-  const lineTwo = `${state.sessionId} · ${badge}${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;
+  const lineTwo = `${state.sessionId} · ${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;
   const first = clip(lineOne, limit);
   const second = clip(lineTwo, limit);
   return [[{ text: first, tone: "muted" }], [{ text: second, tone: "muted" }]];
@@ -255,3 +252,10 @@ export const statusWave = (
     ],
   ];
 };
+
+// The mode sits under the composer rather than in the status line: it changes
+// what the next thing you type can do, so it belongs with the typing.
+export const modeLabel = (mode: { name: string; tone: Tone }): Line => [
+  { text: "● ", tone: mode.tone },
+  { text: mode.name, tone: mode.tone, bold: true },
+];

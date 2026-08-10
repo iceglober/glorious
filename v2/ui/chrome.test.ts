@@ -70,3 +70,28 @@ describe("sheet chrome", () => {
     expect(sheetHeight(list + listChrome)).toBe(list + 4 + 2);
   });
 });
+
+describe("sizing a sheet from a short list", () => {
+  // The mode picker has two entries but the select has a floor of three rows.
+  // Sizing the sheet from the entry count clipped the key legend off the bottom.
+  const listFloor = 3;
+
+  test("the floor makes the list taller than the item count", () => {
+    const items = 2;
+    expect(Math.max(listFloor, Math.min(items, sheetRows(46) - listChrome))).toBeGreaterThan(items);
+  });
+
+  test("sizing from the item count is short of what the list actually needs", () => {
+    const items = 2;
+    const listHeight = Math.max(listFloor, Math.min(items, sheetRows(46) - listChrome));
+    expect(sheetHeight(items + listChrome)).toBeLessThan(sheetHeight(listHeight + listChrome));
+  });
+
+  test("sizing from the list height leaves room for legend, list and footer", () => {
+    for (const items of [1, 2, 3, 8]) {
+      const listHeight = Math.max(listFloor, Math.min(items, sheetRows(46) - listChrome));
+      // title + padding + legend + gap + list + gap + footer
+      expect(sheetHeight(listHeight + listChrome)).toBe(listHeight + 6);
+    }
+  });
+});

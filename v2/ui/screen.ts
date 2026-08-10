@@ -3,7 +3,8 @@ import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption } from "../models";
-import { type Line, statusWave } from "../render";
+import type { Mode } from "../modes";
+import { type Line, modeLabel, statusWave, type Tone } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, type Host, panelHex } from "./chrome";
@@ -99,9 +100,22 @@ export const createScreen = async (callbacks: {
     [autocompleteLabel],
   );
 
-  const composerRow = stack(
+  const inputRow = stack(
     {
       flexDirection: "row",
+      width: "100%",
+      minWidth: 0,
+      backgroundColor: fillHex,
+    },
+    [caret, input],
+  );
+  // Subtext under what you are typing: the mode governs what the next thing you
+  // send is allowed to do, so it belongs with the composer, not the status line.
+  const modeRow = textNode({ content: "", width: "100%", height: 1, wrapMode: "none" });
+
+  const composerRow = stack(
+    {
+      flexDirection: "column",
       width: columns(),
       minWidth: 0,
       marginTop: 0,
@@ -109,7 +123,7 @@ export const createScreen = async (callbacks: {
       paddingX: 1,
       backgroundColor: fillHex,
     },
-    [caret, input],
+    [inputRow, modeRow],
   );
 
   // A question is not a modal — it is the input area asking instead of waiting,
@@ -461,6 +475,12 @@ export const createScreen = async (callbacks: {
     showModels: (models: readonly ModelOption[], onSelect: (model: ModelOption) => void) =>
       overlays.showModels(models, onSelect),
     showModelError: (message: string) => overlays.showModelError(message),
+    setMode: (mode: { name: string; tone: Tone }) => {
+      modeRow.content = styled([modeLabel(mode)]);
+      draw();
+    },
+    showModes: (modes: readonly Mode[], active: string, onSelect: (name: string) => void) =>
+      overlays.showModes(modes, active, onSelect),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
       // Menus and questions share one slot. A menu can be open when the agent
       // asks, and it would otherwise keep the keyboard while the question held

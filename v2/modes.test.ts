@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { allowedTools } from "./agent";
 import { DEFAULT_MODE, MODES, type Mode, modeByName, nextMode } from "./modes";
 import { modePrompt, PREAMBLE_TAGS, systemPrompt } from "./prompt";
-import { statusLine } from "./render";
+import { modeLabel, statusLine } from "./render";
 import { BUILT_IN_TOOL_NAMES, READ_ONLY_TOOL_NAMES } from "./tools";
 
 describe("the mode table", () => {
@@ -77,16 +77,32 @@ describe("what the model is told", () => {
   });
 });
 
-describe("the status badge", () => {
-  // the only place the user can see which mode is active between turns
-  const line = (mode: string): string =>
-    statusLine(
+describe("the mode label under the composer", () => {
+  const text = (mode: Mode): string =>
+    modeLabel(mode)
+      .map((span) => span.text)
+      .join("");
+
+  test("every mode is named, so none is ever silently active", () => {
+    for (const mode of MODES) expect(text(mode)).toContain(mode.name);
+  });
+
+  test("each mode carries its own colour, so they are told apart at a glance", () => {
+    const tones = MODES.map((mode) => mode.tone);
+    expect(new Set(tones).size).toBe(MODES.length);
+  });
+
+  test("the label is coloured with the mode's own tone, not a fixed one", () => {
+    for (const mode of MODES) for (const span of modeLabel(mode)) expect(span.tone).toBe(mode.tone);
+  });
+
+  test("it no longer rides in the status line", () => {
+    const line = statusLine(
       {
         cwd: "repo",
         worktree: null,
         branch: "main",
         model: "gpt-5.6-luna",
-        mode,
         tokens: 1000,
         percentUsed: 1,
         cached: null,
@@ -99,20 +115,11 @@ describe("the status badge", () => {
         sessionId: "abc12345",
       },
       200,
-    )[1]
+    )
+      .flat()
       .map((span) => span.text)
       .join("");
-
-  test("a restricted mode is named, so it is never silently active", () => {
-    expect(line("plan")).toContain("plan · ");
-  });
-
-  test("build spends no width on a badge", () => {
-    expect(line("build")).not.toContain("build");
-  });
-
-  test("the badge sits beside the model rather than replacing it", () => {
-    expect(line("plan")).toContain("gpt-5.6-luna");
+    for (const mode of MODES) expect(line).not.toContain(mode.name);
   });
 });
 

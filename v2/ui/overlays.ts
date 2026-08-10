@@ -2,6 +2,7 @@ import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { commands } from "../commands";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption } from "../models";
+import type { Mode } from "../modes";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
 import { type Chrome, dimHex, fillHex, type Host, listChrome, sheetHeight } from "./chrome";
@@ -132,6 +133,65 @@ export const createOverlays = (
       ]),
       true,
     );
+  };
+
+  const showModes = (
+    modes: readonly Mode[],
+    active: string,
+    onSelect: (name: string) => void,
+  ): void => {
+    if (view) return;
+    // the sheet is sized from this, not from modes.length — the floor of 3 would
+    // otherwise push the key legend off the bottom whenever there are fewer
+    const listHeight = Math.max(3, Math.min(modes.length, sheetRows() - listChrome));
+    const picker = new tui.SelectRenderable(renderer, {
+      width: "100%",
+      height: listHeight,
+      options: modes.map((mode) => ({
+        name: mode.name === active ? `${mode.name}  (current)` : mode.name,
+        description: mode.description,
+        value: mode.name,
+      })),
+    });
+    picker.selectedIndex = Math.max(
+      0,
+      modes.findIndex((mode) => mode.name === active),
+    );
+    picker.on("itemSelected", () => {
+      const chosen = picker.getSelectedOption()?.value as string | undefined;
+      close();
+      if (chosen) onSelect(chosen);
+    });
+    const legend = textNode({
+      // the picker renders plain names, so the colour each mode carries in the
+      // composer is only learnable here
+      content: styled([
+        modes.flatMap((mode, index) => [
+          ...(index === 0 ? [] : [{ text: "   " }]),
+          { text: "● ", tone: mode.tone },
+          { text: mode.name, tone: mode.tone, bold: true },
+        ]),
+      ]),
+      width: "100%",
+      height: 1,
+      wrapMode: "none",
+    });
+    const footer = textNode({
+      content: "↑/↓ choose · Enter switch · Tab cycles · Esc cancel",
+      width: "100%",
+      height: 1,
+      fg: dimHex,
+    });
+    open(
+      sheet({ title: "Mode", height: sheetHeight(listHeight + listChrome) }, [
+        legend,
+        gap(),
+        picker,
+        gap(),
+        footer,
+      ]),
+    );
+    picker.focus();
   };
 
   const modelScore = (query: string, model: ModelOption): number | null => {
@@ -446,6 +506,7 @@ export const createOverlays = (
 
   return {
     showHelp,
+    showModes,
     showSkills,
     showMcp,
     showModels,
