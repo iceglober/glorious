@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
 import { createChat } from "./chat";
+import type { SessionEvent } from "./events";
+import { DEFAULT_MODE, type Mode } from "./modes";
 import { REMINDER_CLOSE, REMINDER_OPEN } from "./prompt";
 
 type Outcome = Awaited<ReturnType<Agent["run"]>>;
@@ -13,9 +15,15 @@ const done = (text: string, extra: Partial<Outcome> = {}): Outcome => ({
   ...extra,
 });
 
-const harness = (script: Array<() => Outcome>) => {
+const harness = (script: Array<() => Outcome>, planMode = false) => {
   const prompts: string[] = [];
+  const events: SessionEvent[] = [];
+  let mode = planMode ? { name: "plan", description: "", readOnly: true } : DEFAULT_MODE;
   const agent = {
+    mode: () => mode,
+    setMode: (next: Mode) => {
+      mode = next;
+    },
     run: async (prompt: string) => {
       prompts.push(prompt);
       const next = script.shift();
@@ -23,8 +31,11 @@ const harness = (script: Array<() => Outcome>) => {
       return next();
     },
   } as unknown as Agent;
-  const chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
-  return { chat, prompts };
+  const chat = createChat(agent, {
+    onEvent: (event) => events.push(event),
+    onSignal: () => {},
+  });
+  return { chat, prompts, events, mode: () => mode };
 };
 
 const settle = async (chat: ReturnType<typeof createChat>): Promise<void> => {
@@ -88,5 +99,74 @@ describe("the reminder channel", () => {
     await settle(chat);
 
     expect(prompts[1]).toBe("second");
+  });
+});
+
+describe("approving a plan", () => {
+  test("switches to build mode and sends the plan as the next turn", async () => {
+    const { chat, prompts, mode } = harness([() => done("presented"), () => done("built")], true);
+    chat.planApproved("step one", ["a.ts"], false);
+    chat.send("plan this");
+    await settle(chat);
+    expect(mode().readOnly).toBe(false);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("step one");
+    expect(prompts[1]).toContain("a.ts");
+  });
+
+  test("a fresh approval clears the model's history but keeps the transcript", async () => {
+    const { chat, prompts, events } = harness([() => done("presented"), () => done("built")], true);
+    chat.planApproved("step one", [], true);
+    chat.send("plan this");
+    await settle(chat);
+    expect(events.some((event) => event.type === "cleared")).toBe(true);
+    // the second turn was sent with no prior history folded into it
+    expect(prompts[1]).not.toContain("presented");
+    expect(events.filter((event) => event.type === "user")).toHaveLength(1);
+  });
+
+  test("keeping context records no clear", async () => {
+    const { chat, events } = harness([() => done("presented"), () => done("built")], true);
+    chat.planApproved("step one", [], false);
+    chat.send("plan this");
+    await settle(chat);
+    expect(events.some((event) => event.type === "cleared")).toBe(false);
+  });
+
+  test("the implementation turn is labelled, not echoed as the user's words", async () => {
+    const { chat, events } = harness([() => done("presented"), () => done("built")], true);
+    chat.planApproved("step one", [], false);
+    chat.send("plan this");
+    await settle(chat);
+    const said = events.filter((event) => event.type === "user");
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatchObject({ text: "plan this" });
+  });
+});
+
+describe("a plan turn that presents nothing", () => {
+  test("is asked once more, and the ask is a system-reminder", async () => {
+    const { chat, prompts } = harness([() => done("here is my plan"), () => done("ok")], true);
+    chat.send("plan this");
+    await settle(chat);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("present_plan");
+  });
+
+  test("is not asked a third time, so a model that will not comply cannot loop", async () => {
+    const { chat, prompts } = harness(
+      [() => done("plan a"), () => done("plan b"), () => done("plan c")],
+      true,
+    );
+    chat.send("plan this");
+    await settle(chat);
+    expect(prompts).toHaveLength(2);
+  });
+
+  test("build mode is never nudged", async () => {
+    const { chat, prompts } = harness([() => done("done")], false);
+    chat.send("do this");
+    await settle(chat);
+    expect(prompts).toHaveLength(1);
   });
 });

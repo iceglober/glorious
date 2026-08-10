@@ -244,9 +244,34 @@ export const modePrompt = (mode: { name: string; readOnly: boolean }): string =>
   running commands, delegating — are not available to you this turn, by design
   and not by accident. Read, search and ask as much as you need, then say what
   you would do: the files you would touch, the shape of each change, and how you
-  would check it. Do not describe the plan as if you had carried it out. The
-  user switches to build mode when they want it done.
+  would check it. Do not describe the plan as if you had carried it out.
+
+  Every turn in this mode ends by calling present_plan. That is how the user
+  approves the work and how build mode begins — a plan written in prose and
+  left there reaches no one. Approving may clear this conversation, so the plan
+  you pass must stand on its own, and its files list must name every path the
+  work depends on. Do not call it to ask a question; use ask_user for that and
+  present the plan once you have the answer.
 </mode>`;
+
+// Sent as its own turn when a plan-mode turn ended without presenting anything.
+export const planNudge = reminder(
+  "Your turn ended without calling present_plan, so the user has nothing to approve and no way to start the work. Present your plan now. If you are not ready, say what you still need to determine and present the plan you have.",
+);
+
+// What survives an approved clear. The plan is the context, so it carries the
+// request that prompted it and the paths the model marked as load-bearing.
+export const implementPrompt = (plan: string, files: string[], ask: string): string =>
+  [
+    ask === "" ? "" : `<request>\n${ask}\n</request>`,
+    `<approved-plan>\n${plan}\n</approved-plan>`,
+    files.length === 0
+      ? ""
+      : `<plan-files>\n${files.map((file) => `- ${file}`).join("\n")}\n</plan-files>`,
+    "The user approved this plan. You are in build mode now. Implement it, then verify it.",
+  ]
+    .filter((part) => part !== "")
+    .join("\n\n");
 
 export const skillsPrompt = (catalog: string): string =>
   catalog === ""

@@ -15,6 +15,8 @@ import {
 import {
   type AskQuestions,
   createTools,
+  PLAN_ONLY_TOOL_NAMES,
+  type PresentPlan,
   READ_ONLY_TOOL_NAMES,
   type RunSubagent,
   type ToolEvent,
@@ -64,6 +66,7 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     sessionId: string;
     skills: string;
     askQuestions: AskQuestions;
+    presentPlan: PresentPlan;
     skillTools: import("./skills").Skills;
     mcp?: import("./mcp").McpSession;
   };
@@ -87,9 +90,12 @@ export const allowedTools = <T extends Record<string, unknown>>(
   mode: Mode,
   mcp: readonly { name: string; readOnly: boolean }[],
 ): T => {
-  if (!mode.readOnly) return tools;
+  const planOnly = new Set<string>(PLAN_ONLY_TOOL_NAMES);
+  if (!mode.readOnly)
+    return Object.fromEntries(Object.entries(tools).filter(([name]) => !planOnly.has(name))) as T;
   const safe = new Set<string>([
     ...READ_ONLY_TOOL_NAMES,
+    ...PLAN_ONLY_TOOL_NAMES,
     ...mcp.filter((entry) => entry.readOnly).map((entry) => entry.name),
   ]);
   return Object.fromEntries(Object.entries(tools).filter(([name]) => safe.has(name))) as T;
@@ -147,7 +153,14 @@ The brief you are given is your complete starting context; do not assume access 
       return subagentReport(result.text, result.steps.length);
     };
     const all = {
-      ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, runSubagent),
+      ...createTools(
+        setup.root,
+        onTool,
+        setup.askQuestions,
+        setup.skillTools,
+        runSubagent,
+        setup.presentPlan,
+      ),
       ...(setup.mcp?.toolsFor(onTool) ?? {}),
     };
     return allowedTools(all, mode, setup.mcp?.summaries ?? []);

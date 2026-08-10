@@ -8,6 +8,7 @@ import { loadAgentRules } from "./guidance";
 import { readMcpConfig, startMcp } from "./mcp";
 import { currentModel, loadModels, modelLabel } from "./models";
 import { MODES, modeByName } from "./modes";
+import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
 import {
   errorText,
   eventBlock,
@@ -158,6 +159,16 @@ const main = async (): Promise<void> => {
     skillTools: skills,
     mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
+    presentPlan: async ({ plan, files }, signal) => {
+      // Show the plan in the transcript first — the approval prompt sits in the
+      // composer and has no room to hold the thing being approved.
+      render({ type: "assistant", text: planBlock(plan, files) });
+      const verdict = planVerdict(
+        await screen.askQuestions([{ question: PLAN_QUESTION, options: PLAN_OPTIONS }], signal),
+      );
+      if (verdict.decision === "approved") chat.planApproved(plan, files, verdict.fresh);
+      return verdict;
+    },
   });
 
   const record = (event: SessionEvent): void => {
