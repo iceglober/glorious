@@ -9,6 +9,7 @@
     "cli-version-update",
     "cloud-auth-connect",
     "config-tui",
+    "context-pressure-and-delegation",
     "ctrl-c-exit-hint",
     "gemini-prompt-addendum",
     "initial-release",
