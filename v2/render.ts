@@ -62,6 +62,20 @@ export const clip = (text: string, limit: number): string => {
   return `${kept}…`;
 };
 
+export const rightClip = (text: string, limit: number): string => {
+  if (limit <= 0) return "";
+  if (width(text) <= limit) return text;
+  let room = limit - 1;
+  const kept: string[] = [];
+  const parts = graphemes(text);
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    room -= cells(parts[index]);
+    if (room < 0) break;
+    kept.unshift(parts[index]);
+  }
+  return `…${kept.join("")}`;
+};
+
 export const userBlock = (text: string): Line[] => {
   const [lead, ...rest] = clean(text).split("\n");
   return [
@@ -199,13 +213,15 @@ export const statusLine = (
 ): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
   const worktree = state.worktree === null ? "" : `:${flatten(state.worktree)}`;
-  const location = `${flatten(state.cwd)}${worktree} (${flatten(state.branch)})`;
+  const locationSuffix = `${worktree} (${flatten(state.branch)})`;
   const percent = state.percentUsed === null ? "unknown" : `${Math.round(state.percentUsed)}%`;
   const cachedPercent =
     state.totalTokensIn > 0
       ? `${Math.round((state.totalCachedTokens / state.totalTokensIn) * 100)}%`
       : "unknown";
-  const lineOne = `${location} · in ${tokenCount(state.totalTokensIn)} · out ${tokenCount(state.totalTokensOut)}`;
+  const lineOneSuffix = `${locationSuffix} · in ${tokenCount(state.totalTokensIn)} · out ${tokenCount(state.totalTokensOut)}`;
+  const cwd = rightClip(flatten(state.cwd), Math.max(0, limit - width(lineOneSuffix)));
+  const lineOne = `${cwd}${lineOneSuffix}`;
   // the default mode is the absence of a badge; only a restricted one earns width
   const badge = state.mode === "build" ? "" : `${flatten(state.mode)} · `;
   const lineTwo = `${state.sessionId} · ${badge}${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { allowedTools } from "./agent";
-import { DEFAULT_MODE, MODES, type Mode, modeByName } from "./modes";
+import { DEFAULT_MODE, MODES, type Mode, modeByName, nextMode } from "./modes";
 import { modePrompt, PREAMBLE_TAGS, systemPrompt } from "./prompt";
 import { statusLine } from "./render";
 import { BUILT_IN_TOOL_NAMES, READ_ONLY_TOOL_NAMES } from "./tools";
@@ -20,7 +20,13 @@ describe("the mode table", () => {
     expect(modeByName("nonsense")).toBeUndefined();
   });
 
-  test("every mode has a description, since the picker shows it", () => {
+  test("cycles through modes and wraps to build", () => {
+    expect(nextMode("build").name).toBe("plan");
+    expect(nextMode("plan").name).toBe("build");
+    expect(nextMode("unknown")).toBe(DEFAULT_MODE);
+  });
+
+  test("every mode has a description", () => {
     for (const mode of MODES) expect(mode.description.length).toBeGreaterThan(10);
   });
 });

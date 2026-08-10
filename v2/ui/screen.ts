@@ -22,6 +22,7 @@ export const createScreen = async (callbacks: {
   onShell: (command: string) => void;
   cwd: string;
   onCommand: (name: string) => void;
+  onModeCycle: () => void;
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
   onEscape: () => void;
@@ -344,6 +345,11 @@ export const createScreen = async (callbacks: {
         return;
       }
     }
+    if (event.name === "tab") {
+      event.stopPropagation();
+      callbacks.onModeCycle();
+      return;
+    }
     const back = (!event.shift && event.name === "up") || (event.ctrl && event.name === "p");
     const forward = (!event.shift && event.name === "down") || (event.ctrl && event.name === "n");
     if (!back && !forward) cursor = null;
@@ -454,13 +460,13 @@ export const createScreen = async (callbacks: {
       overlays.showMcp(servers, notes),
     showModels: (models: readonly ModelOption[], onSelect: (model: ModelOption) => void) =>
       overlays.showModels(models, onSelect),
-    showModes: (
-      modes: readonly { name: string; description: string }[],
-      active: string,
-      onSelect: (name: string) => void,
-    ) => overlays.showModes(modes, active, onSelect),
     showModelError: (message: string) => overlays.showModelError(message),
-    askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
-      questions.ask(items, signal),
+    askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
+      // Menus and questions share one slot. A menu can be open when the agent
+      // asks, and it would otherwise keep the keyboard while the question held
+      // the screen — so the question, which something is blocked on, evicts it.
+      if (overlays.isOpen()) overlays.close();
+      return questions.ask(items, signal);
+    },
   };
 };

@@ -7,7 +7,7 @@ import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
 import { readMcpConfig, startMcp } from "./mcp";
 import { currentModel, loadModels, modelLabel } from "./models";
-import { MODES, modeByName } from "./modes";
+import { nextMode } from "./modes";
 import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
 import {
   errorText,
@@ -171,6 +171,11 @@ const main = async (): Promise<void> => {
     },
   });
 
+  const cycleMode = (): void => {
+    agent.setMode(nextMode(agent.mode().name));
+    repaint();
+  };
+
   const record = (event: SessionEvent): void => {
     session.events.push(event);
     session.updatedAt = new Date().toISOString();
@@ -242,13 +247,7 @@ const main = async (): Promise<void> => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
-      if (name === "mode") {
-        screen.showModes(MODES, agent.mode().name, (chosen) => {
-          const next = modeByName(chosen);
-          if (next) agent.setMode(next);
-          repaint();
-        });
-      }
+      if (name === "mode") cycleMode();
       if (name === "models") {
         void loadModels(model)
           .then((options) =>
@@ -262,6 +261,7 @@ const main = async (): Promise<void> => {
       }
       repaint();
     },
+    onModeCycle: cycleMode,
     onSkillsReload: () => {
       void loadSkills(root).then((refreshed) => {
         skills = refreshed;

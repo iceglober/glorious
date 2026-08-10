@@ -4,7 +4,7 @@ import type { McpServerSummary } from "../mcp";
 import type { ModelOption } from "../models";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
-import { type Chrome, dimHex, type Host, listChrome, panelHeight, panelHex } from "./chrome";
+import { type Chrome, dimHex, fillHex, type Host, listChrome, sheetHeight } from "./chrome";
 
 export const createOverlays = (
   chrome: Chrome,
@@ -12,7 +12,7 @@ export const createOverlays = (
   onSkillsReload: () => void,
   onMcpReload: (setLoading: (loading: boolean) => void) => void,
 ) => {
-  const { tui, renderer, textNode, styled, panel, panelWidth, panelRows } = chrome;
+  const { tui, renderer, columns, textNode, styled, sheet, sheetRows } = chrome;
   let view: Renderable | null = null;
   let scroll: InstanceType<typeof tui.ScrollBoxRenderable> | null = null;
   let toolSearch: { focused: boolean; activate: (text: string) => void } | null = null;
@@ -32,7 +32,7 @@ export const createOverlays = (
 
   const close = (): void => {
     if (!view) return;
-    renderer.root.remove(view);
+    host.useComposerSlot(null);
     view.destroy();
     view = null;
     scroll = null;
@@ -51,7 +51,7 @@ export const createOverlays = (
   const open = (node: Renderable, reloadable = false): void => {
     view = node;
     reloadSkills = reloadable;
-    renderer.root.add(node);
+    host.useComposerSlot(node);
     host.blurComposer();
     host.draw();
   };
@@ -59,7 +59,6 @@ export const createOverlays = (
   const showHelp = (): void => {
     if (view) return;
     const lines: Line[] = [
-      [{ text: "Slash commands", tone: "accent", bold: true }],
       [{ text: "Type / anywhere after whitespace to open autocomplete." }],
       [{ text: "Use ↑/↓ to move, Tab to complete, and Enter to run." }],
       [{ text: "" }],
@@ -74,14 +73,7 @@ export const createOverlays = (
     ];
     const body = textNode({ content: styled(lines), width: "100%", wrapMode: "word" });
     open(
-      panel(
-        {
-          title: "Help",
-          width: panelWidth(),
-          height: panelHeight(Math.min(lines.length, panelRows())),
-        },
-        [body],
-      ),
+      sheet({ title: "Help", height: sheetHeight(Math.min(lines.length, sheetRows())) }, [body]),
     );
   };
 
@@ -89,8 +81,7 @@ export const createOverlays = (
 
   const showSkills = (summaries: readonly SkillSummary[]): void => {
     if (view) return;
-    const modalWidth = panelWidth();
-    const contentWidth = Math.max(1, modalWidth - 6);
+    const contentWidth = Math.max(1, columns() - 6);
     const skillLines: Line[] =
       summaries.length === 0
         ? [[{ text: "No skills found.", tone: "muted" }]]
@@ -113,13 +104,8 @@ export const createOverlays = (
           });
     const listHeight = Math.max(
       1,
-      Math.min(skillLines.length, Math.max(3, panelRows() - listChrome)),
+      Math.min(skillLines.length, Math.max(3, sheetRows() - listChrome)),
     );
-    const header = textNode({
-      content: styled([[{ text: "Available skills", tone: "accent", bold: true }]]),
-      width: "100%",
-      height: 1,
-    });
     scroll = new tui.ScrollBoxRenderable(renderer, {
       width: "100%",
       height: listHeight,
@@ -127,7 +113,7 @@ export const createOverlays = (
       scrollY: true,
       stickyScroll: false,
       stickyStart: "top",
-      backgroundColor: panelHex,
+      backgroundColor: fillHex,
       contentOptions: { flexDirection: "column" },
     });
     scroll.add(textNode({ content: styled(skillLines), width: "100%", wrapMode: "none" }));
@@ -138,8 +124,7 @@ export const createOverlays = (
       fg: dimHex,
     });
     open(
-      panel({ title: "Skills", width: modalWidth, height: panelHeight(listHeight + listChrome) }, [
-        header,
+      sheet({ title: "Skills", height: sheetHeight(listHeight + listChrome) }, [
         gap(),
         scroll,
         gap(),
@@ -187,7 +172,7 @@ export const createOverlays = (
     const variants = [...new Set(model.variants ?? [])];
     const picker = new tui.SelectRenderable(renderer, {
       width: "100%",
-      height: Math.max(3, Math.min(variants.length + 1, panelRows())),
+      height: Math.max(3, Math.min(variants.length + 1, sheetRows())),
       showScrollIndicator: true,
       options: [
         { name: "Default", description: "Use the provider default", value: "" },
@@ -203,12 +188,7 @@ export const createOverlays = (
       close();
       onSelect({ ...model, variant: variant || undefined });
     });
-    open(
-      panel(
-        { title: `${model.name} variant`, width: panelWidth(), height: panelHeight(picker.height) },
-        [picker],
-      ),
-    );
+    open(sheet({ title: `${model.name} variant`, height: sheetHeight(picker.height) }, [picker]));
     picker.focus();
   };
 
@@ -237,7 +217,7 @@ export const createOverlays = (
             .join(" · "),
           value: model,
         }));
-    const listHeight = Math.max(3, panelRows() - listChrome);
+    const listHeight = Math.max(3, sheetRows() - listChrome);
     const header = textNode({ content: "", width: "100%", height: 1, fg: dimHex });
     const picker = new tui.SelectRenderable(renderer, {
       width: "100%",
@@ -270,10 +250,13 @@ export const createOverlays = (
       fg: dimHex,
     });
     open(
-      panel(
-        { title: "Models", width: panelWidth(), height: panelHeight(listHeight + listChrome) },
-        [header, gap(), picker, gap(), footer],
-      ),
+      sheet({ title: "Models", height: sheetHeight(listHeight + listChrome) }, [
+        header,
+        gap(),
+        picker,
+        gap(),
+        footer,
+      ]),
     );
     picker.focus();
   };
@@ -285,12 +268,11 @@ export const createOverlays = (
       width: "100%",
       wrapMode: "word",
     });
-    open(panel({ title: "Models", width: panelWidth(), height: panelHeight(1) }, [body]));
+    open(sheet({ title: "Models", height: sheetHeight(1) }, [body]));
   };
 
   const showMcp = (servers: readonly McpServerSummary[], notes: readonly string[]): void => {
     if (view) return;
-    const modalWidth = panelWidth();
     let mcpBody: TextRenderable | null = null;
     const render = (): void => {
       const marker = mcpLoading ? ["◐", "◓", "◑", "◒"][mcpFrame % 4] : "◆";
@@ -320,12 +302,7 @@ export const createOverlays = (
       if (mcpBody) mcpBody.content = styled(allLines);
       host.draw();
     };
-    const listHeight = Math.max(3, panelRows() - listChrome);
-    const header = textNode({
-      content: styled([[{ text: "Active MCP servers", tone: "accent", bold: true }]]),
-      width: "100%",
-      height: 1,
-    });
+    const listHeight = Math.max(3, sheetRows() - listChrome);
     scroll = new tui.ScrollBoxRenderable(renderer, {
       width: "100%",
       height: listHeight,
@@ -333,7 +310,7 @@ export const createOverlays = (
       scrollY: true,
       stickyScroll: false,
       stickyStart: "top",
-      backgroundColor: panelHex,
+      backgroundColor: fillHex,
       contentOptions: { flexDirection: "column" },
     });
     mcpBody = textNode({ content: "", width: "100%", wrapMode: "none" });
@@ -346,8 +323,7 @@ export const createOverlays = (
       fg: dimHex,
     });
     open(
-      panel({ title: "MCP", width: modalWidth, height: panelHeight(listHeight + listChrome) }, [
-        header,
+      sheet({ title: "MCP", height: sheetHeight(listHeight + listChrome) }, [
         gap(),
         scroll,
         gap(),
@@ -365,51 +341,6 @@ export const createOverlays = (
       mcpFrame += 1;
       render();
     }, 120);
-  };
-
-  const showModes = (
-    modes: readonly { name: string; description: string }[],
-    active: string,
-    onSelect: (name: string) => void,
-  ): void => {
-    if (view) return;
-    const picker = new tui.SelectRenderable(renderer, {
-      width: "100%",
-      height: Math.max(3, Math.min(modes.length, panelRows() - listChrome)),
-      options: modes.map((mode) => ({
-        name: mode.name === active ? `${mode.name}  (current)` : mode.name,
-        description: mode.description,
-        value: mode.name,
-      })),
-    });
-    picker.on("itemSelected", () => {
-      const chosen = picker.getSelectedOption()?.value as string | undefined;
-      close();
-      if (chosen) onSelect(chosen);
-    });
-    const footer = textNode({
-      content: "↑/↓ choose · Enter switch · Esc cancel",
-      width: "100%",
-      height: 1,
-      fg: dimHex,
-    });
-    open(
-      panel(
-        { title: "Mode", width: panelWidth(), height: panelHeight(modes.length + listChrome) },
-        [
-          textNode({
-            content: styled([[{ text: "Agent mode", tone: "accent", bold: true }]]),
-            width: "100%",
-            height: 1,
-          }),
-          gap(),
-          picker,
-          gap(),
-          footer,
-        ],
-      ),
-    );
-    picker.focus();
   };
 
   const handleKey = (event: KeyEvent): boolean => {
@@ -518,7 +449,6 @@ export const createOverlays = (
     showSkills,
     showMcp,
     showModels,
-    showModes,
     showModelError,
     handleKey,
     close,

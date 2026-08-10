@@ -29,3 +29,9 @@ export const DEFAULT_MODE: Mode = MODES[0];
 
 export const modeByName = (name: string): Mode | undefined =>
   MODES.find((mode) => mode.name === name.toLowerCase());
+
+export const nextMode = (currentName: string): Mode => {
+  const current = modeByName(currentName);
+  if (!current) return DEFAULT_MODE;
+  return MODES[(MODES.indexOf(current) + 1) % MODES.length] ?? DEFAULT_MODE;
+};

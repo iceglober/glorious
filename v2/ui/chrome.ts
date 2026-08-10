@@ -20,15 +20,16 @@ export const edgeHex = "#4b5563";
 export const dimHex = "#8b929c";
 export const accentHex = tones.accent[0];
 
-// border + vertical padding, above and below the content
-const panelChrome = 4;
-const panelMaxWidth = 100;
-// a modal takes three eighths of the viewport, however much content it holds
-const panelShare = 3 / 8;
 // a list sits between a header and a key legend, each with a blank row of its own
 export const listChrome = 4;
+// title row + the row of top padding that separates it from the transcript
+const sheetChrome = 2;
+// A sheet takes over the composer rather than covering the transcript, and it
+// spends no rows on a border, so it can afford more of the viewport than the
+// centered modal it replaced (which took three eighths).
+const sheetShare = 1 / 2;
 
-export const panelHeight = (contentRows: number): number => contentRows + panelChrome;
+export const sheetHeight = (contentRows: number): number => contentRows + sheetChrome;
 
 export type Chrome = ReturnType<typeof createChrome>;
 
@@ -78,29 +79,34 @@ export const createChrome = (tui: Tui, renderer: Renderer) => {
     columns,
     textNode: (options: TextOptions) => new tui.TextRenderable(renderer, options),
     stack,
-    panelWidth: (): number => Math.max(1, Math.min(panelMaxWidth, columns() - 8)),
-    panelRows: (): number =>
-      Math.max(1, Math.round(renderer.terminalHeight * panelShare) - panelChrome),
-    panel: (options: { title: string; width: number; height: number }, kids: Renderable[]) => {
-      const width = Math.max(1, Math.min(options.width, columns()));
-      const height = Math.max(3, Math.min(options.height, renderer.terminalHeight));
+    sheetRows: (): number =>
+      Math.max(3, Math.round(renderer.terminalHeight * sheetShare) - sheetChrome),
+    // A menu rendered where the composer sits. No border and no centering: it is
+    // the input area in a different state, not something laid over the session.
+    sheet: (options: { title: string; height: number }, kids: Renderable[]) => {
+      const title = new tui.TextRenderable(renderer, {
+        content: new tui.StyledText([
+          {
+            __isChunk: true,
+            text: options.title,
+            attributes: tui.TextAttributes.BOLD,
+            fg: tui.RGBA.fromHex(accentHex),
+          },
+        ]),
+        width: "100%",
+        height: 1,
+      });
       return stack(
         {
-          position: "absolute",
-          top: Math.max(0, Math.floor((renderer.terminalHeight - height) / 2)),
-          left: Math.max(0, Math.floor((columns() - width) / 2)),
-          width,
-          height,
-          paddingX: 2,
-          paddingY: 1,
-          backgroundColor: panelHex,
-          border: true,
-          borderColor: edgeHex,
-          title: ` ${options.title} `,
-          titleColor: accentHex,
-          zIndex: 10,
+          flexDirection: "column",
+          width: "100%",
+          minWidth: 0,
+          height: Math.max(3, Math.min(options.height, renderer.terminalHeight - 2)),
+          paddingTop: 1,
+          paddingX: 1,
+          backgroundColor: fillHex,
         },
-        kids,
+        [title, ...kids],
       );
     },
     styled: (lines: readonly Line[]) =>
