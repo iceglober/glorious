@@ -2,7 +2,7 @@ import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { McpServerSummary } from "../mcp";
-import type { ModelOption } from "../models";
+import type { ModelOption, ProviderOption } from "../models";
 import { type Line, statusWave } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
@@ -24,6 +24,7 @@ export const createScreen = async (callbacks: {
   onCommand: (name: string) => void;
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
+  onMcpApprove: (name: string) => void;
   onEscape: () => void;
   onResize: () => void;
   onQuit: () => void;
@@ -143,7 +144,13 @@ export const createScreen = async (callbacks: {
     focusComposer: () => input.focus(),
     blurComposer: () => input.blur(),
   };
-  const overlays = createOverlays(chrome, host, callbacks.onSkillsReload, callbacks.onMcpReload);
+  const overlays = createOverlays(
+    chrome,
+    host,
+    callbacks.onSkillsReload,
+    callbacks.onMcpReload,
+    callbacks.onMcpApprove,
+  );
   const questions = createQuestions(chrome, host);
 
   const painter = (node: TextRenderable) => {
@@ -438,8 +445,21 @@ export const createScreen = async (callbacks: {
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
     showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
       overlays.showMcp(servers, notes),
-    showModels: (models: readonly ModelOption[], onSelect: (model: ModelOption) => void) =>
-      overlays.showModels(models, onSelect),
+    showModels: (
+      models: readonly ModelOption[],
+      onSelect: (model: ModelOption) => void,
+      onConnect: () => void,
+    ) => overlays.showModels(models, onSelect, onConnect),
+    showProviders: (
+      providers: readonly ProviderOption[],
+      onSelect: (provider: ProviderOption) => void,
+      onBack: () => void,
+    ) => overlays.showProviders(providers, onSelect, onBack),
+    showProviderKey: (
+      provider: ProviderOption,
+      onSave: (key: string) => void,
+      onCancel: () => void,
+    ) => overlays.showProviderKey(provider, onSave, onCancel),
     showModelError: (message: string) => overlays.showModelError(message),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
       questions.ask(items, signal),

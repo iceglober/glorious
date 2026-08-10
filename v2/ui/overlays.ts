@@ -1,27 +1,32 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { commands } from "../commands";
 import type { McpServerSummary } from "../mcp";
-import type { ModelOption } from "../models";
+import type { ModelOption, ProviderOption } from "../models";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
 import { type Chrome, dimHex, type Host, listChrome, panelHeight, panelHex } from "./chrome";
+import { createSearchablePicker, type SearchablePicker } from "./searchable-picker";
 
 export const createOverlays = (
   chrome: Chrome,
   host: Host,
   onSkillsReload: () => void,
   onMcpReload: (setLoading: (loading: boolean) => void) => void,
+  onMcpApprove: (name: string) => void,
 ) => {
   const { tui, renderer, textNode, styled, panel, panelWidth, panelRows } = chrome;
   let view: Renderable | null = null;
   let scroll: InstanceType<typeof tui.ScrollBoxRenderable> | null = null;
   let toolSearch: { focused: boolean; activate: (text: string) => void } | null = null;
   let toolList: { moveUp: () => void; moveDown: () => void } | null = null;
-  let modelSearch: {
-    picker: InstanceType<typeof tui.SelectRenderable>;
-    models: readonly ModelOption[];
-    query: string;
-    header: TextRenderable;
+  let modelSearch: { search: SearchablePicker; onConnect: () => void } | null = null;
+  let providerCatalog: { search: SearchablePicker; onBack: () => void } | null = null;
+  let providerForm: {
+    provider: ProviderOption;
+    key: string;
+    onSave: (key: string) => void;
+    onCancel: () => void;
+    render: () => void;
   } | null = null;
   let reloadSkills = false;
   let reloadMcp = false;
@@ -29,6 +34,7 @@ export const createOverlays = (
   let mcpFrame = 0;
   let mcpTimer: ReturnType<typeof setInterval> | null = null;
   let mcpLoadingView: ((loading: boolean) => void) | null = null;
+  let mcpApproval: string | null = null;
 
   const close = (): void => {
     if (!view) return;
@@ -39,11 +45,14 @@ export const createOverlays = (
     toolSearch = null;
     toolList = null;
     modelSearch = null;
+    providerCatalog = null;
+    providerForm = null;
     reloadMcp = false;
     mcpLoading = false;
     if (mcpTimer) clearInterval(mcpTimer);
     mcpTimer = null;
     mcpLoadingView = null;
+    mcpApproval = null;
     host.focusComposer();
     host.draw();
   };
@@ -149,40 +158,6 @@ export const createOverlays = (
     );
   };
 
-  const modelScore = (query: string, model: ModelOption): number | null => {
-    const needle = query.trim().toLowerCase();
-    if (needle === "") return 0;
-    const fields = [model.provider, model.modelId, model.name].map((field) => field.toLowerCase());
-    let best: number | null = null;
-    for (const field of fields) {
-      const exact = field === needle ? 1000 : null;
-      const prefix = field.startsWith(needle) ? 700 - field.length : null;
-      const included = field.includes(needle) ? 500 - field.length : null;
-      let at = 0;
-      let consecutive = 0;
-      let score = 0;
-      for (const char of needle) {
-        const found = field.indexOf(char, at);
-        if (found < 0) {
-          score = -1;
-          break;
-        }
-        score += found === at ? 12 : 2;
-        if (found === at) consecutive += 1;
-        at = found + 1;
-      }
-      const subsequence = score < 0 ? null : 100 + score + consecutive * 4 - field.length / 100;
-      const candidate = Math.max(
-        exact ?? -Infinity,
-        prefix ?? -Infinity,
-        included ?? -Infinity,
-        subsequence ?? -Infinity,
-      );
-      if (candidate !== -Infinity && (best === null || candidate > best)) best = candidate;
-    }
-    return best;
-  };
-
   const showModelVariants = (model: ModelOption, onSelect: (model: ModelOption) => void): void => {
     const variants = [...new Set(model.variants ?? [])];
     const picker = new tui.SelectRenderable(renderer, {
@@ -215,46 +190,30 @@ export const createOverlays = (
   const showModels = (
     models: readonly ModelOption[],
     onSelect: (model: ModelOption) => void,
+    onConnect: () => void,
   ): void => {
     if (view) return;
-    const modelOptions = (query: string) =>
-      models
-        .map((model, index) => ({ model, index, score: modelScore(query, model) }))
-        .filter(
-          (item): item is { model: ModelOption; index: number; score: number } =>
-            item.score !== null,
-        )
-        .sort((a, b) => b.score - a.score || a.index - b.index)
-        .map(({ model }) => ({
-          name: model.name,
-          description: [
-            `${model.provider}/${model.modelId}`,
-            model.inputCost !== undefined && model.outputCost !== undefined
-              ? `$${model.inputCost}/$${model.outputCost} per 1M tokens`
-              : undefined,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          value: model,
-        }));
-    const listHeight = Math.max(3, panelRows() - listChrome);
-    const header = textNode({ content: "", width: "100%", height: 1, fg: dimHex });
-    const picker = new tui.SelectRenderable(renderer, {
-      width: "100%",
-      height: listHeight,
-      showScrollIndicator: true,
-      options: modelOptions(""),
+    const search = createSearchablePicker({
+      chrome,
+      host,
+      height: Math.max(3, panelRows() - listChrome),
+      placeholder: "Type to search models",
+      items: models.map((model) => ({
+        name: model.name,
+        description: [
+          `${model.provider}/${model.modelId}`,
+          model.inputCost !== undefined && model.outputCost !== undefined
+            ? `$${model.inputCost}/$${model.outputCost} per 1M tokens`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        fields: [model.provider, model.modelId, model.name],
+        value: model,
+      })),
     });
-    const renderSearch = (): void => {
-      const query = modelSearch?.query ?? "";
-      picker.options = modelOptions(query);
-      picker.selectedIndex = 0;
-      header.content = styled([
-        [{ text: query === "" ? "Type to search models" : `Search: ${query}`, tone: "accent" }],
-      ]);
-      host.draw();
-    };
-    modelSearch = { picker, models, query: "", header };
+    const { picker, header } = search;
+    modelSearch = { search, onConnect };
     picker.on("itemSelected", () => {
       const selected = picker.getSelectedOption()?.value as ModelOption | undefined;
       close();
@@ -262,20 +221,107 @@ export const createOverlays = (
       if ((selected.variants?.length ?? 0) > 0) showModelVariants(selected, onSelect);
       else onSelect(selected);
     });
-    renderSearch();
     const footer = textNode({
-      content: "Type to filter · ↑/↓ select · Enter switch · Esc closes",
+      content: "Type to filter · ↑/↓ select · Enter switch · Ctrl+A connect · Esc closes",
       width: "100%",
       height: 1,
       fg: dimHex,
     });
     open(
       panel(
-        { title: "Models", width: panelWidth(), height: panelHeight(listHeight + listChrome) },
+        { title: "Models", width: panelWidth(), height: panelHeight(picker.height + listChrome) },
         [header, gap(), picker, gap(), footer],
       ),
     );
     picker.focus();
+  };
+
+  const showProviders = (
+    providers: readonly ProviderOption[],
+    onSelect: (provider: ProviderOption) => void,
+    onBack: () => void,
+  ): void => {
+    if (view) return;
+    const search = createSearchablePicker({
+      chrome,
+      host,
+      height: Math.max(3, Math.min(providers.length, panelRows() - listChrome)),
+      placeholder: "Type to search providers",
+      items: providers.map((provider) => ({
+        name: provider.name,
+        description: provider.connected
+          ? "Environment credentials available"
+          : provider.env.length > 0
+            ? `API key · ${provider.env[0]}`
+            : "Uses your cloud credentials",
+        fields: [provider.id, provider.name, ...provider.env],
+        value: provider,
+      })),
+    });
+    const { picker, header } = search;
+    providerCatalog = { search, onBack };
+    picker.on("itemSelected", () => {
+      const selected = picker.getSelectedOption()?.value as ProviderOption | undefined;
+      close();
+      if (selected) onSelect(selected);
+    });
+    const footer = textNode({
+      content: "Type to filter · ↑/↓ select · Enter connect · Esc returns to models",
+      width: "100%",
+      height: 1,
+      fg: dimHex,
+    });
+    open(
+      panel(
+        {
+          title: "Connect a provider",
+          width: panelWidth(),
+          height: panelHeight(picker.height + listChrome),
+        },
+        [header, gap(), picker, gap(), footer],
+      ),
+    );
+    picker.focus();
+  };
+
+  const showProviderKey = (
+    provider: ProviderOption,
+    onSave: (key: string) => void,
+    onCancel: () => void,
+  ): void => {
+    if (view) return;
+    const input = textNode({ content: "", width: "100%", height: 1, fg: dimHex });
+    const render = (): void => {
+      const key = providerForm?.key ?? "";
+      input.content = key === "" ? "API key" : "•".repeat(Math.min(48, key.length));
+      host.draw();
+    };
+    providerForm = { provider, key: "", onSave, onCancel, render };
+    render();
+    const help = textNode({
+      content: `Stored in the macOS Keychain · ${provider.env.join(" or ")} remains a fallback`,
+      width: "100%",
+      wrapMode: "word",
+      fg: dimHex,
+    });
+    const footer = textNode({
+      content:
+        provider.env.length > 0
+          ? "Type API key · Enter save · Empty Enter uses env · Esc cancels"
+          : "Type API key · Enter save · Esc cancels",
+      width: "100%",
+      height: 1,
+      fg: dimHex,
+    });
+    open(
+      panel({ title: `Connect ${provider.name}`, width: panelWidth(), height: panelHeight(5) }, [
+        input,
+        gap(),
+        help,
+        gap(),
+        footer,
+      ]),
+    );
   };
 
   const showModelError = (message: string): void => {
@@ -306,7 +352,10 @@ export const createOverlays = (
               [
                 { text: `${marker} `, tone: "accent" },
                 { text: server.name, tone: "highlight", bold: true },
-                { text: `  ${server.tools} tools`, tone: "muted" },
+                {
+                  text: `  ${server.status ?? "active"} · ${server.tools} tools${server.source ? ` · ${server.source}` : ""}`,
+                  tone: "muted",
+                },
               ],
               ...(index + 1 < servers.length ? [[{ text: "" }]] : []),
             ]);
@@ -340,7 +389,7 @@ export const createOverlays = (
     scroll.add(mcpBody);
     render();
     const footer = textNode({
-      content: "↑/↓ scroll · r reload · Esc closes this list",
+      content: "↑/↓ scroll · r reload · a approve · Esc closes this list",
       width: "100%",
       height: 1,
       fg: dimHex,
@@ -355,6 +404,7 @@ export const createOverlays = (
       ]),
     );
     reloadMcp = true;
+    mcpApproval = servers.find((server) => server.status === "unapproved")?.name ?? null;
     mcpLoadingView = (loading: boolean): void => {
       mcpLoading = loading;
       mcpFrame = 0;
@@ -369,63 +419,35 @@ export const createOverlays = (
 
   const handleKey = (event: KeyEvent): boolean => {
     if (!view) return false;
-    if (modelSearch && !event.ctrl && !event.meta && !event.option) {
-      if (event.name === "backspace") {
-        event.stopPropagation();
-        modelSearch.query = modelSearch.query.slice(0, -1);
-        modelSearch.header.content = styled([
-          [
-            {
-              text:
-                modelSearch.query === "" ? "Type to search models" : `Search: ${modelSearch.query}`,
-              tone: "accent",
-            },
-          ],
-        ]);
-        modelSearch.picker.options = modelSearch.models
-          .map((model, index) => ({
-            model,
-            index,
-            score: modelScore(modelSearch?.query ?? "", model),
-          }))
-          .filter(
-            (item): item is { model: ModelOption; index: number; score: number } =>
-              item.score !== null,
-          )
-          .sort((a, b) => b.score - a.score || a.index - b.index)
-          .map(({ model }) => ({
-            name: model.name,
-            description: `${model.provider}/${model.modelId}`,
-            value: model,
-          }));
-        modelSearch.picker.selectedIndex = 0;
-        host.draw();
-      } else if (event.sequence.length === 1 && event.name.length === 1) {
-        event.stopPropagation();
-        modelSearch.query += event.sequence;
-        modelSearch.header.content = styled([
-          [{ text: `Search: ${modelSearch.query}`, tone: "accent" }],
-        ]);
-        modelSearch.picker.options = modelSearch.models
-          .map((model, index) => ({
-            model,
-            index,
-            score: modelScore(modelSearch?.query ?? "", model),
-          }))
-          .filter(
-            (item): item is { model: ModelOption; index: number; score: number } =>
-              item.score !== null,
-          )
-          .sort((a, b) => b.score - a.score || a.index - b.index)
-          .map(({ model }) => ({
-            name: model.name,
-            description: `${model.provider}/${model.modelId}`,
-            value: model,
-          }));
-        modelSearch.picker.selectedIndex = 0;
-        host.draw();
+    if (providerForm) {
+      event.stopPropagation();
+      if (event.name === "escape" || (event.ctrl && event.name === "c")) {
+        const { onCancel } = providerForm;
+        close();
+        onCancel();
+      } else if (event.name === "return" || event.name === "kpenter") {
+        const form = providerForm;
+        if (form.key.trim() === "" && form.provider.env.length === 0) return true;
+        close();
+        form.onSave(form.key);
+      } else if (event.name === "backspace") {
+        providerForm.key = providerForm.key.slice(0, -1);
+        providerForm.render();
+      } else if (!event.ctrl && !event.meta && !event.option && event.sequence.length === 1) {
+        providerForm.key += event.sequence;
+        providerForm.render();
       }
+      return true;
     }
+    if (modelSearch && event.ctrl && event.name === "a") {
+      event.stopPropagation();
+      const { onConnect } = modelSearch;
+      close();
+      onConnect();
+      return true;
+    }
+    if (modelSearch?.search.handleKey(event)) return true;
+    if (providerCatalog?.search.handleKey(event)) return true;
     if (toolList && event.name === "up") {
       event.stopPropagation();
       toolList.moveUp();
@@ -447,11 +469,16 @@ export const createOverlays = (
       toolSearch.activate(event.sequence);
     } else if (event.name === "escape" || (event.ctrl && event.name === "c")) {
       event.stopPropagation();
+      const onBack = providerCatalog?.onBack;
       close();
+      onBack?.();
     } else if (reloadSkills && event.name === "r") {
       event.stopPropagation();
       close();
       onSkillsReload();
+    } else if (reloadMcp && event.name === "a") {
+      event.stopPropagation();
+      if (mcpApproval) onMcpApprove(mcpApproval);
     } else if (reloadMcp && event.name === "r") {
       event.stopPropagation();
       if (mcpLoading || !mcpLoadingView) return true;
@@ -473,6 +500,8 @@ export const createOverlays = (
     showSkills,
     showMcp,
     showModels,
+    showProviders,
+    showProviderKey,
     showModelError,
     handleKey,
     close,

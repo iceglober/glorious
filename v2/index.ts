@@ -1,12 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
+import { resolve } from "node:path";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
+import { approveMcp } from "./approvals";
 import { type ChatSignal, createChat } from "./chat";
+import { loadConfig, writeConfigLayer } from "./config";
 import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
-import { readMcpConfig, startMcp } from "./mcp";
-import { currentModel, loadModels, modelLabel } from "./models";
+import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
+import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
 import {
   errorText,
   eventBlock,
@@ -17,6 +20,7 @@ import {
   statusLine,
   userBlock,
 } from "./render";
+import { providerKey, saveProviderKey } from "./secrets";
 import {
   createSession,
   loadPromptHistory,
@@ -75,20 +79,51 @@ const main = async (): Promise<void> => {
     return;
   }
   let resumeId: string | undefined;
-  if (args.length > 0) {
+  const doctor = args.length > 0 && args[0] === "doctor";
+  const doctorJson = doctor && args[1] === "--json";
+  if (args.length > 0 && !doctor) {
     if (args[0] !== "--resume" || args.length > 2)
-      throw new Error("Usage: glorious [--version | update | --resume [session-id]]");
+      throw new Error(
+        "Usage: glorious [--version | update | doctor [--json] | --resume [session-id]]",
+      );
     resumeId = args[1];
   }
+  if (doctor && args.length > 2)
+    throw new Error(
+      "Usage: glorious [--version | update | doctor [--json] | --resume [session-id]]",
+    );
   const { root, os, branch, worktree, git, label } = probe();
+  const resolvedConfig = await loadConfig(root);
+  if (doctor) {
+    const report = {
+      diagnostics: resolvedConfig.diagnostics,
+      model: currentModel(resolvedConfig.config),
+      mcp: await doctorMcp(root, await resolveMcpServers(root, resolvedConfig)),
+    };
+    if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    else {
+      const lines = [
+        `model: ${modelLabel(report.model)}`,
+        ...report.diagnostics.map((diagnostic) => `${diagnostic.layer}: ${diagnostic.message}`),
+        ...report.mcp.servers.map(
+          (server) =>
+            `mcp ${server.name}: ${server.status ?? "active"} (${server.source ?? "user"})`,
+        ),
+        ...report.mcp.notes,
+      ];
+      process.stdout.write(`${lines.join("\n")}\n`);
+    }
+    return;
+  }
   const session =
     resumeId === undefined && args.length === 0
       ? await createSession(root)
       : await openSession(resumeId, pickSession);
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
-  let model = currentModel();
-  const mcp = await startMcp(root, await readMcpConfig(root));
+  let config = resolvedConfig;
+  let model = currentModel(config.config);
+  let mcp = await startMcp(root, await resolveMcpServers(root, config));
   let skills = await loadSkills(root, mcp);
 
   let frame = 0;
@@ -157,6 +192,26 @@ const main = async (): Promise<void> => {
     mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
   });
+
+  const replaceMcp = async (): Promise<void> => {
+    const nextConfig = await loadConfig(root);
+    const nextMcp = await startMcp(root, await resolveMcpServers(root, nextConfig));
+    const previous = mcp;
+    const previousHealthy = previous.servers.some((server) => server.status === "active");
+    const nextHealthy = nextMcp.servers.some((server) => server.status === "active");
+    const nextFailed = nextMcp.servers.some((server) => server.status === "failed");
+    if (previousHealthy && !nextHealthy && nextFailed) {
+      nextMcp.close();
+      throw new Error("MCP reload failed; keeping the current connected servers.");
+    }
+    config = nextConfig;
+    mcp = nextMcp;
+    agent.setMcp(nextMcp);
+    skills = await loadSkills(root, nextMcp);
+    agent.setSkills(skills);
+    previous.close();
+    repaint();
+  };
 
   const record = (event: SessionEvent): void => {
     session.events.push(event);
@@ -230,14 +285,67 @@ const main = async (): Promise<void> => {
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
       if (name === "models") {
-        void loadModels(model)
-          .then((options) =>
-            screen.showModels(options, (next) => {
-              model = next;
-              agent.setModel(next);
-              repaint();
-            }),
-          )
+        const selectModel = (next: typeof model): void => {
+          agent.setModel(next);
+          model = next;
+          void writeConfigLayer("local", root, (current) => ({
+            ...current,
+            model: { selected: modelLabel(next), variant: next.variant },
+            providers: { ...current.providers, [next.provider]: { enabled: true } },
+          }))
+            .then(() => loadConfig(root))
+            .then((nextConfig) => {
+              config = nextConfig;
+            })
+            .catch((failure) => screen.showModelError(errorText(failure)));
+          repaint();
+        };
+        const showModels = (options: Awaited<ReturnType<typeof loadModels>>): void =>
+          screen.showModels(options, selectModel, showProviders);
+        const selectProvider = (provider: string, apiKey?: string): void => {
+          void loadModels(model, config.config, provider, apiKey)
+            .then(showModels)
+            .catch((failure) => screen.showModelError(errorText(failure)));
+        };
+        const showProviders = (): void => {
+          void loadProviders(config.config)
+            .then((providers) =>
+              screen.showProviders(
+                providers,
+                (provider) => {
+                  if (provider.env.length === 0) {
+                    selectProvider(provider.id);
+                    return;
+                  }
+                  void providerKey(provider.id)
+                    .then((stored) => {
+                      if (stored) {
+                        selectProvider(provider.id, stored);
+                        return;
+                      }
+                      screen.showProviderKey(
+                        provider,
+                        (key) => {
+                          if (key === "") {
+                            selectProvider(provider.id);
+                            return;
+                          }
+                          void saveProviderKey(provider.id, key)
+                            .then(() => selectProvider(provider.id, key))
+                            .catch((failure) => screen.showModelError(errorText(failure)));
+                        },
+                        showProviders,
+                      );
+                    })
+                    .catch((failure) => screen.showModelError(errorText(failure)));
+                },
+                () => void loadModels(model, config.config).then(showModels),
+              ),
+            )
+            .catch((failure) => screen.showModelError(errorText(failure)));
+        };
+        void loadModels(model, config.config)
+          .then(showModels)
           .catch((failure) => screen.showModelError(errorText(failure)));
       }
       repaint();
@@ -252,13 +360,16 @@ const main = async (): Promise<void> => {
     },
     onMcpReload: (setLoading) => {
       setLoading(true);
-      void mcp
-        .reload()
-        .then(() => {
-          agent.setMcp(mcp);
-          repaint();
-        })
+      void replaceMcp()
+        .catch((failure) => screen.showModelError(errorText(failure)))
         .finally(() => setLoading(false));
+    },
+    onMcpApprove: (name) => {
+      const server = mcp.servers.find((item) => item.name === name && item.status === "unapproved");
+      if (!server?.fingerprint) return;
+      void approveMcp({ root: resolve(root), name, fingerprint: server.fingerprint })
+        .then(replaceMcp)
+        .catch((failure) => screen.showModelError(errorText(failure)));
     },
     onEscape: () => interrupt(),
     onResize: () => repaint(),
@@ -270,7 +381,7 @@ const main = async (): Promise<void> => {
     if (lines.length > 0) screen.print(lines, gap);
   }
 
-  void loadModels(model)
+  void loadModels(model, config.config)
     .then((options) => {
       const metadata = options.find((option) => modelLabel(option) === modelLabel(model));
       if (metadata) {

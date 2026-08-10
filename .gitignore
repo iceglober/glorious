@@ -36,10 +36,8 @@ run.log
 core/eval/results/
 core/eval/traj/
 
-# glorious's own runtime config while dogfooding itself — transient per-user
-# model/scope selections, not a shared project default. Skills/extensions under
-# .glorious/ stay tracked; only the config files are ignored.
-/.glorious/config.json
+# Local Glorious preferences and credentials metadata. Shared project defaults
+# in .glorious/config.json stay tracked.
 /.glorious/config.local.json
 
 # local agent event log

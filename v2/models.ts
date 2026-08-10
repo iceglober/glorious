@@ -1,5 +1,21 @@
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { createAzure } from "@ai-sdk/azure";
+import { createCerebras } from "@ai-sdk/cerebras";
+import { createCohere } from "@ai-sdk/cohere";
+import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createGoogle } from "@ai-sdk/google";
+import { createGoogleVertex } from "@ai-sdk/google-vertex";
+import { createGroq } from "@ai-sdk/groq";
+import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createPerplexity } from "@ai-sdk/perplexity";
+import { createTogetherAI } from "@ai-sdk/togetherai";
+import { createXai } from "@ai-sdk/xai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import type { LanguageModel } from "ai";
+import type { Config } from "./config";
 
 export type ModelRef = {
   provider: string;
@@ -9,6 +25,7 @@ export type ModelRef = {
 export type ModelOption = ModelRef & {
   name: string;
   api?: string;
+  apiKey?: string;
   env: readonly string[];
   npm?: string;
   inputCost?: number;
@@ -16,6 +33,16 @@ export type ModelOption = ModelRef & {
   context?: number;
   variants?: readonly string[];
   variant?: string;
+  region?: string;
+  project?: string;
+  location?: string;
+};
+
+export type ProviderOption = {
+  id: string;
+  name: string;
+  env: readonly string[];
+  connected: boolean;
 };
 
 type ModelsDevProvider = {
@@ -36,6 +63,58 @@ type ModelsDevProvider = {
 };
 
 const catalogUrl = "https://models.dev/api.json";
+const azureEnv = ["AZURE_FOUNDRY_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY"];
+const supportedProviders = new Set([
+  "amazon-bedrock",
+  "anthropic",
+  "azure",
+  "cerebras",
+  "cohere",
+  "deepseek",
+  "google",
+  "google-vertex",
+  "groq",
+  "mistral",
+  "openai",
+  "openrouter",
+  "perplexity",
+  "togetherai",
+  "xai",
+]);
+const cloudCredentialEnv: Record<string, readonly string[]> = {
+  "amazon-bedrock": [
+    "AWS_ACCESS_KEY_ID",
+    "AWS_PROFILE",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+  ],
+  "google-vertex": [
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_VERTEX_PROJECT",
+  ],
+};
+
+const supported = (id: string, provider: ModelsDevProvider): boolean =>
+  supportedProviders.has(id) || provider.npm === "@ai-sdk/openai-compatible";
+
+const credentialsFor = (provider: string, value: ModelsDevProvider): string[] =>
+  provider === "azure" ? azureEnv : (value.env ?? []);
+
+const hasEnvironmentCredential = (env: readonly string[]): boolean =>
+  env.some((name) => Boolean(process.env[name]));
+
+const isEnvironmentConnected = (provider: string, value: ModelsDevProvider): boolean =>
+  hasEnvironmentCredential([
+    ...credentialsFor(provider, value),
+    ...(cloudCredentialEnv[provider] ?? []),
+  ]);
+
+const loadCatalog = async (): Promise<Record<string, ModelsDevProvider>> => {
+  const response = await fetch(catalogUrl, { signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
+  return (await response.json()) as Record<string, ModelsDevProvider>;
+};
 
 export const modelRef = (value: string, provider = "azure"): ModelRef => {
   const slash = value.indexOf("/");
@@ -46,41 +125,97 @@ export const modelRef = (value: string, provider = "azure"): ModelRef => {
 
 export const modelLabel = (model: ModelRef): string => `${model.provider}/${model.modelId}`;
 
-export const currentModel = (): ModelOption => {
-  const model = process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna";
-  return { ...modelRef(model), name: model, env: [] };
+const providerSettings = (
+  provider: string,
+  config?: Config,
+): Pick<ModelOption, "region" | "project" | "location"> => {
+  const metadata = config?.providers[provider];
+  if (provider === "amazon-bedrock")
+    return {
+      region:
+        metadata?.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1",
+    };
+  if (provider === "google-vertex")
+    return {
+      project:
+        metadata?.project ?? process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GOOGLE_VERTEX_PROJECT,
+      location:
+        metadata?.location ??
+        process.env.GOOGLE_CLOUD_LOCATION ??
+        process.env.GOOGLE_VERTEX_LOCATION ??
+        "global",
+    };
+  return {};
 };
 
-export const loadModels = async (current: ModelOption): Promise<ModelOption[]> => {
-  const response = await fetch(catalogUrl, { signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
-  const data = (await response.json()) as Record<string, ModelsDevProvider>;
-  const options = Object.entries(data).flatMap(([provider, value]) => {
-    const env = value.env ?? [];
-    const credentials =
-      provider === "azure"
-        ? ["AZURE_FOUNDRY_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_RESOURCE_NAME"]
-        : env;
-    if (!credentials.some((key) => process.env[key])) return [];
-    if (
-      value.npm !== "@ai-sdk/openai" &&
-      value.npm !== "@ai-sdk/openai-compatible" &&
-      value.npm !== "@ai-sdk/azure"
-    )
-      return [];
-    return Object.entries(value.models ?? {}).map(([modelId, model]) => ({
-      provider,
-      modelId: model.id ?? modelId,
-      name: model.name ?? model.id ?? modelId,
-      api: value.api,
-      env: provider === "azure" || value.npm === "@ai-sdk/azure" ? credentials : env,
-      npm: value.npm,
-      inputCost: model.cost?.input,
-      outputCost: model.cost?.output,
-      context: model.limit?.context,
-      variants: model.reasoning_options?.find((option) => option.type === "effort")?.values,
-    }));
-  });
+const isConfigEnabled = (provider: string, config?: Config): boolean =>
+  config?.providers[provider]?.enabled === true;
+
+export const currentModel = (config?: Config): ModelOption => {
+  const model = process.env.GLORIOUS_MODEL ?? config?.model.selected ?? "gpt-5.6-luna";
+  const ref = modelRef(model);
+  return {
+    ...ref,
+    ...providerSettings(ref.provider, config),
+    name: model,
+    variant: config?.model.variant,
+    env: ref.provider === "azure" ? azureEnv : [],
+    npm: ref.provider === "azure" ? "@ai-sdk/azure" : undefined,
+  };
+};
+
+export const loadProviders = async (config?: Config): Promise<ProviderOption[]> => {
+  const catalog = await loadCatalog();
+  return Object.entries(catalog)
+    .filter(([id, value]) => supported(id, value))
+    .map(([id, value]) => {
+      const env = credentialsFor(id, value);
+      return {
+        id,
+        name: value.name ?? id,
+        env,
+        connected: isConfigEnabled(id, config) || isEnvironmentConnected(id, value),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+export const loadModels = async (
+  current: ModelOption,
+  config?: Config | string,
+  provider?: string,
+  apiKey?: string,
+): Promise<ModelOption[]> => {
+  const [resolvedConfig, selectedProvider, selectedApiKey] =
+    typeof config === "string" ? [undefined, config, provider] : [config, provider, apiKey];
+  const catalog = await loadCatalog();
+  const options = Object.entries(catalog)
+    .filter(([id, value]) => {
+      if (!supported(id, value)) return false;
+      if (selectedProvider) return id === selectedProvider;
+      return (
+        id === current.provider ||
+        isConfigEnabled(id, resolvedConfig) ||
+        isEnvironmentConnected(id, value)
+      );
+    })
+    .flatMap(([id, value]) =>
+      Object.entries(value.models ?? {}).map(([modelId, model]) => ({
+        provider: id,
+        ...providerSettings(id, resolvedConfig),
+        modelId: model.id ?? modelId,
+        name: model.name ?? model.id ?? modelId,
+        api: value.api,
+        apiKey: id === selectedProvider ? selectedApiKey : undefined,
+        env: credentialsFor(id, value),
+        npm: value.npm,
+        inputCost: model.cost?.input,
+        outputCost: model.cost?.output,
+        context: model.limit?.context,
+        variants: model.reasoning_options?.find((option) => option.type === "effort")?.values,
+      })),
+    );
+  if (selectedProvider) return options.sort((a, b) => modelLabel(a).localeCompare(modelLabel(b)));
   const currentKey = modelLabel(current);
   const metadata = options.find((option) => modelLabel(option) === currentKey);
   return [
@@ -89,22 +224,57 @@ export const loadModels = async (current: ModelOption): Promise<ModelOption[]> =
   ].sort((a, b) => modelLabel(a).localeCompare(modelLabel(b)));
 };
 
-export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch) => {
-  if (option.provider === "azure" || option.npm === "@ai-sdk/azure") {
-    const apiKey =
-      process.env.AZURE_FOUNDRY_API_KEY ||
-      process.env.AZURE_API_KEY ||
-      process.env.AZURE_OPENAI_API_KEY;
-    if (!apiKey)
-      throw new Error(
-        "Azure API key missing: set AZURE_FOUNDRY_API_KEY, AZURE_API_KEY, or AZURE_OPENAI_API_KEY.",
-      );
+type ProviderFactory = (options: {
+  apiKey?: string;
+  baseURL?: string;
+  fetch?: typeof fetch;
+}) => (id: string) => LanguageModel;
+
+const factories: Record<string, ProviderFactory> = {
+  "amazon-bedrock": createAmazonBedrock as ProviderFactory,
+  anthropic: createAnthropic as ProviderFactory,
+  cerebras: createCerebras as ProviderFactory,
+  cohere: createCohere as ProviderFactory,
+  deepseek: createDeepSeek as ProviderFactory,
+  google: createGoogle as ProviderFactory,
+  "google-vertex": createGoogleVertex as ProviderFactory,
+  groq: createGroq as ProviderFactory,
+  mistral: createMistral as ProviderFactory,
+  openai: createOpenAI as ProviderFactory,
+  openrouter: createOpenRouter as ProviderFactory,
+  perplexity: createPerplexity as ProviderFactory,
+  togetherai: createTogetherAI as ProviderFactory,
+  xai: createXai as ProviderFactory,
+};
+
+export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch): LanguageModel => {
+  const { apiKey } = option;
+  if (option.provider === "azure" || option.npm === "@ai-sdk/azure")
     return createAzure({ apiKey, fetch: fetcher as typeof fetch })(option.modelId);
+  if (option.provider === "amazon-bedrock")
+    return createAmazonBedrock({
+      apiKey,
+      baseURL: option.api,
+      region: option.region,
+      fetch: fetcher as typeof fetch,
+    })(option.modelId);
+  if (option.provider === "google-vertex")
+    return createGoogleVertex({
+      apiKey,
+      project: option.project,
+      location: option.location,
+      fetch: fetcher as typeof fetch,
+    })(option.modelId);
+  if (option.npm === "@ai-sdk/openai-compatible") {
+    if (!option.api) throw new Error(`No API endpoint is published for ${option.provider}.`);
+    return createOpenAICompatible({
+      name: option.provider,
+      apiKey,
+      baseURL: option.api,
+      fetch: fetcher as typeof fetch,
+    })(option.modelId);
   }
-  const apiKey = option.env.map((key) => process.env[key]).find(Boolean);
-  if (!apiKey) throw new Error(`API key missing for ${option.provider}.`);
-  if (!option.api) throw new Error(`No API endpoint is published for ${option.provider}.`);
-  return createOpenAI({ apiKey, baseURL: option.api, fetch: fetcher as typeof fetch })(
-    option.modelId,
-  );
+  const factory = factories[option.provider];
+  if (!factory) throw new Error(`Provider ${option.provider} is not supported.`);
+  return factory({ apiKey, baseURL: option.api, fetch: fetcher as typeof fetch })(option.modelId);
 };
