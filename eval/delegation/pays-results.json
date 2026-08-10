@@ -1,0 +1,62 @@
+[
+  {
+    "arm": "solo",
+    "found": 3,
+    "parentInput": 38948,
+    "subInput": 0,
+    "subCalls": 0,
+    "steps": 4,
+    "endContext": 19865,
+    "wall": 15718
+  },
+  {
+    "arm": "delegate",
+    "found": 3,
+    "parentInput": 12774,
+    "subInput": 37635,
+    "subCalls": 1,
+    "steps": 3,
+    "endContext": 8284,
+    "wall": 27519
+  },
+  {
+    "arm": "librarian",
+    "found": 3,
+    "parentInput": 21591,
+    "subInput": 20113,
+    "subCalls": 1,
+    "steps": 4,
+    "endContext": 10589,
+    "wall": 31515
+  },
+  {
+    "arm": "solo",
+    "found": 3,
+    "parentInput": 38331,
+    "subInput": 0,
+    "subCalls": 0,
+    "steps": 5,
+    "endContext": 13943,
+    "wall": 15779
+  },
+  {
+    "arm": "delegate",
+    "found": 3,
+    "parentInput": 8907,
+    "subInput": 32165,
+    "subCalls": 1,
+    "steps": 3,
+    "endContext": 4502,
+    "wall": 26122
+  },
+  {
+    "arm": "librarian",
+    "found": 3,
+    "parentInput": 14040,
+    "subInput": 35584,
+    "subCalls": 1,
+    "steps": 2,
+    "endContext": 12021,
+    "wall": 25185
+  }
+]
