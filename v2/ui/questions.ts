@@ -2,7 +2,7 @@ import type { KeyEvent, Renderable, TextareaRenderable, TextRenderable } from "@
 import { composerKeyBindings } from "../composer";
 import { width } from "../render";
 import type { Question } from "../tools";
-import { accentHex, type Chrome, dimHex, edgeHex, fillHex, type Host, panelHex } from "./chrome";
+import { type Chrome, dimHex, edgeHex, fillHex, type Host } from "./chrome";
 
 export const createQuestions = (chrome: Chrome, host: Host) => {
   const { tui, renderer, columns, textNode, stack, styled } = chrome;
@@ -22,7 +22,7 @@ export const createQuestions = (chrome: Chrome, host: Host) => {
 
   const closeView = (): void => {
     if (view) {
-      renderer.root.remove(view);
+      host.useComposerSlot(null);
       view.destroy();
     }
     view = null;
@@ -57,7 +57,8 @@ export const createQuestions = (chrome: Chrome, host: Host) => {
       [{ text: `? Question ${index + 1}/${items.length}`, tone: "accent", bold: true }],
       [{ text: questionText, bold: true }],
     ]);
-    if (view) view.height = questionLines + current.options.length + 11;
+    // title + labels + note + help, plus the single row of top padding
+    if (view) view.height = questionLines + current.options.length + 8;
     options.height = current.options.length;
     options.options = current.options.map((option) => ({
       name: option,
@@ -148,23 +149,20 @@ export const createQuestions = (chrome: Chrome, host: Host) => {
             height: 1,
             fg: dimHex,
           });
+          // Styled as the composer is, because it stands in for the composer.
           view = stack(
             {
               flexDirection: "column",
               width: "100%",
               height: 1,
-              paddingX: 2,
-              paddingY: 1,
+              paddingTop: 1,
+              paddingX: 1,
               rowGap: 0,
-              backgroundColor: panelHex,
-              border: true,
-              borderColor: edgeHex,
-              title: " Questions ",
-              titleColor: accentHex,
+              backgroundColor: fillHex,
             },
             [title, optionsLabel, options, noteLabel, note, help],
           );
-          renderer.root.add(view);
+          host.useComposerSlot(view);
           const cancel = (): void => abort?.();
           signal?.addEventListener("abort", cancel, { once: true });
           cleanup = () => signal?.removeEventListener("abort", cancel);

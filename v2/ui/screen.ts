@@ -6,7 +6,7 @@ import type { ModelOption } from "../models";
 import { type Line, statusWave } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
-import { createChrome, fillHex, panelHex } from "./chrome";
+import { createChrome, fillHex, type Host, panelHex } from "./chrome";
 import { createOverlays } from "./overlays";
 import { createQuestions } from "./questions";
 
@@ -111,11 +111,18 @@ export const createScreen = async (callbacks: {
     [caret, input],
   );
 
+  // A question is not a modal — it is the input area asking instead of waiting,
+  // so it takes the composer's place in the footer rather than floating over it.
+  const composerSlot = stack(
+    { flexDirection: "column", width: "100%", minWidth: 0, flexShrink: 0 },
+    [composerRow],
+  );
+
   const footer = stack({ flexDirection: "column", flexShrink: 0, width: "100%" }, [
     progress,
     autocomplete,
     waterline,
-    composerRow,
+    composerSlot,
     status,
   ]);
   renderer.root.add(
@@ -138,10 +145,17 @@ export const createScreen = async (callbacks: {
     if (phase === "live") renderer.requestRender();
   };
 
-  const host = {
+  let slotted: Renderable | null = null;
+  const host: Host = {
     draw,
     focusComposer: () => input.focus(),
     blurComposer: () => input.blur(),
+    useComposerSlot: (node) => {
+      if (slotted) composerSlot.remove(slotted);
+      slotted = node;
+      if (node) composerSlot.add(node);
+      composerRow.visible = node === null;
+    },
   };
   const overlays = createOverlays(chrome, host, callbacks.onSkillsReload, callbacks.onMcpReload);
   const questions = createQuestions(chrome, host);

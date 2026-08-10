@@ -36,6 +36,10 @@ export type Host = {
   draw: () => void;
   focusComposer: () => void;
   blurComposer: () => void;
+  // Put a node where the composer sits, or restore the composer with null. An
+  // ask_user question belongs in the input area, not in a panel over the top of
+  // it — the user is being asked to answer, not interrupted.
+  useComposerSlot: (node: Renderable | null) => void;
 };
 
 export const createChrome = (tui: Tui, renderer: Renderer) => {
