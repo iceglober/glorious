@@ -7,6 +7,7 @@ import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
 import { readMcpConfig, startMcp } from "./mcp";
 import { currentModel, loadModels, modelLabel } from "./models";
+import { MODES, modeByName } from "./modes";
 import {
   errorText,
   eventBlock,
@@ -126,6 +127,7 @@ const main = async (): Promise<void> => {
           worktree,
           branch,
           model: `${modelLabel(model)}${model.variant ? ` (${model.variant})` : ""}`,
+          mode: agent.mode().name,
           tokens,
           percentUsed:
             model.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
@@ -229,6 +231,13 @@ const main = async (): Promise<void> => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
+      if (name === "mode") {
+        screen.showModes(MODES, agent.mode().name, (chosen) => {
+          const next = modeByName(chosen);
+          if (next) agent.setMode(next);
+          repaint();
+        });
+      }
       if (name === "models") {
         void loadModels(model)
           .then((options) =>

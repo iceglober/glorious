@@ -440,6 +440,11 @@ export const createScreen = async (callbacks: {
       overlays.showMcp(servers, notes),
     showModels: (models: readonly ModelOption[], onSelect: (model: ModelOption) => void) =>
       overlays.showModels(models, onSelect),
+    showModes: (
+      modes: readonly { name: string; description: string }[],
+      active: string,
+      onSelect: (name: string) => void,
+    ) => overlays.showModes(modes, active, onSelect),
     showModelError: (message: string) => overlays.showModelError(message),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
       questions.ask(items, signal),

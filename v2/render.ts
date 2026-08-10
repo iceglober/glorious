@@ -183,6 +183,7 @@ export const statusLine = (
     worktree: string | null;
     branch: string;
     model: string;
+    mode: string;
     tokens: number | null;
     percentUsed: number | null;
     cached: number | null;
@@ -205,7 +206,9 @@ export const statusLine = (
       ? `${Math.round((state.totalCachedTokens / state.totalTokensIn) * 100)}%`
       : "unknown";
   const lineOne = `${location} · in ${tokenCount(state.totalTokensIn)} · out ${tokenCount(state.totalTokensOut)}`;
-  const lineTwo = `${state.sessionId} · ${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;
+  // the default mode is the absence of a badge; only a restricted one earns width
+  const badge = state.mode === "build" ? "" : `${flatten(state.mode)} · `;
+  const lineTwo = `${state.sessionId} · ${badge}${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;
   const first = clip(lineOne, limit);
   const second = clip(lineTwo, limit);
   return [[{ text: first, tone: "muted" }], [{ text: second, tone: "muted" }]];

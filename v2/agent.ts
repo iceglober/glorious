@@ -1,16 +1,24 @@
 import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
 import { createModel, type ModelOption } from "./models";
+import { DEFAULT_MODE, type Mode } from "./modes";
 import {
   contextPrompt,
   craftRules,
   environmentPrompt,
   fence,
+  modePrompt,
   navigationPrompt,
   skillsPrompt,
   systemPrompt,
 } from "./prompt";
-import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
+import {
+  type AskQuestions,
+  createTools,
+  READ_ONLY_TOOL_NAMES,
+  type RunSubagent,
+  type ToolEvent,
+} from "./tools";
 
 const STEP_LIMIT = 100;
 export const SUBAGENT_STEP_LIMIT = 50;
@@ -71,20 +79,39 @@ export const subagentReport = (text: string, steps: number): string => {
     : "ERROR: the subagent finished without reporting anything.";
 };
 
+// Withhold rather than instruct: a restriction the model can talk itself out of
+// is the weak mechanism a mode exists to replace. An MCP tool is only kept if
+// its server declared it read-only — there is no way to tell from outside.
+export const allowedTools = <T extends Record<string, unknown>>(
+  tools: T,
+  mode: Mode,
+  mcp: readonly { name: string; readOnly: boolean }[],
+): T => {
+  if (!mode.readOnly) return tools;
+  const safe = new Set<string>([
+    ...READ_ONLY_TOOL_NAMES,
+    ...mcp.filter((entry) => entry.readOnly).map((entry) => entry.name),
+  ]);
+  return Object.fromEntries(Object.entries(tools).filter(([name]) => safe.has(name))) as T;
+};
+
 export const createAgent = (setup: Setup) => {
   let model = createModel(setup.model, fetchWithDeadline as typeof fetch);
   const environment = environmentPrompt(setup);
   // the last context size the provider reported, handed back to the model on the
   // next turn so it can see the budget it is spending
   let observed = 0;
+  let mode: Mode = DEFAULT_MODE;
   let navigation = navigationPrompt(setup.mcp?.summaries ?? []);
   let preamble = [environment, navigation, skillsPrompt(setup.skills)]
     .filter((part) => part !== "")
     .join("\n\n");
   const cacheKey = (scope: string): string =>
     createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
+  const effort = (): string | undefined =>
+    mode.effort && setup.model.variants?.includes(mode.effort) ? mode.effort : setup.model.variant;
   const openaiOptions = (scope: string) => ({
-    ...(setup.model.variant ? { reasoningEffort: setup.model.variant } : {}),
+    ...(effort() ? { reasoningEffort: effort() } : {}),
     textVerbosity: "low" as const,
     promptCacheKey: cacheKey(scope),
   });
@@ -119,10 +146,11 @@ The brief you are given is your complete starting context; do not assume access 
       });
       return subagentReport(result.text, result.steps.length);
     };
-    return {
+    const all = {
       ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, runSubagent),
       ...(setup.mcp?.toolsFor(onTool) ?? {}),
     };
+    return allowedTools(all, mode, setup.mcp?.summaries ?? []);
   };
 
   const settings = () => ({
@@ -134,6 +162,10 @@ The brief you are given is your complete starting context; do not assume access 
   });
 
   return {
+    mode: (): Mode => mode,
+    setMode: (next: Mode): void => {
+      mode = next;
+    },
     setModel: (next: ModelOption): void => {
       setup.model = next;
       model = createModel(next, fetchWithDeadline as typeof fetch);
@@ -169,7 +201,7 @@ The brief you are given is your complete starting context; do not assume access 
         ...history,
         {
           role: "user",
-          content: [preamble, contextPrompt(observed), prompt]
+          content: [preamble, modePrompt(mode), contextPrompt(observed), prompt]
             .filter((part) => part !== "")
             .join("\n\n"),
         },

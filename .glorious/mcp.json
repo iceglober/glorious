@@ -25,6 +25,14 @@
         "insert_before_symbol",
         "insert_after_symbol",
         "safe_delete_symbol"
+      ],
+      "readOnly": [
+        "find_symbol",
+        "get_symbols_overview",
+        "find_referencing_symbols",
+        "find_implementations",
+        "find_declaration",
+        "get_diagnostics_for_file"
       ]
     }
   }

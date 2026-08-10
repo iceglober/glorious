@@ -367,6 +367,51 @@ export const createOverlays = (
     }, 120);
   };
 
+  const showModes = (
+    modes: readonly { name: string; description: string }[],
+    active: string,
+    onSelect: (name: string) => void,
+  ): void => {
+    if (view) return;
+    const picker = new tui.SelectRenderable(renderer, {
+      width: "100%",
+      height: Math.max(3, Math.min(modes.length, panelRows() - listChrome)),
+      options: modes.map((mode) => ({
+        name: mode.name === active ? `${mode.name}  (current)` : mode.name,
+        description: mode.description,
+        value: mode.name,
+      })),
+    });
+    picker.on("itemSelected", () => {
+      const chosen = picker.getSelectedOption()?.value as string | undefined;
+      close();
+      if (chosen) onSelect(chosen);
+    });
+    const footer = textNode({
+      content: "↑/↓ choose · Enter switch · Esc cancel",
+      width: "100%",
+      height: 1,
+      fg: dimHex,
+    });
+    open(
+      panel(
+        { title: "Mode", width: panelWidth(), height: panelHeight(modes.length + listChrome) },
+        [
+          textNode({
+            content: styled([[{ text: "Agent mode", tone: "accent", bold: true }]]),
+            width: "100%",
+            height: 1,
+          }),
+          gap(),
+          picker,
+          gap(),
+          footer,
+        ],
+      ),
+    );
+    picker.focus();
+  };
+
   const handleKey = (event: KeyEvent): boolean => {
     if (!view) return false;
     if (modelSearch && !event.ctrl && !event.meta && !event.option) {
@@ -473,6 +518,7 @@ export const createOverlays = (
     showSkills,
     showMcp,
     showModels,
+    showModes,
     showModelError,
     handleKey,
     close,

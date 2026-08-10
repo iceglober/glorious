@@ -4,7 +4,7 @@ export const fence = (tag: string, body: string): string =>
 // Every block the agent prepends to a user turn. events.ts strips these when
 // replaying a transcript, so a new preamble block must be named here or it will
 // show up in the session log as if the user typed it.
-export const PREAMBLE_TAGS = ["where-you-are", "skills", "context-budget"] as const;
+export const PREAMBLE_TAGS = ["where-you-are", "mode", "skills", "context-budget"] as const;
 
 export const REMINDER_OPEN = "[system-reminder]";
 export const REMINDER_CLOSE = "[/system-reminder]";
@@ -233,6 +233,20 @@ export const contextPrompt = (used: number, budget = CONTEXT_BUDGET): string =>
   conversation answers more slowly. Past about half the budget, prefer
   delegating the reading you will not need again over doing it here.
 </context-budget>`;
+
+// Missing tools alone read as a broken environment. Say what the mode is, so a
+// refusal to edit is a stance rather than a malfunction.
+export const modePrompt = (mode: { name: string; readOnly: boolean }): string =>
+  !mode.readOnly
+    ? ""
+    : `<mode>
+  You are in ${mode.name} mode. The tools that change things — writing, editing,
+  running commands, delegating — are not available to you this turn, by design
+  and not by accident. Read, search and ask as much as you need, then say what
+  you would do: the files you would touch, the shape of each change, and how you
+  would check it. Do not describe the plan as if you had carried it out. The
+  user switches to build mode when they want it done.
+</mode>`;
 
 export const skillsPrompt = (catalog: string): string =>
   catalog === ""

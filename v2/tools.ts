@@ -55,6 +55,19 @@ export const BUILT_IN_TOOL_NAMES = [
 
 export type BuiltInToolName = (typeof BUILT_IN_TOOL_NAMES)[number];
 
+// Tools that cannot change the project or the machine. bash is absent on
+// purpose: `ls` and `rm -rf` are indistinguishable before running them, so a
+// read-only bash cannot be enforced, only asked for — and asking is what a mode
+// exists to stop doing.
+export const READ_ONLY_TOOL_NAMES = [
+  "ask_user",
+  "read",
+  "grep",
+  "glob",
+  "web_fetch",
+  "activate_skill",
+] as const satisfies readonly BuiltInToolName[];
+
 const RESULT_LIMIT = 30_000;
 const STDOUT_LIMIT = 20_000;
 const STDERR_LIMIT = 9_000;

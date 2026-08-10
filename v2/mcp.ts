@@ -13,10 +13,19 @@ export type McpServerConfig = {
   args?: string[];
   env?: Record<string, string>;
   tools?: string[];
+  // Names safe to keep in a read-only mode. There is no way to tell from the
+  // outside whether a server's tool mutates, so anything not listed here is
+  // withheld rather than guessed at.
+  readOnly?: string[];
   disabled?: boolean;
 };
 
-export type McpToolSummary = { name: string; server: string; description: string };
+export type McpToolSummary = {
+  name: string;
+  server: string;
+  description: string;
+  readOnly: boolean;
+};
 export type McpServerSummary = { name: string; tools: number };
 
 export type McpSession = {
@@ -214,7 +223,12 @@ export const startMcp = async (
         taken.add(entry.name);
         adoptedCount += 1;
         const description = entry.description ?? `${entry.name} (via ${name})`;
-        summaries.push({ name: entry.name, server: name, description: firstLine(description) });
+        summaries.push({
+          name: entry.name,
+          server: name,
+          description: firstLine(description),
+          readOnly: config.readOnly?.includes(entry.name) ?? false,
+        });
         adopted.push({
           entry: { ...entry, description },
           call: (args: Record<string, unknown>) =>
