@@ -13,6 +13,7 @@
     "ctrl-c-exit-hint",
     "gemini-prompt-addendum",
     "initial-release",
+    "layered-provider-mcp-config",
     "model-switching-and-tui",
     "multi-file-edit-and-subagents",
     "permissions-acl",

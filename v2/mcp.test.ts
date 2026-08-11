@@ -62,6 +62,21 @@ const call = async (name: string, input: Record<string, unknown>): Promise<strin
   return execute(input, {});
 };
 
+test("does not spawn an unapproved project server", async () => {
+  const blocked = await startMcp(dir, {
+    blocked: {
+      config: { command: "this-command-must-never-run" },
+      source: "project",
+      approved: false,
+      fingerprint: "changed",
+    },
+  });
+  expect(blocked.servers).toEqual([
+    { name: "blocked", tools: 0, source: "project", status: "unapproved", fingerprint: "changed" },
+  ]);
+  blocked.close();
+});
+
 describe("connecting", () => {
   test("adopts an allowlisted tool from the server", () => {
     expect(Object.keys(tools)).toContain("find_symbol");

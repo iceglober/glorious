@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { loadSkills } from "./skills";
-import { BUILT_IN_TOOL_NAMES, createTools } from "./tools";
+import { BUILT_IN_TOOL_NAMES, createTools, type ToolEvent } from "./tools";
 
 const registry = async (everything: boolean): Promise<string[]> => {
   const skills = await loadSkills(process.cwd());
@@ -31,5 +31,37 @@ describe("BUILT_IN_TOOL_NAMES", () => {
 
   test("run_subagent is withheld when delegation is not wired", async () => {
     expect(await registry(false)).not.toContain("run_subagent");
+  });
+
+  test("gives separate registries distinct event IDs", async () => {
+    const skills = await loadSkills(process.cwd());
+    const events: ToolEvent[] = [];
+    const first = createTools(
+      "/tmp",
+      (event) => events.push(event),
+      async () => "",
+      skills,
+    );
+    const second = createTools(
+      "/tmp",
+      (event) => events.push(event),
+      async () => "",
+      skills,
+    );
+    const questions = { questions: [{ question: "Continue?", options: ["Yes"] }] };
+
+    await (
+      first.ask_user.execute as (input: typeof questions, options: unknown) => Promise<string>
+    )(questions, {});
+    await (
+      second.ask_user.execute as (input: typeof questions, options: unknown) => Promise<string>
+    )(questions, {});
+
+    expect(events.filter((event) => event.phase === "start").map((event) => event.id)).toHaveLength(
+      2,
+    );
+    expect(events.filter((event) => event.phase === "start")[0]?.id).not.toBe(
+      events.filter((event) => event.phase === "start")[1]?.id,
+    );
   });
 });

@@ -240,7 +240,6 @@ export const createTools = (
   presentPlan?: PresentPlan,
 ): ToolSet => {
   const base = resolve(root);
-
   const announce = (event: ToolEvent): void => {
     try {
       onEvent(event);

@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { jsonSchema, type ToolSet, tool } from "ai";
+import { isApproved, loadApprovals, mcpFingerprint } from "./approvals";
+import { configProvenance, type LoadedConfig } from "./config";
 import { BUILT_IN_TOOL_NAMES, nextToolEventId, type ToolEvent } from "./tools";
 
 const PROTOCOL_VERSION = "2025-06-18";
@@ -13,9 +15,6 @@ export type McpServerConfig = {
   args?: string[];
   env?: Record<string, string>;
   tools?: string[];
-  // Names safe to keep in a read-only mode. There is no way to tell from the
-  // outside whether a server's tool mutates, so anything not listed here is
-  // withheld rather than guessed at.
   readOnly?: string[];
   disabled?: boolean;
 };
@@ -26,7 +25,20 @@ export type McpToolSummary = {
   description: string;
   readOnly: boolean;
 };
-export type McpServerSummary = { name: string; tools: number };
+export type McpSource = "global" | "project" | "local" | "legacy-global" | "legacy-project";
+export type ResolvedMcpServer = {
+  config: McpServerConfig;
+  source: McpSource;
+  approved: boolean;
+  fingerprint: string;
+};
+export type McpServerSummary = {
+  name: string;
+  tools: number;
+  source?: McpSource;
+  status?: "active" | "disabled" | "unapproved" | "failed";
+  fingerprint?: string;
+};
 
 export type McpSession = {
   toolsFor: (onEvent: (event: ToolEvent) => void) => ToolSet;
@@ -47,20 +59,58 @@ const capText = (text: string, limit: number): string =>
 
 const firstLine = (text: string): string => text.split("\n")[0]?.trim() ?? "";
 
-export const readMcpConfig = async (root: string): Promise<Record<string, McpServerConfig>> => {
-  const merged: Record<string, McpServerConfig> = {};
-  for (const path of [
-    join(homedir(), ".glorious", "mcp.json"),
-    join(root, ".glorious", "mcp.json"),
-  ]) {
-    const parsed = await readFile(path, "utf8")
-      .then((text) => JSON.parse(text) as { mcpServers?: Record<string, McpServerConfig> })
-      .catch(() => null);
-    for (const [name, server] of Object.entries(parsed?.mcpServers ?? {}))
-      if (server && typeof server.command === "string") merged[name] = server;
+const readLegacyMcpConfig = async (path: string): Promise<Record<string, McpServerConfig>> => {
+  const parsed = await readFile(path, "utf8")
+    .then((text) => JSON.parse(text) as { mcpServers?: Record<string, McpServerConfig> })
+    .catch(() => null);
+  const servers: Record<string, McpServerConfig> = {};
+  for (const [name, server] of Object.entries(parsed?.mcpServers ?? {})) {
+    if (server && typeof server.command === "string") servers[name] = server;
   }
-  return merged;
+  return servers;
 };
+
+export const readMcpConfig = async (root: string): Promise<Record<string, McpServerConfig>> => ({
+  ...(await readLegacyMcpConfig(join(homedir(), ".glorious", "mcp.json"))),
+  ...(await readLegacyMcpConfig(join(root, ".glorious", "mcp.json"))),
+});
+
+export const resolveMcpServers = async (
+  root: string,
+  loaded: LoadedConfig,
+): Promise<Record<string, ResolvedMcpServer>> => {
+  const legacyGlobal = await readLegacyMcpConfig(join(homedir(), ".glorious", "mcp.json"));
+  const legacyProject = await readLegacyMcpConfig(join(root, ".glorious", "mcp.json"));
+  const configured = loaded.config.mcpServers;
+  const combined: Record<string, { config: McpServerConfig; source: McpSource }> = {};
+  for (const [name, config] of Object.entries(legacyGlobal))
+    combined[name] = { config, source: "legacy-global" };
+  for (const [name, config] of Object.entries(legacyProject))
+    combined[name] = { config, source: "legacy-project" };
+  for (const [name, config] of Object.entries(configured)) {
+    const source = configProvenance(loaded.layers, ["mcpServers", name]);
+    combined[name] = {
+      config,
+      source: source === "project" ? "project" : source === "local" ? "local" : "global",
+    };
+  }
+  const approvals = await loadApprovals();
+  const canonicalRoot = resolve(root);
+  return Object.fromEntries(
+    Object.entries(combined).map(([name, entry]) => {
+      const fingerprint = mcpFingerprint(entry.config);
+      const approval = { root: canonicalRoot, name, fingerprint };
+      const requiresApproval = entry.source === "project" || entry.source === "legacy-project";
+      return [
+        name,
+        { ...entry, fingerprint, approved: !requiresApproval || isApproved(approvals, approval) },
+      ];
+    }),
+  );
+};
+
+const isResolvedServer = (entry: McpServerConfig | ResolvedMcpServer): entry is ResolvedMcpServer =>
+  "config" in entry;
 
 const connect = (name: string, config: McpServerConfig, root: string) => {
   const child = Bun.spawn([config.command, ...(config.args ?? [])], {
@@ -178,7 +228,7 @@ const resultText = (result: unknown): string => {
 
 export const startMcp = async (
   root: string,
-  servers: Record<string, McpServerConfig>,
+  servers: Record<string, McpServerConfig | ResolvedMcpServer>,
 ): Promise<McpSession> => {
   const adopted: Array<{
     entry: Listed & { description: string };
@@ -191,9 +241,33 @@ export const startMcp = async (
   const taken = new Set<string>(BUILT_IN_TOOL_NAMES);
   const loadedSkills = new Map<string, Record<string, McpServerConfig>>();
 
-  const load = async (configured: Record<string, McpServerConfig>): Promise<void> => {
-    for (const [name, config] of Object.entries(configured)) {
-      if (config.disabled) continue;
+  const load = async (
+    configured: Record<string, McpServerConfig | ResolvedMcpServer>,
+  ): Promise<void> => {
+    for (const [name, entry] of Object.entries(configured)) {
+      const resolved = isResolvedServer(entry) ? entry : undefined;
+      const config: McpServerConfig = isResolvedServer(entry) ? entry.config : entry;
+      if (config.disabled) {
+        serversShown.push({
+          name,
+          tools: 0,
+          source: resolved?.source,
+          status: "disabled",
+          fingerprint: resolved?.fingerprint,
+        });
+        continue;
+      }
+      if (resolved && !resolved.approved) {
+        serversShown.push({
+          name,
+          tools: 0,
+          source: resolved.source,
+          status: "unapproved",
+          fingerprint: resolved.fingerprint,
+        });
+        notes.push(`${name}: approval required before running ${config.command}`);
+        continue;
+      }
       const client = connect(name, config, root);
       shutdowns.push(client.close);
       const listed = await client.start().catch((thrown: unknown) => {
@@ -201,7 +275,16 @@ export const startMcp = async (
         client.close();
         return null;
       });
-      if (listed === null) continue;
+      if (listed === null) {
+        serversShown.push({
+          name,
+          tools: 0,
+          source: resolved?.source,
+          status: "failed",
+          fingerprint: resolved?.fingerprint,
+        });
+        continue;
+      }
 
       const allowed = config.tools;
       const admitted = listed
@@ -241,7 +324,13 @@ export const startMcp = async (
               ),
         });
       }
-      serversShown.push({ name, tools: adoptedCount });
+      serversShown.push({
+        name,
+        tools: adoptedCount,
+        source: resolved?.source,
+        status: "active",
+        fingerprint: resolved?.fingerprint,
+      });
     }
   };
 
@@ -316,4 +405,14 @@ export const startMcp = async (
       for (const stop of shutdowns) stop();
     },
   };
+};
+
+export const doctorMcp = async (
+  root: string,
+  servers: Record<string, McpServerConfig | ResolvedMcpServer>,
+): Promise<{ servers: McpServerSummary[]; notes: string[] }> => {
+  const session = await startMcp(root, servers);
+  const result = { servers: [...session.servers], notes: [...session.notes] };
+  session.close();
+  return result;
 };

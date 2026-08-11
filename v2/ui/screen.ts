@@ -2,12 +2,12 @@ import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { McpServerSummary } from "../mcp";
-import type { ModelOption } from "../models";
+import type { ModelOption, ProviderOption } from "../models";
 import type { Mode } from "../modes";
 import { type Line, modeLabel, statusWave, type Tone } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
-import { createChrome, fillHex, type Host, panelHex } from "./chrome";
+import { createChrome, fillHex, panelHex } from "./chrome";
 import { createOverlays } from "./overlays";
 import { createQuestions } from "./questions";
 
@@ -26,6 +26,7 @@ export const createScreen = async (callbacks: {
   onModeCycle: () => void;
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
+  onMcpApprove: (name: string) => void;
   onEscape: () => void;
   onResize: () => void;
   onQuit: () => void;
@@ -100,22 +101,11 @@ export const createScreen = async (callbacks: {
     [autocompleteLabel],
   );
 
-  const inputRow = stack(
-    {
-      flexDirection: "row",
-      width: "100%",
-      minWidth: 0,
-      backgroundColor: fillHex,
-    },
-    [caret, input],
-  );
-  // Subtext under what you are typing: the mode governs what the next thing you
-  // send is allowed to do, so it belongs with the composer, not the status line.
   const modeRow = textNode({ content: "", width: "100%", height: 1, wrapMode: "none" });
 
   const composerRow = stack(
     {
-      flexDirection: "column",
+      flexDirection: "row",
       width: columns(),
       minWidth: 0,
       marginTop: 0,
@@ -123,16 +113,13 @@ export const createScreen = async (callbacks: {
       paddingX: 1,
       backgroundColor: fillHex,
     },
-    [inputRow, modeRow],
+    [caret, input],
   );
 
-  // A question is not a modal — it is the input area asking instead of waiting,
-  // so it takes the composer's place in the footer rather than floating over it.
   const composerSlot = stack(
     { flexDirection: "column", width: "100%", minWidth: 0, flexShrink: 0 },
-    [composerRow],
+    [composerRow, modeRow],
   );
-
   const footer = stack({ flexDirection: "column", flexShrink: 0, width: "100%" }, [
     progress,
     autocomplete,
@@ -161,18 +148,25 @@ export const createScreen = async (callbacks: {
   };
 
   let slotted: Renderable | null = null;
-  const host: Host = {
+  const host = {
     draw,
     focusComposer: () => input.focus(),
     blurComposer: () => input.blur(),
-    useComposerSlot: (node) => {
+    useComposerSlot: (node: Renderable | null) => {
       if (slotted) composerSlot.remove(slotted);
       slotted = node;
       if (node) composerSlot.add(node);
       composerRow.visible = node === null;
+      modeRow.visible = node === null;
     },
   };
-  const overlays = createOverlays(chrome, host, callbacks.onSkillsReload, callbacks.onMcpReload);
+  const overlays = createOverlays(
+    chrome,
+    host,
+    callbacks.onSkillsReload,
+    callbacks.onMcpReload,
+    callbacks.onMcpApprove,
+  );
   const questions = createQuestions(chrome, host);
 
   const painter = (node: TextRenderable) => {
@@ -469,22 +463,32 @@ export const createScreen = async (callbacks: {
     },
     columns,
     showHelp: overlays.showHelp,
+    showModes: (modes: readonly Mode[], active: string, onSelect: (name: string) => void) =>
+      overlays.showModes(modes, active, onSelect),
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
     showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
       overlays.showMcp(servers, notes),
-    showModels: (models: readonly ModelOption[], onSelect: (model: ModelOption) => void) =>
-      overlays.showModels(models, onSelect),
+    showModels: (
+      models: readonly ModelOption[],
+      onSelect: (model: ModelOption) => void,
+      onConnect: () => void,
+    ) => overlays.showModels(models, onSelect, onConnect),
+    showProviders: (
+      providers: readonly ProviderOption[],
+      onSelect: (provider: ProviderOption) => void,
+      onBack: () => void,
+    ) => overlays.showProviders(providers, onSelect, onBack),
+    showProviderKey: (
+      provider: ProviderOption,
+      onSave: (key: string) => void,
+      onCancel: () => void,
+    ) => overlays.showProviderKey(provider, onSave, onCancel),
     showModelError: (message: string) => overlays.showModelError(message),
     setMode: (mode: { name: string; tone: Tone }) => {
       modeRow.content = styled([modeLabel(mode)]);
       draw();
     },
-    showModes: (modes: readonly Mode[], active: string, onSelect: (name: string) => void) =>
-      overlays.showModes(modes, active, onSelect),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
-      // Menus and questions share one slot. A menu can be open when the agent
-      // asks, and it would otherwise keep the keyboard while the question held
-      // the screen — so the question, which something is blocked on, evicts it.
       if (overlays.isOpen()) overlays.close();
       return questions.ask(items, signal);
     },
