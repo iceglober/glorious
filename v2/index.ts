@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { homedir } from "node:os";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
@@ -54,15 +53,11 @@ const probe = () => {
     }
   });
   const dirty = changes === "" ? 0 : changes.split("\n").length;
-  const home = homedir();
   const root = top === "" ? cwd : top;
   return {
     root,
     os,
-    branch: branch === "" ? "HEAD" : branch,
-    worktree: root === cwd ? null : cwd.slice(`${root}/`.length),
     git: `${branch === "" ? "HEAD" : branch} ${dirty === 0 ? "clean" : `${dirty} files changed`}`,
-    label: root === home || root.startsWith(`${home}/`) ? `~${root.slice(home.length)}` : root,
   };
 };
 
@@ -82,7 +77,7 @@ const main = async (): Promise<void> => {
       throw new Error("Usage: glorious [--version | update | --resume [session-id]]");
     resumeId = args[1];
   }
-  const { root, os, branch, worktree, git, label } = probe();
+  const { root, os, git } = probe();
   const session =
     resumeId === undefined && args.length === 0
       ? await createSession(root)
@@ -96,19 +91,6 @@ const main = async (): Promise<void> => {
   let frame = 0;
   const lastUsage = session.events.findLast((event) => event.type === "usage");
   let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
-  let cached: number | null = lastUsage?.type === "usage" ? lastUsage.cached : null;
-  let totalTokensIn = session.events.reduce(
-    (total, event) => (event.type === "usage" ? total + (event.input ?? event.tokens) : total),
-    0,
-  );
-  let totalTokensOut = session.events.reduce(
-    (total, event) => (event.type === "usage" ? total + (event.output ?? 0) : total),
-    0,
-  );
-  let totalCachedTokens = session.events.reduce(
-    (total, event) => (event.type === "usage" ? total + event.cached : total),
-    0,
-  );
   let produced = false;
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
 
@@ -124,21 +106,10 @@ const main = async (): Promise<void> => {
     screen.setStatus(
       statusLine(
         {
-          cwd: label,
-          worktree,
-          branch,
           model: `${modelLabel(model)}${model.variant ? ` (${model.variant})` : ""}`,
           tokens,
           percentUsed:
             model.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
-          cached,
-          totalTokensIn,
-          totalTokensOut,
-          totalCachedTokens,
-          busy: chat.busy,
-          queued: chat.queued.length,
-          frame,
-          sessionId: session.id,
         },
         screen.columns(),
       ),
@@ -166,6 +137,7 @@ const main = async (): Promise<void> => {
         await screen.askQuestions([{ question: PLAN_QUESTION, options: PLAN_OPTIONS }], signal),
       );
       if (verdict.decision === "approved") chat.planApproved(plan, files, verdict.fresh);
+      if (verdict.decision === "feedback") screen.restoreInput(verdict.note);
       return verdict;
     },
   });
@@ -190,10 +162,6 @@ const main = async (): Promise<void> => {
     record(event);
     if (event.type === "usage") {
       tokens = event.tokens;
-      cached = event.cached;
-      totalTokensIn += event.input ?? event.tokens;
-      totalTokensOut += event.output ?? 0;
-      totalCachedTokens += event.cached;
       session.contextTokens = event.tokens;
     }
     if (event.type === "user") produced = false;
@@ -303,6 +271,7 @@ const main = async (): Promise<void> => {
       const metadata = options.find((option) => modelLabel(option) === modelLabel(model));
       if (metadata) {
         model = metadata;
+        agent.setModel(metadata);
         repaint();
       }
     })

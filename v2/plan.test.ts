@@ -30,8 +30,7 @@ describe("reading the user's verdict", () => {
   });
 
   test("choosing feedback with no note still asks, rather than proceeding", () => {
-    const verdict = planVerdict(answer(PLAN_FEEDBACK));
-    expect(verdict.decision).toBe("feedback");
+    expect(planVerdict(answer(PLAN_FEEDBACK))).toEqual({ decision: "feedback", note: "" });
   });
 
   test("a note alongside approval does not turn it into feedback", () => {

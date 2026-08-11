@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { createModel, type ModelOption } from "./models";
+import { generateText, hasToolCall, type ModelMessage, stepCountIs } from "ai";
+import { createModel, type ModelOption, modelCost } from "./models";
 import { DEFAULT_MODE, type Mode } from "./modes";
 import {
   contextPrompt,
@@ -169,7 +169,7 @@ The brief you are given is your complete starting context; do not assume access 
   const settings = () => ({
     model,
     instructions: systemPrompt(setup),
-    stopWhen: [stepCountIs(STEP_LIMIT)],
+    stopWhen: [stepCountIs(STEP_LIMIT), hasToolCall("present_plan")],
     maxRetries: 5,
     providerOptions: { openai: openaiOptions(setup.sessionId) },
   });
@@ -206,6 +206,7 @@ The brief you are given is your complete starting context; do not assume access 
           contextTokens: number;
           cachedTokens: number;
           outputTokens: number;
+          cost?: number;
         }) => void;
         onTool: (event: ToolEvent) => void;
       },
@@ -231,6 +232,7 @@ The brief you are given is your complete starting context; do not assume access 
             contextTokens: observed,
             cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
             outputTokens: usage?.outputTokens ?? 0,
+            cost: modelCost(setup.model, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
           });
         },
       });

@@ -1,22 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { rightClip, statusLine, width } from "./render";
 
-const state = (cwd: string) => ({
-  cwd,
-  worktree: "src",
-  branch: "main",
-  model: "model",
-  mode: "build",
-  tokens: 1000,
-  percentUsed: 1,
-  cached: null,
-  totalTokensIn: 1000,
-  totalTokensOut: 10,
-  totalCachedTokens: 0,
-  busy: false,
-  queued: 0,
-  frame: 0,
-  sessionId: "session",
+const state = (model: string, tokens = 1000, percentUsed: number | null = 1) => ({
+  model,
+  tokens,
+  percentUsed,
 });
 
 describe("right truncation", () => {
@@ -30,22 +18,21 @@ describe("right truncation", () => {
 });
 
 describe("status line", () => {
-  test("keeps a short cwd unchanged", () => {
-    const first = statusLine(state("repo"), 200)[0]
-      .map((span) => span.text)
-      .join("");
-    expect(first).toContain("repo:src (main)");
+  test("renders one compact row with model and context", () => {
+    const lines = statusLine(state("model"), 200);
+    expect(lines).toHaveLength(1);
+    const line = lines[0].map((span) => span.text).join("");
+    expect(line).toBe("model · ctx 1.0k(1%)");
+    expect(line).not.toContain("cached");
+    expect(line).not.toContain("session");
   });
 
-  test("budgets a long cwd before the fixed status text", () => {
-    const columns = 60;
-    const first = statusLine(state("/home/user/very/long/project/path"), columns)[0]
+  test("clips the compact row to the available width", () => {
+    const columns = 20;
+    const line = statusLine(state("very-long-model"), columns)[0]
       .map((span) => span.text)
       .join("");
-    const suffix = ":src (main) · in 1.0k · out 10";
-    expect(first.startsWith("…")).toBe(true);
-    expect(first.endsWith(suffix)).toBe(true);
-    expect(first).toContain("/project/path");
-    expect(width(first)).toBeLessThanOrEqual(columns);
+    expect(line).toBe("very-long-model · c…");
+    expect(width(line)).toBeLessThanOrEqual(columns);
   });
 });

@@ -7,7 +7,14 @@ export type SessionEvent =
   | { type: "tool"; name: string; detail: string; elapsedMs: number; ok: boolean }
   | { type: "notice"; text: string }
   | { type: "error"; text: string }
-  | { type: "usage"; tokens: number; cached: number; input?: number; output?: number }
+  | {
+      type: "usage";
+      tokens: number;
+      cached: number;
+      input?: number;
+      output?: number;
+      cost?: number;
+    }
   | { type: "cleared"; reason: string }
   | { type: "turn"; messages: ModelMessage[] };
 

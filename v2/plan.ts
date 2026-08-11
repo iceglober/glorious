@@ -29,8 +29,7 @@ export const planVerdict = (raw: string): PlanVerdict => {
   // no option in that case, and treating it as approval would be the one
   // mistake here that cannot be taken back.
   if (note !== "") return { decision: "feedback", note };
-  if (answer.option === PLAN_FEEDBACK)
-    return { decision: "feedback", note: "(none given — ask what they want changed)" };
+  if (answer.option === PLAN_FEEDBACK) return { decision: "feedback", note: "" };
   return { decision: "cancelled" };
 };
 

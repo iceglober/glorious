@@ -193,38 +193,16 @@ const tokenCount = (tokens: number | null): string => {
 
 export const statusLine = (
   state: {
-    cwd: string;
-    worktree: string | null;
-    branch: string;
     model: string;
     tokens: number | null;
     percentUsed: number | null;
-    cached: number | null;
-    totalTokensIn: number;
-    totalTokensOut: number;
-    totalCachedTokens: number;
-    busy: boolean;
-    queued: number;
-    frame: number;
-    sessionId: string;
   },
   columns: number,
 ): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
-  const worktree = state.worktree === null ? "" : `:${flatten(state.worktree)}`;
-  const locationSuffix = `${worktree} (${flatten(state.branch)})`;
   const percent = state.percentUsed === null ? "unknown" : `${Math.round(state.percentUsed)}%`;
-  const cachedPercent =
-    state.totalTokensIn > 0
-      ? `${Math.round((state.totalCachedTokens / state.totalTokensIn) * 100)}%`
-      : "unknown";
-  const lineOneSuffix = `${locationSuffix} · in ${tokenCount(state.totalTokensIn)} · out ${tokenCount(state.totalTokensOut)}`;
-  const cwd = rightClip(flatten(state.cwd), Math.max(0, limit - width(lineOneSuffix)));
-  const lineOne = `${cwd}${lineOneSuffix}`;
-  const lineTwo = `${state.sessionId} · ${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;
-  const first = clip(lineOne, limit);
-  const second = clip(lineTwo, limit);
-  return [[{ text: first, tone: "muted" }], [{ text: second, tone: "muted" }]];
+  const line = `${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent})`;
+  return [[{ text: clip(line, limit), tone: "muted" }]];
 };
 
 export const statusWave = (

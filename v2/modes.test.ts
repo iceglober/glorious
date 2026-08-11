@@ -97,29 +97,15 @@ describe("the mode label under the composer", () => {
   });
 
   test("it no longer rides in the status line", () => {
-    const line = statusLine(
-      {
-        cwd: "repo",
-        worktree: null,
-        branch: "main",
-        model: "gpt-5.6-luna",
-        tokens: 1000,
-        percentUsed: 1,
-        cached: null,
-        totalTokensIn: 1000,
-        totalTokensOut: 10,
-        totalCachedTokens: 500,
-        busy: false,
-        queued: 0,
-        frame: 0,
-        sessionId: "abc12345",
-      },
-      200,
-    )
+    const lines = statusLine({ model: "gpt-5.6-luna", tokens: 1000, percentUsed: 1 }, 200);
+    expect(lines).toHaveLength(1);
+    const line = lines
       .flat()
       .map((span) => span.text)
       .join("");
-    for (const mode of MODES) expect(line).not.toContain(mode.name);
+    expect(line).toBe("gpt-5.6-luna · ctx 1.0k(1%)");
+    for (const detail of ["repo", "main", "abc12345", "in", "out", "$0.00", "cached"])
+      expect(line).not.toContain(detail);
   });
 });
 

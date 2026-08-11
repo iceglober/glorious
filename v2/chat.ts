@@ -93,6 +93,7 @@ export const createChat = (
             cached: step.cachedTokens,
             input: step.contextTokens,
             output: step.outputTokens,
+            cost: step.cost,
           });
           if (step.text.trim() === "") return;
           spoken = step.text;

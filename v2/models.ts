@@ -46,13 +46,42 @@ export const modelRef = (value: string, provider = "azure"): ModelRef => {
 
 export const modelLabel = (model: ModelRef): string => `${model.provider}/${model.modelId}`;
 
+export const priceMultiplier = (provider: string): number => {
+  const entry = (process.env.GLORIOUS_PRICE_MULTIPLIERS ?? "").split(",").find((item) => {
+    const [name] = item.split("=", 1);
+    return name?.trim() === provider;
+  });
+  const multiplier = Number(entry?.split("=", 2)[1]);
+  return Number.isFinite(multiplier) && multiplier >= 0 ? multiplier : 1;
+};
+
+export const modelCost = (
+  model: Pick<ModelOption, "inputCost" | "outputCost">,
+  input: number,
+  output: number,
+): number | undefined =>
+  model.inputCost === undefined && model.outputCost === undefined
+    ? undefined
+    : ((model.inputCost ?? 0) * input + (model.outputCost ?? 0) * output) / 1_000_000;
+
+const withPrice = (model: ModelOption): ModelOption => ({
+  ...model,
+  inputCost:
+    model.inputCost === undefined ? undefined : model.inputCost * priceMultiplier(model.provider),
+  outputCost:
+    model.outputCost === undefined ? undefined : model.outputCost * priceMultiplier(model.provider),
+});
+
 export const currentModel = (): ModelOption => {
   const model = process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna";
   return { ...modelRef(model), name: model, env: [] };
 };
 
-export const loadModels = async (current: ModelOption): Promise<ModelOption[]> => {
-  const response = await fetch(catalogUrl, { signal: AbortSignal.timeout(10_000) });
+export const loadModels = async (
+  current: ModelOption,
+  fetcher: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<ModelOption[]> => {
+  const response = await fetcher(catalogUrl, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
   const data = (await response.json()) as Record<string, ModelsDevProvider>;
   const options = Object.entries(data).flatMap(([provider, value]) => {
@@ -81,11 +110,12 @@ export const loadModels = async (current: ModelOption): Promise<ModelOption[]> =
       variants: model.reasoning_options?.find((option) => option.type === "effort")?.values,
     }));
   });
+  const priced = options.map(withPrice);
   const currentKey = modelLabel(current);
-  const metadata = options.find((option) => modelLabel(option) === currentKey);
+  const metadata = priced.find((option) => modelLabel(option) === currentKey);
   return [
-    { ...current, ...metadata },
-    ...options.filter((option) => modelLabel(option) !== currentKey),
+    withPrice({ ...current, ...metadata }),
+    ...priced.filter((option) => modelLabel(option) !== currentKey),
   ].sort((a, b) => modelLabel(a).localeCompare(modelLabel(b)));
 };
 

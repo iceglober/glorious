@@ -10,6 +10,9 @@ const node = () => ({
   setText() {},
   plainText: "",
   on() {},
+  add() {},
+  remove() {},
+  backgroundColor: "",
   options: [] as unknown[],
   getSelectedOption: () => undefined,
 });
