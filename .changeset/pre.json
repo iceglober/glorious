@@ -9,6 +9,7 @@
     "cli-version-update",
     "cloud-auth-connect",
     "config-tui",
+    "configurable-model-pricing",
     "context-pressure-and-delegation",
     "ctrl-c-exit-hint",
     "gemini-prompt-addendum",
@@ -19,6 +20,7 @@
     "permissions-acl",
     "picker-provider-catalog",
     "plan-build-and-models",
+    "quiet-status-footer",
     "remove-ansi-renderer",
     "remove-completion-grounding",
     "surface-intermediate-text",
@@ -26,6 +28,7 @@
     "trim-published-tarball",
     "tui-progress-animations",
     "v2-rewrite",
-    "web-fetch-fallback"
+    "web-fetch-fallback",
+    "wrap-questions-and-pause-feedback"
   ]
 }
