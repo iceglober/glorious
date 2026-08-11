@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { loadSkills } from "./skills";
 import { BUILT_IN_TOOL_NAMES, createTools, type ToolEvent } from "./tools";
 
-const registry = async (withSubagent: boolean): Promise<string[]> => {
+const registry = async (everything: boolean): Promise<string[]> => {
   const skills = await loadSkills(process.cwd());
   return Object.keys(
     createTools(
@@ -10,7 +10,8 @@ const registry = async (withSubagent: boolean): Promise<string[]> => {
       () => {},
       async () => "",
       skills,
-      withSubagent ? async () => "" : undefined,
+      everything ? async () => "" : undefined,
+      everything ? async () => ({ decision: "cancelled" }) : undefined,
     ),
   );
 };

@@ -7,11 +7,26 @@ export type SessionEvent =
   | { type: "tool"; name: string; detail: string; elapsedMs: number; ok: boolean }
   | { type: "notice"; text: string }
   | { type: "error"; text: string }
-  | { type: "usage"; tokens: number; cached: number; input?: number; output?: number }
+  | {
+      type: "usage";
+      tokens: number;
+      cached: number;
+      input?: number;
+      output?: number;
+      cost?: number;
+    }
+  | { type: "cleared"; reason: string }
   | { type: "turn"; messages: ModelMessage[] };
 
-export const messagesOf = (events: readonly SessionEvent[]): ModelMessage[] =>
-  events.flatMap((event) => (event.type === "turn" ? event.messages : []));
+// A clear resets what the model sees, not what the user sees. The transcript
+// replays every event; the fold restarts at the last clear, so a resumed
+// session inherits the same trimmed context the live one had.
+export const messagesOf = (events: readonly SessionEvent[]): ModelMessage[] => {
+  const cleared = events.findLastIndex((event) => event.type === "cleared");
+  return events
+    .slice(cleared + 1)
+    .flatMap((event) => (event.type === "turn" ? event.messages : []));
+};
 
 export const contextTokensOf = (events: readonly SessionEvent[]): number | undefined => {
   const last = events.findLast((event) => event.type === "usage");

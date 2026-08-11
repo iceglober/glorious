@@ -10,6 +10,8 @@ import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
 import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
 import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
+import { MODES, type Mode, modeByName, nextMode } from "./modes";
+import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
 import {
   errorText,
   eventBlock,
@@ -129,19 +131,6 @@ const main = async (): Promise<void> => {
   let frame = 0;
   const lastUsage = session.events.findLast((event) => event.type === "usage");
   let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
-  let cached: number | null = lastUsage?.type === "usage" ? lastUsage.cached : null;
-  let totalTokensIn = session.events.reduce(
-    (total, event) => (event.type === "usage" ? total + (event.input ?? event.tokens) : total),
-    0,
-  );
-  let totalTokensOut = session.events.reduce(
-    (total, event) => (event.type === "usage" ? total + (event.output ?? 0) : total),
-    0,
-  );
-  let totalCachedTokens = session.events.reduce(
-    (total, event) => (event.type === "usage" ? total + event.cached : total),
-    0,
-  );
   let produced = false;
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
 
@@ -157,21 +146,10 @@ const main = async (): Promise<void> => {
     screen.setStatus(
       statusLine(
         {
-          cwd: label,
-          worktree,
-          branch,
           model: `${modelLabel(model)}${model.variant ? ` (${model.variant})` : ""}`,
           tokens,
           percentUsed:
             model.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
-          cached,
-          totalTokensIn,
-          totalTokensOut,
-          totalCachedTokens,
-          busy: chat.busy,
-          queued: chat.queued.length,
-          frame,
-          sessionId: session.id,
         },
         screen.columns(),
       ),
@@ -191,6 +169,17 @@ const main = async (): Promise<void> => {
     skillTools: skills,
     mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
+    presentPlan: async ({ plan, files }, signal) => {
+      // Show the plan in the transcript first — the approval prompt sits in the
+      // composer and has no room to hold the thing being approved.
+      render({ type: "assistant", text: planBlock(plan, files) });
+      const verdict = planVerdict(
+        await screen.askQuestions([{ question: PLAN_QUESTION, options: PLAN_OPTIONS }], signal),
+      );
+      if (verdict.decision === "approved") chat.planApproved(plan, files, verdict.fresh);
+      if (verdict.decision === "feedback") screen.restoreInput(verdict.note);
+      return verdict;
+    },
   });
 
   const replaceMcp = async (): Promise<void> => {
@@ -213,6 +202,16 @@ const main = async (): Promise<void> => {
     repaint();
   };
 
+  // Both the picker and the Tab shortcut land here, so the composer label can
+  // never disagree with the mode actually in force.
+  const applyMode = (next: Mode): void => {
+    agent.setMode(next);
+    screen.setMode(next);
+    repaint();
+  };
+
+  const cycleMode = (): void => applyMode(nextMode(agent.mode().name));
+
   const record = (event: SessionEvent): void => {
     session.events.push(event);
     session.updatedAt = new Date().toISOString();
@@ -223,10 +222,6 @@ const main = async (): Promise<void> => {
     record(event);
     if (event.type === "usage") {
       tokens = event.tokens;
-      cached = event.cached;
-      totalTokensIn += event.input ?? event.tokens;
-      totalTokensOut += event.output ?? 0;
-      totalCachedTokens += event.cached;
       session.contextTokens = event.tokens;
     }
     if (event.type === "user") produced = false;
@@ -284,6 +279,11 @@ const main = async (): Promise<void> => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
+      if (name === "mode")
+        screen.showModes(MODES, agent.mode().name, (chosen) => {
+          const next = modeByName(chosen);
+          if (next) applyMode(next);
+        });
       if (name === "models") {
         const selectModel = (next: typeof model): void => {
           agent.setModel(next);
@@ -350,6 +350,7 @@ const main = async (): Promise<void> => {
       }
       repaint();
     },
+    onModeCycle: cycleMode,
     onSkillsReload: () => {
       void loadSkills(root).then((refreshed) => {
         skills = refreshed;
@@ -386,6 +387,7 @@ const main = async (): Promise<void> => {
       const metadata = options.find((option) => modelLabel(option) === modelLabel(model));
       if (metadata) {
         model = metadata;
+        agent.setModel(metadata);
         repaint();
       }
     })
@@ -421,6 +423,7 @@ const main = async (): Promise<void> => {
 
   try {
     screen.start();
+    screen.setMode(agent.mode());
     repaint();
     process.on("SIGINT", onSigint);
     await closed;

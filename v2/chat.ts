@@ -1,7 +1,8 @@
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
 import type { SessionEvent } from "./events";
-import { reminder } from "./prompt";
+import { DEFAULT_MODE } from "./modes";
+import { implementPrompt, planNudge, reminder } from "./prompt";
 import { errorText } from "./render";
 import type { ToolEvent } from "./tools";
 
@@ -9,6 +10,7 @@ export type ChatSignal =
   | { type: "tool"; tool: ToolEvent }
   | { type: "empty" }
   | { type: "dequeued"; text: string }
+  | { type: "mode" }
   | { type: "idle" };
 
 const NOTE_CHARS = 160;
@@ -21,10 +23,16 @@ export const createChat = (
     history?: ModelMessage[];
   },
 ) => {
-  const queue: string[] = [];
+  // A turn the app starts on the user's behalf is not something the user said,
+  // so it carries its own label for the transcript rather than being echoed.
+  type Pending = { text: string; label: string | null };
+  const queue: Pending[] = [];
   let history: ModelMessage[] = wiring.history?.slice() ?? [];
   let live: AbortController | null = null;
   let note = "";
+  let lastAsk = "";
+  let approved: { plan: string; files: string[]; fresh: boolean } | null = null;
+  let nudged = false;
 
   const announce = (event: SessionEvent): void => {
     try {
@@ -55,12 +63,18 @@ export const createChat = (
     });
   };
 
-  const turn = async (text: string): Promise<void> => {
+  const turn = async ({ text, label }: Pending): Promise<void> => {
     const stop = new AbortController();
     live = stop;
-    announce({ type: "user", text });
+    if (label === null) {
+      lastAsk = text;
+      announce({ type: "user", text });
+    } else {
+      announce({ type: "notice", text: label });
+    }
     const prompt = note === "" ? text : `${note}\n\n${text}`;
     note = "";
+    let presented = false;
     const started = new Map<number, number>();
     const before = history.length;
     let spoken = "";
@@ -68,7 +82,10 @@ export const createChat = (
     const done = await agent
       .run(prompt, history, {
         signal: stop.signal,
-        onTool: (tool) => onTool(started, tool),
+        onTool: (tool) => {
+          if (tool.name === "present_plan") presented = true;
+          onTool(started, tool);
+        },
         onStep: (step) => {
           announce({
             type: "usage",
@@ -76,6 +93,7 @@ export const createChat = (
             cached: step.cachedTokens,
             input: step.contextTokens,
             output: step.outputTokens,
+            cost: step.cost,
           });
           if (step.text.trim() === "") return;
           spoken = step.text;
@@ -106,6 +124,13 @@ export const createChat = (
         note = reminder("Your last turn ran out of steps and stopped before finishing.");
         announce({ type: "notice", text: '(step limit reached — send "continue" to resume)' });
       }
+      // Plan mode is supposed to end by presenting a plan. Instruction alone has
+      // a measured failure record here, so a turn that ends without one is asked
+      // again — once, so a model that will not comply cannot loop.
+      if (agent.mode().readOnly && !presented && approved === null && !nudged) {
+        nudged = true;
+        queue.push({ text: planNudge, label: null });
+      }
     }
     signal({ type: "idle" });
   };
@@ -114,6 +139,23 @@ export const createChat = (
     while (queue.length > 0) {
       await turn(queue[0]);
       queue.shift();
+      if (approved === null) continue;
+      const plan = approved;
+      approved = null;
+      nudged = false;
+      // Ordered so a resumed session folds the same context the live one has:
+      // the clear lands before the turn it is meant to precede.
+      if (plan.fresh) {
+        history = [];
+        announce({ type: "cleared", reason: "plan approved" });
+        announce({ type: "notice", text: "(context cleared — carrying the plan forward)" });
+      }
+      agent.setMode(DEFAULT_MODE);
+      signal({ type: "mode" });
+      queue.push({
+        text: implementPrompt(plan.plan, plan.files, lastAsk),
+        label: "(implementing the approved plan)",
+      });
     }
   };
 
@@ -122,11 +164,17 @@ export const createChat = (
       return queue.length > 0;
     },
     get queued(): readonly string[] {
-      return queue.slice(1);
+      return queue.slice(1).map((item) => item.label ?? item.text);
     },
     send: (text: string): void => {
-      queue.push(text);
+      queue.push({ text, label: null });
       if (queue.length === 1) void drain();
+    },
+    // Recorded during the turn, acted on once it ends: the in-flight request
+    // already has its messages, so mode and context can only change at a
+    // boundary.
+    planApproved: (plan: string, files: string[], fresh: boolean): void => {
+      approved = { plan, files, fresh };
     },
     abort: (): boolean => {
       live?.abort();
@@ -135,8 +183,9 @@ export const createChat = (
     dequeue: (): string | null => {
       if (queue.length < 2) return null;
       const [dropped] = queue.splice(-1);
-      signal({ type: "dequeued", text: dropped });
-      return dropped;
+      const text = dropped.label ?? dropped.text;
+      signal({ type: "dequeued", text });
+      return text;
     },
   };
 };

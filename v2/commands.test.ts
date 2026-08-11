@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { activeSlash, commandName, matchingCommands } from "./commands";
+import { activeSlash, commandName, commands, matchingCommands } from "./commands";
 
 describe("slash commands", () => {
   test("activates after whitespace but not inside a word", () => {
@@ -18,5 +18,11 @@ describe("slash commands", () => {
   test("parses a command submission", () => {
     expect(commandName(" /help ")).toBe("help");
     expect(commandName("help")).toBeNull();
+  });
+
+  test("describes mode as a cycle", () => {
+    expect(commands.find((command) => command.name === "mode")?.description).toBe(
+      "Cycle through agent modes",
+    );
   });
 });

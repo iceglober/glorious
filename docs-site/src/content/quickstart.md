@@ -20,7 +20,7 @@ export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource
 ```
 
-`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`).
+`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`). Set `GLORIOUS_PRICE_MULTIPLIERS` to adjust provider prices, for example `azure=1.1`.
 
 ## Open a session
 

@@ -3,7 +3,8 @@ import { activeSlash, commandName, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
-import { type Line, statusWave } from "../render";
+import type { Mode } from "../modes";
+import { type Line, modeLabel, statusWave, type Tone } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
@@ -22,6 +23,7 @@ export const createScreen = async (callbacks: {
   onShell: (command: string) => void;
   cwd: string;
   onCommand: (name: string) => void;
+  onModeCycle: () => void;
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
   onMcpApprove: (name: string) => void;
@@ -99,6 +101,8 @@ export const createScreen = async (callbacks: {
     [autocompleteLabel],
   );
 
+  const modeRow = textNode({ content: "", width: "100%", height: 1, wrapMode: "none" });
+
   const composerRow = stack(
     {
       flexDirection: "row",
@@ -112,11 +116,15 @@ export const createScreen = async (callbacks: {
     [caret, input],
   );
 
+  const composerSlot = stack(
+    { flexDirection: "column", width: "100%", minWidth: 0, flexShrink: 0 },
+    [composerRow, modeRow],
+  );
   const footer = stack({ flexDirection: "column", flexShrink: 0, width: "100%" }, [
     progress,
     autocomplete,
     waterline,
-    composerRow,
+    composerSlot,
     status,
   ]);
   renderer.root.add(
@@ -139,10 +147,18 @@ export const createScreen = async (callbacks: {
     if (phase === "live") renderer.requestRender();
   };
 
+  let slotted: Renderable | null = null;
   const host = {
     draw,
     focusComposer: () => input.focus(),
     blurComposer: () => input.blur(),
+    useComposerSlot: (node: Renderable | null) => {
+      if (slotted) composerSlot.remove(slotted);
+      slotted = node;
+      if (node) composerSlot.add(node);
+      composerRow.visible = node === null;
+      modeRow.visible = node === null;
+    },
   };
   const overlays = createOverlays(
     chrome,
@@ -337,6 +353,11 @@ export const createScreen = async (callbacks: {
         return;
       }
     }
+    if (event.name === "tab") {
+      event.stopPropagation();
+      callbacks.onModeCycle();
+      return;
+    }
     const back = (!event.shift && event.name === "up") || (event.ctrl && event.name === "p");
     const forward = (!event.shift && event.name === "down") || (event.ctrl && event.name === "n");
     if (!back && !forward) cursor = null;
@@ -442,6 +463,8 @@ export const createScreen = async (callbacks: {
     },
     columns,
     showHelp: overlays.showHelp,
+    showModes: (modes: readonly Mode[], active: string, onSelect: (name: string) => void) =>
+      overlays.showModes(modes, active, onSelect),
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
     showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
       overlays.showMcp(servers, notes),
@@ -461,7 +484,13 @@ export const createScreen = async (callbacks: {
       onCancel: () => void,
     ) => overlays.showProviderKey(provider, onSave, onCancel),
     showModelError: (message: string) => overlays.showModelError(message),
-    askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
-      questions.ask(items, signal),
+    setMode: (mode: { name: string; tone: Tone }) => {
+      modeRow.content = styled([modeLabel(mode)]);
+      draw();
+    },
+    askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
+      if (overlays.isOpen()) overlays.close();
+      return questions.ask(items, signal);
+    },
   };
 };

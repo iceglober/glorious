@@ -10,6 +10,9 @@ const node = () => ({
   setText() {},
   plainText: "",
   on() {},
+  add() {},
+  remove() {},
+  backgroundColor: "",
   options: [] as unknown[],
   getSelectedOption: () => undefined,
 });
@@ -37,14 +40,30 @@ const chrome = {
     TextareaRenderable: Stub,
     defaultTextareaKeyBindings: [],
   },
-  renderer: { root: { add() {}, remove() {} } },
+  renderer: {
+    root: {
+      add(child: unknown) {
+        rootAdds.push(child);
+      },
+      remove() {},
+    },
+  },
   columns: () => 100,
   textNode: () => node(),
   stack: () => node(),
   styled: () => "",
 } as never;
 
-const host = { draw() {}, focusComposer() {}, blurComposer() {} };
+let slot: unknown = null;
+const rootAdds: unknown[] = [];
+const host = {
+  draw() {},
+  focusComposer() {},
+  blurComposer() {},
+  useComposerSlot(node: unknown) {
+    slot = node;
+  },
+};
 
 describe("ask() re-entrancy", () => {
   test("a second concurrent question is refused, and the first still resolves", async () => {
@@ -55,5 +74,28 @@ describe("ask() re-entrancy", () => {
     expect(q.isOpen()).toBe(true);
     // the first is still live, not stranded
     expect(await Promise.race([first, Promise.resolve("PENDING")])).toBe("PENDING");
+  });
+});
+
+describe("where a question renders", () => {
+  test("it takes the composer's slot, never floats over the transcript", () => {
+    slot = null;
+    rootAdds.length = 0;
+    const q = createQuestions(chrome, host);
+    void q.ask([{ question: "one?", options: ["a"] }], undefined);
+    expect(slot).not.toBeNull();
+    // a modal would have been added to the root instead
+    expect(rootAdds).toHaveLength(0);
+  });
+
+  test("answering hands the slot back, so the composer returns", () => {
+    slot = null;
+    const q = createQuestions(chrome, host);
+    void q.ask([{ question: "one?", options: ["a"] }], undefined);
+    const controller = new AbortController();
+    void q.ask([{ question: "two?", options: ["b"] }], controller.signal);
+    q.handleKey({ name: "escape", stopPropagation() {} } as never);
+    expect(slot).toBeNull();
+    expect(q.isOpen()).toBe(false);
   });
 });

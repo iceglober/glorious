@@ -15,10 +15,16 @@ export type McpServerConfig = {
   args?: string[];
   env?: Record<string, string>;
   tools?: string[];
+  readOnly?: string[];
   disabled?: boolean;
 };
 
-export type McpToolSummary = { name: string; server: string; description: string };
+export type McpToolSummary = {
+  name: string;
+  server: string;
+  description: string;
+  readOnly: boolean;
+};
 export type McpSource = "global" | "project" | "local" | "legacy-global" | "legacy-project";
 export type ResolvedMcpServer = {
   config: McpServerConfig;
@@ -300,7 +306,12 @@ export const startMcp = async (
         taken.add(entry.name);
         adoptedCount += 1;
         const description = entry.description ?? `${entry.name} (via ${name})`;
-        summaries.push({ name: entry.name, server: name, description: firstLine(description) });
+        summaries.push({
+          name: entry.name,
+          server: name,
+          description: firstLine(description),
+          readOnly: config.readOnly?.includes(entry.name) ?? false,
+        });
         adopted.push({
           entry: { ...entry, description },
           call: (args: Record<string, unknown>) =>

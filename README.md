@@ -9,6 +9,8 @@ A terminal-based coding agent.
 curl -fsSL https://glrs.dev/install.sh | bash
 export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…
+# Optional: account for provider-specific pricing differences.
+export GLORIOUS_PRICE_MULTIPLIERS=azure=1.1
 glorious
 ```
 

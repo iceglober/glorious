@@ -16,6 +16,7 @@ glorious update               # update to the latest next release
   key. First one set wins.
 - `AZURE_RESOURCE_NAME` — your Azure AI Foundry resource.
 - `GLORIOUS_MODEL` — model override; the default is `gpt-5.6-luna`.
+- `GLORIOUS_PRICE_MULTIPLIERS` — comma-separated provider price multipliers, such as `azure=1.1,openai=1`.
 - `GLORIOUS_SESSION_ENCRYPTION` — set to `0` to store sessions unencrypted.
 - `XDG_DATA_HOME` — where sessions live; defaults to `~/.local/share`.
 

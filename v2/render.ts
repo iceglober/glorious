@@ -62,6 +62,20 @@ export const clip = (text: string, limit: number): string => {
   return `${kept}…`;
 };
 
+export const rightClip = (text: string, limit: number): string => {
+  if (limit <= 0) return "";
+  if (width(text) <= limit) return text;
+  let room = limit - 1;
+  const kept: string[] = [];
+  const parts = graphemes(text);
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    room -= cells(parts[index]);
+    if (room < 0) break;
+    kept.unshift(parts[index]);
+  }
+  return `…${kept.join("")}`;
+};
+
 export const userBlock = (text: string): Line[] => {
   const [lead, ...rest] = clean(text).split("\n");
   return [
@@ -179,36 +193,16 @@ const tokenCount = (tokens: number | null): string => {
 
 export const statusLine = (
   state: {
-    cwd: string;
-    worktree: string | null;
-    branch: string;
     model: string;
     tokens: number | null;
     percentUsed: number | null;
-    cached: number | null;
-    totalTokensIn: number;
-    totalTokensOut: number;
-    totalCachedTokens: number;
-    busy: boolean;
-    queued: number;
-    frame: number;
-    sessionId: string;
   },
   columns: number,
 ): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
-  const worktree = state.worktree === null ? "" : `:${flatten(state.worktree)}`;
-  const location = `${flatten(state.cwd)}${worktree} (${flatten(state.branch)})`;
   const percent = state.percentUsed === null ? "unknown" : `${Math.round(state.percentUsed)}%`;
-  const cachedPercent =
-    state.totalTokensIn > 0
-      ? `${Math.round((state.totalCachedTokens / state.totalTokensIn) * 100)}%`
-      : "unknown";
-  const lineOne = `${location} · in ${tokenCount(state.totalTokensIn)} · out ${tokenCount(state.totalTokensOut)}`;
-  const lineTwo = `${state.sessionId} · ${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent}) · ${cachedPercent} cached`;
-  const first = clip(lineOne, limit);
-  const second = clip(lineTwo, limit);
-  return [[{ text: first, tone: "muted" }], [{ text: second, tone: "muted" }]];
+  const line = `${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent})`;
+  return [[{ text: clip(line, limit), tone: "muted" }]];
 };
 
 export const statusWave = (
@@ -236,3 +230,10 @@ export const statusWave = (
     ],
   ];
 };
+
+// The mode sits under the composer rather than in the status line: it changes
+// what the next thing you type can do, so it belongs with the typing.
+export const modeLabel = (mode: { name: string; tone: Tone }): Line => [
+  { text: "● ", tone: mode.tone },
+  { text: mode.name, tone: mode.tone, bold: true },
+];
