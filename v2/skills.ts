@@ -3,11 +3,13 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
+import type { Command } from "./commands";
 import type { McpServerConfig, McpSession } from "./mcp";
 
 type Skill = {
   name: string;
   description: string;
+  trigger: string;
   location: string;
   body: string;
   mcpServers: Record<string, McpServerConfig>;
@@ -21,6 +23,8 @@ export type SkillSummary = {
 
 export type Skills = {
   catalog: string;
+  // skills that declared a trigger, ready to be registered as slash commands
+  commands: Command[];
   summaries: readonly SkillSummary[];
   tool: ReturnType<typeof createSkillTool>;
 };
@@ -115,6 +119,7 @@ const parseSkill = (text: string, location: string): Skill | null => {
   if (end < 0) return null;
   let name = "";
   let description = "";
+  let trigger = "";
   let mcpServers: Record<string, McpServerConfig> = {};
   let block = "";
   const frontmatter = lines.slice(1, end);
@@ -135,7 +140,7 @@ const parseSkill = (text: string, location: string): Skill | null => {
       }
       block = "";
     }
-    const match = /^(name|description):\s*(.*)$/u.exec(line);
+    const match = /^(name|description|trigger):\s*(.*)$/u.exec(line);
     if (!match) continue;
     const value = match[2];
     if (value === "|" || value === "|-" || value === ">" || value === ">-") {
@@ -143,12 +148,15 @@ const parseSkill = (text: string, location: string): Skill | null => {
       continue;
     }
     if (match[1] === "name") name = scalar(value);
+    // a skill may declare the slash command it answers to, leading slash optional
+    else if (match[1] === "trigger") trigger = scalar(value).replace(/^\//u, "").toLowerCase();
     else description = scalar(value);
   }
   if (!name || !description) return null;
   return {
     name,
     description,
+    trigger,
     location,
     body: lines
       .slice(end + 1)
@@ -213,6 +221,9 @@ const discover = async (root: string): Promise<Skill[]> => {
 const escapeXml = (text: string): string =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
+const skillContent = (skill: Skill): string =>
+  `<skill_content name="${escapeXml(skill.name)}">\n${skill.body}\n\nSkill directory: ${escapeXml(dirname(skill.location))}\n</skill_content>`;
+
 const createSkillTool = (skills: Skill[], mcp?: McpSession) => {
   if (skills.length === 0) return undefined;
   const byName = new Map(skills.map((skill) => [skill.name, skill]));
@@ -245,6 +256,17 @@ export const loadSkills = async (root: string, mcp?: McpSession): Promise<Skills
           .join("\n")}\n</available_skills>`;
   return {
     catalog,
+    // Typing the trigger is an explicit choice, so the skill is injected rather
+    // than merely offered — the model does not get to decide whether to load it.
+    commands: skills
+      .filter((skill) => skill.trigger !== "")
+      .map((skill) => ({
+        name: skill.trigger,
+        description: skill.description,
+        run: null,
+        body: skillContent(skill),
+        origin: skill.location,
+      })),
     summaries: skills.map(({ name, description, location }) => ({ name, description, location })),
     tool: createSkillTool(skills, mcp),
   };

@@ -1,5 +1,5 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
-import { activeSlash, commandName, matchingCommands } from "../commands";
+import { activeSlash, commandInvocation, matchingCommands } from "../commands";
 import { composerKeyBindings, composerWrapMode } from "../composer";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
@@ -22,7 +22,7 @@ export const createScreen = async (callbacks: {
   onSubmit: (text: string) => void;
   onShell: (command: string) => void;
   cwd: string;
-  onCommand: (name: string) => void;
+  onCommand: (name: string, args: string) => void;
   onModeCycle: () => void;
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
@@ -275,13 +275,13 @@ export const createScreen = async (callbacks: {
       return;
     }
     if (text.trim() === "") return;
-    const name = commandName(text);
-    if (name) {
+    const invocation = commandInvocation(text);
+    if (invocation) {
       autocompleteOpen = false;
       autocompleteItems = [];
       autocompleteSlash = null;
       compose("");
-      callbacks.onCommand(name);
+      callbacks.onCommand(invocation.name, invocation.args);
       return;
     }
     if (shellMode) {

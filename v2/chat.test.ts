@@ -17,6 +17,7 @@ const done = (text: string, extra: Partial<Outcome> = {}): Outcome => ({
 
 const harness = (script: Array<() => Outcome>, planMode = false) => {
   const prompts: string[] = [];
+  const histories: number[] = [];
   const events: SessionEvent[] = [];
   let mode = planMode ? { name: "plan", description: "", readOnly: true } : DEFAULT_MODE;
   const agent = {
@@ -24,8 +25,9 @@ const harness = (script: Array<() => Outcome>, planMode = false) => {
     setMode: (next: Mode) => {
       mode = next;
     },
-    run: async (prompt: string) => {
+    run: async (prompt: string, history: ModelMessage[]) => {
       prompts.push(prompt);
+      histories.push(history.length);
       const next = script.shift();
       if (!next) throw new Error("script exhausted");
       return next();
@@ -35,7 +37,7 @@ const harness = (script: Array<() => Outcome>, planMode = false) => {
     onEvent: (event) => events.push(event),
     onSignal: () => {},
   });
-  return { chat, prompts, events, mode: () => mode };
+  return { chat, prompts, histories, events, mode: () => mode };
 };
 
 const settle = async (chat: ReturnType<typeof createChat>): Promise<void> => {
@@ -168,5 +170,55 @@ describe("a plan turn that presents nothing", () => {
     chat.send("do this");
     await settle(chat);
     expect(prompts).toHaveLength(1);
+  });
+});
+
+describe("clearing the conversation", () => {
+  test("it drops the history the next turn would have replayed", async () => {
+    const { chat, histories } = harness([() => done("one"), () => done("two")]);
+    chat.send("first");
+    await settle(chat);
+    // the first turn left messages behind; asserting on the prompt text would
+    // pass whether or not they were dropped, so measure what run() receives
+    expect(chat.clear()).toBe("cleared");
+    chat.send("second");
+    await settle(chat);
+    expect(histories[0]).toBe(0);
+    expect(histories[1]).toBe(0);
+  });
+
+  test("without a clear, the next turn does carry the history forward", async () => {
+    const { chat, histories } = harness([() => done("one"), () => done("two")]);
+    chat.send("first");
+    await settle(chat);
+    chat.send("second");
+    await settle(chat);
+    expect(histories[1]).toBeGreaterThan(0);
+  });
+
+  test("an untouched session has nothing to clear", () => {
+    const { chat } = harness([]);
+    expect(chat.clear()).toBe("empty");
+  });
+
+  test("it refuses mid-turn, because the running request would undo it", async () => {
+    const { chat } = harness([() => done("slow"), () => done("next")]);
+    chat.send("first");
+    // the turn is queued and running now
+    expect(chat.clear()).toBe("busy");
+    await settle(chat);
+  });
+
+  test("a pending reminder does not survive the clear", async () => {
+    const { chat, prompts } = harness([
+      () => done("", { stoppedAtStepLimit: true }),
+      () => done("ok"),
+    ]);
+    chat.send("first");
+    await settle(chat);
+    expect(chat.clear()).toBe("cleared");
+    chat.send("second");
+    await settle(chat);
+    expect(prompts[1]).not.toContain("ran out of steps");
   });
 });
