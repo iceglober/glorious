@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
-import { createChat } from "./chat";
+import { type ChatSignal, createChat } from "./chat";
 import type { SessionEvent } from "./events";
 import { DEFAULT_MODE, type Mode } from "./modes";
 import { REMINDER_CLOSE, REMINDER_OPEN } from "./prompt";
+import type { ToolEvent } from "./tools";
 
 type Outcome = Awaited<ReturnType<Agent["run"]>>;
 
@@ -251,5 +252,68 @@ describe("sending an expanded slash command", () => {
     expect(events.filter((event) => event.type === "user")[0]).toMatchObject({
       text: "just asking",
     });
+  });
+});
+
+describe("keeping a subagent's tools out of the transcript", () => {
+  const toolEvent = (over: Partial<ToolEvent> = {}): ToolEvent =>
+    ({ id: 1, name: "read", detail: "a.ts", phase: "end", ok: true, ...over }) as ToolEvent;
+
+  const drive = async (events: ToolEvent[]) => {
+    const seen: SessionEvent[] = [];
+    const signalled: ChatSignal[] = [];
+    const agent = {
+      mode: () => DEFAULT_MODE,
+      setMode: () => {},
+      run: async (
+        _prompt: string,
+        _history: ModelMessage[],
+        turn: { onTool: (e: ToolEvent) => void },
+      ) => {
+        for (const event of events) turn.onTool(event);
+        return done("ok");
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, {
+      onEvent: (event) => seen.push(event),
+      onSignal: (value) => signalled.push(value),
+    });
+    chat.send("go");
+    await settle(chat);
+    return { seen, signalled };
+  };
+
+  test("a subagent's own call never reaches the transcript", async () => {
+    const { seen } = await drive([
+      toolEvent({ id: 7, name: "grep", phase: "start", origin: 3 } as Partial<ToolEvent>),
+      toolEvent({ id: 7, name: "grep", origin: 3 }),
+    ]);
+    expect(seen.filter((event) => event.type === "tool")).toHaveLength(0);
+  });
+
+  test("but it is still signalled, so the live view can show it", async () => {
+    const { signalled } = await drive([toolEvent({ id: 7, name: "grep", origin: 3 })]);
+    expect(signalled.filter((value) => value.type === "tool")).toHaveLength(1);
+  });
+
+  test("the parent's own calls are unaffected", async () => {
+    const { seen } = await drive([
+      toolEvent({ id: 1, name: "read", phase: "start" } as Partial<ToolEvent>),
+      toolEvent({ id: 1, name: "read" }),
+    ]);
+    expect(seen.filter((event) => event.type === "tool")).toHaveLength(1);
+  });
+
+  test("the run_subagent row itself stays, since it is the parent's call", async () => {
+    const { seen } = await drive([
+      toolEvent({
+        id: 3,
+        name: "run_subagent",
+        detail: "audit",
+        phase: "start",
+      } as Partial<ToolEvent>),
+      toolEvent({ id: 3, name: "run_subagent", detail: "audit" }),
+    ]);
+    expect(seen.filter((event) => event.type === "tool")).toMatchObject([{ name: "run_subagent" }]);
   });
 });

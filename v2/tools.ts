@@ -20,9 +20,14 @@ export const nextToolEventId = (): number => {
   return events;
 };
 
-export type ToolEvent =
+// `origin` is the run_subagent row this event belongs to. Absent means the main
+// agent, which is what the transcript shows; a subagent's own tool calls carry
+// the id of the row that spawned them, so they can be grouped and drilled into
+// without crowding the session.
+export type ToolEvent = { origin?: number } & (
   | { id: number; name: string; detail: string; phase: "start" }
-  | { id: number; name: string; detail: string; phase: "end"; ok: boolean };
+  | { id: number; name: string; detail: string; phase: "end"; ok: boolean }
+);
 
 export type Question = {
   question: string;
@@ -38,6 +43,7 @@ export type RunSubagent = (
   task: string,
   context: string,
   signal: AbortSignal | undefined,
+  origin: number,
 ) => Promise<string>;
 
 export type PlanVerdict =
@@ -256,7 +262,7 @@ export const createTools = (
     name: BuiltInToolName,
     description: string,
     inputSchema: Schema,
-    body: (input: z.infer<Schema>, signal: AbortSignal | undefined) => Promise<string>,
+    body: (input: z.infer<Schema>, signal: AbortSignal | undefined, id: number) => Promise<string>,
   ) =>
     tool({
       description,
@@ -269,7 +275,9 @@ export const createTools = (
           detail: firstDetail(raw),
         };
         announce({ ...step, phase: "start" });
-        const told = await body(input, call.abortSignal).catch((bad) => `ERROR: ${errorText(bad)}`);
+        const told = await body(input, call.abortSignal, step.id).catch(
+          (bad) => `ERROR: ${errorText(bad)}`,
+        );
         const result = capText(told, RESULT_LIMIT);
         announce({ ...step, phase: "end", ok: !FAILED.test(result) });
         return result;
@@ -310,7 +318,7 @@ export const createTools = (
               "Standalone brief: goal, current findings, relevant paths and symbols, constraints, non-goals, acceptance criteria, and checks; do not include unrelated conversation history",
             ),
         }),
-        async ({ task, context }, signal) => runSubagent(task, context, signal),
+        async ({ task, context }, signal, id) => runSubagent(task, context, signal, id),
       )
     : undefined;
 
