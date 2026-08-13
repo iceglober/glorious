@@ -1,6 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { generateText } from "ai";
 import type { Config } from "./config";
-import { currentModel, loadModels, loadProviders, modelCost, priceMultiplier } from "./models";
+import {
+  createModel,
+  currentModel,
+  loadModels,
+  loadProviders,
+  modelCost,
+  priceMultiplier,
+  resolveApiKey,
+} from "./models";
 
 describe("model pricing", () => {
   test("reads provider-specific multipliers", () => {
@@ -177,5 +186,101 @@ describe("models.dev catalog", () => {
     expect(await loadModels(currentModel(), "compatible", "key")).toMatchObject([
       { provider: "compatible", modelId: "example-model", apiKey: "key" },
     ]);
+  });
+});
+
+describe("finding the api key", () => {
+  const names = ["AZURE_FOUNDRY_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY"];
+  let snapshot: Record<string, string | undefined> = {};
+
+  // Snapshot and restore exactly, every test: another test in this file also
+  // saves AZURE_OPENAI_API_KEY, and lazily-captured state made the pair of them
+  // order-dependent.
+  beforeEach(() => {
+    snapshot = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    for (const name of names) delete process.env[name];
+  });
+
+  afterEach(() => {
+    for (const name of names) {
+      if (snapshot[name] === undefined) delete process.env[name];
+      else process.env[name] = snapshot[name];
+    }
+  });
+
+  test("an explicit key wins over the environment", () => {
+    process.env.AZURE_API_KEY = "from-env";
+    expect(resolveApiKey({ apiKey: "explicit", env: names })).toBe("explicit");
+  });
+
+  test("it accepts any name the provider answers to, not just the SDK's default", () => {
+    // the real report: only AZURE_OPENAI_API_KEY was set, and the SDK reads
+    // AZURE_API_KEY, so every session began "Azure OpenAI API key is missing"
+    process.env.AZURE_OPENAI_API_KEY = "third-name";
+    expect(resolveApiKey({ env: names })).toBe("third-name");
+  });
+
+  test("earlier names take precedence", () => {
+    process.env.AZURE_API_KEY = "second";
+    process.env.AZURE_OPENAI_API_KEY = "third";
+    expect(resolveApiKey({ env: names })).toBe("second");
+  });
+
+  test("nothing set stays undefined, so the SDK can still raise its own error", () => {
+    expect(resolveApiKey({ env: names })).toBeUndefined();
+  });
+
+  test("a provider with no declared names is left to the SDK", () => {
+    expect(resolveApiKey({ env: [] })).toBeUndefined();
+    expect(resolveApiKey({})).toBeUndefined();
+  });
+
+  test("the startup model carries the names, so the fallback can fire", () => {
+    expect(currentModel().env.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the key createModel actually sends", () => {
+  const names = ["AZURE_FOUNDRY_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY"];
+  let snapshot: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    snapshot = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    for (const name of names) delete process.env[name];
+  });
+
+  afterEach(() => {
+    for (const name of names) {
+      if (snapshot[name] === undefined) delete process.env[name];
+      else process.env[name] = snapshot[name];
+    }
+  });
+
+  // Asserting on resolveApiKey alone leaves createModel free to ignore it, which
+  // is exactly the wiring that was broken.
+  const headerFor = async (): Promise<string | null> => {
+    let sent: Headers | undefined;
+    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent = new Headers(init?.headers);
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch;
+    const model = createModel(
+      {
+        provider: "azure",
+        modelId: "gpt-4o",
+        name: "gpt-4o",
+        env: names,
+        npm: "@ai-sdk/azure",
+      },
+      fetcher,
+    );
+    await generateText({ model, prompt: "hi", maxRetries: 0 }).catch(() => {});
+    return sent?.get("api-key") ?? null;
+  };
+
+  test("it sends a key found under any of the provider's names", async () => {
+    process.env.AZURE_OPENAI_API_KEY = "third-name";
+    process.env.AZURE_RESOURCE_NAME = "example";
+    expect(await headerFor()).toBe("third-name");
   });
 });
