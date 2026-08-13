@@ -5,6 +5,7 @@
     "@glrs-dev/glorious": "0.0.0"
   },
   "changesets": [
+    "agent-modes-and-commands",
     "assistant-response-marker",
     "cli-version-update",
     "cloud-auth-connect",
