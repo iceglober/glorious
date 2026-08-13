@@ -262,17 +262,17 @@ export const loadSkills = async (root: string, mcp?: McpSession): Promise<Skills
           .join("\n")}\n</available_skills>`;
   return {
     catalog,
-    // Typing the trigger is an explicit choice, so the skill is injected rather
-    // than merely offered — the model does not get to decide whether to load it.
-    commands: skills
-      .filter((skill) => skill.trigger !== "")
-      .map((skill) => ({
-        name: skill.trigger,
-        description: skill.description,
-        run: null,
-        body: triggerPrompt(skill),
-        origin: skill.location,
-      })),
+    // Every skill is reachable as a slash command named after it. Gating this on
+    // a `trigger:` field meant a skill that dropped the field lost its command
+    // without warning — which is exactly what happened when graphify shipped
+    // 0.9.41. `trigger:` now only renames the command.
+    commands: skills.map((skill) => ({
+      name: skill.trigger === "" ? skill.name.toLowerCase() : skill.trigger,
+      description: skill.description,
+      run: null,
+      body: triggerPrompt(skill),
+      origin: skill.location,
+    })),
     summaries: skills.map(({ name, description, location }) => ({ name, description, location })),
     tool: createSkillTool(skills, mcp),
   };
