@@ -130,7 +130,7 @@ describe("calling", () => {
         if (event.phase === "start") builtIn.push(event.id);
       },
       null,
-      { catalog: "", summaries: [], tool: undefined },
+      { catalog: "", commands: [], summaries: [], tool: undefined },
     );
     const glob = tools.glob?.execute as (i: unknown, o: unknown) => Promise<string>;
     await glob({ pattern: "*.nothing" }, {});

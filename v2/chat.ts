@@ -170,6 +170,17 @@ export const createChat = (
       queue.push({ text, label: null });
       if (queue.length === 1) void drain();
     },
+    // Refused mid-turn on purpose: the running request already holds its own
+    // copy of the messages, and when it lands it overwrites history with the
+    // full set — so a clear during a turn would silently undo itself.
+    clear: (): "cleared" | "busy" | "empty" => {
+      if (queue.length > 0) return "busy";
+      if (history.length === 0) return "empty";
+      history = [];
+      note = "";
+      lastAsk = "";
+      return "cleared";
+    },
     // Recorded during the turn, acted on once it ends: the in-flight request
     // already has its messages, so mode and context can only change at a
     // boundary.

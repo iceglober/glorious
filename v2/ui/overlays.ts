@@ -73,7 +73,7 @@ export const createOverlays = (
       [{ text: "Type / anywhere after whitespace to open autocomplete." }],
       [{ text: "Use ↑/↓ to move, Tab to complete, and Enter to run." }],
       [{ text: "" }],
-      ...commands.map(
+      ...commands().map(
         (command): Line => [
           { text: `/${command.name}`, tone: "highlight", bold: true },
           { text: `  ${command.description}` },

@@ -21,7 +21,7 @@ describe("slash commands", () => {
   });
 
   test("describes mode as a cycle", () => {
-    expect(commands.find((command) => command.name === "mode")?.description).toBe(
+    expect(commands().find((command) => command.name === "mode")?.description).toBe(
       "Cycle through agent modes",
     );
   });

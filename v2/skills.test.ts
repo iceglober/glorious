@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -114,5 +114,50 @@ describe("activate_skill", () => {
 
   test("errors on an unknown skill instead of throwing", async () => {
     expect(await run("zz-does-not-exist")).toBe("ERROR: unknown skill: zz-does-not-exist");
+  });
+});
+
+describe("a skill that declares a slash trigger", () => {
+  const root = join(tmpdir(), `glorious-trigger-${Date.now()}`);
+
+  beforeAll(async () => {
+    await mkdir(join(root, ".glorious", "skills", "trigfixture"), { recursive: true });
+    await writeFile(
+      join(root, ".glorious", "skills", "trigfixture", "SKILL.md"),
+      "---\nname: trigfixture\ndescription: Build a knowledge graph\ntrigger: /trigfixture\n---\n\nRun the pipeline.",
+    );
+    await mkdir(join(root, ".glorious", "skills", "notrigfixture"), { recursive: true });
+    await writeFile(
+      join(root, ".glorious", "skills", "notrigfixture", "SKILL.md"),
+      "---\nname: notrigfixture\ndescription: No trigger here\n---\n\nNothing.",
+    );
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("it becomes a slash command named after the trigger", async () => {
+    const skills = await loadSkills(root);
+    expect(skills.commands.map((command) => command.name)).toContain("trigfixture");
+  });
+
+  test("the leading slash is optional, since the frontmatter writes it either way", async () => {
+    const skills = await loadSkills(root);
+    expect(skills.commands.find((command) => command.name === "trigfixture")).toBeDefined();
+    expect(skills.commands.some((command) => command.name === "/trigfixture")).toBe(false);
+  });
+
+  test("running it injects the skill body, rather than hoping the model loads it", async () => {
+    const skills = await loadSkills(root);
+    const command = skills.commands.find((entry) => entry.name === "trigfixture");
+    expect(command?.body).toContain("Run the pipeline.");
+    expect(command?.body).toContain("Skill directory:");
+  });
+
+  test("a skill without a trigger stays out of the command table", async () => {
+    const skills = await loadSkills(root);
+    expect(skills.commands.map((command) => command.name)).not.toContain("notrigfixture");
+    expect(skills.summaries.map((summary) => summary.name)).toContain("notrigfixture");
   });
 });

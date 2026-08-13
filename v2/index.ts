@@ -5,6 +5,7 @@ import packageJson from "../package.json";
 import { createAgent } from "./agent";
 import { approveMcp } from "./approvals";
 import { type ChatSignal, createChat } from "./chat";
+import { commandByName, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig, writeConfigLayer } from "./config";
 import { messagesOf, type SessionEvent } from "./events";
 import { loadAgentRules } from "./guidance";
@@ -33,6 +34,7 @@ import {
 import { loadSkills } from "./skills";
 import { runShell } from "./tools";
 import { createScreen, pickSession } from "./ui";
+import { loadUserCommands } from "./usercommands";
 
 const FRAME_MS = 90;
 const SETTLE_MS = 250;
@@ -127,6 +129,11 @@ const main = async (): Promise<void> => {
   let model = currentModel(config.config);
   let mcp = await startMcp(root, await resolveMcpServers(root, config));
   let skills = await loadSkills(root, mcp);
+  // Slash commands come from two places: markdown files in a commands
+  // directory, and skills that declare a trigger of their own.
+  let userCommands = await loadUserCommands(root);
+  const registerCommands = (): void => setCustomCommands([...skills.commands, ...userCommands]);
+  registerCommands();
 
   let frame = 0;
   const lastUsage = session.events.findLast((event) => event.type === "usage");
@@ -197,6 +204,7 @@ const main = async (): Promise<void> => {
     mcp = nextMcp;
     agent.setMcp(nextMcp);
     skills = await loadSkills(root, nextMcp);
+    registerCommands();
     agent.setSkills(skills);
     previous.close();
     repaint();
@@ -275,7 +283,29 @@ const main = async (): Promise<void> => {
       });
     },
     cwd: root,
-    onCommand: (name) => {
+    onCommand: (name, args) => {
+      // A command defined in a file or by a skill trigger has no UI action of
+      // its own: its body becomes the turn.
+      const custom = commandByName(name);
+      if (custom && custom.run === null && custom.body !== undefined) {
+        chat.send(expandCommand(custom.body, args));
+        repaint();
+        return;
+      }
+      if (name === "clear") {
+        const outcome = chat.clear();
+        if (outcome === "cleared") {
+          render({ type: "cleared", reason: "user cleared" });
+          render({ type: "notice", text: "(context cleared)" });
+        } else
+          render({
+            type: "notice",
+            text:
+              outcome === "busy"
+                ? "(cannot clear while a turn is running \u2014 press Esc first)"
+                : "(nothing to clear)",
+          });
+      }
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
@@ -352,6 +382,10 @@ const main = async (): Promise<void> => {
     },
     onModeCycle: cycleMode,
     onSkillsReload: () => {
+      void loadUserCommands(root).then((refreshed) => {
+        userCommands = refreshed;
+        registerCommands();
+      });
       void loadSkills(root).then((refreshed) => {
         skills = refreshed;
         agent.setSkills(refreshed);
