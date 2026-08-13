@@ -24,6 +24,7 @@
     "quiet-status-footer",
     "remove-ansi-renderer",
     "remove-completion-grounding",
+    "slash-command-execution",
     "surface-intermediate-text",
     "teardown-basic-chat",
     "trim-published-tarball",
