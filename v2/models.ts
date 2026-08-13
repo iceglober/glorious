@@ -281,8 +281,18 @@ const factories: Record<string, ProviderFactory> = {
   xai: createXai as ProviderFactory,
 };
 
+// A provider is reachable under several environment names — azure alone answers
+// to three — but each SDK falls back to exactly one. The picker already reports
+// a provider as connected on any of them, so resolving the same list here is
+// what makes "environment credentials available" mean the session can start.
+export const resolveApiKey = (option: {
+  apiKey?: string;
+  env?: readonly string[];
+}): string | undefined =>
+  option.apiKey ?? option.env?.map((name) => process.env[name]).find((value) => Boolean(value));
+
 export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch): LanguageModel => {
-  const { apiKey } = option;
+  const apiKey = resolveApiKey(option);
   if (option.provider === "azure" || option.npm === "@ai-sdk/azure")
     return createAzure({ apiKey, fetch: fetcher as typeof fetch })(option.modelId);
   if (option.provider === "amazon-bedrock")
