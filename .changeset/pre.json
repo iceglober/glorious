@@ -25,6 +25,7 @@
     "quiet-status-footer",
     "remove-ansi-renderer",
     "remove-completion-grounding",
+    "skills-as-commands",
     "slash-command-execution",
     "surface-intermediate-text",
     "teardown-basic-chat",
