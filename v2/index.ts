@@ -306,6 +306,13 @@ const main = async (): Promise<void> => {
                 : "(nothing to clear)",
           });
       }
+      // Everything below is a builtin. Falling off the end silently cleared the
+      // composer and produced no turn, which reads as the app being dead — so an
+      // unrecognised command says so instead.
+      if (custom === undefined) {
+        render({ type: "notice", text: `(unknown command: /${name} — /help lists what exists)` });
+        return;
+      }
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);

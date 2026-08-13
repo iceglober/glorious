@@ -126,6 +126,11 @@ describe("a skill that declares a slash trigger", () => {
       join(root, ".glorious", "skills", "trigfixture", "SKILL.md"),
       "---\nname: trigfixture\ndescription: Build a knowledge graph\ntrigger: /trigfixture\n---\n\nRun the pipeline.",
     );
+    await mkdir(join(root, ".glorious", "skills", "renamedfixture"), { recursive: true });
+    await writeFile(
+      join(root, ".glorious", "skills", "renamedfixture", "SKILL.md"),
+      "---\nname: renamedfixture\ndescription: Answers to a different name\ntrigger: /shortname\n---\n\nBody.",
+    );
     await mkdir(join(root, ".glorious", "skills", "notrigfixture"), { recursive: true });
     await writeFile(
       join(root, ".glorious", "skills", "notrigfixture", "SKILL.md"),
@@ -155,10 +160,20 @@ describe("a skill that declares a slash trigger", () => {
     expect(command?.body).toContain("Skill directory:");
   });
 
-  test("a skill without a trigger stays out of the command table", async () => {
+  test("a skill without a trigger is still reachable, under its own name", async () => {
+    // graphify 0.9.41 dropped its `trigger:` field and lost /graphify entirely;
+    // a skill's command cannot depend on an optional field staying put
     const skills = await loadSkills(root);
-    expect(skills.commands.map((command) => command.name)).not.toContain("notrigfixture");
-    expect(skills.summaries.map((summary) => summary.name)).toContain("notrigfixture");
+    expect(skills.commands.map((command) => command.name)).toContain("notrigfixture");
+  });
+
+  test("a trigger renames the command rather than granting it", async () => {
+    const skills = await loadSkills(root);
+    const names = skills.commands.map((command) => command.name);
+    // the skill is named renamedfixture but answers to /shortname
+    expect(names).toContain("shortname");
+    expect(names).not.toContain("renamedfixture");
+    expect(skills.summaries.map((summary) => summary.name)).toContain("renamedfixture");
   });
 });
 
