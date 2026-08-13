@@ -1,5 +1,16 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.11
+
+### Minor Changes
+
+- ca252d8: Allow provider-specific model price multipliers and show accumulated usage cost.
+
+### Patch Changes
+
+- ca252d8: Quiet the TUI status footer to a single muted row with model and context usage.
+- ca252d8: Wrap long question choices in the TUI and pause plan revisions until the user sends feedback.
+
 ## 1.0.0-next.10
 
 ### Minor Changes
