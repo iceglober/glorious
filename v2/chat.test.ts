@@ -222,3 +222,34 @@ describe("clearing the conversation", () => {
     expect(prompts[1]).not.toContain("ran out of steps");
   });
 });
+
+describe("sending an expanded slash command", () => {
+  const big = "X".repeat(30_000);
+
+  test("the transcript shows what was typed, not the expansion", async () => {
+    const { chat, events } = harness([() => done("ok")]);
+    chat.send(big, "/graphify .");
+    await settle(chat);
+    const said = events.filter((event) => event.type === "user");
+    const shown = events.filter((event) => event.type === "notice");
+    // a 30k body echoed as the user's own words buries the session
+    expect(said).toHaveLength(0);
+    expect(shown[0]).toMatchObject({ text: "/graphify ." });
+  });
+
+  test("the model still receives the full expansion", async () => {
+    const { chat, prompts } = harness([() => done("ok")]);
+    chat.send(big, "/graphify .");
+    await settle(chat);
+    expect(prompts[0]).toContain(big);
+  });
+
+  test("an ordinary message is still echoed as the user's own", async () => {
+    const { chat, events } = harness([() => done("ok")]);
+    chat.send("just asking");
+    await settle(chat);
+    expect(events.filter((event) => event.type === "user")[0]).toMatchObject({
+      text: "just asking",
+    });
+  });
+});
