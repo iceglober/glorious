@@ -7,6 +7,7 @@
   "changesets": [
     "agent-modes-and-commands",
     "assistant-response-marker",
+    "azure-env-credentials",
     "cli-version-update",
     "cloud-auth-connect",
     "config-tui",
