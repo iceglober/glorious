@@ -288,7 +288,7 @@ const main = async (): Promise<void> => {
       // its own: its body becomes the turn.
       const custom = commandByName(name);
       if (custom && custom.run === null && custom.body !== undefined) {
-        chat.send(expandCommand(custom.body, args));
+        chat.send(expandCommand(custom.body, args), `/${name}${args === "" ? "" : ` ${args}`}`);
         repaint();
         return;
       }

@@ -166,8 +166,11 @@ export const createChat = (
     get queued(): readonly string[] {
       return queue.slice(1).map((item) => item.label ?? item.text);
     },
-    send: (text: string): void => {
-      queue.push({ text, label: null });
+    // `label` is what the transcript shows. A slash command expands into a body
+    // far larger than what was typed — echoing that back as the user's own
+    // words buries the session under it.
+    send: (text: string, label: string | null = null): void => {
+      queue.push({ text, label });
       if (queue.length === 1) void drain();
     },
     // Refused mid-turn on purpose: the running request already holds its own

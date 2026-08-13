@@ -47,7 +47,9 @@ export const expandCommand = (body: string, args: string): string => {
     .replaceAll("$ARGUMENTS", trimmed)
     .replace(/\$([1-9])/gu, (_, digit: string) => words[Number(digit) - 1] ?? "");
   if (placed || trimmed === "") return filled;
-  return `${filled}\n\n${trimmed}`;
+  // Appended rather than dropped, but marked: a bare `.` trailing 32kB of skill
+  // instructions is indistinguishable from a stray character.
+  return `${filled}\n\n<arguments>${trimmed}</arguments>`;
 };
 
 const score = (query: string, candidate: string): number | null => {

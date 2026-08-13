@@ -161,3 +161,34 @@ describe("a skill that declares a slash trigger", () => {
     expect(skills.summaries.map((summary) => summary.name)).toContain("notrigfixture");
   });
 });
+
+describe("what a triggered skill actually sends", () => {
+  const root = join(tmpdir(), `glorious-framing-${Date.now()}`);
+
+  beforeAll(async () => {
+    await mkdir(join(root, ".glorious", "skills", "framefixture"), { recursive: true });
+    await writeFile(
+      join(root, ".glorious", "skills", "framefixture", "SKILL.md"),
+      "---\nname: framefixture\ndescription: Does a thing\ntrigger: /framefixture\n---\n\nStep 1. Do it.",
+    );
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("it is framed as an instruction, not handed over as reference material", async () => {
+    const skills = await loadSkills(root);
+    const body = skills.commands.find((entry) => entry.name === "framefixture")?.body ?? "";
+    // bare skill_content made the model reply "what would you like me to work on?"
+    expect(body.startsWith("<skill_content")).toBe(false);
+    expect(body).toMatch(/^Run the framefixture skill now/u);
+  });
+
+  test("the instructions themselves still arrive intact", async () => {
+    const skills = await loadSkills(root);
+    const body = skills.commands.find((entry) => entry.name === "framefixture")?.body ?? "";
+    expect(body).toContain("Step 1. Do it.");
+    expect(body).toContain("<skill_content");
+  });
+});

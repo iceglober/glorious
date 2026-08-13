@@ -49,7 +49,9 @@ describe("expanding a command", () => {
   test("a body with no placeholder still receives the arguments", () => {
     // graphify's SKILL.md has no placeholders, so dropping them here would make
     // `/graphify some/path` silently ignore the path
-    expect(expandCommand("Run the pipeline.", "some/path")).toBe("Run the pipeline.\n\nsome/path");
+    expect(expandCommand("Run the pipeline.", "some/path")).toBe(
+      "Run the pipeline.\n\n<arguments>some/path</arguments>",
+    );
   });
 
   test("no arguments leaves the body exactly as written", () => {

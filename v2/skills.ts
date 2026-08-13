@@ -224,6 +224,12 @@ const escapeXml = (text: string): string =>
 const skillContent = (skill: Skill): string =>
   `<skill_content name="${escapeXml(skill.name)}">\n${skill.body}\n\nSkill directory: ${escapeXml(dirname(skill.location))}\n</skill_content>`;
 
+// Typing a trigger is a request to run the skill, so it arrives framed as an
+// instruction. Handed over bare, the block reads as reference material and the
+// model answers with "what would you like me to work on?" instead of acting.
+const triggerPrompt = (skill: Skill): string =>
+  `Run the ${skill.name} skill now. The user invoked it as a slash command, so the instructions below are what to carry out — not background material, and not something to summarise or ask about. Follow them from the top. Any text after the command name is the skill's arguments.\n\n${skillContent(skill)}`;
+
 const createSkillTool = (skills: Skill[], mcp?: McpSession) => {
   if (skills.length === 0) return undefined;
   const byName = new Map(skills.map((skill) => [skill.name, skill]));
@@ -264,7 +270,7 @@ export const loadSkills = async (root: string, mcp?: McpSession): Promise<Skills
         name: skill.trigger,
         description: skill.description,
         run: null,
-        body: skillContent(skill),
+        body: triggerPrompt(skill),
         origin: skill.location,
       })),
     summaries: skills.map(({ name, description, location }) => ({ name, description, location })),
