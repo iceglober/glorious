@@ -6,6 +6,7 @@
   },
   "changesets": [
     "agent-modes-and-commands",
+    "arrows-and-subagent-drilldown",
     "assistant-response-marker",
     "azure-env-credentials",
     "cli-version-update",
