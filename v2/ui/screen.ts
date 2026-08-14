@@ -144,6 +144,26 @@ export const createScreen = async (callbacks: {
   let autocompleteIndex = 0;
   let autocompleteOpen = false;
   let shellMode = false;
+  // index into `log` of the block still being streamed into, if any
+  let drafting: number | null = null;
+
+  const printBlock = (lines: Line[], gap: boolean): void => {
+    const spaced = gap && log.length > 0;
+    if (spaced) view.add(textNode({ content: "", width: "100%", height: 1 }));
+    const filled = lines.some((line) => line.some((span) => span.fill));
+    const node = textNode({
+      content: styled(lines),
+      wrapMode: "word",
+      width: columns(),
+      bg: filled ? fillHex : undefined,
+    });
+    const block = filled
+      ? stack({ width: columns(), flexShrink: 0, backgroundColor: fillHex }, [node])
+      : node;
+    view.add(block);
+    log.push({ lines, node, block });
+    draw();
+  };
 
   const draw = (): void => {
     if (phase === "live") renderer.requestRender();
@@ -449,23 +469,35 @@ export const createScreen = async (callbacks: {
       renderer.requestRender();
     },
     stop,
-    print: (lines: Line[], gap: boolean) => {
-      const spaced = gap && log.length > 0;
-      if (spaced) view.add(textNode({ content: "", width: "100%", height: 1 }));
-      const filled = lines.some((line) => line.some((span) => span.fill));
-      const node = textNode({
-        content: styled(lines),
-        wrapMode: "word",
-        width: columns(),
-        bg: filled ? fillHex : undefined,
-      });
-      const block = filled
-        ? stack({ width: columns(), flexShrink: 0, backgroundColor: fillHex }, [node])
-        : node;
-      view.add(block);
-      log.push({ lines, node, block });
+    // A block that is still arriving. Creating it once and then rewriting its
+    // node is exactly what onResize already does to every logged block, so the
+    // streaming path reuses that rather than inventing a second mechanism.
+    draft: (lines: Line[], gap: boolean) => {
+      if (drafting === null) {
+        printBlock(lines, gap);
+        drafting = log.length - 1;
+        return;
+      }
+      const entry = log[drafting];
+      if (!entry) return;
+      entry.lines = lines;
+      entry.node.content = styled(lines);
       draw();
     },
+    // Freeze the draft in place. Passing lines rewrites it one last time, which
+    // is how a streamed answer becomes its final recorded form without a second
+    // block being printed.
+    sealDraft: (lines?: Line[]) => {
+      const entry = drafting === null ? undefined : log[drafting];
+      drafting = null;
+      if (!entry || !lines) return entry !== undefined;
+      entry.lines = lines;
+      entry.node.content = styled(lines);
+      draw();
+      return true;
+    },
+    isDrafting: () => drafting !== null,
+    print: printBlock,
     setProgress: painter(progress),
     setWave: (frame: number, busy: boolean, queued: number) => {
       waterline.content = styled(statusWave(frame, busy, queued, columns()));

@@ -146,6 +146,21 @@ export const toolRow = (name: string, detail: string, elapsedMs: number, ok: boo
   return [...activity(mark, name, detail, "  "), { text: `  ${took}`, tone: "muted" }];
 };
 
+// Reasoning collapses once the answer starts: what matters afterwards is that it
+// happened and for how long, not a wall of text already read past. The full text
+// stays in the event.
+export const reasoningBlock = (elapsedMs: number): Line[] => [
+  [{ text: `░ thought for ${Math.max(1, Math.round(elapsedMs / 1000))}s`, tone: "muted" }],
+];
+
+// What is painted while reasoning is still arriving, before the collapse.
+export const reasoningDraft = (text: string): Line[] =>
+  clean(text)
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .slice(-6)
+    .map((line): Line => [{ text: `░ ${line}`, tone: "muted", italic: true }]);
+
 export const eventBlock = (event: SessionEvent): { lines: Line[]; gap: boolean } => {
   switch (event.type) {
     case "user":
@@ -154,6 +169,8 @@ export const eventBlock = (event: SessionEvent): { lines: Line[]; gap: boolean }
       return { lines: assistantBlock(event.text), gap: true };
     case "tool":
       return { lines: [toolRow(event.name, event.detail, event.elapsedMs, event.ok)], gap: false };
+    case "reasoning":
+      return { lines: reasoningBlock(event.elapsedMs), gap: true };
     case "notice":
       return { lines: noticeBlock(event.text), gap: false };
     case "error":

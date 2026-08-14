@@ -14,6 +14,7 @@ import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
 import { MODES, type Mode, modeByName, nextMode } from "./modes";
 import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
 import {
+  assistantBlock,
   clip,
   errorText,
   eventBlock,
@@ -21,6 +22,7 @@ import {
   type Line,
   noticeBlock,
   queuedRow,
+  reasoningDraft,
   runningRow,
   statusLine,
   userBlock,
@@ -141,6 +143,8 @@ const main = async (): Promise<void> => {
   const lastUsage = session.events.findLast((event) => event.type === "usage");
   let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
   let produced = false;
+  // what the current draft block is showing, so deltas append rather than replace
+  let live: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
   // Live subagents for this turn. Their tool calls are kept out of the
   // transcript, so this is the only place they exist to be looked at.
@@ -156,6 +160,8 @@ const main = async (): Promise<void> => {
   let watching = 0;
 
   const repaint = (): void => {
+    // one paint per frame for however many deltas landed since the last one
+    chat.flush();
     const now = Date.now();
     const progress: Line[] = [];
     for (const tool of running) {
@@ -260,7 +266,18 @@ const main = async (): Promise<void> => {
     if (event.type === "user") produced = false;
     if (event.type === "assistant" || event.type === "tool") produced = true;
     const { lines, gap } = eventBlock(event);
-    if (lines.length > 0) screen.print(lines, gap);
+    // A streamed answer is already on screen. Seal that block with its final
+    // rendering rather than printing the same text a second time; the event is
+    // recorded either way.
+    if (event.type === "assistant" && screen.isDrafting()) {
+      screen.sealDraft(lines);
+      repaint();
+      return;
+    }
+    if (lines.length > 0) {
+      screen.sealDraft();
+      screen.print(lines, gap);
+    }
     repaint();
   };
 
@@ -304,6 +321,17 @@ const main = async (): Promise<void> => {
         if (ended) ended.done = true;
         break;
       }
+      case "delta":
+        live = value.kind === live.kind ? { ...live, text: live.text + value.text } : value;
+        screen.draft(
+          live.kind === "reasoning" ? reasoningDraft(live.text) : assistantBlock(live.text),
+          true,
+        );
+        break;
+      case "sealed":
+        screen.sealDraft();
+        live = { kind: "text", text: "" };
+        break;
       case "empty":
         if (!produced) screen.print(noticeBlock("(no response)"), false);
         break;
@@ -312,6 +340,10 @@ const main = async (): Promise<void> => {
         screen.print(noticeBlock(`(dequeued) ${value.text.split("\n")[0].slice(0, 60)}`), false);
         break;
       case "idle":
+        // anything still buffered belongs to the turn that just ended
+        chat.flush();
+        screen.sealDraft();
+        live = { kind: "text", text: "" };
         subagents.length = 0;
         watching = 0;
         void saveSession(session);
