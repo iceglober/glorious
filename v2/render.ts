@@ -47,7 +47,7 @@ const noise = /[\p{Cc}\p{Bidi_Control}]/gu;
 const clean = (text: string): string =>
   text.replaceAll("\r", "").replace(noise, (char) => (char === "\n" ? "\n" : " "));
 
-const flatten = (text: string): string => clean(text).replaceAll("\n", " ").trim();
+export const flatten = (text: string): string => clean(text).replaceAll("\n", " ").trim();
 
 export const clip = (text: string, limit: number): string => {
   if (limit <= 0) return "";

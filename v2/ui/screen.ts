@@ -1,6 +1,6 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { activeSlash, commandInvocation, matchingCommands } from "../commands";
-import { composerKeyBindings, composerWrapMode } from "../composer";
+import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
 import type { Mode } from "../modes";
@@ -8,7 +8,7 @@ import { type Line, modeLabel, statusWave, type Tone } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
-import { createOverlays } from "./overlays";
+import { createOverlays, type SubagentView } from "./overlays";
 import { createQuestions } from "./questions";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;
@@ -24,6 +24,8 @@ export const createScreen = async (callbacks: {
   cwd: string;
   onCommand: (name: string, args: string) => void;
   onModeCycle: () => void;
+  onWatchSubagents: () => void;
+  onCycleSubagent: () => void;
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
   onMcpApprove: (name: string) => void;
@@ -166,6 +168,7 @@ export const createScreen = async (callbacks: {
     callbacks.onSkillsReload,
     callbacks.onMcpReload,
     callbacks.onMcpApprove,
+    callbacks.onCycleSubagent,
   );
   const questions = createQuestions(chrome, host);
 
@@ -353,14 +356,32 @@ export const createScreen = async (callbacks: {
         return;
       }
     }
+    // Ctrl+B, not Ctrl+O: ^O is the terminal's discard character on BSD and macOS
+    // and never reaches the app. ^R is reprint and ^T is status, out for the
+    // same reason.
+    if (event.ctrl && event.name === "b") {
+      event.stopPropagation();
+      callbacks.onWatchSubagents();
+      return;
+    }
     if (event.name === "tab") {
       event.stopPropagation();
       callbacks.onModeCycle();
       return;
     }
-    const back = (!event.shift && event.name === "up") || (event.ctrl && event.name === "p");
-    const forward = (!event.shift && event.name === "down") || (event.ctrl && event.name === "n");
-    if (!back && !forward) cursor = null;
+    // Arrow keys move within what you are typing and only reach for history at
+    // the edges, the way a shell does. Ctrl+P/Ctrl+N stay unconditional history,
+    // so recalling a long prompt never costs you fast cycling.
+    const arrowBack = !event.shift && event.name === "up";
+    const arrowForward = !event.shift && event.name === "down";
+    const back =
+      (arrowBack && atFirstLine(input.plainText, input.cursorOffset)) ||
+      (event.ctrl && event.name === "p");
+    const forward =
+      (arrowForward && atLastLine(input.plainText, input.cursorOffset)) ||
+      (event.ctrl && event.name === "n");
+    // moving inside the draft keeps your place in history rather than dropping it
+    if (!back && !forward && !arrowBack && !arrowForward) cursor = null;
     if (event.ctrl && event.name === "c") {
       event.stopPropagation();
       onCtrlC();
@@ -484,6 +505,12 @@ export const createScreen = async (callbacks: {
       onCancel: () => void,
     ) => overlays.showProviderKey(provider, onSave, onCancel),
     showModelError: (message: string) => overlays.showModelError(message),
+    showSubagents: (agents: readonly SubagentView[], at: number) =>
+      overlays.showSubagents(agents, at),
+    refreshSubagents: (agents: readonly SubagentView[], at: number) => {
+      if (overlays.isSubagentView()) overlays.paintSubagents(agents, at);
+    },
+    watchingSubagents: () => overlays.isSubagentView(),
     setMode: (mode: { name: string; tone: Tone }) => {
       modeRow.content = styled([modeLabel(mode)]);
       draw();

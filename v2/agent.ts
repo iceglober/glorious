@@ -133,11 +133,18 @@ ${fence("rules", setup.rules)}
 The brief you are given is your complete starting context; do not assume access to the parent conversation, plan, or tool results. Work only on the task in that brief. Inspect the repository when needed, make the requested changes, and verify them with focused checks. You have no way to ask anyone anything and cannot delegate further; decide with what the brief gives you. Return a concise summary of what you did and any checks that ran.`;
 
   const toolsFor = (onTool: (event: ToolEvent) => void) => {
-    const runSubagent: RunSubagent = async (task, context, signal) => {
+    const runSubagent: RunSubagent = async (task, context, signal, origin) => {
       const result = await generateText({
         model,
         instructions: subagentInstructions,
-        tools: createTools(setup.root, onTool, null, setup.skillTools),
+        // stamped with the row that spawned them, so the session shows one
+        // summary line instead of the subagent's whole stream
+        tools: createTools(
+          setup.root,
+          (event) => onTool({ ...event, origin }),
+          null,
+          setup.skillTools,
+        ),
         stopWhen: [stepCountIs(SUBAGENT_STEP_LIMIT)],
         maxOutputTokens: SUBAGENT_OUTPUT_TOKENS,
         maxRetries: 5,

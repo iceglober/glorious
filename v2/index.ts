@@ -14,8 +14,10 @@ import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
 import { MODES, type Mode, modeByName, nextMode } from "./modes";
 import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
 import {
+  clip,
   errorText,
   eventBlock,
+  flatten,
   type Line,
   noticeBlock,
   queuedRow,
@@ -140,15 +142,38 @@ const main = async (): Promise<void> => {
   let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
   let produced = false;
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
+  // Live subagents for this turn. Their tool calls are kept out of the
+  // transcript, so this is the only place they exist to be looked at.
+  type Subagent = {
+    id: number;
+    task: string;
+    stream: Array<{ name: string; detail: string; ok: boolean | null }>;
+    tools: number;
+    since: number;
+    done: boolean;
+  };
+  const subagents: Subagent[] = [];
+  let watching = 0;
 
   const repaint = (): void => {
     const now = Date.now();
     const progress: Line[] = [];
     for (const tool of running) {
-      if (now - tool.since >= SETTLE_MS) progress.push(runningRow(tool.name, tool.detail, frame));
+      if (now - tool.since < SETTLE_MS) continue;
+      // A subagent's own calls never reach the transcript, so its row carries
+      // the evidence that work is happening: how much, and for how long.
+      const agent = subagents.find((entry) => entry.id === tool.id);
+      // Counts first: the brief is long, so anything appended after it is clipped
+      // off the end of the row and never seen.
+      const detail =
+        agent === undefined
+          ? tool.detail
+          : `${agent.tools} tools · ${Math.round((now - agent.since) / 1000)}s · ctrl+b   ${clip(flatten(tool.detail), 60)}`;
+      progress.push(runningRow(tool.name, detail, frame));
     }
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
+    if (screen.watchingSubagents()) screen.refreshSubagents(subagents, watching);
     screen.setWave(frame, chat.busy, chat.queued.length);
     screen.setStatus(
       statusLine(
@@ -242,13 +267,41 @@ const main = async (): Promise<void> => {
   const react = (value: ChatSignal): void => {
     switch (value.type) {
       case "tool": {
+        const { origin } = value.tool;
+        if (origin !== undefined) {
+          // A subagent's own call belongs to that subagent's stream, which the
+          // transcript never shows — this is the only record it has.
+          const owner = subagents.find((entry) => entry.id === origin);
+          if (!owner) break;
+          if (value.tool.phase === "start") {
+            owner.stream.push({ name: value.tool.name, detail: value.tool.detail, ok: null });
+            break;
+          }
+          const open = owner.stream.findLast(
+            (step) => step.name === value.tool.name && step.ok === null,
+          );
+          if (open) open.ok = value.tool.ok;
+          owner.tools += 1;
+          break;
+        }
         if (value.tool.phase === "start") {
           const { id, name, detail } = value.tool;
           running.push({ id, name, detail, since: Date.now() });
+          if (name === "run_subagent")
+            subagents.push({
+              id,
+              task: detail,
+              stream: [],
+              tools: 0,
+              since: Date.now(),
+              done: false,
+            });
           break;
         }
         const slot = running.findIndex((tool) => tool.id === value.tool.id);
         if (slot >= 0) running.splice(slot, 1);
+        const ended = subagents.find((entry) => entry.id === value.tool.id);
+        if (ended) ended.done = true;
         break;
       }
       case "empty":
@@ -259,6 +312,8 @@ const main = async (): Promise<void> => {
         screen.print(noticeBlock(`(dequeued) ${value.text.split("\n")[0].slice(0, 60)}`), false);
         break;
       case "idle":
+        subagents.length = 0;
+        watching = 0;
         void saveSession(session);
         break;
     }
@@ -388,6 +443,19 @@ const main = async (): Promise<void> => {
       repaint();
     },
     onModeCycle: cycleMode,
+    // Ctrl+O opens the stream the transcript no longer carries. With nothing
+    // running there is nothing to show, so the key does nothing and the hint
+    // stays hidden.
+    onWatchSubagents: () => {
+      if (subagents.length === 0) return;
+      watching = Math.min(watching, subagents.length - 1);
+      screen.showSubagents(subagents, watching);
+    },
+    onCycleSubagent: () => {
+      if (subagents.length === 0) return;
+      watching = (watching + 1) % subagents.length;
+      screen.refreshSubagents(subagents, watching);
+    },
     onSkillsReload: () => {
       void loadUserCommands(root).then((refreshed) => {
         userCommands = refreshed;
