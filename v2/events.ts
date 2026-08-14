@@ -15,6 +15,10 @@ export type SessionEvent =
       output?: number;
       cost?: number;
     }
+  // Shown live while it streams, then collapsed to a single line. The full text
+  // is kept so a resumed session replays faithfully and an expand affordance can
+  // be added later without another schema change.
+  | { type: "reasoning"; text: string; elapsedMs: number }
   | { type: "cleared"; reason: string }
   | { type: "turn"; messages: ModelMessage[] };
 

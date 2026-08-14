@@ -317,3 +317,91 @@ describe("keeping a subagent's tools out of the transcript", () => {
     expect(seen.filter((event) => event.type === "tool")).toMatchObject([{ name: "run_subagent" }]);
   });
 });
+
+describe("streaming deltas", () => {
+  type Turn = {
+    onDelta: (d: { kind: "text" | "reasoning"; text: string }) => void;
+    onReasoningEnd: (r: { text: string; elapsedMs: number }) => void;
+    onStep: (s: {
+      text: string;
+      contextTokens: number;
+      cachedTokens: number;
+      outputTokens: number;
+    }) => void;
+  };
+
+  const streamed = (script: (turn: Turn) => void) => {
+    const seen: SessionEvent[] = [];
+    const signalled: ChatSignal[] = [];
+    const agent = {
+      mode: () => DEFAULT_MODE,
+      setMode: () => {},
+      run: async (_p: string, _h: ModelMessage[], turn: Turn) => {
+        script(turn);
+        return done("final answer");
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, {
+      onEvent: (e) => seen.push(e),
+      onSignal: (v) => signalled.push(v),
+    });
+    return { chat, seen, signalled };
+  };
+
+  test("a burst of deltas costs one signal, not one per delta", async () => {
+    const { chat, signalled } = streamed((turn) => {
+      for (const piece of ["a", "b", "c", "d", "e"]) turn.onDelta({ kind: "text", text: piece });
+    });
+    chat.send("go");
+    await settle(chat);
+    chat.flush();
+    const deltas = signalled.filter((v) => v.type === "delta");
+    expect(deltas).toHaveLength(1);
+    expect(deltas[0]).toMatchObject({ text: "abcde" });
+  });
+
+  test("nothing is signalled until a flush, so partial words never paint alone", async () => {
+    const { chat, signalled } = streamed((turn) => {
+      turn.onDelta({ kind: "text", text: "hel" });
+      expect(signalled.filter((v) => v.type === "delta")).toHaveLength(0);
+      turn.onDelta({ kind: "text", text: "lo" });
+    });
+    chat.send("go");
+    await settle(chat);
+    chat.flush();
+    expect(signalled.filter((v) => v.type === "delta")[0]).toMatchObject({ text: "hello" });
+  });
+
+  test("switching kind flushes, so reasoning and answer never merge into one block", async () => {
+    const { chat, signalled } = streamed((turn) => {
+      turn.onDelta({ kind: "reasoning", text: "thinking" });
+      turn.onDelta({ kind: "text", text: "answering" });
+    });
+    chat.send("go");
+    await settle(chat);
+    chat.flush();
+    const deltas = signalled.filter((v) => v.type === "delta");
+    expect(deltas.map((d) => d.kind)).toEqual(["reasoning", "text"]);
+  });
+
+  test("reasoning is recorded durably, with its duration", async () => {
+    const { chat, seen } = streamed((turn) => {
+      turn.onDelta({ kind: "reasoning", text: "weighing options" });
+      turn.onReasoningEnd({ text: "weighing options", elapsedMs: 4200 });
+    });
+    chat.send("go");
+    await settle(chat);
+    expect(seen.filter((e) => e.type === "reasoning")).toMatchObject([
+      { text: "weighing options", elapsedMs: 4200 },
+    ]);
+  });
+
+  test("the durable assistant event still lands, unchanged by streaming", async () => {
+    const { chat, seen } = streamed((turn) => {
+      turn.onDelta({ kind: "text", text: "final answer" });
+    });
+    chat.send("go");
+    await settle(chat);
+    expect(seen.filter((e) => e.type === "assistant")).toMatchObject([{ text: "final answer" }]);
+  });
+});

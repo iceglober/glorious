@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { generateText, hasToolCall, type ModelMessage, stepCountIs } from "ai";
+import { generateText, hasToolCall, type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "./models";
 import { DEFAULT_MODE, type Mode } from "./modes";
 import {
@@ -216,6 +216,9 @@ The brief you are given is your complete starting context; do not assume access 
           cost?: number;
         }) => void;
         onTool: (event: ToolEvent) => void;
+        // text as it arrives, so a turn is no longer a silence with a wave over it
+        onDelta: (delta: { kind: "text" | "reasoning"; text: string }) => void;
+        onReasoningEnd: (reasoning: { text: string; elapsedMs: number }) => void;
       },
     ) => {
       const sent: ModelMessage[] = [
@@ -227,7 +230,9 @@ The brief you are given is your complete starting context; do not assume access 
             .join("\n\n"),
         },
       ];
-      const result = await generateText({
+      // streamText returns synchronously; its promises settle once the stream
+      // below is drained.
+      const result = streamText({
         ...settings(),
         tools: toolsFor(turn.onTool),
         messages: sent,
@@ -243,10 +248,37 @@ The brief you are given is your complete starting context; do not assume access 
           });
         },
       });
+      let reasoning = "";
+      let reasoningSince = 0;
+      for await (const part of result.fullStream) {
+        if (part.type === "text-delta") {
+          turn.onDelta({ kind: "text", text: part.text });
+          continue;
+        }
+        if (part.type === "reasoning-start") {
+          reasoning = "";
+          reasoningSince = Date.now();
+          continue;
+        }
+        if (part.type === "reasoning-delta") {
+          reasoning += part.text;
+          turn.onDelta({ kind: "reasoning", text: part.text });
+          continue;
+        }
+        if (part.type === "reasoning-end" && reasoning.trim() !== "") {
+          turn.onReasoningEnd({ text: reasoning, elapsedMs: Date.now() - reasoningSince });
+          reasoning = "";
+        }
+      }
+      const [text, responseMessages, steps] = await Promise.all([
+        result.text,
+        result.responseMessages,
+        result.steps,
+      ]);
       return {
-        text: result.text,
-        messages: [...sent, ...result.responseMessages],
-        stoppedAtStepLimit: !result.text.trim() && result.steps.length >= STEP_LIMIT,
+        text,
+        messages: [...sent, ...responseMessages],
+        stoppedAtStepLimit: !text.trim() && steps.length >= STEP_LIMIT,
       };
     },
   };

@@ -11,6 +11,9 @@ export type ChatSignal =
   | { type: "empty" }
   | { type: "dequeued"; text: string }
   | { type: "mode" }
+  // live text, painted and then replaced by the durable assistant event
+  | { type: "delta"; kind: "text" | "reasoning"; text: string }
+  | { type: "sealed" }
   | { type: "idle" };
 
 const NOTE_CHARS = 160;
@@ -66,6 +69,15 @@ export const createChat = (
     });
   };
 
+  let pending: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
+
+  const flushDeltas = (): void => {
+    if (pending.text === "") return;
+    const { kind, text } = pending;
+    pending = { kind, text: "" };
+    signal({ type: "delta", kind, text });
+  };
+
   const turn = async ({ text, label }: Pending): Promise<void> => {
     const stop = new AbortController();
     live = stop;
@@ -85,11 +97,26 @@ export const createChat = (
     const done = await agent
       .run(prompt, history, {
         signal: stop.signal,
+        // Deltas arrive far faster than the repaint tick, so they accumulate here
+        // and are flushed by flushDeltas() on the frame — never one paint per
+        // delta.
+        onDelta: ({ kind, text }) => {
+          if (kind !== pending.kind) flushDeltas();
+          pending = { kind, text: pending.text + text };
+        },
+        onReasoningEnd: ({ text, elapsedMs }) => {
+          flushDeltas();
+          signal({ type: "sealed" });
+          announce({ type: "reasoning", text, elapsedMs });
+        },
         onTool: (tool) => {
           if (tool.name === "present_plan") presented = true;
           onTool(started, tool);
         },
         onStep: (step) => {
+          // the step's complete text is about to be announced; anything still
+          // buffered belongs to it, not to the next step
+          flushDeltas();
           announce({
             type: "usage",
             tokens: step.contextTokens,
@@ -172,6 +199,8 @@ export const createChat = (
     // `label` is what the transcript shows. A slash command expands into a body
     // far larger than what was typed — echoing that back as the user's own
     // words buries the session under it.
+    // Driven by the frame tick so a burst of deltas costs one repaint.
+    flush: flushDeltas,
     send: (text: string, label: string | null = null): void => {
       queue.push({ text, label });
       if (queue.length === 1) void drain();

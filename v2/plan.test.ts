@@ -159,3 +159,24 @@ describe("what plan mode is told", () => {
     expect(planNudge).toContain("present_plan");
   });
 });
+
+describe("reasoning does not disturb the model's context", () => {
+  test("the fold ignores it, so a long think costs no context", () => {
+    const events: SessionEvent[] = [
+      { type: "reasoning", text: "x".repeat(9000), elapsedMs: 5000 },
+      { type: "turn", messages: [{ role: "assistant", content: "a" } as ModelMessage] },
+      { type: "reasoning", text: "more", elapsedMs: 100 },
+    ];
+    expect(messagesOf(events)).toHaveLength(1);
+  });
+
+  test("a clear still supersedes everything before it, reasoning included", () => {
+    const events: SessionEvent[] = [
+      { type: "reasoning", text: "before", elapsedMs: 100 },
+      { type: "turn", messages: [{ role: "assistant", content: "old" } as ModelMessage] },
+      { type: "cleared", reason: "user cleared" },
+      { type: "turn", messages: [{ role: "assistant", content: "new" } as ModelMessage] },
+    ];
+    expect(messagesOf(events).map((m) => m.content)).toEqual(["new"]);
+  });
+});
