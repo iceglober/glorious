@@ -5,7 +5,10 @@ import type { Command } from "./commands";
 
 // Same shape the skill roots use: project directories win over the home
 // directory, so a repo can define a command that shadows a personal one.
-const commandRoots = (root: string): string[] => {
+// Returned without a leaf so everything loaded per-agent-directory —
+// commands, extensions — walks the same list rather than each keeping its own
+// copy that can drift.
+export const agentDirectories = (root: string): string[] => {
   const home = homedir();
   const project: string[] = [];
   let current = resolve(root);
@@ -18,16 +21,19 @@ const commandRoots = (root: string): string[] => {
   }
   return [
     ...project.flatMap((directory) => [
-      join(directory, ".glorious", "commands"),
-      join(directory, ".agents", "commands"),
-      join(directory, ".claude", "commands"),
+      join(directory, ".glorious"),
+      join(directory, ".agents"),
+      join(directory, ".claude"),
     ]),
-    join(home, ".config", "agents", "commands"),
-    join(home, ".claude", "commands"),
+    join(home, ".config", "agents"),
+    join(home, ".claude"),
   ];
 };
 
-const scalar = (value: string): string => {
+const commandRoots = (root: string): string[] =>
+  agentDirectories(root).map((directory) => join(directory, "commands"));
+
+export const scalar = (value: string): string => {
   const trimmed = value.trim();
   if (
     trimmed.length >= 2 &&

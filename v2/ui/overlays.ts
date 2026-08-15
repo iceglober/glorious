@@ -76,8 +76,25 @@ export const createOverlays = (
     host.draw();
   };
 
-  const showHelp = (): void => {
+  const showHelp = (extensions: readonly { name: string; description: string }[] = []): void => {
     if (view) return;
+    // Only shown when the project defines some: a heading over an empty list
+    // reads as a broken feature rather than an unused one.
+    const extensionLines: Line[] =
+      extensions.length === 0
+        ? []
+        : [
+            [{ text: "" }],
+            [{ text: "Extensions", tone: "accent", bold: true }],
+            [{ text: "Type $ to run one. These are project scripts, not the model." }],
+            [{ text: "" }],
+            ...extensions.map(
+              (extension): Line => [
+                { text: `$${extension.name}`, tone: "highlight", bold: true },
+                { text: `  ${extension.description}` },
+              ],
+            ),
+          ];
     const lines: Line[] = [
       [{ text: "Slash commands", tone: "accent", bold: true }],
       [{ text: "Type / anywhere after whitespace to open autocomplete." }],
@@ -89,6 +106,7 @@ export const createOverlays = (
           { text: `  ${command.description}` },
         ],
       ),
+      ...extensionLines,
       [{ text: "" }],
       [{ text: "Esc closes this help", tone: "muted" }],
     ];

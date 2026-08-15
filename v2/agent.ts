@@ -74,6 +74,13 @@ type Setup = Parameters<typeof systemPrompt>[0] &
 // The main loop turns a step-limited turn into a [system-reminder]; a subagent
 // has no turn of its own, so the same fact has to travel in the result the
 // parent reads. Returning "" would tell the parent nothing at all.
+// Subscribe now so a later throw cannot leave this rejected with nobody
+// listening. Bun prints an unhandled rejection straight to stderr, which lands
+// at whatever cursor position the TUI happens to be at and shreds the screen.
+// The failure still travels — the stream iteration throws it.
+export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
+  Promise.resolve(value).catch(() => fallback);
+
 export const subagentReport = (text: string, steps: number): string => {
   const summary = text.trim();
   if (summary !== "") return summary;
@@ -237,6 +244,10 @@ The brief you are given is your complete starting context; do not assume access 
         tools: toolsFor(turn.onTool),
         messages: sent,
         abortSignal: turn.signal,
+        // The SDK's default is console.error, which writes a raw stack over the
+        // alternate screen. The failure still travels: it arrives as an error
+        // part and the loop below throws it.
+        onError: () => {},
         onLanguageModelCallEnd: ({ content, usage }) => {
           observed = usage?.inputTokens ?? observed;
           turn.onStep({
@@ -248,9 +259,21 @@ The brief you are given is your complete starting context; do not assume access 
           });
         },
       });
+      // A stream error makes the loop below throw, and these three would then be
+      // left rejected with nobody listening — Bun prints each stack straight to
+      // stderr, on top of the alternate screen. Subscribe before iterating; the
+      // throw is what reports the failure.
+      const settled = {
+        text: settleQuietly(result.text, ""),
+        messages: settleQuietly(result.responseMessages, []),
+        steps: settleQuietly(result.steps, []),
+      };
       let reasoning = "";
       let reasoningSince = 0;
       for await (const part of result.fullStream) {
+        // streamText forwards failures into the stream instead of throwing, so
+        // without this a failed turn would look like an empty one.
+        if (part.type === "error") throw part.error;
         if (part.type === "text-delta") {
           turn.onDelta({ kind: "text", text: part.text });
           continue;
@@ -271,9 +294,9 @@ The brief you are given is your complete starting context; do not assume access 
         }
       }
       const [text, responseMessages, steps] = await Promise.all([
-        result.text,
-        result.responseMessages,
-        result.steps,
+        settled.text,
+        settled.messages,
+        settled.steps,
       ]);
       return {
         text,
