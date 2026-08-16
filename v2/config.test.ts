@@ -1,139 +1,67 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  configLayerPath,
-  configProvenance,
-  loadConfig,
-  mergeConfig,
-  writeConfigLayer,
-} from "./config";
+import { loadConfig } from "./config";
 
-const directories: string[] = [];
+const roots: string[] = [];
 
-const directory = async (): Promise<string> => {
-  const path = await mkdtemp(join(tmpdir(), "glorious-config-"));
-  directories.push(path);
-  return path;
+const project = async (contents: string | null): Promise<string> => {
+  const root = await mkdtemp(join(tmpdir(), "glorious-config-"));
+  roots.push(root);
+  if (contents !== null) {
+    await mkdir(join(root, ".glorious"), { recursive: true });
+    await writeFile(join(root, ".glorious", "config.json"), contents);
+  }
+  return root;
 };
 
-afterEach(async () => {
-  await Promise.all(
-    directories.splice(0).map((path) => rm(path, { force: true, recursive: true })),
-  );
+afterAll(async () => {
+  for (const root of roots) await rm(root, { recursive: true, force: true });
 });
 
-const writeJson = (path: string, value: unknown): Promise<void> =>
-  writeFile(path, `${JSON.stringify(value)}\n`);
-
-describe("layered config", () => {
-  test("merges layers in precedence order and reports the source", async () => {
-    const root = await directory();
-    const globalPath = join(root, "global.json");
-    await writeJson(globalPath, {
-      model: { selected: "global/model", variant: "low" },
-      providers: { vertex: { project: "global-project", region: "us" } },
+describe("loadConfig", () => {
+  test("reads the model and variant a project pins", async () => {
+    const root = await project(`{"model":"anthropic/claude-opus-5","variant":"high"}`);
+    expect((await loadConfig(root)).config).toMatchObject({
+      model: "anthropic/claude-opus-5",
+      variant: "high",
     });
-    await mkdir(join(root, ".glorious"));
-    await writeJson(join(root, ".glorious/config.json"), {
-      model: { variant: "high" },
-      providers: { vertex: { location: "us-central1" } },
-    });
-    await writeJson(join(root, ".glorious/config.local.json"), {
-      model: { selected: "local/model" },
-      providers: { vertex: { project: "local-project" } },
-    });
-
-    const loaded = await loadConfig(root, { globalPath });
-
-    expect(loaded.config).toEqual({
-      model: { selected: "local/model", variant: "high" },
-      providers: {
-        vertex: { project: "local-project", region: "us", location: "us-central1" },
-      },
-    });
-    expect(configProvenance(loaded.layers, "model.selected")).toBe("local");
-    expect(configProvenance(loaded.layers, ["model", "variant"])).toBe("project");
-    expect(configProvenance(loaded.layers, "providers.vertex.region")).toBe("global");
   });
 
-  test("replaces arrays and scalar values during a pure merge", () => {
-    const first = { value: ["one"], nested: { keep: true, replace: "old" } };
-    const merged = mergeConfig(first, { value: ["two"], nested: { replace: "new" } });
-
-    expect(merged).toEqual({ value: ["two"], nested: { keep: true, replace: "new" } });
-    expect(first).toEqual({ value: ["one"], nested: { keep: true, replace: "old" } });
+  test("a missing config is not a problem", async () => {
+    const { config, diagnostics } = await loadConfig(await project(null));
+    expect(config.model).toBeUndefined();
+    expect(diagnostics).toEqual([]);
   });
 
-  test("keeps loading when files are missing or malformed", async () => {
-    const root = await directory();
-    const globalPath = join(root, "global.json");
-    await writeFile(globalPath, "{");
-
-    const loaded = await loadConfig(root, { globalPath });
-
-    expect(loaded.config).toEqual({ model: {}, providers: {} });
-    expect(loaded.diagnostics.map((diagnostic) => diagnostic.kind)).toEqual([
-      "malformed",
-      "missing",
-      "missing",
-    ]);
+  // A config that silently does nothing is the hardest kind to debug, so a
+  // broken one is reported — and the session still starts.
+  test("malformed JSON is reported, not swallowed, and does not throw", async () => {
+    const { config, diagnostics } = await loadConfig(await project("{not json"));
+    expect(config.model).toBeUndefined();
+    expect(diagnostics[0]).toContain("not valid JSON");
   });
 
-  test("rejects api keys and secrets from files and writes", async () => {
-    const root = await directory();
-    const globalPath = join(root, "global.json");
-    await writeJson(globalPath, { providers: { openai: { apiKey: "secret" } } });
-
-    const loaded = await loadConfig(root, { globalPath });
-    expect(loaded.diagnostics[0]?.kind).toBe("invalid");
-    expect(loaded.config.providers).toEqual({});
-
-    await expect(
-      writeConfigLayer("global", root, { secrets: { openai: "secret" } } as never, {
-        globalPath,
-      }),
-    ).rejects.toThrow();
+  // A config file that grew a key glorious no longer knows about is not broken.
+  // Refusing to start over one would be the worse failure.
+  test("unknown keys are ignored rather than rejected", async () => {
+    const root = await project(`{"model":"azure/x","mcpServers":{"old":{}},"nonsense":1}`);
+    const { config, diagnostics } = await loadConfig(root);
+    expect(config.model).toBe("azure/x");
+    expect(diagnostics).toEqual([]);
   });
 
-  test("validates before atomically replacing a writable layer", async () => {
-    const root = await directory();
-    const globalPath = join(root, "global.json");
-    await writeJson(globalPath, { model: { selected: "before" } });
-
-    await expect(
-      writeConfigLayer("global", root, { model: { selected: 1 } } as never, { globalPath }),
-    ).rejects.toThrow();
-    expect(await readFile(globalPath, "utf8")).toBe('{"model":{"selected":"before"}}\n');
-
-    const events: string[] = [];
-    await writeConfigLayer(
-      "project",
-      root,
-      { model: { selected: "after" } },
-      {
-        fileSystem: {
-          readFile: (path) => readFile(path, "utf8"),
-          mkdir: async (path, options) => {
-            await mkdir(path, options);
-          },
-          writeFile: async (path, contents, options) => {
-            events.push("write");
-            await writeFile(path, contents, options);
-          },
-          rename: async (from, to) => {
-            events.push("rename");
-            await rename(from, to);
-          },
-          rm: (path, options) => rm(path, options),
-        },
-      },
-    );
-    const projectPath = configLayerPath("project", root);
-    expect(events).toEqual(["write", "rename"]);
-    expect(JSON.parse(await readFile(projectPath, "utf8"))).toEqual({
-      model: { selected: "after" },
+  test("provider settings survive, keyed by provider", async () => {
+    const root = await project(`{"providers":{"google-vertex":{"project":"p","location":"l"}}}`);
+    expect((await loadConfig(root)).config.providers).toEqual({
+      "google-vertex": { api: undefined, region: undefined, project: "p", location: "l" },
     });
+  });
+
+  test("a non-string value is dropped rather than trusted", async () => {
+    const { config } = await loadConfig(await project(`{"model":42,"variant":""}`));
+    expect(config.model).toBeUndefined();
+    expect(config.variant).toBeUndefined();
   });
 });

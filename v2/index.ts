@@ -4,12 +4,12 @@ import packageJson from "../package.json";
 import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
 import { commandByName, expandCommand, setCustomCommands } from "./commands";
-import { loadConfig, writeConfigLayer } from "./config";
+import { loadConfig } from "./config";
 import { messagesOf, type SessionEvent } from "./events";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
-import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
+import { currentModel, modelLabel, modelMetadata } from "./models";
 import { runPrint } from "./print";
 import { shortcutPrompt } from "./prompt";
 import {
@@ -24,7 +24,6 @@ import {
   statusLine,
   userBlock,
 } from "./render";
-import { providerKey, saveProviderKey } from "./secrets";
 import { loadSequences } from "./sequences";
 import {
   createSession,
@@ -113,10 +112,7 @@ const main = async (): Promise<void> => {
     };
     if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else {
-      const lines = [
-        `model: ${modelLabel(report.model)}`,
-        ...report.diagnostics.map((diagnostic) => `${diagnostic.layer}: ${diagnostic.message}`),
-      ];
+      const lines = [`model: ${modelLabel(report.model)}`, ...report.diagnostics];
       process.stdout.write(`${lines.join("\n")}\n`);
     }
     return;
@@ -127,7 +123,7 @@ const main = async (): Promise<void> => {
       : await openSession(resumeId, pickSession);
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
-  let config = resolvedConfig;
+  const config = resolvedConfig;
   let model = currentModel(config.config);
   let skills = await loadSkills(root);
   // Slash commands come from two places: markdown files in a commands
@@ -463,70 +459,6 @@ const main = async (): Promise<void> => {
             contributed: describeContribution(registry, entry.origin),
           })),
         );
-      if (name === "models") {
-        const selectModel = (next: typeof model): void => {
-          agent.setModel(next);
-          model = next;
-          void writeConfigLayer("local", root, (current) => ({
-            ...current,
-            model: { selected: modelLabel(next), variant: next.variant },
-            providers: { ...current.providers, [next.provider]: { enabled: true } },
-          }))
-            .then(() => loadConfig(root))
-            .then((nextConfig) => {
-              config = nextConfig;
-            })
-            .catch((failure) => screen.showModelError(errorText(failure)));
-          repaint();
-        };
-        const showModels = (options: Awaited<ReturnType<typeof loadModels>>): void =>
-          screen.showModels(options, selectModel, showProviders);
-        const selectProvider = (provider: string, apiKey?: string): void => {
-          void loadModels(model, config.config, provider, apiKey)
-            .then(showModels)
-            .catch((failure) => screen.showModelError(errorText(failure)));
-        };
-        const showProviders = (): void => {
-          void loadProviders(config.config)
-            .then((providers) =>
-              screen.showProviders(
-                providers,
-                (provider) => {
-                  if (provider.env.length === 0) {
-                    selectProvider(provider.id);
-                    return;
-                  }
-                  void providerKey(provider.id)
-                    .then((stored) => {
-                      if (stored) {
-                        selectProvider(provider.id, stored);
-                        return;
-                      }
-                      screen.showProviderKey(
-                        provider,
-                        (key) => {
-                          if (key === "") {
-                            selectProvider(provider.id);
-                            return;
-                          }
-                          void saveProviderKey(provider.id, key)
-                            .then(() => selectProvider(provider.id, key))
-                            .catch((failure) => screen.showModelError(errorText(failure)));
-                        },
-                        showProviders,
-                      );
-                    })
-                    .catch((failure) => screen.showModelError(errorText(failure)));
-                },
-                () => void loadModels(model, config.config).then(showModels),
-              ),
-            )
-            .catch((failure) => screen.showModelError(errorText(failure)));
-        };
-        void loadModels(model, config.config)
-          .then(showModels)
-          .catch((failure) => screen.showModelError(errorText(failure)));
-      }
       repaint();
     },
     onSkillsReload: () => {
@@ -589,14 +521,14 @@ const main = async (): Promise<void> => {
     });
   await fire(registry, "session_start", { root }, onExtensionFailure);
 
-  void loadModels(model, config.config)
-    .then((options) => {
-      const metadata = options.find((option) => modelLabel(option) === modelLabel(model));
-      if (metadata) {
-        model = metadata;
-        agent.setModel(metadata);
-        repaint();
-      }
+  // The picker is gone; this is metadata only. Context size and pricing feed
+  // the status line's `ctx 12.3k(6%)` and the cost, and there is no denominator
+  // without it. Silent on failure: offline, the line reads `unknown`.
+  void modelMetadata(model)
+    .then((metadata) => {
+      model = { ...model, ...metadata };
+      agent.setModel(model);
+      repaint();
     })
     .catch(() => {});
 

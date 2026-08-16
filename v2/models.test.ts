@@ -4,9 +4,8 @@ import type { Config } from "./config";
 import {
   createModel,
   currentModel,
-  loadModels,
-  loadProviders,
   modelCost,
+  modelMetadata,
   priceMultiplier,
   resolveApiKey,
 } from "./models";
@@ -23,30 +22,23 @@ describe("model pricing", () => {
   });
 
   test("applies the multiplier to models.dev rates", async () => {
-    const previousKey = process.env.AZURE_OPENAI_API_KEY;
-    const previousPrices = process.env.GLORIOUS_PRICE_MULTIPLIERS;
-    process.env.AZURE_OPENAI_API_KEY = "test";
+    const previous = process.env.GLORIOUS_PRICE_MULTIPLIERS;
     process.env.GLORIOUS_PRICE_MULTIPLIERS = "azure=1.1";
     const response = new Response(
       JSON.stringify({
         azure: {
           npm: "@ai-sdk/azure",
-          models: { example: { name: "Example", cost: { input: 1, output: 2 } } },
+          models: { example: { id: "example", cost: { input: 1, output: 2 } } },
         },
       }),
     );
-    const models = await loadModels(
-      { provider: "azure", modelId: "other", name: "other", env: [] },
-      async () => response,
+    const metadata = await modelMetadata(
+      { provider: "azure", modelId: "example", name: "example", env: [] },
+      (async () => response) as unknown as typeof fetch,
     );
-    expect(models.find((model) => model.modelId === "example")).toMatchObject({
-      inputCost: 1.1,
-      outputCost: 2.2,
-    });
-    if (previousKey === undefined) delete process.env.AZURE_OPENAI_API_KEY;
-    else process.env.AZURE_OPENAI_API_KEY = previousKey;
-    if (previousPrices === undefined) delete process.env.GLORIOUS_PRICE_MULTIPLIERS;
-    else process.env.GLORIOUS_PRICE_MULTIPLIERS = previousPrices;
+    expect(metadata).toMatchObject({ inputCost: 1.1, outputCost: 2.2 });
+    if (previous === undefined) delete process.env.GLORIOUS_PRICE_MULTIPLIERS;
+    else process.env.GLORIOUS_PRICE_MULTIPLIERS = previous;
   });
 
   test("calculates input and output cost per million tokens", () => {
@@ -78,11 +70,7 @@ afterEach(() => {
   }
 });
 
-const config = (value: Partial<Config> = {}): Config => ({
-  model: {},
-  providers: {},
-  ...value,
-});
+const config = (value: Config = {}): Config => value;
 
 const catalog = {
   compatible: {
@@ -90,7 +78,7 @@ const catalog = {
     npm: "@ai-sdk/openai-compatible",
     api: "https://example.com/v1",
     env: ["COMPATIBLE_API_KEY"],
-    models: { "example-model": { name: "Example model" } },
+    models: { "example-model": { id: "example-model", limit: { context: 128_000 } } },
   },
   unsupported: {
     name: "Unsupported",
@@ -105,7 +93,7 @@ const mockCatalog = (): void => {
 
 describe("model resolution", () => {
   test("prefers the environment model, then config, then Azure", () => {
-    const selected = config({ model: { selected: "anthropic/claude" } });
+    const selected = config({ model: "anthropic/claude" });
 
     expect(currentModel(selected)).toMatchObject({ provider: "anthropic", modelId: "claude" });
     process.env.GLORIOUS_MODEL = "openai/gpt";
@@ -126,65 +114,51 @@ describe("model resolution", () => {
     process.env.GOOGLE_CLOUD_LOCATION = "us-central1";
 
     expect(
-      currentModel(
-        config({ model: { selected: "amazon-bedrock/model" }, providers: selected.providers }),
-      ),
+      currentModel(config({ model: "amazon-bedrock/model", providers: selected.providers })),
     ).toMatchObject({ region: "eu-west-1" });
     expect(
-      currentModel(
-        config({ model: { selected: "google-vertex/model" }, providers: selected.providers }),
-      ),
+      currentModel(config({ model: "google-vertex/model", providers: selected.providers })),
     ).toMatchObject({ project: "configured-project", location: "europe-west4" });
 
-    expect(currentModel(config({ model: { selected: "amazon-bedrock/model" } }))).toMatchObject({
+    expect(currentModel(config({ model: "amazon-bedrock/model" }))).toMatchObject({
       region: "us-west-2",
     });
-    expect(currentModel(config({ model: { selected: "google-vertex/model" } }))).toMatchObject({
+    expect(currentModel(config({ model: "google-vertex/model" }))).toMatchObject({
       project: "environment-project",
       location: "us-central1",
     });
     delete process.env.AWS_REGION;
     delete process.env.GOOGLE_CLOUD_PROJECT;
     delete process.env.GOOGLE_CLOUD_LOCATION;
-    expect(currentModel(config({ model: { selected: "amazon-bedrock/model" } }))).toMatchObject({
+    expect(currentModel(config({ model: "amazon-bedrock/model" }))).toMatchObject({
       region: "us-east-1",
     });
-    expect(currentModel(config({ model: { selected: "google-vertex/model" } }))).toMatchObject({
+    expect(currentModel(config({ model: "google-vertex/model" }))).toMatchObject({
       location: "global",
     });
   });
 });
 
-describe("models.dev catalog", () => {
-  test("lists OpenAI-compatible providers without reading Keychain", async () => {
+// The picker is gone. What survives is a metadata lookup for the model that is
+// already selected, because the status line's percentage needs a denominator.
+describe("models.dev metadata", () => {
+  test("finds the selected model's context window", async () => {
     mockCatalog();
-
-    expect(await loadProviders()).toEqual([
-      {
-        id: "compatible",
-        name: "Compatible API",
-        env: ["COMPATIBLE_API_KEY"],
-        connected: false,
-      },
-    ]);
+    expect(
+      await modelMetadata({
+        provider: "compatible",
+        modelId: "example-model",
+        name: "example-model",
+        env: [],
+      }),
+    ).toMatchObject({ context: 128_000, api: "https://example.com/v1" });
   });
 
-  test("includes config-enabled providers in normal loading", async () => {
+  test("a model the catalog does not carry yields nothing, not a throw", async () => {
     mockCatalog();
-    const selected = config({ providers: { compatible: { enabled: true } } });
-
-    expect(await loadModels(currentModel(selected), selected)).toContainEqual(
-      expect.objectContaining({ provider: "compatible", modelId: "example-model" }),
-    );
-    expect(await loadProviders(selected)).toMatchObject([{ id: "compatible", connected: true }]);
-  });
-
-  test("passes an explicitly resolved key to a selected compatible provider", async () => {
-    mockCatalog();
-
-    expect(await loadModels(currentModel(), "compatible", "key")).toMatchObject([
-      { provider: "compatible", modelId: "example-model", apiKey: "key" },
-    ]);
+    expect(
+      await modelMetadata({ provider: "azure", modelId: "private", name: "private", env: [] }),
+    ).toEqual({});
   });
 });
 

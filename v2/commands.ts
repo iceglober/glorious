@@ -1,4 +1,4 @@
-export type BuiltinAction = "help" | "skills" | "models" | "extensions" | "clear";
+export type BuiltinAction = "help" | "skills" | "extensions" | "clear";
 
 export type Command = {
   name: string;
@@ -20,7 +20,6 @@ const builtins: readonly Command[] = [
     description: "List loaded extensions and where they came from",
     run: "extensions",
   },
-  { name: "models", description: "Switch the active model", run: "models" },
 ];
 
 // Loaded from disk after startup, so the table has to be readable as a function

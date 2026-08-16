@@ -7,7 +7,6 @@ import {
   shortcutInvocation,
 } from "../commands";
 import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
-import type { ModelOption, ProviderOption } from "../models";
 import { type Line, statusWave } from "../render";
 import type { Sequence } from "../sequences";
 import type { SkillSummary } from "../skills";
@@ -541,22 +540,6 @@ export const createScreen = async (callbacks: {
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
     showExtensions: (loaded: readonly { name: string; origin: string; contributed: string }[]) =>
       overlays.showExtensions(loaded),
-    showModels: (
-      models: readonly ModelOption[],
-      onSelect: (model: ModelOption) => void,
-      onConnect: () => void,
-    ) => overlays.showModels(models, onSelect, onConnect),
-    showProviders: (
-      providers: readonly ProviderOption[],
-      onSelect: (provider: ProviderOption) => void,
-      onBack: () => void,
-    ) => overlays.showProviders(providers, onSelect, onBack),
-    showProviderKey: (
-      provider: ProviderOption,
-      onSave: (key: string) => void,
-      onCancel: () => void,
-    ) => overlays.showProviderKey(provider, onSave, onCancel),
-    showModelError: (message: string) => overlays.showModelError(message),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
       if (overlays.isOpen()) overlays.close();
       return questions.ask(items, signal);
