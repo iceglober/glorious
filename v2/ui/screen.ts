@@ -540,8 +540,13 @@ export const createScreen = async (callbacks: {
     },
     print: printBlock,
     setProgress: painter(progress),
-    setWave: (frame: number, busy: boolean, queued: number) => {
-      waterline.content = styled(statusWave(frame, busy, queued, columns()));
+    setWave: (
+      frame: number,
+      busy: boolean,
+      queued: number,
+      phase?: { name: string; ms: number } | null,
+    ) => {
+      waterline.content = styled(statusWave(frame, busy, queued, columns(), phase));
       waterline.visible = busy;
       draw();
     },

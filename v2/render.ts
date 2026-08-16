@@ -222,16 +222,28 @@ export const statusLine = (
   return [[{ text: clip(line, limit), tone: "muted" }]];
 };
 
+// How long the current phase has been running. Seconds carry a decimal so a
+// short one is still visibly moving; past a minute the decimal is noise.
+export const elapsed = (ms: number): string => {
+  const seconds = Math.max(0, ms) / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+};
+
 export const statusWave = (
   frame: number,
   busy: boolean,
   queued: number,
   columns: number,
+  phase?: { name: string; ms: number } | null,
 ): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
   if (!busy || limit === 0) return [[{ text: "" }]];
   const waiting = queued > 0 ? ` · ${queued} queued` : "";
-  const hint = `Esc interrupt${waiting}`;
+  // The phase leads: it is the part that changes, and on a narrow terminal the
+  // clip should eat the fixed hint rather than the live one.
+  const state = phase ? `${phase.name} ${elapsed(phase.ms)} · ` : "";
+  const hint = `${state}Esc interrupt${waiting}`;
   const room = Math.max(0, limit - width(hint) - 2);
   const waves = Array.from({ length: room }, (_, index) => {
     const primary = Math.sin(index / 3 + frame / 5);
@@ -239,11 +251,14 @@ export const statusWave = (
     const height = Math.max(0, Math.min(water.length - 1, Math.round(4 + primary * 3.5 + ripple)));
     return water[height];
   }).join("");
+  // On a narrow terminal the field loses to the hint, and the separator has to
+  // go with it or the row is two columns wider than the screen.
+  const separator = room === 0 ? "" : "  ";
   return [
     [
       { text: waves.slice(0, room), tone: "accent" },
-      { text: "  " },
-      { text: clip(hint, limit), tone: "accent" },
+      { text: separator },
+      { text: clip(hint, Math.max(0, limit - room - separator.length)), tone: "accent" },
     ],
   ];
 };

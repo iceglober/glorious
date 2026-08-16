@@ -150,6 +150,9 @@ const main = async (): Promise<void> => {
   let produced = false;
   // what the current draft block is showing, so deltas append rather than replace
   let live: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
+  // what the model call is doing, and since when — the wave shows both
+  let phase: "sending" | "waiting" | "thinking" | "writing" | null = null;
+  let phaseSince = Date.now();
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
   // Live subagents for this turn. Their tool calls are kept out of the
   // transcript, so this is the only place they exist to be looked at.
@@ -185,7 +188,12 @@ const main = async (): Promise<void> => {
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
     if (screen.watchingSubagents()) screen.refreshSubagents(subagents, watching);
-    screen.setWave(frame, chat.busy, chat.queued.length);
+    screen.setWave(
+      frame,
+      chat.busy,
+      chat.queued.length,
+      phase === null ? null : { name: phase, ms: now - phaseSince },
+    );
     screen.setStatus(
       statusLine(
         {
@@ -332,6 +340,12 @@ const main = async (): Promise<void> => {
           live.kind === "reasoning" ? reasoningDraft(live.text) : assistantBlock(live.text),
           true,
         );
+        break;
+      case "phase":
+        if (value.name !== phase) {
+          phase = value.name;
+          phaseSince = Date.now();
+        }
         break;
       case "sealed":
         screen.sealDraft();

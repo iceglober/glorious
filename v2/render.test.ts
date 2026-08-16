@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { eventBlock, reasoningBlock, reasoningDraft, rightClip, statusLine, width } from "./render";
+import {
+  elapsed,
+  eventBlock,
+  reasoningBlock,
+  reasoningDraft,
+  rightClip,
+  statusLine,
+  statusWave,
+  width,
+} from "./render";
 
 const state = (model: string, tokens = 1000, percentUsed: number | null = 1) => ({
   model,
@@ -68,5 +77,52 @@ describe("reasoning in the transcript", () => {
 
   test("blank lines are dropped rather than painting empty rows", () => {
     expect(reasoningDraft("a\n\n\nb")).toHaveLength(2);
+  });
+});
+
+describe("the wave's sub-status", () => {
+  const text = (columns: number, phase?: { name: string; ms: number } | null) =>
+    statusWave(7, true, 0, columns, phase)
+      .flat()
+      .map((span) => span.text)
+      .join("");
+
+  test("it names the phase and how long it has been in it", () => {
+    expect(text(120, { name: "waiting", ms: 2300 })).toContain("waiting 2.3s");
+  });
+
+  test("without a phase the line is what it always was", () => {
+    const bare = text(120, null);
+    expect(bare).toContain("Esc interrupt");
+    expect(bare).not.toContain("waiting");
+  });
+
+  test("the phase leads, so a narrow terminal clips the fixed hint instead", () => {
+    expect(text(30, { name: "thinking", ms: 8100 })).toContain("thinking 8.1s");
+  });
+
+  test("no row is ever wider than the terminal", () => {
+    for (const columns of [12, 24, 40, 80, 200])
+      for (const phase of [null, { name: "waiting", ms: 65_000 }])
+        expect(text(columns, phase).length).toBeLessThanOrEqual(columns);
+  });
+
+  test("a queued count still reaches the line", () => {
+    const line = statusWave(7, true, 2, 140, { name: "writing", ms: 400 })
+      .flat()
+      .map((s) => s.text)
+      .join("");
+    expect(line).toContain("2 queued");
+    expect(line).toContain("writing 0.4s");
+  });
+
+  test("elapsed stays readable past a minute", () => {
+    expect(elapsed(400)).toBe("0.4s");
+    expect(elapsed(59_400)).toBe("59.4s");
+    expect(elapsed(65_000)).toBe("1m 5s");
+  });
+
+  test("an idle turn still paints nothing", () => {
+    expect(statusWave(7, false, 0, 120, { name: "waiting", ms: 100 })[0][0].text).toBe("");
   });
 });

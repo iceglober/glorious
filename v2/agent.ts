@@ -226,6 +226,8 @@ The brief you are given is your complete starting context; do not assume access 
         // text as it arrives, so a turn is no longer a silence with a wave over it
         onDelta: (delta: { kind: "text" | "reasoning"; text: string }) => void;
         onReasoningEnd: (reasoning: { text: string; elapsedMs: number }) => void;
+        // which part of the model call is in flight, so the wave can say so
+        onPhase: (name: "sending" | "waiting" | "thinking" | "writing" | null) => void;
       },
     ) => {
       const sent: ModelMessage[] = [
@@ -239,6 +241,7 @@ The brief you are given is your complete starting context; do not assume access 
       ];
       // streamText returns synchronously; its promises settle once the stream
       // below is drained.
+      turn.onPhase("sending");
       const result = streamText({
         ...settings(),
         tools: toolsFor(turn.onTool),
@@ -248,6 +251,8 @@ The brief you are given is your complete starting context; do not assume access 
         // alternate screen. The failure still travels: it arrives as an error
         // part and the loop below throws it.
         onError: () => {},
+        // the request is away; nothing has come back yet
+        onLanguageModelCallStart: () => turn.onPhase("waiting"),
         onLanguageModelCallEnd: ({ content, usage }) => {
           observed = usage?.inputTokens ?? observed;
           turn.onStep({
@@ -275,6 +280,7 @@ The brief you are given is your complete starting context; do not assume access 
         // without this a failed turn would look like an empty one.
         if (part.type === "error") throw part.error;
         if (part.type === "text-delta") {
+          turn.onPhase("writing");
           turn.onDelta({ kind: "text", text: part.text });
           continue;
         }
@@ -284,10 +290,14 @@ The brief you are given is your complete starting context; do not assume access 
           continue;
         }
         if (part.type === "reasoning-delta") {
+          turn.onPhase("thinking");
           reasoning += part.text;
           turn.onDelta({ kind: "reasoning", text: part.text });
           continue;
         }
+        // between steps the model call is done and tools may run; their own rows
+        // report that, so the phase stands down rather than restating it
+        if (part.type === "finish-step") turn.onPhase(null);
         if (part.type === "reasoning-end" && reasoning.trim() !== "") {
           turn.onReasoningEnd({ text: reasoning, elapsedMs: Date.now() - reasoningSince });
           reasoning = "";
