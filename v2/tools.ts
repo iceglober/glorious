@@ -7,7 +7,6 @@ import { z } from "zod";
 import { loadAgentRules } from "./guidance";
 import { errorText } from "./render";
 import type { Skills } from "./skills";
-import { fetchPages, MAX_PAGES } from "./web";
 
 let events = 0;
 
@@ -52,7 +51,6 @@ export const BUILT_IN_TOOL_NAMES = [
   "edit",
   "grep",
   "glob",
-  "web_fetch",
   "activate_skill",
 ] as const;
 
@@ -418,19 +416,6 @@ export const createTools = (
     },
   );
 
-  const webFetch = define(
-    "web_fetch",
-    `Fetch web pages and return their main content as markdown, with navigation, boilerplate and markup removed. Read-only: it retrieves public pages and sends nothing. Renders with headless Chrome when one is installed, so pages that build their content with JavaScript work. Pass up to ${MAX_PAGES} URLs to fetch them together. A URL that redirects to a different host is reported rather than followed, so a login wall or shortener does not silently become the answer. Results are cached for 15 minutes.`,
-    z.object({
-      urls: z
-        .array(z.string().min(1))
-        .min(1)
-        .max(MAX_PAGES)
-        .describe("Absolute http(s) URLs to fetch"),
-    }),
-    async ({ urls }, signal) => fetchPages(urls, signal),
-  );
-
   return {
     ...(askUser ? { ask_user: askUser } : {}),
     bash,
@@ -439,7 +424,6 @@ export const createTools = (
     edit,
     grep,
     glob,
-    web_fetch: webFetch,
     ...(skills.tool ? { activate_skill: skills.tool } : {}),
   };
 };
