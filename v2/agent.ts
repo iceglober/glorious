@@ -74,6 +74,13 @@ type Setup = Parameters<typeof systemPrompt>[0] &
 // The main loop turns a step-limited turn into a [system-reminder]; a subagent
 // has no turn of its own, so the same fact has to travel in the result the
 // parent reads. Returning "" would tell the parent nothing at all.
+// Subscribe now so a later throw cannot leave this rejected with nobody
+// listening. Bun prints an unhandled rejection straight to stderr, which lands
+// at whatever cursor position the TUI happens to be at and shreds the screen.
+// The failure still travels — the stream iteration throws it.
+export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
+  Promise.resolve(value).catch(() => fallback);
+
 export const subagentReport = (text: string, steps: number): string => {
   const summary = text.trim();
   if (summary !== "") return summary;
@@ -219,6 +226,8 @@ The brief you are given is your complete starting context; do not assume access 
         // text as it arrives, so a turn is no longer a silence with a wave over it
         onDelta: (delta: { kind: "text" | "reasoning"; text: string }) => void;
         onReasoningEnd: (reasoning: { text: string; elapsedMs: number }) => void;
+        // which part of the model call is in flight, so the wave can say so
+        onPhase: (name: "sending" | "waiting" | "thinking" | "writing" | null) => void;
       },
     ) => {
       const sent: ModelMessage[] = [
@@ -232,11 +241,18 @@ The brief you are given is your complete starting context; do not assume access 
       ];
       // streamText returns synchronously; its promises settle once the stream
       // below is drained.
+      turn.onPhase("sending");
       const result = streamText({
         ...settings(),
         tools: toolsFor(turn.onTool),
         messages: sent,
         abortSignal: turn.signal,
+        // The SDK's default is console.error, which writes a raw stack over the
+        // alternate screen. The failure still travels: it arrives as an error
+        // part and the loop below throws it.
+        onError: () => {},
+        // the request is away; nothing has come back yet
+        onLanguageModelCallStart: () => turn.onPhase("waiting"),
         onLanguageModelCallEnd: ({ content, usage }) => {
           observed = usage?.inputTokens ?? observed;
           turn.onStep({
@@ -248,10 +264,23 @@ The brief you are given is your complete starting context; do not assume access 
           });
         },
       });
+      // A stream error makes the loop below throw, and these three would then be
+      // left rejected with nobody listening — Bun prints each stack straight to
+      // stderr, on top of the alternate screen. Subscribe before iterating; the
+      // throw is what reports the failure.
+      const settled = {
+        text: settleQuietly(result.text, ""),
+        messages: settleQuietly(result.responseMessages, []),
+        steps: settleQuietly(result.steps, []),
+      };
       let reasoning = "";
       let reasoningSince = 0;
       for await (const part of result.fullStream) {
+        // streamText forwards failures into the stream instead of throwing, so
+        // without this a failed turn would look like an empty one.
+        if (part.type === "error") throw part.error;
         if (part.type === "text-delta") {
+          turn.onPhase("writing");
           turn.onDelta({ kind: "text", text: part.text });
           continue;
         }
@@ -261,19 +290,23 @@ The brief you are given is your complete starting context; do not assume access 
           continue;
         }
         if (part.type === "reasoning-delta") {
+          turn.onPhase("thinking");
           reasoning += part.text;
           turn.onDelta({ kind: "reasoning", text: part.text });
           continue;
         }
+        // between steps the model call is done and tools may run; their own rows
+        // report that, so the phase stands down rather than restating it
+        if (part.type === "finish-step") turn.onPhase(null);
         if (part.type === "reasoning-end" && reasoning.trim() !== "") {
           turn.onReasoningEnd({ text: reasoning, elapsedMs: Date.now() - reasoningSince });
           reasoning = "";
         }
       }
       const [text, responseMessages, steps] = await Promise.all([
-        result.text,
-        result.responseMessages,
-        result.steps,
+        settled.text,
+        settled.messages,
+        settled.steps,
       ]);
       return {
         text,

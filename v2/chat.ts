@@ -14,6 +14,8 @@ export type ChatSignal =
   // live text, painted and then replaced by the durable assistant event
   | { type: "delta"; kind: "text" | "reasoning"; text: string }
   | { type: "sealed" }
+  // which part of the model call is in flight, for the wave's sub-status
+  | { type: "phase"; name: "sending" | "waiting" | "thinking" | "writing" | null }
   | { type: "idle" };
 
 const NOTE_CHARS = 160;
@@ -104,6 +106,7 @@ export const createChat = (
           if (kind !== pending.kind) flushDeltas();
           pending = { kind, text: pending.text + text };
         },
+        onPhase: (name) => signal({ type: "phase", name }),
         onReasoningEnd: ({ text, elapsedMs }) => {
           flushDeltas();
           signal({ type: "sealed" });

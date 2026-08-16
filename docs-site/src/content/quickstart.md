@@ -20,7 +20,7 @@ export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource
 ```
 
-`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`). Set `GLORIOUS_PRICE_MULTIPLIERS` to adjust provider prices, for example `azure=1.1`.
+`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`).
 
 ## Open a session
 
@@ -39,6 +39,42 @@ Type, and the agent reads and edits files and runs commands as you chat.
 - `/models` — switch the active model.
 - `/skills` — list discovered skills; press `r` to reload from disk.
 - `/mcp` — list connected MCP servers.
+
+## Extensions
+
+A slash command always ends in a turn; `!` never does but has to be typed out
+in full. An extension is the named form of `!` — a script the project defines
+and glorious runs, reached by typing `$` and completing the name.
+
+Put one in `.glorious/extensions/<name>.md`. The frontmatter is the
+deterministic part; the body is an optional prompt.
+
+```markdown
+---
+description: Reset to a clean main
+run: |
+  git checkout main
+  git pull --ff-only
+clear: true
+---
+
+The working tree was reset. Anything you knew about the previous branch is
+stale — re-read before acting.
+```
+
+- `run` is the shell, and always executes. Arguments arrive as real positional
+  parameters, so `$fresh main` gives the script `$1`.
+- **With a body**, a turn is sent once the shell succeeds, carrying the
+  script's stdout as evidence. `run: git diff` plus "review this" is a whole
+  workflow in one file.
+- **Without a body, no turn is produced at all.** The model is never called.
+- `clear` drops the conversation, for a script that changes the ground the
+  model was standing on.
+- A non-zero exit shows the output and stops there: nothing is sent, nothing is
+  cleared.
+
+Extensions are yours to invoke, never the model's — it cannot decide to reset
+your working tree. `/skills` reloads them along with everything else.
 
 ## Keys
 

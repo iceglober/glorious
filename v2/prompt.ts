@@ -12,6 +12,12 @@ export const REMINDER_CLOSE = "[/system-reminder]";
 export const reminder = (body: string): string =>
   `${REMINDER_OPEN}\n${body.replaceAll(REMINDER_CLOSE, "[∕system-reminder]")}\n${REMINDER_CLOSE}`;
 
+// An extension's prose is the request; its stdout is what the shell found on
+// the way. Fenced apart so a diff or a log is read as evidence rather than as
+// further instructions.
+export const shortcutPrompt = (body: string, output: string): string =>
+  output.trim() === "" ? body : `${body}\n\n${fence("output", output)}`;
+
 const nonNegotiables = `<non-negotiables>
   - Conventions: do what the neighboring code does — naming, layout, error
     handling, test shape. Read it before you write.

@@ -8,11 +8,13 @@ import { type ChatSignal, createChat } from "./chat";
 import { commandByName, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig, writeConfigLayer } from "./config";
 import { messagesOf, type SessionEvent } from "./events";
+import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
 import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
 import { MODES, type Mode, modeByName, nextMode } from "./modes";
 import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
+import { shortcutPrompt } from "./prompt";
 import {
   assistantBlock,
   clip,
@@ -138,6 +140,9 @@ const main = async (): Promise<void> => {
   let userCommands = await loadUserCommands(root);
   const registerCommands = (): void => setCustomCommands([...skills.commands, ...userCommands]);
   registerCommands();
+  // Extensions are deliberately not commands: they never reach the model, so
+  // they stay out of the table the model's slash commands live in.
+  let extensions = await loadExtensions(root);
 
   let frame = 0;
   const lastUsage = session.events.findLast((event) => event.type === "usage");
@@ -145,6 +150,9 @@ const main = async (): Promise<void> => {
   let produced = false;
   // what the current draft block is showing, so deltas append rather than replace
   let live: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
+  // what the model call is doing, and since when — the wave shows both
+  let phase: "sending" | "waiting" | "thinking" | "writing" | null = null;
+  let phaseSince = Date.now();
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
   // Live subagents for this turn. Their tool calls are kept out of the
   // transcript, so this is the only place they exist to be looked at.
@@ -180,7 +188,12 @@ const main = async (): Promise<void> => {
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
     if (screen.watchingSubagents()) screen.refreshSubagents(subagents, watching);
-    screen.setWave(frame, chat.busy, chat.queued.length);
+    screen.setWave(
+      frame,
+      chat.busy,
+      chat.queued.length,
+      phase === null ? null : { name: phase, ms: now - phaseSince },
+    );
     screen.setStatus(
       statusLine(
         {
@@ -328,6 +341,12 @@ const main = async (): Promise<void> => {
           true,
         );
         break;
+      case "phase":
+        if (value.name !== phase) {
+          phase = value.name;
+          phaseSince = Date.now();
+        }
+        break;
       case "sealed":
         screen.sealDraft();
         live = { kind: "text", text: "" };
@@ -366,6 +385,45 @@ const main = async (): Promise<void> => {
       screen.print(userBlock(`!${command}`), true);
       void runShell(root, command).then(({ output, ok }) => {
         if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
+        repaint();
+      });
+    },
+    extensions,
+    // An extension runs first and asks questions afterwards: the shell is the
+    // point, and the prompt — if the file carries one — is a consequence of it.
+    // A failed run produces neither, so a reset that did not happen cannot look
+    // like one that did.
+    onShortcut: (name, args) => {
+      const extension = extensions.find((entry) => entry.name === name);
+      if (extension === undefined) {
+        render({ type: "notice", text: `(unknown extension: $${name})` });
+        return;
+      }
+      const invocation = `$${name}${args === "" ? "" : ` ${args}`}`;
+      screen.print(userBlock(invocation), true);
+      const words = args === "" ? [] : args.split(/\s+/u);
+      void runShell(root, extension.run, words).then(({ output, stdout, ok }) => {
+        if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
+        if (!ok) {
+          repaint();
+          return;
+        }
+        if (extension.clear) {
+          const outcome = chat.clear();
+          if (outcome === "cleared") {
+            render({ type: "cleared", reason: invocation });
+            render({ type: "notice", text: "(context cleared)" });
+          } else if (outcome === "busy")
+            render({ type: "notice", text: "(context kept — a turn is running)" });
+        }
+        // The invocation was already echoed above, before the shell ran. Echoing
+        // it again as the turn's label would print the same line twice with the
+        // output wedged between them.
+        if (extension.body !== "")
+          chat.send(
+            shortcutPrompt(expandCommand(extension.body, args), stdout),
+            `(prompt from ${invocation})`,
+          );
         repaint();
       });
     },
@@ -493,6 +551,10 @@ const main = async (): Promise<void> => {
         userCommands = refreshed;
         registerCommands();
       });
+      void loadExtensions(root).then((refreshed) => {
+        extensions = refreshed;
+        screen.setExtensions(refreshed);
+      });
       void loadSkills(root).then((refreshed) => {
         skills = refreshed;
         agent.setSkills(refreshed);
@@ -562,16 +624,28 @@ const main = async (): Promise<void> => {
     repaint();
   }, FRAME_MS);
 
+  // The TUI owns the terminal. Anything the runtime prints on its own — an
+  // unhandled rejection, a stack trace — lands at whatever cursor position
+  // happens to be current and shreds the screen. Route it into the transcript
+  // rather than letting it through.
+  const onStray = (reason: unknown): void => {
+    render({ type: "error", text: errorText(reason) });
+  };
+
   try {
     screen.start();
     screen.setMode(agent.mode());
     repaint();
     process.on("SIGINT", onSigint);
+    process.on("unhandledRejection", onStray);
+    process.on("uncaughtException", onStray);
     await closed;
     process.exitCode = 0;
   } finally {
     clearInterval(ticker);
     process.off("SIGINT", onSigint);
+    process.off("unhandledRejection", onStray);
+    process.off("uncaughtException", onStray);
     screen.stop();
   }
 };

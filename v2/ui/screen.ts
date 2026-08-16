@@ -1,6 +1,13 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
-import { activeSlash, commandInvocation, matchingCommands } from "../commands";
+import {
+  activeSigil,
+  commandInvocation,
+  matchingCommands,
+  matchNames,
+  shortcutInvocation,
+} from "../commands";
 import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
+import type { Extension } from "../extensions";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
 import type { Mode } from "../modes";
@@ -23,6 +30,8 @@ export const createScreen = async (callbacks: {
   onShell: (command: string) => void;
   cwd: string;
   onCommand: (name: string, args: string) => void;
+  onShortcut: (name: string, args: string) => void;
+  extensions?: readonly Extension[];
   onModeCycle: () => void;
   onWatchSubagents: () => void;
   onCycleSubagent: () => void;
@@ -139,11 +148,12 @@ export const createScreen = async (callbacks: {
   let phase: "new" | "live" | "done" = "new";
   let statusRows: Line[] = [];
   let quitTimer: ReturnType<typeof setTimeout> | null = null;
-  let autocompleteSlash: { start: number; query: string } | null = null;
-  let autocompleteItems: ReturnType<typeof matchingCommands> = [];
+  let autocompleteSigil: { sigil: string; start: number; query: string } | null = null;
+  let autocompleteItems: readonly { name: string; description: string }[] = [];
   let autocompleteIndex = 0;
   let autocompleteOpen = false;
   let shellMode = false;
+  let extensions: readonly Extension[] = callbacks.extensions ?? [];
   // index into `log` of the block still being streamed into, if any
   let drafting: number | null = null;
 
@@ -242,20 +252,32 @@ export const createScreen = async (callbacks: {
   };
 
   const syncAutocomplete = (): void => {
-    autocompleteSlash = activeSlash(input.plainText, input.cursorOffset);
-    const matches = autocompleteSlash ? matchingCommands(autocompleteSlash.query) : [];
+    // `$` is withheld in shell mode: there every `$VAR` is a real variable, and
+    // offering to complete it would fight what is being typed.
+    autocompleteSigil = activeSigil(
+      input.plainText,
+      input.cursorOffset,
+      shellMode ? ["/"] : ["/", "$"],
+    );
+    const matches =
+      autocompleteSigil === null
+        ? []
+        : autocompleteSigil.sigil === "$"
+          ? matchNames(extensions, autocompleteSigil.query)
+          : matchingCommands(autocompleteSigil.query);
+    const sigil = autocompleteSigil?.sigil ?? "/";
     autocompleteItems = matches;
     autocompleteIndex = Math.min(autocompleteIndex, Math.max(0, matches.length - 1));
     autocompleteLabel.content = styled(
       matches.map(
-        (command, index): Line => [
+        (item, index): Line => [
           { text: index === autocompleteIndex ? "› " : "  ", tone: "accent" },
           {
-            text: `/${command.name}`,
+            text: `${sigil}${item.name}`,
             tone: index === autocompleteIndex ? "accent" : "highlight",
             bold: true,
           },
-          { text: `  ${command.description}`, tone: "muted" },
+          { text: `  ${item.description}`, tone: "muted" },
         ],
       ),
     );
@@ -264,7 +286,7 @@ export const createScreen = async (callbacks: {
     autocomplete.marginTop = autocompleteOpen ? 1 : 0;
     autocomplete.backgroundColor = autocompleteOpen ? panelHex : "transparent";
     if (matches.length === 0) {
-      autocompleteSlash = null;
+      autocompleteSigil = null;
       autocompleteIndex = 0;
     }
     draw();
@@ -272,11 +294,12 @@ export const createScreen = async (callbacks: {
 
   const completeCommand = (): void => {
     const selected = autocompleteItems[autocompleteIndex]?.name;
-    if (!selected || !autocompleteSlash) return;
+    if (!selected || !autocompleteSigil) return;
+    const { sigil, start } = autocompleteSigil;
     const text = input.plainText;
     const end = input.cursorOffset;
-    compose(`${text.slice(0, autocompleteSlash.start)}/${selected}${text.slice(end)}`);
-    input.cursorOffset = autocompleteSlash.start + selected.length + 1;
+    compose(`${text.slice(0, start)}${sigil}${selected}${text.slice(end)}`);
+    input.cursorOffset = start + selected.length + sigil.length;
     syncAutocomplete();
   };
 
@@ -293,18 +316,29 @@ export const createScreen = async (callbacks: {
   const submit = (): void => {
     const text = input.plainText;
     const selected = autocompleteItems[autocompleteIndex]?.name;
-    if (autocompleteOpen && autocompleteSlash && autocompleteSlash.query !== selected) {
+    if (autocompleteOpen && autocompleteSigil && autocompleteSigil.query !== selected) {
       completeCommand();
       return;
     }
     if (text.trim() === "") return;
-    const invocation = commandInvocation(text);
-    if (invocation) {
+    const dismiss = (): void => {
       autocompleteOpen = false;
       autocompleteItems = [];
-      autocompleteSlash = null;
+      autocompleteSigil = null;
       compose("");
+    };
+    const invocation = commandInvocation(text);
+    if (invocation) {
+      dismiss();
       callbacks.onCommand(invocation.name, invocation.args);
+      return;
+    }
+    // Only a name that resolves is routed as an extension; anything else is
+    // prose that happens to start with `$` and belongs in the turn.
+    const shortcut = shellMode ? null : shortcutInvocation(text);
+    if (shortcut && extensions.some((entry) => entry.name === shortcut.name)) {
+      dismiss();
+      callbacks.onShortcut(shortcut.name, shortcut.args);
       return;
     }
     if (shellMode) {
@@ -371,7 +405,7 @@ export const createScreen = async (callbacks: {
         event.stopPropagation();
         autocompleteOpen = false;
         autocompleteItems = [];
-        autocompleteSlash = null;
+        autocompleteSigil = null;
         draw();
         return;
       }
@@ -497,10 +531,22 @@ export const createScreen = async (callbacks: {
       return true;
     },
     isDrafting: () => drafting !== null,
+    // Extensions are discovered from disk like skills and commands, so the
+    // composer has to be told when that list changes or autocomplete keeps
+    // offering something the reload dropped.
+    setExtensions: (next: readonly Extension[]) => {
+      extensions = next;
+      syncAutocomplete();
+    },
     print: printBlock,
     setProgress: painter(progress),
-    setWave: (frame: number, busy: boolean, queued: number) => {
-      waterline.content = styled(statusWave(frame, busy, queued, columns()));
+    setWave: (
+      frame: number,
+      busy: boolean,
+      queued: number,
+      phase?: { name: string; ms: number } | null,
+    ) => {
+      waterline.content = styled(statusWave(frame, busy, queued, columns(), phase));
       waterline.visible = busy;
       draw();
     },
@@ -515,7 +561,7 @@ export const createScreen = async (callbacks: {
       input.cursorOffset = text.length;
     },
     columns,
-    showHelp: overlays.showHelp,
+    showHelp: () => overlays.showHelp(extensions),
     showModes: (modes: readonly Mode[], active: string, onSelect: (name: string) => void) =>
       overlays.showModes(modes, active, onSelect),
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),

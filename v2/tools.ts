@@ -158,16 +158,24 @@ const launch = async (
   return { out, err, code, note };
 };
 
+// `output` is everything, for the transcript. `stdout` is kept apart because an
+// extension that carries a prompt sends its stdout to the model as data, and
+// diagnostics on stderr would read as part of the request. Arguments are handed
+// to bash as real positional parameters rather than pasted into the command
+// text, so `$1` and `$@` mean what a script author expects and nothing has to
+// be quoted to stay safe.
 export const runShell = async (
   root: string,
   command: string,
-): Promise<{ output: string; ok: boolean }> => {
-  const got = await launch(["bash", "-lc", command], resolve(root), undefined);
+  args: readonly string[] = [],
+): Promise<{ output: string; stdout: string; ok: boolean }> => {
+  const got = await launch(["bash", "-lc", command, "glorious", ...args], resolve(root), undefined);
   const parts = [got.out.trimEnd(), got.err.trimEnd()].filter((part) => part.length > 0);
   if (got.note) parts.push(got.note);
   else if (got.code !== 0) parts.push(`[exit ${got.code}]`);
   return {
     output: capText(parts.join("\n"), RESULT_LIMIT),
+    stdout: capText(got.out.trimEnd(), RESULT_LIMIT),
     ok: got.note === "" && got.code === 0,
   };
 };

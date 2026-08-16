@@ -65,32 +65,55 @@ const score = (query: string, candidate: string): number | null => {
   return total - candidate.length / 100;
 };
 
-export const matchingCommands = (query: string): Command[] =>
-  commands()
-    .map((command, index) => ({ command, index, score: score(query, command.name) }))
-    .filter(
-      (entry): entry is { command: Command; index: number; score: number } => entry.score !== null,
-    )
+// Generic over the list so the composer can complete commands and extensions
+// with one ranking, rather than two that drift apart.
+export const matchNames = <T extends { name: string }>(items: readonly T[], query: string): T[] =>
+  items
+    .map((item, index) => ({ item, index, score: score(query, item.name) }))
+    .filter((entry): entry is { item: T; index: number; score: number } => entry.score !== null)
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .slice(0, 6)
-    .map((entry) => entry.command);
+    .map((entry) => entry.item);
 
-export const activeSlash = (
+export const matchingCommands = (query: string): Command[] => matchNames(commands(), query);
+
+// Which sigil the cursor is currently completing, if any. A sigil only counts
+// at the start of a word, so `https://` and `$5 each` are prose rather than a
+// half-typed command. When more than one is in play the latest one wins, since
+// that is the one being typed.
+export const activeSigil = (
   text: string,
   cursor: number,
-): { start: number; query: string } | null => {
+  sigils: readonly string[],
+): { sigil: string; start: number; query: string } | null => {
   const before = text.slice(0, cursor);
-  const start = before.lastIndexOf("/");
-  if (start < 0 || (start > 0 && !/\s/u.test(text[start - 1]))) return null;
-  return { start, query: before.slice(start + 1) };
+  let found: { sigil: string; start: number; query: string } | null = null;
+  for (const sigil of sigils) {
+    const start = before.lastIndexOf(sigil);
+    if (start < 0 || (start > 0 && !/\s/u.test(text[start - 1]))) continue;
+    if (found === null || start > found.start)
+      found = { sigil, start, query: before.slice(start + sigil.length) };
+  }
+  return found;
 };
 
 export const commandName = (text: string): string | null => commandInvocation(text)?.name ?? null;
 
-// Everything after the command name travels with it; a custom command is
-// useless without it.
-export const commandInvocation = (text: string): { name: string; args: string } | null => {
-  const match = /^\s*\/([a-z0-9-]+)(?:\s+([\s\S]*))?$/iu.exec(text.trim());
+// Everything after the name travels with it; a custom command is useless
+// without it, and an extension takes arguments the same way.
+export const sigilInvocation = (
+  text: string,
+  sigil: string,
+): { name: string; args: string } | null => {
+  const match = new RegExp(`^\\s*\\${sigil}([a-z0-9-]+)(?:\\s+([\\s\\S]*))?$`, "iu").exec(
+    text.trim(),
+  );
   if (!match) return null;
   return { name: match[1].toLowerCase(), args: (match[2] ?? "").trim() };
 };
+
+export const commandInvocation = (text: string): { name: string; args: string } | null =>
+  sigilInvocation(text, "/");
+
+export const shortcutInvocation = (text: string): { name: string; args: string } | null =>
+  sigilInvocation(text, "$");
