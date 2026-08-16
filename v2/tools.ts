@@ -5,6 +5,7 @@ import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
 import { z } from "zod";
 import { loadAgentRules } from "./guidance";
+import { docsPath } from "./prompt";
 import { errorText } from "./render";
 import type { Skills } from "./skills";
 
@@ -254,9 +255,23 @@ export const createTools = (
 ): ToolSet => {
   const base = resolve(root);
 
+  const under = (full: string, root: string): boolean =>
+    full === root || full.startsWith(`${root}${sep}`);
+
   const within = (target?: string): string => {
     const full = resolve(base, target ?? ".");
-    if (full === base || full.startsWith(`${base}${sep}`)) return full;
+    if (under(full, base)) return full;
+    throw new Error(`path escapes root: ${target}`);
+  };
+
+  // Reading also reaches glorious's own docs. The system prompt hands the model
+  // an absolute path to them and tells it to read them; confining reads to the
+  // project root made that instruction false everywhere except inside the
+  // glorious repo itself, and the model routed around it with `bash cat` — a
+  // wasted step and a ✗ row about a file that was there all along.
+  const readable = (target?: string): string => {
+    const full = resolve(base, target ?? ".");
+    if (under(full, base) || under(full, docsPath())) return full;
     throw new Error(`path escapes root: ${target}`);
   };
 
@@ -310,7 +325,7 @@ export const createTools = (
       path: z.string().describe("File to read, relative to the project root or absolute"),
     }),
     async ({ path }) => {
-      const target = within(path);
+      const target = readable(path);
       const text = await Bun.file(target).text();
       const numbered = text
         .split("\n")
@@ -389,7 +404,7 @@ export const createTools = (
       if (input.fixedString) argv.push("--fixed-strings");
       if (input.includeIgnored) argv.push("--no-ignore", "--hidden");
       if (input.glob) argv.push("--glob", input.glob);
-      argv.push(...SKIP_GIT, "-e", input.pattern, within(input.path));
+      argv.push(...SKIP_GIT, "-e", input.pattern, readable(input.path));
       const got = await launch(argv, base, signal, input.maxResults + 1);
       return rgReport(got, input.maxResults, "matches", "No matches.");
     },
@@ -405,7 +420,7 @@ export const createTools = (
       maxResults: z.number().int().min(1).max(1000).default(200),
     }),
     async ({ pattern, path, includeIgnored, maxResults }, signal) => {
-      const dir = within(path);
+      const dir = readable(path);
       if (!(await stat(dir).catch(() => null))?.isDirectory())
         return `ERROR: no such directory: ${path ?? dir}`;
       const argv = [rgPath, "--files", "--sortr", "modified"];

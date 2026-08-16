@@ -1,7 +1,10 @@
 # How glorious is put together
 
-Roughly 3,000 lines of TypeScript in `v2/`, run by Bun with no build step. The
-source ships with the npm package, so the agent can read its own implementation.
+Roughly 5,000 lines of TypeScript in `v2/`, run by Bun with no build step.
+
+This file is for a person changing glorious. The agent is pointed at `docs/`,
+not at `v2/` — the documented API is the contract it writes extensions against,
+and handing it the implementation invites it to reach past that contract.
 
 ## The turn loop
 

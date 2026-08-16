@@ -31,8 +31,8 @@ glorious --resume [id]        # pick a session back up
 ## Extending it
 
 Ask it. "Add a tool that lists my open PRs" is a request glorious answers by
-writing `.glorious/extensions/prs.ts` — its own source and
-[docs](docs/extensions.md) are on the machine and named in its system prompt.
+writing `.glorious/extensions/prs.ts` — its [docs](docs/extensions.md) ship with
+it and its system prompt says where they are.
 
 By hand, an extension is one file with no imports:
 

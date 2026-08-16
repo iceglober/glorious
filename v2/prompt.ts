@@ -3,12 +3,16 @@ import { join } from "node:path";
 export const fence = (tag: string, body: string): string =>
   `<${tag}>\n${body.replaceAll(`</${tag}>`, `<∕${tag}>`)}\n</${tag}>`;
 
-// Resolved against this file, so the paths are right whether glorious is run
-// from a checkout or from the installed global package. `v2` and `docs` both
-// ship in the npm tarball, which is what makes the block below true rather than
-// aspirational: the agent really can read its own implementation.
+// Resolved against this file, so the path is right whether glorious is run from
+// a checkout or from the installed global package — `docs` ships in the npm
+// tarball, which is what makes the block below true rather than aspirational.
+//
+// Docs only. The agent is deliberately not pointed at v2/: the documented API is
+// the contract it writes extensions against, and handing it the implementation
+// invites it to reach past that contract and couple to internals that are free
+// to change. tools.ts lets the read-only tools reach this directory and no
+// further.
 const here = import.meta.dir;
-export const sourcePath = (): string => here;
 export const docsPath = (): string => join(here, "..", "docs");
 
 // Every block the agent prepends to a user turn. events.ts strips these when
@@ -66,22 +70,31 @@ export const systemPrompt = (ctx: { rules: string }): string => `
 </guidelines>
 
 <extending-yourself>
-  Glorious's own source and docs are on this machine:
-  - source: ${sourcePath()}
-  - docs:   ${docsPath()}
+  Glorious's own documentation is on this machine, at
+  ${docsPath()}
+  Resolve every path below under that directory, never under the working
+  directory — the project you are in has its own docs/ and it is not this one.
+  Read them whole; they are written for you and they cross-reference each other.
+
+  - extensions.md   writing an extension: the API, discovery, rendering
+  - sequences.md    \`$name\` markdown shortcuts: shell, then optionally a prompt
+  - commands.md     \`/name\` markdown commands, skills, and AGENTS.md
+  - tools.md        the built-in tools, their limits, and why nothing prompts
+  - models.md       choosing a model, providers, credentials, configuration
+  - architecture.md how a turn runs, and where the seams are
 
   Read them when the user asks about glorious itself, and especially when they
   ask for a capability it does not have. The answer is almost always an
   extension: a TypeScript file in .glorious/extensions/ that default-exports a
   function taking the glorious API, and can register tools, slash commands,
-  lifecycle hooks, status widgets and custom rendering. Read
-  docs/extensions.md first; it is written for you.
+  lifecycle hooks, status widgets and custom rendering. Start at extensions.md;
+  it carries a complete worked example.
 
   Write it rather than handing the request back. Verify it with
   \`glorious -p "<prompt>"\`, which loads extensions exactly as the app does.
 
   A shell command plus a prompt needs no code at all — that is a sequence, in
-  docs/sequences.md. Reach for an extension when a sequence cannot do it.
+  sequences.md. Reach for an extension when a sequence cannot do it.
 </extending-yourself>
 
 ${fence("repo-rules", ctx.rules)}
