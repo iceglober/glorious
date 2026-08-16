@@ -30,6 +30,7 @@
     "remove-completion-grounding",
     "skills-as-commands",
     "slash-command-execution",
+    "small-core-extensible",
     "stream-errors-stay-in-the-tui",
     "stream-model-output",
     "surface-intermediate-text",
