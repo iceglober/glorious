@@ -16,9 +16,8 @@ Read `git diff` and report anything that would fail CI. Do not fix it yet.
 arguments appended inside `<arguments>`, so `/review src/auth.ts` does not
 silently drop the path.
 
-Searched in `.glorious/commands/`, `.agents/commands/`, `.claude/commands/` up
-the directory tree, then `~/.config/agents/commands/` and `~/.claude/commands/`.
-First name wins. A built-in always beats a file, so a command file cannot
+Searched in `.glorious/commands/` and `.agents/commands/` up the directory tree,
+then `~/.config/agents/commands/`. First name wins. A built-in always beats a file, so a command file cannot
 capture `/clear` and quietly change what it does.
 
 For a command that runs code instead of producing a prompt, register one from an
@@ -42,9 +41,15 @@ Every skill's name and description are listed to the model on each turn; the
 body is loaded only when the model calls `activate_skill`, or when you type its
 slash command. That is the point — a skill costs a line until it is used.
 
-Discovered under `.agents/skills/`, `.claude/skills/` up the tree, plus
-`~/.config/agents/skills/` and `~/.claude/skills/`. `/skills` lists what was
+Discovered under `.glorious/skills/` and `.agents/skills/` up the tree, plus
+`~/.agents/skills/` and `~/.config/agents/skills/`. `/skills` lists what was
 found and from where; `r` in that list reloads.
+
+Another tool's directories are deliberately not read. glorious used to pick up
+`~/.claude/skills`, `~/.claude/plugins/cache` and `~/.config/amp/skills`, which
+turned someone else's whole skill surface into glorious slash commands — and put
+every one of their descriptions in the per-turn preamble. Symlink one into
+`.agents/skills/` if you want it here.
 
 A skill may declare `trigger: /name` to rename its slash command. Without one
 the command is the skill's own name.

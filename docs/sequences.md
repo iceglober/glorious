@@ -37,7 +37,7 @@ happen cannot look like one that did.
 
 ## Where they live
 
-`.glorious/sequences/*.md`, then `.agents/`, `.claude/`, and
+`.glorious/sequences/*.md`, then `.agents/sequences/` up the tree, then
 `~/.config/agents/sequences/`. First name wins, so a project sequence shadows a
 personal one.
 
