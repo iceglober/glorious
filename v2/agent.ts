@@ -1,13 +1,7 @@
 import { createHash } from "node:crypto";
 import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "./models";
-import {
-  contextPrompt,
-  environmentPrompt,
-  navigationPrompt,
-  skillsPrompt,
-  systemPrompt,
-} from "./prompt";
+import { contextPrompt, environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { type AskQuestions, createTools, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -54,7 +48,6 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     // null withholds ask_user, for a run with nobody to answer it
     askQuestions: AskQuestions | null;
     skillTools: import("./skills").Skills;
-    mcp?: import("./mcp").McpSession;
     // Handed the turn's event sink and asked afresh each turn, exactly as MCP
     // is: an extension's tools are built once at load, so this is what lets
     // their rows reach the turn that is actually running.
@@ -75,8 +68,7 @@ export const createAgent = (setup: Setup) => {
   // the last context size the provider reported, handed back to the model on the
   // next turn so it can see the budget it is spending
   let observed = 0;
-  let navigation = navigationPrompt(setup.mcp?.summaries ?? []);
-  let preamble = [environment, navigation, skillsPrompt(setup.skills)]
+  let preamble = [environment, skillsPrompt(setup.skills)]
     .filter((part) => part !== "")
     .join("\n\n");
   const cacheKey = (scope: string): string =>
@@ -91,7 +83,6 @@ export const createAgent = (setup: Setup) => {
   // "closest definition wins" rule commands and sequences already follow.
   const toolsFor = (onTool: (event: ToolEvent) => void) => ({
     ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
-    ...(setup.mcp?.toolsFor(onTool) ?? {}),
     ...(setup.extensionTools?.(onTool) ?? {}),
   });
 
@@ -110,14 +101,7 @@ export const createAgent = (setup: Setup) => {
     },
     setSkills: (skills: Setup["skillTools"]): void => {
       setup.skillTools = skills;
-      preamble = [environment, navigation, skillsPrompt(skills.catalog)]
-        .filter((part) => part !== "")
-        .join("\n\n");
-    },
-    setMcp: (mcp: Setup["mcp"]): void => {
-      setup.mcp = mcp;
-      navigation = navigationPrompt(mcp?.summaries ?? []);
-      preamble = [environment, navigation, skillsPrompt(setup.skillTools.catalog)]
+      preamble = [environment, skillsPrompt(skills.catalog)]
         .filter((part) => part !== "")
         .join("\n\n");
     },

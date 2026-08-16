@@ -1,9 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
-import { approveMcp } from "./approvals";
 import { type ChatSignal, createChat } from "./chat";
 import { commandByName, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig, writeConfigLayer } from "./config";
@@ -11,7 +9,6 @@ import { messagesOf, type SessionEvent } from "./events";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
-import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
 import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
 import { runPrint } from "./print";
 import { shortcutPrompt } from "./prompt";
@@ -113,18 +110,12 @@ const main = async (): Promise<void> => {
     const report = {
       diagnostics: resolvedConfig.diagnostics,
       model: currentModel(resolvedConfig.config),
-      mcp: await doctorMcp(root, await resolveMcpServers(root, resolvedConfig)),
     };
     if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else {
       const lines = [
         `model: ${modelLabel(report.model)}`,
         ...report.diagnostics.map((diagnostic) => `${diagnostic.layer}: ${diagnostic.message}`),
-        ...report.mcp.servers.map(
-          (server) =>
-            `mcp ${server.name}: ${server.status ?? "active"} (${server.source ?? "user"})`,
-        ),
-        ...report.mcp.notes,
       ];
       process.stdout.write(`${lines.join("\n")}\n`);
     }
@@ -138,8 +129,7 @@ const main = async (): Promise<void> => {
   const rules = await loadAgentRules(root);
   let config = resolvedConfig;
   let model = currentModel(config.config);
-  let mcp = await startMcp(root, await resolveMcpServers(root, config));
-  let skills = await loadSkills(root, mcp);
+  let skills = await loadSkills(root);
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills that declare a trigger of their own.
   let userCommands = await loadUserCommands(root);
@@ -253,7 +243,6 @@ const main = async (): Promise<void> => {
     git,
     skills: skills.catalog,
     skillTools: skills,
-    mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
     extensionTools: (onTool) => {
       toolSink = onTool;
@@ -261,27 +250,6 @@ const main = async (): Promise<void> => {
     },
     extensionPrompt: () => registry.promptLines,
   });
-
-  const replaceMcp = async (): Promise<void> => {
-    const nextConfig = await loadConfig(root);
-    const nextMcp = await startMcp(root, await resolveMcpServers(root, nextConfig));
-    const previous = mcp;
-    const previousHealthy = previous.servers.some((server) => server.status === "active");
-    const nextHealthy = nextMcp.servers.some((server) => server.status === "active");
-    const nextFailed = nextMcp.servers.some((server) => server.status === "failed");
-    if (previousHealthy && !nextHealthy && nextFailed) {
-      nextMcp.close();
-      throw new Error("MCP reload failed; keeping the current connected servers.");
-    }
-    config = nextConfig;
-    mcp = nextMcp;
-    agent.setMcp(nextMcp);
-    skills = await loadSkills(root, nextMcp);
-    registerCommands();
-    agent.setSkills(skills);
-    previous.close();
-    repaint();
-  };
 
   const record = (event: SessionEvent): void => {
     session.events.push(event);
@@ -495,7 +463,6 @@ const main = async (): Promise<void> => {
             contributed: describeContribution(registry, entry.origin),
           })),
         );
-      if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
       if (name === "models") {
         const selectModel = (next: typeof model): void => {
           agent.setModel(next);
@@ -578,19 +545,6 @@ const main = async (): Promise<void> => {
         repaint();
       });
     },
-    onMcpReload: (setLoading) => {
-      setLoading(true);
-      void replaceMcp()
-        .catch((failure) => screen.showModelError(errorText(failure)))
-        .finally(() => setLoading(false));
-    },
-    onMcpApprove: (name) => {
-      const server = mcp.servers.find((item) => item.name === name && item.status === "unapproved");
-      if (!server?.fingerprint) return;
-      void approveMcp({ root: resolve(root), name, fingerprint: server.fingerprint })
-        .then(replaceMcp)
-        .catch((failure) => screen.showModelError(errorText(failure)));
-    },
     onEscape: () => interrupt(),
     onResize: () => repaint(),
     onQuit: () => quit(),
@@ -661,7 +615,6 @@ const main = async (): Promise<void> => {
 
   const quit = (): void => {
     chat.abort();
-    mcp.close();
     release();
   };
 

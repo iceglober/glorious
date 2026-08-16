@@ -1,6 +1,5 @@
-import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
+import type { KeyEvent, Renderable } from "@opentui/core";
 import { commands } from "../commands";
-import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
@@ -8,13 +7,7 @@ import type { SkillSummary } from "../skills";
 import { type Chrome, dimHex, fillHex, type Host, listChrome, sheetHeight } from "./chrome";
 import { createSearchablePicker, type SearchablePicker } from "./searchable-picker";
 
-export const createOverlays = (
-  chrome: Chrome,
-  host: Host,
-  onSkillsReload: () => void,
-  onMcpReload: (setLoading: (loading: boolean) => void) => void,
-  onMcpApprove: (name: string) => void,
-) => {
+export const createOverlays = (chrome: Chrome, host: Host, onSkillsReload: () => void) => {
   const { tui, renderer, columns, textNode, styled, sheet, sheetRows } = chrome;
   let view: Renderable | null = null;
   let scroll: InstanceType<typeof tui.ScrollBoxRenderable> | null = null;
@@ -30,12 +23,6 @@ export const createOverlays = (
     render: () => void;
   } | null = null;
   let reloadSkills = false;
-  let reloadMcp = false;
-  let mcpLoading = false;
-  let mcpFrame = 0;
-  let mcpTimer: ReturnType<typeof setInterval> | null = null;
-  let mcpLoadingView: ((loading: boolean) => void) | null = null;
-  let mcpApproval: string | null = null;
 
   const close = (): void => {
     if (!view) return;
@@ -48,12 +35,6 @@ export const createOverlays = (
     modelSearch = null;
     providerCatalog = null;
     providerForm = null;
-    reloadMcp = false;
-    mcpLoading = false;
-    if (mcpTimer) clearInterval(mcpTimer);
-    mcpTimer = null;
-    mcpLoadingView = null;
-    mcpApproval = null;
     host.focusComposer();
     host.draw();
   };
@@ -416,89 +397,6 @@ export const createOverlays = (
     open(sheet({ title: "Models", height: sheetHeight(1) }, [body]));
   };
 
-  const showMcp = (servers: readonly McpServerSummary[], notes: readonly string[]): void => {
-    if (view) return;
-    const modalWidth = columns();
-    let mcpBody: TextRenderable | null = null;
-    const render = (): void => {
-      const marker = mcpLoading ? ["◐", "◓", "◑", "◒"][mcpFrame % 4] : "◆";
-      const lines: Line[] =
-        servers.length === 0
-          ? [
-              [
-                { text: `${marker} `, tone: "accent" },
-                { text: "No active MCP servers.", tone: "muted" },
-              ],
-            ]
-          : servers.flatMap((server, index): Line[] => [
-              [
-                { text: `${marker} `, tone: "accent" },
-                { text: server.name, tone: "highlight", bold: true },
-                {
-                  text: `  ${server.status ?? "active"} · ${server.tools} tools${server.source ? ` · ${server.source}` : ""}`,
-                  tone: "muted",
-                },
-              ],
-              ...(index + 1 < servers.length ? [[{ text: "" }]] : []),
-            ]);
-      const noteLines: Line[] = notes.flatMap((note): Line[] => [
-        [
-          { text: "! ", tone: "warning" },
-          { text: note, tone: "muted" },
-        ],
-      ]);
-      const allLines = [...lines, ...(noteLines.length > 0 ? [[{ text: "" }], ...noteLines] : [])];
-      if (mcpBody) mcpBody.content = styled(allLines);
-      host.draw();
-    };
-    const listHeight = Math.max(3, sheetRows() - listChrome);
-    const header = textNode({
-      content: styled([[{ text: "Active MCP servers", tone: "accent", bold: true }]]),
-      width: "100%",
-      height: 1,
-    });
-    scroll = new tui.ScrollBoxRenderable(renderer, {
-      width: "100%",
-      height: listHeight,
-      minHeight: 1,
-      scrollY: true,
-      stickyScroll: false,
-      stickyStart: "top",
-      backgroundColor: fillHex,
-      contentOptions: { flexDirection: "column" },
-    });
-    mcpBody = textNode({ content: "", width: "100%", wrapMode: "none" });
-    scroll.add(mcpBody);
-    render();
-    const footer = textNode({
-      content: "↑/↓ scroll · r reload · a approve · Esc closes this list",
-      width: "100%",
-      height: 1,
-      fg: dimHex,
-    });
-    open(
-      sheet({ title: "MCP", height: sheetHeight(listHeight + listChrome) }, [
-        header,
-        gap(),
-        scroll,
-        gap(),
-        footer,
-      ]),
-    );
-    reloadMcp = true;
-    mcpApproval = servers.find((server) => server.status === "unapproved")?.name ?? null;
-    mcpLoadingView = (loading: boolean): void => {
-      mcpLoading = loading;
-      mcpFrame = 0;
-      render();
-    };
-    mcpTimer = setInterval(() => {
-      if (!mcpLoading) return;
-      mcpFrame += 1;
-      render();
-    }, 120);
-  };
-
   const handleKey = (event: KeyEvent): boolean => {
     if (!view) return false;
     if (providerForm) {
@@ -558,13 +456,6 @@ export const createOverlays = (
       event.stopPropagation();
       close();
       onSkillsReload();
-    } else if (reloadMcp && event.name === "a") {
-      event.stopPropagation();
-      if (mcpApproval) onMcpApprove(mcpApproval);
-    } else if (reloadMcp && event.name === "r") {
-      event.stopPropagation();
-      if (mcpLoading || !mcpLoadingView) return true;
-      onMcpReload(mcpLoadingView);
     } else if (scroll && event.name === "up") {
       event.stopPropagation();
       scroll.scrollTop = Math.max(0, scroll.scrollTop - 1);
@@ -581,7 +472,6 @@ export const createOverlays = (
     showHelp,
     showSkills,
     showExtensions,
-    showMcp,
     showModels,
     showProviders,
     showProviderKey,

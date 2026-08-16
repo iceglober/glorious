@@ -34,13 +34,11 @@ describe("layered config", () => {
     await writeJson(globalPath, {
       model: { selected: "global/model", variant: "low" },
       providers: { vertex: { project: "global-project", region: "us" } },
-      mcpServers: { docs: { command: "global-docs", args: ["old"] } },
     });
     await mkdir(join(root, ".glorious"));
     await writeJson(join(root, ".glorious/config.json"), {
       model: { variant: "high" },
       providers: { vertex: { location: "us-central1" } },
-      mcpServers: { docs: { command: "project-docs" } },
     });
     await writeJson(join(root, ".glorious/config.local.json"), {
       model: { selected: "local/model" },
@@ -54,7 +52,6 @@ describe("layered config", () => {
       providers: {
         vertex: { project: "local-project", region: "us", location: "us-central1" },
       },
-      mcpServers: { docs: { command: "project-docs", args: ["old"] } },
     });
     expect(configProvenance(loaded.layers, "model.selected")).toBe("local");
     expect(configProvenance(loaded.layers, ["model", "variant"])).toBe("project");
@@ -76,7 +73,7 @@ describe("layered config", () => {
 
     const loaded = await loadConfig(root, { globalPath });
 
-    expect(loaded.config).toEqual({ model: {}, providers: {}, mcpServers: {} });
+    expect(loaded.config).toEqual({ model: {}, providers: {} });
     expect(loaded.diagnostics.map((diagnostic) => diagnostic.kind)).toEqual([
       "malformed",
       "missing",

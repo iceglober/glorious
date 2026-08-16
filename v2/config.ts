@@ -2,7 +2,6 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import type { McpServerConfig } from "./mcp";
 
 export const modelSelectionSchema = z
   .object({
@@ -20,40 +19,15 @@ export const providerMetadataSchema = z
   })
   .strict();
 
-const mcpEnvironmentSchema = z
-  .record(z.string(), z.string())
-  .superRefine((environment, context) => {
-    for (const name of Object.keys(environment)) {
-      if (["apikey", "secrets"].includes(name.toLowerCase()))
-        context.addIssue({
-          code: "custom",
-          path: [name],
-          message: "Secrets cannot be stored in config.",
-        });
-    }
-  });
-
-export const mcpServerConfigSchema = z
-  .object({
-    command: z.string(),
-    args: z.array(z.string()).optional(),
-    env: mcpEnvironmentSchema.optional(),
-    tools: z.array(z.string()).optional(),
-    disabled: z.boolean().optional(),
-  })
-  .strict();
-
 const configShape = {
   model: modelSelectionSchema,
   providers: z.record(z.string(), providerMetadataSchema),
-  mcpServers: z.record(z.string(), mcpServerConfigSchema),
 };
 
 export const configLayerSchema = z
   .object({
     model: modelSelectionSchema.optional(),
     providers: z.record(z.string(), providerMetadataSchema).optional(),
-    mcpServers: z.record(z.string(), mcpServerConfigSchema).optional(),
   })
   .strict();
 
@@ -61,9 +35,7 @@ export const configSchema = z.object(configShape).strict();
 
 export type ModelSelection = z.infer<typeof modelSelectionSchema>;
 export type ProviderMetadata = z.infer<typeof providerMetadataSchema>;
-export type Config = z.infer<typeof configSchema> & {
-  mcpServers: Record<string, McpServerConfig>;
-};
+export type Config = z.infer<typeof configSchema>;
 export type ConfigLayerConfig = z.infer<typeof configLayerSchema>;
 export type ConfigLayer = "defaults" | "global" | "project" | "local";
 export type WritableConfigLayer = Exclude<ConfigLayer, "defaults">;
@@ -132,7 +104,7 @@ export const configLayerPath = (
   return join(root, ".glorious", layer === "project" ? "config.json" : "config.local.json");
 };
 
-const defaults: ConfigLayerConfig = { model: {}, providers: {}, mcpServers: {} };
+const defaults: ConfigLayerConfig = { model: {}, providers: {} };
 
 const readLayer = async (
   layer: WritableConfigLayer,

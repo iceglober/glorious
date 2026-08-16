@@ -81,7 +81,6 @@ afterEach(() => {
 const config = (value: Partial<Config> = {}): Config => ({
   model: {},
   providers: {},
-  mcpServers: {},
   ...value,
 });
 

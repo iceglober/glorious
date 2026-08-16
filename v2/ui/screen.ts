@@ -7,7 +7,6 @@ import {
   shortcutInvocation,
 } from "../commands";
 import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
-import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
 import { type Line, statusWave } from "../render";
 import type { Sequence } from "../sequences";
@@ -32,8 +31,6 @@ export const createScreen = async (callbacks: {
   onShortcut: (name: string, args: string) => void;
   sequences?: readonly Sequence[];
   onSkillsReload: () => void;
-  onMcpReload: (setLoading: (loading: boolean) => void) => void;
-  onMcpApprove: (name: string) => void;
   onEscape: () => void;
   onResize: () => void;
   onQuit: () => void;
@@ -190,13 +187,7 @@ export const createScreen = async (callbacks: {
       composerRow.visible = node === null;
     },
   };
-  const overlays = createOverlays(
-    chrome,
-    host,
-    callbacks.onSkillsReload,
-    callbacks.onMcpReload,
-    callbacks.onMcpApprove,
-  );
+  const overlays = createOverlays(chrome, host, callbacks.onSkillsReload);
   const questions = createQuestions(chrome, host);
 
   const painter = (node: TextRenderable) => {
@@ -550,8 +541,6 @@ export const createScreen = async (callbacks: {
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
     showExtensions: (loaded: readonly { name: string; origin: string; contributed: string }[]) =>
       overlays.showExtensions(loaded),
-    showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
-      overlays.showMcp(servers, notes),
     showModels: (
       models: readonly ModelOption[],
       onSelect: (model: ModelOption) => void,

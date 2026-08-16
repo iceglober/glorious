@@ -1,4 +1,4 @@
-export type BuiltinAction = "help" | "skills" | "mcp" | "models" | "extensions" | "clear";
+export type BuiltinAction = "help" | "skills" | "models" | "extensions" | "clear";
 
 export type Command = {
   name: string;
@@ -20,7 +20,6 @@ const builtins: readonly Command[] = [
     description: "List loaded extensions and where they came from",
     run: "extensions",
   },
-  { name: "mcp", description: "List active MCP servers", run: "mcp" },
   { name: "models", description: "Switch the active model", run: "models" },
 ];
 
