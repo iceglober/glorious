@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { settleQuietly } from "./agent";
+import { providerOptions, settleQuietly } from "./agent";
 
 describe("settleQuietly", () => {
   test("passes a resolved value straight through", async () => {
@@ -72,5 +72,22 @@ describe("a stream that fails part-way", () => {
 
   test("subscribing first strands none", async () => {
     expect(await countStrays("after")).toBe(0);
+  });
+});
+
+describe("what we ask the provider for", () => {
+  test("reasoning travels as content, never as a server-side reference", () => {
+    // store:true (the provider's default when unset) replays reasoning as
+    // {type:"item_reference", id:"rs_…"}, and a missed lookup kills the turn
+    expect(providerOptions(undefined, "key").store).toBe(false);
+  });
+
+  test("the cache key still rides along, so prompt caching is unaffected", () => {
+    expect(providerOptions(undefined, "abc123").promptCacheKey).toBe("abc123");
+  });
+
+  test("effort is sent only when a mode asked for one", () => {
+    expect(providerOptions("high", "k")).toMatchObject({ reasoningEffort: "high" });
+    expect(providerOptions(undefined, "k")).not.toHaveProperty("reasoningEffort");
   });
 });

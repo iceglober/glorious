@@ -59,6 +59,21 @@ type Setup = Parameters<typeof systemPrompt>[0] &
 // listening. Bun prints an unhandled rejection straight to stderr, which lands
 // at whatever cursor position the TUI happens to be at and shreds the screen.
 // The failure still travels — the stream iteration throws it.
+// store:false sends reasoning back as content rather than as a server-side
+// reference. Left unset, the provider defaults it true and replays reasoning as
+// {type:"item_reference", id:"rs_…"}; the turn then dies with "Item with id
+// 'rs_…' not found" whenever that lookup misses — an eviction, or a request
+// routed to an instance that never saw the write. This client sends its whole
+// history every turn, so it gains nothing from server-side state, and false is
+// also what makes the provider ask for reasoning.encrypted_content, which is
+// what keeps the reasoning replayable at all.
+export const providerOptions = (effort: string | undefined, cacheKey: string) => ({
+  ...(effort ? { reasoningEffort: effort } : {}),
+  textVerbosity: "low" as const,
+  promptCacheKey: cacheKey,
+  store: false as const,
+});
+
 export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
   Promise.resolve(value).catch(() => fallback);
 
@@ -73,11 +88,8 @@ export const createAgent = (setup: Setup) => {
     .join("\n\n");
   const cacheKey = (scope: string): string =>
     createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
-  const openaiOptions = (scope: string) => ({
-    ...(setup.model.variant ? { reasoningEffort: setup.model.variant } : {}),
-    textVerbosity: "low" as const,
-    promptCacheKey: cacheKey(scope),
-  });
+  // Modes are gone, so the effort is whatever the model was configured with.
+  const openaiOptions = (scope: string) => providerOptions(setup.model.variant, cacheKey(scope));
 
   // Extensions land last, so one can deliberately replace a built-in — the same
   // "closest definition wins" rule commands and sequences already follow.
