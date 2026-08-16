@@ -8,6 +8,7 @@ import { type ChatSignal, createChat } from "./chat";
 import { commandByName, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig, writeConfigLayer } from "./config";
 import { messagesOf, type SessionEvent } from "./events";
+import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
@@ -27,6 +28,7 @@ import {
   userBlock,
 } from "./render";
 import { providerKey, saveProviderKey } from "./secrets";
+import { loadSequences } from "./sequences";
 import {
   createSession,
   loadPromptHistory,
@@ -35,7 +37,7 @@ import {
   saveSession,
 } from "./session";
 import { loadSkills } from "./skills";
-import { runShell } from "./tools";
+import { runShell, type ToolEvent } from "./tools";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
 
@@ -141,22 +143,63 @@ const main = async (): Promise<void> => {
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills that declare a trigger of their own.
   let userCommands = await loadUserCommands(root);
-  const registerCommands = (): void => setCustomCommands([...skills.commands, ...userCommands]);
+  // Extensions register commands as they load, so they are merged in here
+  // rather than pushed separately — one table, one collision rule.
+  const registry = createRegistry();
+  const registerCommands = (): void =>
+    setCustomCommands([...registry.commands, ...skills.commands, ...userCommands]);
   registerCommands();
-  // Extensions are deliberately not commands: they never reach the model, so
+  // Sequences are deliberately not commands: they never reach the model, so
   // they stay out of the table the model's slash commands live in.
-  let extensions = await loadExtensions(root);
+  let { sequences, legacy: legacySequences } = await loadSequences(root);
 
   let frame = 0;
   const lastUsage = session.events.findLast((event) => event.type === "usage");
   let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
   let produced = false;
+  // the last thing the model said, so turn_end can hand it to an extension
+  let lastAnswer = "";
+  // Where an extension tool's events go. Extension tools are built once at
+  // load, but the handler that pairs start with end belongs to whichever turn
+  // is running, so the agent points this at the live one each turn.
+  let toolSink: (event: ToolEvent) => void = () => {};
   // what the current draft block is showing, so deltas append rather than replace
   let live: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
   // what the model call is doing, and since when — the wave shows both
   let phase: "sending" | "waiting" | "thinking" | "writing" | null = null;
   let phaseSince = Date.now();
-  const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
+  const running: Array<{
+    id: number;
+    name: string;
+    detail: string;
+    input: Record<string, unknown>;
+    since: number;
+  }> = [];
+
+  // A renderer is third-party code running on every frame. One that throws
+  // would otherwise take the paint loop down 11 times a second, so it loses its
+  // contribution for that frame and nothing else.
+  const safely = <T>(render: () => T): T | undefined => {
+    try {
+      return render();
+    } catch {
+      return undefined;
+    }
+  };
+
+  const renderCall = (name: string, input: Record<string, unknown>): Line[] | undefined =>
+    registry.renderers.get(name)?.call?.(input);
+
+  const renderTool = (
+    name: string,
+    input: Record<string, unknown>,
+    result: string,
+    ok: boolean,
+  ): Line[] | undefined => {
+    const renderer = registry.renderers.get(name);
+    if (!renderer) return undefined;
+    return safely(() => renderer.result?.(result, ok) ?? renderer.call?.(input));
+  };
 
   const repaint = (): void => {
     // one paint per frame for however many deltas landed since the last one
@@ -165,10 +208,18 @@ const main = async (): Promise<void> => {
     const progress: Line[] = [];
     for (const tool of running) {
       if (now - tool.since < SETTLE_MS) continue;
-      progress.push(runningRow(tool.name, tool.detail, frame));
+      progress.push(
+        ...runningRow(
+          tool.name,
+          tool.detail,
+          frame,
+          safely(() => renderCall(tool.name, tool.input)),
+        ),
+      );
     }
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
+    screen.setFooter(registry.footers.flatMap((render) => safely(render) ?? []));
     screen.setWave(
       frame,
       chat.busy,
@@ -182,6 +233,9 @@ const main = async (): Promise<void> => {
           tokens,
           percentUsed:
             model.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
+          segments: registry.statuses
+            .map((render) => safely(render))
+            .filter((segment): segment is string => typeof segment === "string"),
         },
         screen.columns(),
       ),
@@ -201,6 +255,11 @@ const main = async (): Promise<void> => {
     skillTools: skills,
     mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
+    extensionTools: (onTool) => {
+      toolSink = onTool;
+      return registry.tools;
+    },
+    extensionPrompt: () => registry.promptLines,
   });
 
   const replaceMcp = async (): Promise<void> => {
@@ -236,9 +295,13 @@ const main = async (): Promise<void> => {
       tokens = event.tokens;
       session.contextTokens = event.tokens;
     }
-    if (event.type === "user") produced = false;
+    if (event.type === "user") {
+      produced = false;
+      void fire(registry, "turn_start", { text: event.text }, onExtensionFailure);
+    }
+    if (event.type === "assistant") lastAnswer = event.text;
     if (event.type === "assistant" || event.type === "tool") produced = true;
-    const { lines, gap } = eventBlock(event);
+    const { lines, gap } = eventBlock(event, renderTool);
     // A streamed answer is already on screen. Seal that block with its final
     // rendering rather than printing the same text a second time; the event is
     // recorded either way.
@@ -258,12 +321,24 @@ const main = async (): Promise<void> => {
     switch (value.type) {
       case "tool": {
         if (value.tool.phase === "start") {
-          const { id, name, detail } = value.tool;
-          running.push({ id, name, detail, since: Date.now() });
+          const { id, name, detail, input } = value.tool;
+          running.push({ id, name, detail, input, since: Date.now() });
+          void fire(registry, "tool_start", { name, input }, onExtensionFailure);
           break;
         }
         const slot = running.findIndex((tool) => tool.id === value.tool.id);
         if (slot >= 0) running.splice(slot, 1);
+        void fire(
+          registry,
+          "tool_end",
+          {
+            name: value.tool.name,
+            input: value.tool.input,
+            ok: value.tool.ok,
+            result: value.tool.result,
+          },
+          onExtensionFailure,
+        );
         break;
       }
       case "delta":
@@ -295,6 +370,7 @@ const main = async (): Promise<void> => {
         chat.flush();
         screen.sealDraft();
         live = { kind: "text", text: "" };
+        void fire(registry, "turn_end", { text: lastAnswer }, onExtensionFailure);
         void saveSession(session);
         break;
     }
@@ -307,9 +383,17 @@ const main = async (): Promise<void> => {
     onPromptHistory: (prompts) => {
       void savePromptHistory(prompts);
     },
+    // An `input` handler can rewrite what was typed or swallow it entirely, so
+    // the send waits on the hooks rather than racing them.
     onSubmit: (text) => {
-      chat.send(text);
-      repaint();
+      void fire(registry, "input", { text }, onExtensionFailure).then((said) => {
+        if (said === false) {
+          repaint();
+          return;
+        }
+        chat.send(said ?? text);
+        repaint();
+      });
     },
     onShell: (command) => {
       screen.print(userBlock(`!${command}`), true);
@@ -318,27 +402,27 @@ const main = async (): Promise<void> => {
         repaint();
       });
     },
-    extensions,
-    // An extension runs first and asks questions afterwards: the shell is the
+    sequences,
+    // A sequence runs first and asks questions afterwards: the shell is the
     // point, and the prompt — if the file carries one — is a consequence of it.
     // A failed run produces neither, so a reset that did not happen cannot look
     // like one that did.
     onShortcut: (name, args) => {
-      const extension = extensions.find((entry) => entry.name === name);
-      if (extension === undefined) {
-        render({ type: "notice", text: `(unknown extension: $${name})` });
+      const sequence = sequences.find((entry) => entry.name === name);
+      if (sequence === undefined) {
+        render({ type: "notice", text: `(unknown sequence: $${name})` });
         return;
       }
       const invocation = `$${name}${args === "" ? "" : ` ${args}`}`;
       screen.print(userBlock(invocation), true);
       const words = args === "" ? [] : args.split(/\s+/u);
-      void runShell(root, extension.run, words).then(({ output, stdout, ok }) => {
+      void runShell(root, sequence.run, words).then(({ output, stdout, ok }) => {
         if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
         if (!ok) {
           repaint();
           return;
         }
-        if (extension.clear) {
+        if (sequence.clear) {
           const outcome = chat.clear();
           if (outcome === "cleared") {
             render({ type: "cleared", reason: invocation });
@@ -349,9 +433,9 @@ const main = async (): Promise<void> => {
         // The invocation was already echoed above, before the shell ran. Echoing
         // it again as the turn's label would print the same line twice with the
         // output wedged between them.
-        if (extension.body !== "")
+        if (sequence.body !== "")
           chat.send(
-            shortcutPrompt(expandCommand(extension.body, args), stdout),
+            shortcutPrompt(expandCommand(sequence.body, args), stdout),
             `(prompt from ${invocation})`,
           );
         repaint();
@@ -359,6 +443,20 @@ const main = async (): Promise<void> => {
     },
     cwd: root,
     onCommand: (name, args) => {
+      // An extension's command runs its own code rather than becoming a turn,
+      // so it is dispatched before the body-is-the-prompt path below.
+      const runner = registry.runners.get(name);
+      if (runner) {
+        void (async () => {
+          try {
+            await runner(args);
+          } catch (thrown) {
+            onExtensionFailure(`/${name} failed: ${errorText(thrown)}`);
+          }
+          repaint();
+        })();
+        return;
+      }
       // A command defined in a file or by a skill trigger has no UI action of
       // its own: its body becomes the turn.
       const custom = commandByName(name);
@@ -390,6 +488,13 @@ const main = async (): Promise<void> => {
       }
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
+      if (name === "extensions")
+        screen.showExtensions(
+          loaded.extensions.map((entry) => ({
+            ...entry,
+            contributed: describeContribution(registry, entry.origin),
+          })),
+        );
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
       if (name === "models") {
         const selectModel = (next: typeof model): void => {
@@ -462,9 +567,9 @@ const main = async (): Promise<void> => {
         userCommands = refreshed;
         registerCommands();
       });
-      void loadExtensions(root).then((refreshed) => {
-        extensions = refreshed;
-        screen.setExtensions(refreshed);
+      void loadSequences(root).then((refreshed) => {
+        sequences = refreshed.sequences;
+        screen.setSequences(refreshed.sequences);
       });
       void loadSkills(root).then((refreshed) => {
         skills = refreshed;
@@ -491,10 +596,44 @@ const main = async (): Promise<void> => {
     onQuit: () => quit(),
   });
 
+  const onExtensionFailure = (message: string): void => {
+    render({ type: "error", text: `(extension) ${message}` });
+  };
+
   for (const event of session.events) {
-    const { lines, gap } = eventBlock(event);
+    const { lines, gap } = eventBlock(event, renderTool);
     if (lines.length > 0) screen.print(lines, gap);
   }
+
+  // Loaded after the screen exists, so a failure has somewhere to be seen, and
+  // before the first turn, so a tool registered on the way up is callable.
+  const loaded = await loadExtensions(
+    root,
+    registry,
+    {
+      root,
+      exec: (command, args) => runShell(root, command, args),
+      send: (text, label) => {
+        chat.send(text, label);
+        repaint();
+      },
+      print: (text, tone) => {
+        screen.print(noticeBlock(text, tone), false);
+        repaint();
+      },
+      ask: (questions) => screen.askQuestions(questions, undefined),
+    },
+    (event) => toolSink(event),
+  );
+  registerCommands();
+  for (const failure of loaded.failures)
+    render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
+  for (const path of legacySequences)
+    render({
+      type: "notice",
+      text: `(${path} is in an extensions/ directory — sequences live in .glorious/sequences/ now; extensions/ is for .ts extensions and this fallback goes away next release)`,
+    });
+  await fire(registry, "session_start", { root }, onExtensionFailure);
 
   void loadModels(model, config.config)
     .then((options) => {

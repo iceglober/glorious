@@ -66,22 +66,22 @@ export const createOverlays = (
     host.draw();
   };
 
-  const showHelp = (extensions: readonly { name: string; description: string }[] = []): void => {
+  const showHelp = (sequences: readonly { name: string; description: string }[] = []): void => {
     if (view) return;
     // Only shown when the project defines some: a heading over an empty list
     // reads as a broken feature rather than an unused one.
-    const extensionLines: Line[] =
-      extensions.length === 0
+    const sequenceLines: Line[] =
+      sequences.length === 0
         ? []
         : [
             [{ text: "" }],
-            [{ text: "Extensions", tone: "accent", bold: true }],
+            [{ text: "Sequences", tone: "accent", bold: true }],
             [{ text: "Type $ to run one. These are project scripts, not the model." }],
             [{ text: "" }],
-            ...extensions.map(
-              (extension): Line => [
-                { text: `$${extension.name}`, tone: "highlight", bold: true },
-                { text: `  ${extension.description}` },
+            ...sequences.map(
+              (sequence): Line => [
+                { text: `$${sequence.name}`, tone: "highlight", bold: true },
+                { text: `  ${sequence.description}` },
               ],
             ),
           ];
@@ -96,7 +96,7 @@ export const createOverlays = (
           { text: `  ${command.description}` },
         ],
       ),
-      ...extensionLines,
+      ...sequenceLines,
       [{ text: "" }],
       [{ text: "Esc closes this help", tone: "muted" }],
     ];
@@ -173,6 +173,73 @@ export const createOverlays = (
         footer,
       ]),
       true,
+    );
+  };
+
+  // Extensions run arbitrary code with no approval prompt, so this list is the
+  // whole of the security story: what loaded, what it contributed, and the path
+  // it came from — checkable at any time rather than agreed to once.
+  const showExtensions = (
+    loaded: readonly { name: string; origin: string; contributed: string }[],
+  ): void => {
+    if (view) return;
+    const contentWidth = Math.max(1, columns() - 6);
+    const lines: Line[] =
+      loaded.length === 0
+        ? [
+            [{ text: "No extensions loaded.", tone: "muted" }],
+            [{ text: "" }],
+            [
+              {
+                text: "Drop a .ts file in .glorious/extensions/ that default-exports a",
+                tone: "muted",
+              },
+            ],
+            [{ text: "function taking (glorious). See docs/extensions.md.", tone: "muted" }],
+          ]
+        : loaded.flatMap((entry, index): Line[] => [
+            [
+              { text: "◆ ", tone: "accent" },
+              { text: clip(entry.name, contentWidth), tone: "highlight", bold: true },
+            ],
+            [{ text: "  " }, { text: clip(entry.contributed, contentWidth), tone: "muted" }],
+            [
+              { text: "  ↳ ", tone: "muted" },
+              { text: clip(entry.origin, contentWidth), tone: "muted", italic: true },
+            ],
+            ...(index + 1 < loaded.length ? [[{ text: "" }]] : []),
+          ]);
+    const listHeight = Math.max(1, Math.min(lines.length, Math.max(3, sheetRows() - listChrome)));
+    scroll = new tui.ScrollBoxRenderable(renderer, {
+      width: "100%",
+      height: listHeight,
+      minHeight: 1,
+      scrollY: true,
+      stickyScroll: false,
+      stickyStart: "top",
+      backgroundColor: fillHex,
+      contentOptions: { flexDirection: "column" },
+    });
+    scroll.add(textNode({ content: styled(lines), width: "100%", wrapMode: "none" }));
+    open(
+      sheet({ title: "Extensions", height: sheetHeight(listHeight + listChrome) }, [
+        textNode({
+          content: styled([
+            [{ text: "Loaded extensions — these run with your full permissions", tone: "accent" }],
+          ]),
+          width: "100%",
+          height: 1,
+        }),
+        gap(),
+        scroll,
+        gap(),
+        textNode({
+          content: "↑/↓ scroll · Esc closes this list",
+          width: "100%",
+          height: 1,
+          fg: dimHex,
+        }),
+      ]),
     );
   };
 
@@ -513,6 +580,7 @@ export const createOverlays = (
   return {
     showHelp,
     showSkills,
+    showExtensions,
     showMcp,
     showModels,
     showProviders,

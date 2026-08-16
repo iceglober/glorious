@@ -55,6 +55,11 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     askQuestions: AskQuestions | null;
     skillTools: import("./skills").Skills;
     mcp?: import("./mcp").McpSession;
+    // Handed the turn's event sink and asked afresh each turn, exactly as MCP
+    // is: an extension's tools are built once at load, so this is what lets
+    // their rows reach the turn that is actually running.
+    extensionTools?: (onTool: (event: ToolEvent) => void) => import("ai").ToolSet;
+    extensionPrompt?: () => readonly string[];
   };
 
 // Subscribe now so a later throw cannot leave this rejected with nobody
@@ -82,9 +87,12 @@ export const createAgent = (setup: Setup) => {
     promptCacheKey: cacheKey(scope),
   });
 
+  // Extensions land last, so one can deliberately replace a built-in — the same
+  // "closest definition wins" rule commands and sequences already follow.
   const toolsFor = (onTool: (event: ToolEvent) => void) => ({
     ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
     ...(setup.mcp?.toolsFor(onTool) ?? {}),
+    ...(setup.extensionTools?.(onTool) ?? {}),
   });
 
   const settings = () => ({
@@ -133,11 +141,23 @@ export const createAgent = (setup: Setup) => {
         onPhase: (name: "sending" | "waiting" | "thinking" | "writing" | null) => void;
       },
     ) => {
+      // What extensions contribute rides in the per-turn message, not the
+      // system prompt: the system prompt has to stay byte-identical for the
+      // cache, and an extension that registers mid-session would otherwise
+      // invalidate it. See PREAMBLE_TAGS.
+      const contributed = setup.extensionPrompt?.() ?? [];
       const sent: ModelMessage[] = [
         ...history,
         {
           role: "user",
-          content: [preamble, contextPrompt(observed), prompt]
+          content: [
+            preamble,
+            contributed.length === 0
+              ? ""
+              : `<extensions>\n${contributed.join("\n")}\n</extensions>`,
+            contextPrompt(observed),
+            prompt,
+          ]
             .filter((part) => part !== "")
             .join("\n\n"),
         },

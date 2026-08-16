@@ -1,120 +1,99 @@
 import { readdir } from "node:fs/promises";
-import { basename, join } from "node:path";
-import { agentDirectories, scalar } from "./usercommands";
+import { basename, join, resolve } from "node:path";
+import { createApi, type ExtensionHost, type Registry } from "./extension-api";
+import type { ToolEvent } from "./tools";
+import { agentDirectories } from "./usercommands";
 
-// An extension is the named form of `!`. A slash command always ends in a turn;
-// shell mode never does but has to be typed out in full. An extension is a
-// command the project names and glorious runs, and whether the model hears
-// about it is the file's decision, not the mechanism's.
-export type Extension = {
+// An extension is a TypeScript file that registers capabilities against the API
+// in extension-api.ts. Bun imports .ts directly, so loading one is a dynamic
+// import and nothing else — no build step, no transpiler, no new dependency.
+//
+// They run with full permissions and there is no approval gate. That is the
+// same bet the rest of glorious makes: an agent that can write and run code has
+// already crossed the line a prompt could defend, so the honest thing is to say
+// so and make what loaded visible instead of asking a question whose only
+// answer is yes. /extensions lists what loaded and from where, and a file that
+// fails to load says so loudly rather than disappearing.
+
+export type LoadedExtension = {
   name: string;
-  description: string;
-  // the shell that runs, always
-  run: string;
-  // the prompt sent once the shell succeeds. Empty means this extension is a
-  // pure side effect and no turn is produced at all.
-  body: string;
-  // drop the conversation once the shell succeeds
-  clear: boolean;
   origin: string;
+};
+
+export type ExtensionLoad = {
+  extensions: LoadedExtension[];
+  failures: Array<{ origin: string; message: string }>;
 };
 
 const extensionRoots = (root: string): string[] =>
   agentDirectories(root).map((directory) => join(directory, "extensions"));
 
-// A frontmatter value written as an indented block under its key rather than on
-// it. Same shape skills.ts already accepts for mcpServers, so a multi-line
-// `run:` needs no YAML parser — there is none at runtime.
-const blockAt = (lines: readonly string[], start: number): { text: string; next: number } => {
-  const body: string[] = [];
-  let index = start;
-  while (index < lines.length) {
-    const line = lines[index];
-    if (line.trim() !== "" && !/^\s/u.test(line)) break;
-    body.push(line);
-    index += 1;
-  }
-  while (body.length > 0 && body[body.length - 1].trim() === "") body.pop();
-  const widths = body
-    .filter((line) => line.trim() !== "")
-    .map((line) => /^\s*/u.exec(line)?.[0].length ?? 0);
-  const strip = widths.length === 0 ? 0 : Math.min(...widths);
-  return {
-    text: body
-      .map((line) => line.slice(strip))
-      .join("\n")
-      .trimEnd(),
-    next: index,
-  };
-};
-
-export const parseExtension = (name: string, text: string, origin = ""): Extension | null => {
-  const lines = text.split("\n");
-  if (lines[0]?.trim() !== "---") return null;
-  const end = lines.indexOf("---", 1);
-  if (end < 0) return null;
-  let description = "";
-  let run = "";
-  let clear = false;
-  let index = 1;
-  while (index < end) {
-    const match = /^(description|run|clear):\s*(.*)$/u.exec(lines[index]);
-    if (!match) {
-      index += 1;
-      continue;
-    }
-    const [, key, rest] = match;
-    // `run: |` and a bare `run:` both mean the value is the block beneath it.
-    // Anything else on the line is the value.
-    if (key === "run" && (rest.trim() === "" || rest.trim() === "|" || rest.trim() === "|-")) {
-      const block = blockAt(lines.slice(0, end), index + 1);
-      run = block.text;
-      index = block.next;
-      continue;
-    }
-    if (key === "run") run = scalar(rest);
-    else if (key === "description") description = scalar(rest);
-    else clear = scalar(rest) === "true";
-    index += 1;
-  }
-  // Without a command there is nothing deterministic to do, which is the only
-  // thing an extension is for. A prompt on its own is a slash command.
-  if (run.trim() === "") return null;
-  return {
-    name,
-    description: description || `Run the ${name} extension`,
-    run,
-    body: lines
-      .slice(end + 1)
-      .join("\n")
-      .trim(),
-    clear,
-    origin,
-  };
-};
-
-const readExtensions = async (directory: string): Promise<Extension[]> => {
+// `foo.ts` and `foo/index.ts` are both one extension named foo. The directory
+// form is for extensions that outgrow a file, and it is where a package.json
+// with its own dependencies would sit.
+const entryPoints = async (directory: string): Promise<Array<{ name: string; path: string }>> => {
   const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
-  const found: Extension[] = [];
+  const found: Array<{ name: string; path: string }> = [];
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-    const path = join(directory, entry.name);
-    const text = await Bun.file(path)
-      .text()
-      .catch(() => "");
-    if (text.trim() === "") continue;
-    const parsed = parseExtension(basename(entry.name, ".md").toLowerCase(), text, path);
-    if (parsed) found.push(parsed);
+    if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts"))
+      found.push({
+        name: basename(entry.name, ".ts").toLowerCase(),
+        path: join(directory, entry.name),
+      });
+    else if (entry.isDirectory() || entry.isSymbolicLink())
+      found.push({
+        name: entry.name.toLowerCase(),
+        path: join(directory, entry.name, "index.ts"),
+      });
   }
   return found;
 };
 
-// The first directory to define a name wins, so a project extension shadows a
-// personal one rather than both appearing — the same rule commands follow.
-export const loadExtensions = async (root: string): Promise<Extension[]> => {
-  const seen = new Map<string, Extension>();
-  for (const directory of extensionRoots(root))
-    for (const extension of await readExtensions(directory))
-      if (!seen.has(extension.name)) seen.set(extension.name, extension);
-  return [...seen.values()];
+const failureText = (thrown: unknown): string => {
+  if (!(thrown instanceof Error)) return String(thrown);
+  // A missing index.ts is what a directory with no entry point looks like, and
+  // saying "Cannot find module" about a path the user never typed is worse than
+  // saying nothing happened.
+  return /Cannot find module/u.test(thrown.message) ? "no index.ts" : thrown.message;
+};
+
+// Extensions that ship with glorious. Resolved against this file so the path is
+// right whether running from source or from the installed global package.
+export const bundledRoot = (): string => join(import.meta.dir, "bundled");
+
+// Each extension is loaded and invoked on its own, so one that throws on import
+// or in its factory costs only itself. Bundled ones come first, and a project
+// can shadow one by name — replacing web_fetch is a supported thing to do.
+export const loadExtensions = async (
+  root: string,
+  registry: Registry,
+  host: ExtensionHost,
+  onToolEvent: (event: ToolEvent) => void,
+): Promise<ExtensionLoad> => {
+  const seen = new Set<string>();
+  const extensions: LoadedExtension[] = [];
+  const failures: ExtensionLoad["failures"] = [];
+
+  const found = (
+    await Promise.all([...extensionRoots(root), bundledRoot()].map(entryPoints))
+  ).flat();
+
+  for (const entry of found) {
+    if (seen.has(entry.name)) continue;
+    seen.add(entry.name);
+    try {
+      const module = (await import(resolve(entry.path))) as {
+        default?: (glorious: ReturnType<typeof createApi>) => void | Promise<void>;
+      };
+      if (typeof module.default !== "function")
+        throw new Error("no default export — an extension exports a function taking (glorious)");
+      // Awaited before the session starts, so an extension that fetches or
+      // reads on the way up has finished registering before the first turn.
+      await module.default(createApi(host, registry, onToolEvent, entry.path));
+      extensions.push({ name: entry.name, origin: entry.path });
+    } catch (thrown) {
+      failures.push({ origin: entry.path, message: failureText(thrown) });
+    }
+  }
+  return { extensions, failures };
 };

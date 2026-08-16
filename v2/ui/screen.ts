@@ -7,10 +7,10 @@ import {
   shortcutInvocation,
 } from "../commands";
 import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
-import type { Extension } from "../extensions";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
 import { type Line, statusWave } from "../render";
+import type { Sequence } from "../sequences";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
@@ -30,7 +30,7 @@ export const createScreen = async (callbacks: {
   cwd: string;
   onCommand: (name: string, args: string) => void;
   onShortcut: (name: string, args: string) => void;
-  extensions?: readonly Extension[];
+  sequences?: readonly Sequence[];
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
   onMcpApprove: (name: string) => void;
@@ -66,6 +66,10 @@ export const createScreen = async (callbacks: {
     contentOptions: { justifyContent: "flex-end" },
   });
   const progress = textNode({ content: "", wrapMode: "word", width: "100%" });
+  // Extension-drawn rows. They sit under the composer beside the status line
+  // rather than above it, so nothing an extension draws can push the thing you
+  // are typing around.
+  const extra = textNode({ content: "", wrapMode: "word", width: "100%" });
   const status = textNode({ content: "", wrapMode: "word", width: "100%" });
   const waterline = textNode({ content: "", width: "100%", height: 1 });
   const caret = textNode({
@@ -130,6 +134,7 @@ export const createScreen = async (callbacks: {
     autocomplete,
     waterline,
     composerSlot,
+    extra,
     status,
   ]);
   renderer.root.add(
@@ -147,7 +152,7 @@ export const createScreen = async (callbacks: {
   let autocompleteIndex = 0;
   let autocompleteOpen = false;
   let shellMode = false;
-  let extensions: readonly Extension[] = callbacks.extensions ?? [];
+  let sequences: readonly Sequence[] = callbacks.sequences ?? [];
   // index into `log` of the block still being streamed into, if any
   let drafting: number | null = null;
 
@@ -255,7 +260,7 @@ export const createScreen = async (callbacks: {
       autocompleteSigil === null
         ? []
         : autocompleteSigil.sigil === "$"
-          ? matchNames(extensions, autocompleteSigil.query)
+          ? matchNames(sequences, autocompleteSigil.query)
           : matchingCommands(autocompleteSigil.query);
     const sigil = autocompleteSigil?.sigil ?? "/";
     autocompleteItems = matches;
@@ -325,10 +330,10 @@ export const createScreen = async (callbacks: {
       callbacks.onCommand(invocation.name, invocation.args);
       return;
     }
-    // Only a name that resolves is routed as an extension; anything else is
+    // Only a name that resolves is routed as a sequence; anything else is
     // prose that happens to start with `$` and belongs in the turn.
     const shortcut = shellMode ? null : shortcutInvocation(text);
-    if (shortcut && extensions.some((entry) => entry.name === shortcut.name)) {
+    if (shortcut && sequences.some((entry) => entry.name === shortcut.name)) {
       dismiss();
       callbacks.onShortcut(shortcut.name, shortcut.args);
       return;
@@ -513,12 +518,13 @@ export const createScreen = async (callbacks: {
     // Extensions are discovered from disk like skills and commands, so the
     // composer has to be told when that list changes or autocomplete keeps
     // offering something the reload dropped.
-    setExtensions: (next: readonly Extension[]) => {
-      extensions = next;
+    setSequences: (next: readonly Sequence[]) => {
+      sequences = next;
       syncAutocomplete();
     },
     print: printBlock,
     setProgress: painter(progress),
+    setFooter: painter(extra),
     setWave: (
       frame: number,
       busy: boolean,
@@ -540,8 +546,10 @@ export const createScreen = async (callbacks: {
       input.cursorOffset = text.length;
     },
     columns,
-    showHelp: () => overlays.showHelp(extensions),
+    showHelp: () => overlays.showHelp(sequences),
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
+    showExtensions: (loaded: readonly { name: string; origin: string; contributed: string }[]) =>
+      overlays.showExtensions(loaded),
     showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
       overlays.showMcp(servers, notes),
     showModels: (

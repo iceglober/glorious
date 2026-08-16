@@ -20,9 +20,19 @@ export const nextToolEventId = (): number => {
   return events;
 };
 
+// `input` and `result` are what an extension's renderer draws from — `detail`
+// is only ever the one string a generic row can fit.
 export type ToolEvent =
-  | { id: number; name: string; detail: string; phase: "start" }
-  | { id: number; name: string; detail: string; phase: "end"; ok: boolean };
+  | { id: number; name: string; detail: string; input: Record<string, unknown>; phase: "start" }
+  | {
+      id: number;
+      name: string;
+      detail: string;
+      input: Record<string, unknown>;
+      phase: "end";
+      ok: boolean;
+      result: string;
+    };
 
 export type Question = {
   question: string;
@@ -118,7 +128,7 @@ const launch = async (
 };
 
 // `output` is everything, for the transcript. `stdout` is kept apart because an
-// extension that carries a prompt sends its stdout to the model as data, and
+// sequence that carries a prompt sends its stdout to the model as data, and
 // diagnostics on stderr would read as part of the request. Arguments are handed
 // to bash as real positional parameters rather than pasted into the command
 // text, so `$1` and `$@` mean what a script author expects and nothing has to
@@ -189,6 +199,40 @@ const patch = (
   return text.slice(0, at) + edit.new_string + text.slice(at + edit.old_string.length);
 };
 
+// One wrapper for every tool the model can call, built-in or contributed by an
+// extension. It is what makes an extension's tool a real tool: the same event
+// stream drives the live row, the same 30k cap keeps one call from eating the
+// context, and the same catch turns a throw into an `ERROR:` the model can read
+// and recover from rather than a dead turn.
+export const wrapTool = <Schema extends z.ZodType>(
+  onEvent: (event: ToolEvent) => void,
+  name: string,
+  description: string,
+  inputSchema: Schema,
+  body: (input: z.infer<Schema>, signal: AbortSignal | undefined, id: number) => Promise<string>,
+) => {
+  const announce = (event: ToolEvent): void => {
+    try {
+      onEvent(event);
+    } catch {}
+  };
+  return tool({
+    description,
+    inputSchema,
+    execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
+      const raw = input as Record<string, unknown>;
+      const step = { id: nextToolEventId(), name, detail: firstDetail(raw), input: raw };
+      announce({ ...step, phase: "start" });
+      const told = await body(input, call.abortSignal, step.id).catch(
+        (bad) => `ERROR: ${errorText(bad)}`,
+      );
+      const result = capText(told, RESULT_LIMIT);
+      announce({ ...step, phase: "end", ok: !FAILED.test(result), result });
+      return result;
+    },
+  });
+};
+
 const firstDetail = (raw: Record<string, unknown>): string => {
   for (const key of ["command", "pattern", "path", "task"]) {
     const value = raw[key];
@@ -211,11 +255,6 @@ export const createTools = (
   skills: Skills,
 ): ToolSet => {
   const base = resolve(root);
-  const announce = (event: ToolEvent): void => {
-    try {
-      onEvent(event);
-    } catch {}
-  };
 
   const within = (target?: string): string => {
     const full = resolve(base, target ?? ".");
@@ -228,26 +267,7 @@ export const createTools = (
     description: string,
     inputSchema: Schema,
     body: (input: z.infer<Schema>, signal: AbortSignal | undefined, id: number) => Promise<string>,
-  ) =>
-    tool({
-      description,
-      inputSchema,
-      execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
-        const raw = input as Record<string, unknown>;
-        const step = {
-          id: nextToolEventId(),
-          name,
-          detail: firstDetail(raw),
-        };
-        announce({ ...step, phase: "start" });
-        const told = await body(input, call.abortSignal, step.id).catch(
-          (bad) => `ERROR: ${errorText(bad)}`,
-        );
-        const result = capText(told, RESULT_LIMIT);
-        announce({ ...step, phase: "end", ok: !FAILED.test(result) });
-        return result;
-      },
-    });
+  ) => wrapTool(onEvent, name, description, inputSchema, body);
 
   const askUser =
     askQuestions === null

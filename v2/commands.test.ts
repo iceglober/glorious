@@ -36,7 +36,7 @@ describe("slash commands", () => {
   });
 });
 
-describe("extension shortcuts", () => {
+describe("sequence shortcuts", () => {
   test("each sigil completes only its own namespace", () => {
     expect(activeSigil("$fr", 3, both)).toEqual({ sigil: "$", start: 0, query: "fr" });
     expect(activeSigil("/he", 3, both)).toEqual({ sigil: "/", start: 0, query: "he" });

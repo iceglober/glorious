@@ -60,6 +60,8 @@ export const createChat = (
       detail: tool.detail,
       elapsedMs: since === undefined ? 0 : Date.now() - since,
       ok: tool.ok,
+      input: tool.input,
+      result: tool.result,
     });
   };
 

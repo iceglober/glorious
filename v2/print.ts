@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { createAgent } from "./agent";
+import { createRegistry, fire } from "./extension-api";
+import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { currentModel } from "./models";
 import { errorText, flatten } from "./render";
 import { loadSkills } from "./skills";
+import { runShell, type ToolEvent } from "./tools";
 
 // Headless. One turn, no TUI, no session file, and nobody to ask — so ask_user
 // is withheld rather than left to hang on an answer that cannot arrive.
@@ -22,6 +25,32 @@ export const runPrint = async (
 ): Promise<number> => {
   const model = currentModel();
   const [rules, skills] = await Promise.all([loadAgentRules(where.root), loadSkills(where.root)]);
+
+  // Extensions load here too. They have to: a tool the agent writes for itself
+  // has to exist when it verifies with -p, or self-extension is a claim nothing
+  // can check. What has no meaning in a one-shot run is refused out loud rather
+  // than silently doing nothing.
+  const registry = createRegistry();
+  let toolSink: (event: ToolEvent) => void = () => {};
+  const note = (message: string): void => {
+    process.stderr.write(`${message}\n`);
+  };
+  const loaded = await loadExtensions(
+    where.root,
+    registry,
+    {
+      root: where.root,
+      exec: (command, args) => runShell(where.root, command, args),
+      send: () => note("[extension] send() has no meaning in print mode; ignored"),
+      print: (text) => note(text),
+      ask: async () => {
+        throw new Error("ask() has no meaning in print mode: there is nobody to answer");
+      },
+    },
+    (event) => toolSink(event),
+  );
+  for (const failure of loaded.failures) note(`[extension ${failure.origin}] ${failure.message}`);
+
   const agent = createAgent({
     root: where.root,
     model,
@@ -39,6 +68,11 @@ export const runPrint = async (
     skills: skills.catalog,
     skillTools: skills,
     askQuestions: null,
+    extensionTools: (onTool) => {
+      toolSink = onTool;
+      return registry.tools;
+    },
+    extensionPrompt: () => registry.promptLines,
   });
 
   const stop = new AbortController();
@@ -48,6 +82,8 @@ export const runPrint = async (
   const started = new Map<number, number>();
   let streamed = false;
   try {
+    await fire(registry, "session_start", { root: where.root }, note);
+    await fire(registry, "turn_start", { text: prompt }, note);
     const result = await agent.run(prompt, [], {
       signal: stop.signal,
       onDelta: ({ kind, text }) => {
@@ -60,6 +96,7 @@ export const runPrint = async (
       onTool: (event) => {
         if (event.phase === "start") {
           started.set(event.id, Date.now());
+          void fire(registry, "tool_start", { name: event.name, input: event.input }, note);
           return;
         }
         const since = started.get(event.id);
@@ -69,6 +106,12 @@ export const runPrint = async (
         process.stderr.write(
           `${event.ok ? "✓" : "✗"} ${event.name}${detail && ` ${detail}`}${took}\n`,
         );
+        void fire(
+          registry,
+          "tool_end",
+          { name: event.name, input: event.input, ok: event.ok, result: event.result },
+          note,
+        );
       },
       onStep: () => {},
       onReasoningEnd: () => {},
@@ -76,6 +119,7 @@ export const runPrint = async (
     });
     if (!streamed && result.text.trim() !== "") process.stdout.write(result.text);
     process.stdout.write("\n");
+    await fire(registry, "turn_end", { text: result.text }, note);
     if (result.stoppedAtStepLimit) {
       process.stderr.write("[stopped at the step limit without finishing]\n");
       return 1;

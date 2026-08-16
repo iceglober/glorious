@@ -4,7 +4,17 @@ import { PREAMBLE_TAGS } from "./prompt";
 export type SessionEvent =
   | { type: "user"; text: string }
   | { type: "assistant"; text: string }
-  | { type: "tool"; name: string; detail: string; elapsedMs: number; ok: boolean }
+  // input and result are what an extension's renderer redraws from on replay;
+  // both are optional so a session written before extensions still loads.
+  | {
+      type: "tool";
+      name: string;
+      detail: string;
+      elapsedMs: number;
+      ok: boolean;
+      input?: Record<string, unknown>;
+      result?: string;
+    }
   | { type: "notice"; text: string }
   | { type: "error"; text: string }
   | {

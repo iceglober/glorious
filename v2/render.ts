@@ -139,11 +139,29 @@ const activity = (icon: Span, name: string, detail: string, gap: string): Line =
   return [{ text: "  " }, icon, { text: ` ${flatten(name)}` }, ...note];
 };
 
-export const toolRow = (name: string, detail: string, elapsedMs: number, ok: boolean): Line => {
+// An extension's renderer owns what its row says; glorious keeps the status
+// mark and the timing, because those have to mean the same thing on every row
+// whoever wrote the tool. Rows after the first indent under it.
+const decorate = (icon: Span, custom: Line[], trailer: Line): Line[] =>
+  custom.map((line, at) =>
+    at === 0
+      ? [{ text: "  " }, icon, { text: " " }, ...line, ...trailer]
+      : [{ text: "    " }, ...line],
+  );
+
+export const toolRow = (
+  name: string,
+  detail: string,
+  elapsedMs: number,
+  ok: boolean,
+  custom?: Line[],
+): Line[] => {
   const mark: Span = ok ? { text: "✓", tone: "success" } : { text: "✗", tone: "danger" };
   const took =
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
-  return [...activity(mark, name, detail, "  "), { text: `  ${took}`, tone: "muted" }];
+  const trailer: Line = [{ text: `  ${took}`, tone: "muted" }];
+  if (custom && custom.length > 0) return decorate(mark, custom, trailer);
+  return [[...activity(mark, name, detail, "  "), ...trailer]];
 };
 
 // Reasoning collapses once the answer starts: what matters afterwards is that it
@@ -161,14 +179,38 @@ export const reasoningDraft = (text: string): Line[] =>
     .slice(-6)
     .map((line): Line => [{ text: `░ ${line}`, tone: "muted", italic: true }]);
 
-export const eventBlock = (event: SessionEvent): { lines: Line[]; gap: boolean } => {
+// `custom` looks up an extension's renderer by tool name. It is resolved at
+// paint time rather than stored on the event, so a session replays with
+// whatever extensions are installed now — which is right: the extension owns
+// its rendering, and one that has been removed should not leave rows behind
+// that nothing can explain.
+export type ToolRender = (
+  name: string,
+  input: Record<string, unknown>,
+  result: string,
+  ok: boolean,
+) => Line[] | undefined;
+
+export const eventBlock = (
+  event: SessionEvent,
+  custom?: ToolRender,
+): { lines: Line[]; gap: boolean } => {
   switch (event.type) {
     case "user":
       return { lines: userBlock(event.text), gap: true };
     case "assistant":
       return { lines: assistantBlock(event.text), gap: true };
     case "tool":
-      return { lines: [toolRow(event.name, event.detail, event.elapsedMs, event.ok)], gap: false };
+      return {
+        lines: toolRow(
+          event.name,
+          event.detail,
+          event.elapsedMs,
+          event.ok,
+          custom?.(event.name, event.input ?? {}, event.result ?? "", event.ok),
+        ),
+        gap: false,
+      };
     case "reasoning":
       return { lines: reasoningBlock(event.elapsedMs), gap: true };
     case "notice":
@@ -192,8 +234,16 @@ const sweep = (frame: number): string => {
   }).join("");
 };
 
-export const runningRow = (name: string, detail: string, frame: number): Line =>
-  activity({ text: sweep(frame), tone: "accent" }, name, detail, " ");
+export const runningRow = (
+  name: string,
+  detail: string,
+  frame: number,
+  custom?: Line[],
+): Line[] => {
+  const icon: Span = { text: sweep(frame), tone: "accent" };
+  if (custom && custom.length > 0) return decorate(icon, custom, []);
+  return [activity(icon, name, detail, " ")];
+};
 
 export const queuedRow = (text: string): Line => [
   { text: `  ↳ queued: ${clip(flatten(text), 64)}`, tone: "warning" },
@@ -208,17 +258,23 @@ const tokenCount = (tokens: number | null): string => {
   return `${Math.max(0, Math.round(tokens))}`;
 };
 
+// Extension segments trail the model and context, so the fixed part of the line
+// keeps its position no matter what is installed.
 export const statusLine = (
   state: {
     model: string;
     tokens: number | null;
     percentUsed: number | null;
+    segments?: readonly string[];
   },
   columns: number,
 ): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
   const percent = state.percentUsed === null ? "unknown" : `${Math.round(state.percentUsed)}%`;
-  const line = `${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent})`;
+  const line = [
+    `${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent})`,
+    ...(state.segments ?? []).map(flatten).filter((segment) => segment !== ""),
+  ].join(" · ");
   return [[{ text: clip(line, limit), tone: "muted" }]];
 };
 

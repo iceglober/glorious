@@ -1,4 +1,4 @@
-export type BuiltinAction = "help" | "skills" | "mcp" | "models" | "clear";
+export type BuiltinAction = "help" | "skills" | "mcp" | "models" | "extensions" | "clear";
 
 export type Command = {
   name: string;
@@ -15,6 +15,11 @@ const builtins: readonly Command[] = [
   { name: "help", description: "Show help and tips", run: "help" },
   { name: "clear", description: "Clear the conversation context", run: "clear" },
   { name: "skills", description: "List available skills", run: "skills" },
+  {
+    name: "extensions",
+    description: "List loaded extensions and where they came from",
+    run: "extensions",
+  },
   { name: "mcp", description: "List active MCP servers", run: "mcp" },
   { name: "models", description: "Switch the active model", run: "models" },
 ];
@@ -64,7 +69,7 @@ const score = (query: string, candidate: string): number | null => {
   return total - candidate.length / 100;
 };
 
-// Generic over the list so the composer can complete commands and extensions
+// Generic over the list so the composer can complete commands and sequences
 // with one ranking, rather than two that drift apart.
 export const matchNames = <T extends { name: string }>(items: readonly T[], query: string): T[] =>
   items
@@ -99,7 +104,7 @@ export const activeSigil = (
 export const commandName = (text: string): string | null => commandInvocation(text)?.name ?? null;
 
 // Everything after the name travels with it; a custom command is useless
-// without it, and an extension takes arguments the same way.
+// without it, and a sequence takes arguments the same way.
 export const sigilInvocation = (
   text: string,
   sigil: string,

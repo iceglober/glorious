@@ -4,7 +4,7 @@ export const fence = (tag: string, body: string): string =>
 // Every block the agent prepends to a user turn. events.ts strips these when
 // replaying a transcript, so a new preamble block must be named here or it will
 // show up in the session log as if the user typed it.
-export const PREAMBLE_TAGS = ["where-you-are", "skills", "context-budget"] as const;
+export const PREAMBLE_TAGS = ["where-you-are", "skills", "extensions", "context-budget"] as const;
 
 export const REMINDER_OPEN = "[system-reminder]";
 export const REMINDER_CLOSE = "[/system-reminder]";
@@ -12,7 +12,7 @@ export const REMINDER_CLOSE = "[/system-reminder]";
 export const reminder = (body: string): string =>
   `${REMINDER_OPEN}\n${body.replaceAll(REMINDER_CLOSE, "[∕system-reminder]")}\n${REMINDER_CLOSE}`;
 
-// An extension's prose is the request; its stdout is what the shell found on
+// A sequence's prose is the request; its stdout is what the shell found on
 // the way. Fenced apart so a diff or a log is read as evidence rather than as
 // further instructions.
 export const shortcutPrompt = (body: string, output: string): string =>

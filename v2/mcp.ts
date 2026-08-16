@@ -379,13 +379,13 @@ export const startMcp = async (
           const detail = String(
             raw.name_path ?? raw.relative_path ?? raw.name ?? raw.pattern ?? "",
           );
-          const step = { id: nextToolEventId(), name: entry.name, detail };
+          const step = { id: nextToolEventId(), name: entry.name, detail, input: raw };
           try {
             onEvent({ ...step, phase: "start" });
           } catch {}
           const result = capText(await call(raw), RESULT_LIMIT);
           try {
-            onEvent({ ...step, phase: "end", ok: !result.startsWith("ERROR:") });
+            onEvent({ ...step, phase: "end", ok: !result.startsWith("ERROR:"), result });
           } catch {}
           return result;
         },
