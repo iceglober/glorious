@@ -1,5 +1,15 @@
+import { join } from "node:path";
+
 export const fence = (tag: string, body: string): string =>
   `<${tag}>\n${body.replaceAll(`</${tag}>`, `<∕${tag}>`)}\n</${tag}>`;
+
+// Resolved against this file, so the paths are right whether glorious is run
+// from a checkout or from the installed global package. `v2` and `docs` both
+// ship in the npm tarball, which is what makes the block below true rather than
+// aspirational: the agent really can read its own implementation.
+const here = import.meta.dir;
+export const sourcePath = (): string => here;
+export const docsPath = (): string => join(here, "..", "docs");
 
 // Every block the agent prepends to a user turn. events.ts strips these when
 // replaying a transcript, so a new preamble block must be named here or it will
@@ -18,8 +28,8 @@ export const reminder = (body: string): string =>
 export const shortcutPrompt = (body: string, output: string): string =>
   output.trim() === "" ? body : `${body}\n\n${fence("output", output)}`;
 
-// Roughly forty lines, which is pi's scale and about a thousand tokens with the
-// tool schemas. What was here before — a four-step method, four worked
+// Roughly forty lines, about a thousand tokens with the tool schemas. What was
+// here before — a four-step method, four worked
 // examples, a delegation argument, a permission table, a grounding clause, a
 // prose style guide — was 300 lines describing subsystems that no longer exist
 // and rules a capable model already follows.
@@ -54,6 +64,25 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   - Be concise. Show file paths clearly. Close with what changed and the
     evidence that it works.
 </guidelines>
+
+<extending-yourself>
+  Glorious's own source and docs are on this machine:
+  - source: ${sourcePath()}
+  - docs:   ${docsPath()}
+
+  Read them when the user asks about glorious itself, and especially when they
+  ask for a capability it does not have. The answer is almost always an
+  extension: a TypeScript file in .glorious/extensions/ that default-exports a
+  function taking the glorious API, and can register tools, slash commands,
+  lifecycle hooks, status widgets and custom rendering. Read
+  docs/extensions.md first; it is written for you.
+
+  Write it rather than handing the request back. Verify it with
+  \`glorious -p "<prompt>"\`, which loads extensions exactly as the app does.
+
+  A shell command plus a prompt needs no code at all — that is a sequence, in
+  docs/sequences.md. Reach for an extension when a sequence cannot do it.
+</extending-yourself>
 
 ${fence("repo-rules", ctx.rules)}
 `;

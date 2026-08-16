@@ -7,7 +7,7 @@ import {
   shortcutInvocation,
 } from "../commands";
 import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
-import { type Line, statusWave } from "../render";
+import { type Line, statusRow } from "../render";
 import type { Sequence } from "../sequences";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
@@ -202,6 +202,7 @@ export const createScreen = async (callbacks: {
   };
 
   const paintStatus = painter(status);
+  const paintActivity = painter(waterline);
   const showStatus = (): void => {
     paintStatus(quitTimer === null ? statusRows : [quitLine, ...statusRows]);
   };
@@ -515,16 +516,10 @@ export const createScreen = async (callbacks: {
     print: printBlock,
     setProgress: painter(progress),
     setFooter: painter(extra),
-    setWave: (
-      frame: number,
-      busy: boolean,
-      queued: number,
-      phase?: { name: string; ms: number } | null,
-    ) => {
-      waterline.content = styled(statusWave(frame, busy, queued, columns(), phase));
-      waterline.visible = busy;
-      draw();
-    },
+    // Through the same painter dedupe as everything else: nothing animates now,
+    // so a tick where no number moved must cost no render at all.
+    setStatusRow: (busy: boolean, queued: number, phase?: { name: string; ms: number } | null) =>
+      paintActivity(busy ? statusRow(busy, queued, columns(), phase) : []),
     setStatus: (lines: Line[]) => {
       statusRows = lines;
       showStatus();

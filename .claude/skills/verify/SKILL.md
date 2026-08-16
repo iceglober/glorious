@@ -7,19 +7,23 @@ description: Drive the glorious TUI end-to-end and capture what it paints — bu
 
 ## Launch
 
-- The only command is the chat TUI: `bun <repo>/v2/index.ts` from inside any git repo.
+- The chat TUI is `bun <repo>/v2/index.ts` from inside any git repo.
   (`bin/glorious` and `bun run glorious` both exec exactly that.)
+- **Try `-p` first.** `bun <repo>/v2/index.ts -p "<prompt>"` runs one turn headless: assistant
+  text on stdout, one line per tool call on stderr, no alternate screen. It loads extensions and
+  skills exactly as the TUI does, so anything not about *painting* is far cheaper to check there
+  than through expect. Reach for the pty only when the question is what the terminal shows.
 - Credentials come from env: `AZURE_FOUNDRY_API_KEY` / `AZURE_API_KEY` / `AZURE_OPENAI_API_KEY`
   (first set wins) and `AZURE_RESOURCE_NAME`. On this machine `AZURE_OPENAI_API_KEY` and
-  `AZURE_RESOURCE_NAME` are already in the login environment, so no setup is needed; a keychain
-  copy also exists from an older build
-  (`security find-generic-password -s glorious -a azure-api-key -w`).
-- `GLORIOUS_MODEL` overrides the model (default `gpt-5.6-luna`).
-- Set `GLORIOUS_SESSION_ENCRYPTION=0` for driven runs. Sessions are encrypted by default with a
-  key from the macOS Keychain, and a Keychain auth prompt under a headless pty has nowhere to go.
+  `AZURE_RESOURCE_NAME` are already in the login environment, so no setup is needed.
+- `GLORIOUS_MODEL` overrides the model (default `gpt-5.6-luna`); `GLORIOUS_VARIANT` the effort.
+- Sessions are plain JSON now — no Keychain, nothing to disable before a driven run.
 - Make a throwaway target repo in the scratchpad (`git init` + a couple of files) so the agent's
   edits and commands land somewhere disposable. Note this does *not* isolate sessions — those are
   global, see cleanup below.
+- Long multi-step turns intermittently die with `Item with id 'rs_…' not found` — an Azure
+  Responses API error about reasoning-item retention, seen through both `-p` and the TUI. Re-run
+  before believing a failure is yours.
 - A missing key fails fast with a one-line error before the alternate screen opens — that itself is a testable path.
 
 ## Drive it (no tmux on this machine; screen's hardcopy writes empty files)
@@ -59,13 +63,15 @@ Grep anchors that hold up:
 - `❯` echoed user turn · `●` assistant block · `✓` finished tool row · `Ctrl+C again to exit` quit
   ladder · `Continue with: glorious --resume <id>` the exit line.
 - Finished rows read `✓ <tool>  <detail>  <elapsed>`, e.g. `✓ read  hello.txt  1ms`. Tool names are
-  bash, read, write, edit, grep, glob, ask_user, and the conditional activate_skill / run_subagent.
-- Running rows are the sweep block chars next to the tool name, e.g. `█ bash sleep 3`, live-region
-  only — they never reach the transcript.
+  bash, read, write, edit, grep, glob, ask_user, the conditional activate_skill, and whatever
+  extensions have registered (`web_fetch` ships bundled).
+- Running rows are `→ <tool> <detail>`, live-region only — they never reach the transcript.
+  An extension's `renderCall` replaces the text after the mark, not the mark itself.
 
 Do not grep for `ctx`. The status line does render `ctx <tokens>`, but interleaved repaints shred it
-mid-string and it matched zero times across runs. The VU meter (`▁▂▃▄▅▆▇█`) and the literal
-`Esc interrupt` are the reliable busy-state anchors.
+mid-string and it matched zero times across runs. The literal `Esc interrupt` is the reliable
+busy-state anchor — and since nothing animates any more, `█` or `▁` appearing anywhere in a capture
+means the sweep block or the VU meter has come back.
 
 ## Clean up
 

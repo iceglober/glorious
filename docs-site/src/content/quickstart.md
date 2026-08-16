@@ -36,17 +36,17 @@ Type, and the agent reads and edits files and runs commands as you chat.
 ## Slash commands
 
 - `/help` — keys and commands.
-- `/models` — switch the active model.
 - `/skills` — list discovered skills; press `r` to reload from disk.
-- `/mcp` — list connected MCP servers.
+- `/extensions` — list loaded extensions and what each one registered.
+- `/clear` — drop the conversation the model replays, keeping the transcript.
 
-## Extensions
+## Sequences
 
 A slash command always ends in a turn; `!` never does but has to be typed out
-in full. An extension is the named form of `!` — a script the project defines
+in full. A sequence is the named form of `!` — a script the project defines
 and glorious runs, reached by typing `$` and completing the name.
 
-Put one in `.glorious/extensions/<name>.md`. The frontmatter is the
+Put one in `.glorious/sequences/<name>.md`. The frontmatter is the
 deterministic part; the body is an optional prompt.
 
 ```markdown

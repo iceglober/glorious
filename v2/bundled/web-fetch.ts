@@ -3,7 +3,7 @@ import type { Glorious } from "../extension-api";
 // Bundled, enabled by default, and written the way any extension is: it reaches
 // for nothing but Bun globals and the API object. That is the point — this is
 // the largest tool glorious has, and if the extension API could not express it
-// the API would be a toy. It came from pi-web-fetch in the first place.
+// the API would be a toy.
 //
 // Delete it, shadow it with your own .glorious/extensions/web-fetch.ts, or
 // leave it alone; none of that touches the core.

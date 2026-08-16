@@ -5,8 +5,9 @@ import {
   reasoningBlock,
   reasoningDraft,
   rightClip,
+  runningRow,
   statusLine,
-  statusWave,
+  statusRow,
   width,
 } from "./render";
 
@@ -80,9 +81,9 @@ describe("reasoning in the transcript", () => {
   });
 });
 
-describe("the wave's sub-status", () => {
+describe("the activity row", () => {
   const text = (columns: number, phase?: { name: string; ms: number } | null) =>
-    statusWave(7, true, 0, columns, phase)
+    statusRow(true, 0, columns, phase)
       .flat()
       .map((span) => span.text)
       .join("");
@@ -108,7 +109,7 @@ describe("the wave's sub-status", () => {
   });
 
   test("a queued count still reaches the line", () => {
-    const line = statusWave(7, true, 2, 140, { name: "writing", ms: 400 })
+    const line = statusRow(true, 2, 140, { name: "writing", ms: 400 })
       .flat()
       .map((s) => s.text)
       .join("");
@@ -123,6 +124,26 @@ describe("the wave's sub-status", () => {
   });
 
   test("an idle turn still paints nothing", () => {
-    expect(statusWave(7, false, 0, 120, { name: "waiting", ms: 100 })[0][0].text).toBe("");
+    expect(statusRow(false, 0, 120, { name: "waiting", ms: 100 })[0][0].text).toBe("");
+  });
+
+  // The block that used to march across every running row, and the sine field
+  // that filled this line, carried no information the row did not already have
+  // and cost a repaint eleven times a second. Both are gone; the elapsed
+  // readings that do carry information stay.
+  test("nothing animates: the same inputs paint the same row every time", () => {
+    const once = text(120, { name: "waiting", ms: 2300 });
+    expect(text(120, { name: "waiting", ms: 2300 })).toBe(once);
+    expect(once).not.toMatch(/[▁▂▃▄▅▆▇█]/u);
+  });
+
+  test("a running tool row carries a static mark, not a moving one", () => {
+    const row = runningRow("bash", "sleep 3")
+      .flat()
+      .map((span) => span.text)
+      .join("");
+    expect(row).not.toContain("█");
+    expect(row).toContain("bash");
+    expect(row).toContain("sleep 3");
   });
 });

@@ -14,6 +14,7 @@
     "bin",
     "v2",
     "!v2/**/*.test.ts",
+    "docs",
     "README.md",
     "LICENSE"
   ],

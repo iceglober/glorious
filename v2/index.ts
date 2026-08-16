@@ -37,7 +37,7 @@ import { runShell, type ToolEvent } from "./tools";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
 
-const FRAME_MS = 90;
+const TICK_MS = 100;
 const SETTLE_MS = 250;
 const PACKAGE_NAME = "@glrs-dev/glorious";
 const VERSION = packageJson.version;
@@ -139,7 +139,6 @@ const main = async (): Promise<void> => {
   // they stay out of the table the model's slash commands live in.
   let { sequences, legacy: legacySequences } = await loadSequences(root);
 
-  let frame = 0;
   const lastUsage = session.events.findLast((event) => event.type === "usage");
   let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
   let produced = false;
@@ -198,7 +197,6 @@ const main = async (): Promise<void> => {
         ...runningRow(
           tool.name,
           tool.detail,
-          frame,
           safely(() => renderCall(tool.name, tool.input)),
         ),
       );
@@ -206,8 +204,7 @@ const main = async (): Promise<void> => {
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
     screen.setFooter(registry.footers.flatMap((render) => safely(render) ?? []));
-    screen.setWave(
-      frame,
+    screen.setStatusRow(
       chat.busy,
       chat.queued.length,
       phase === null ? null : { name: phase, ms: now - phaseSince },
@@ -554,10 +551,11 @@ const main = async (): Promise<void> => {
     if (!interrupt()) quit();
   };
 
-  const ticker = setInterval(() => {
-    frame += 1;
-    repaint();
-  }, FRAME_MS);
+  // Nothing animates any more; the only thing that moves between ticks is an
+  // elapsed reading, which carries one decimal. Every paint routes through the
+  // painter dedupe in screen.ts, so a tick where no number changed reaches the
+  // renderer not at all.
+  const ticker = setInterval(repaint, TICK_MS);
 
   // The TUI owns the terminal. Anything the runtime prints on its own — an
   // unhandled rejection, a stack trace — lands at whatever cursor position
