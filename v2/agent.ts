@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "./models";
-import { contextPrompt, environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
+import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { type AskQuestions, createTools, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -139,7 +139,6 @@ export const createAgent = (setup: Setup) => {
             contributed.length === 0
               ? ""
               : `<extensions>\n${contributed.join("\n")}\n</extensions>`,
-            contextPrompt(observed),
             prompt,
           ]
             .filter((part) => part !== "")

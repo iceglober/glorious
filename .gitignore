@@ -35,6 +35,7 @@ run.log
 # eval harness run artifacts (traj dumps + result rows)
 core/eval/results/
 core/eval/traj/
+eval/**/results.json
 
 # Local Glorious preferences and credentials metadata. Shared project defaults
 # in .glorious/config.json stay tracked.
