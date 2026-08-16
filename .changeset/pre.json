@@ -25,6 +25,7 @@
     "picker-provider-catalog",
     "plan-build-and-models",
     "quiet-status-footer",
+    "reasoning-store-false",
     "remove-ansi-renderer",
     "remove-completion-grounding",
     "skills-as-commands",
