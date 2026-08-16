@@ -84,17 +84,17 @@ describe("loading sequence files from a project", () => {
 
   beforeAll(async () => {
     await mkdir(join(root, ".glorious", "sequences"), { recursive: true });
-    await mkdir(join(root, ".claude", "sequences"), { recursive: true });
+    await mkdir(join(root, ".agents", "sequences"), { recursive: true });
     await writeFile(
       join(root, ".glorious", "sequences", "fresh.md"),
       "---\ndescription: Reset to a clean main\nrun: git checkout main\nclear: true\n---",
     );
     await writeFile(
-      join(root, ".claude", "sequences", "fresh.md"),
+      join(root, ".agents", "sequences", "fresh.md"),
       "---\ndescription: The personal one\nrun: echo shadowed\n---",
     );
     await writeFile(
-      join(root, ".claude", "sequences", "seed.md"),
+      join(root, ".agents", "sequences", "seed.md"),
       "---\ndescription: Seed the database\nrun: ./seed.sh\n---",
     );
     await writeFile(join(root, ".glorious", "sequences", "notes.txt"), "not markdown");

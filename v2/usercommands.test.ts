@@ -9,7 +9,7 @@ import {
   expandCommand,
   setCustomCommands,
 } from "./commands";
-import { loadUserCommands, parseCommandFile } from "./usercommands";
+import { agentDirectories, loadUserCommands, parseCommandFile } from "./usercommands";
 
 describe("reading a command file", () => {
   test("frontmatter supplies the description and the body is the prompt", () => {
@@ -114,22 +114,22 @@ describe("loading command files from a project", () => {
 
   beforeAll(async () => {
     await mkdir(join(root, ".glorious", "commands"), { recursive: true });
-    await mkdir(join(root, ".claude", "commands"), { recursive: true });
+    await mkdir(join(root, ".agents", "commands"), { recursive: true });
     await writeFile(
       join(root, ".glorious", "commands", "ship.md"),
       "---\ndescription: Ship it\n---\nCut a release.",
     );
-    await writeFile(join(root, ".claude", "commands", "ship.md"), "A different ship.");
-    await writeFile(join(root, ".claude", "commands", "audit.md"), "Audit $ARGUMENTS.");
-    await writeFile(join(root, ".claude", "commands", "notes.txt"), "not a command");
-    await writeFile(join(root, ".claude", "commands", "empty.md"), "   ");
+    await writeFile(join(root, ".agents", "commands", "ship.md"), "A different ship.");
+    await writeFile(join(root, ".agents", "commands", "audit.md"), "Audit $ARGUMENTS.");
+    await writeFile(join(root, ".agents", "commands", "notes.txt"), "not a command");
+    await writeFile(join(root, ".agents", "commands", "empty.md"), "   ");
   });
 
   afterAll(async () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  test("it finds commands in both .glorious and .claude", async () => {
+  test("it finds commands in both .glorious and .agents", async () => {
     const found = await loadUserCommands(root);
     expect(found.map((command) => command.name).sort()).toContain("audit");
   });
@@ -151,5 +151,25 @@ describe("loading command files from a project", () => {
   test("a command carries where it came from, so its source is traceable", async () => {
     const found = await loadUserCommands(root);
     expect(found.find((command) => command.name === "audit")?.origin).toContain("audit.md");
+  });
+});
+
+// glorious used to read ~/.claude, every ancestor's .claude, ~/.claude/plugins/
+// cache and ~/.config/amp/skills, so another tool's whole command and skill
+// surface arrived as glorious slash commands — and every skill description was
+// paid for in the per-turn preamble. Its own directory and the vendor-neutral
+// Agent Skills layout, and nothing else.
+describe("whose directories glorious reads", () => {
+  const roots = agentDirectories("/zz/project");
+
+  test("its own and the neutral standard", () => {
+    expect(roots).toContain("/zz/project/.glorious");
+    expect(roots).toContain("/zz/project/.agents");
+    expect(roots.some((root) => root.endsWith("/.config/agents"))).toBe(true);
+  });
+
+  test("no other tool's", () => {
+    for (const foreign of [".claude", "amp", "plugins"])
+      expect(roots.filter((root) => root.includes(foreign))).toEqual([]);
   });
 });

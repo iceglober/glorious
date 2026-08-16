@@ -20,13 +20,8 @@ export const agentDirectories = (root: string): string[] => {
     current = parent;
   }
   return [
-    ...project.flatMap((directory) => [
-      join(directory, ".glorious"),
-      join(directory, ".agents"),
-      join(directory, ".claude"),
-    ]),
+    ...project.flatMap((directory) => [join(directory, ".glorious"), join(directory, ".agents")]),
     join(home, ".config", "agents"),
-    join(home, ".claude"),
   ];
 };
 

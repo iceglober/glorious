@@ -41,19 +41,18 @@ const ancestors = (root: string): string[] => {
   return directories;
 };
 
+// glorious's own directory and the vendor-neutral Agent Skills layout, and
+// nothing else. It used to also read ~/.claude/skills, every ancestor's
+// .claude/skills, ~/.claude/plugins/cache and ~/.config/amp/skills — so another
+// tool's whole skill surface arrived as glorious slash commands, and every one
+// of those names and descriptions was paid for in the per-turn preamble. Put a
+// symlink in .agents/skills/ if you want one of them here.
 const skillRoots = (root: string): string[] => {
   const home = homedir();
-  const project = ancestors(root);
   return [
     join(home, ".config", "agents", "skills"),
     join(home, ".agents", "skills"),
-    join(home, ".config", "amp", "skills"),
-    ...project.flatMap((directory) => [
-      join(directory, ".agents", "skills"),
-      join(directory, ".claude", "skills"),
-    ]),
-    join(home, ".claude", "skills"),
-    join(home, ".claude", "plugins", "cache"),
+    ...ancestors(root).map((directory) => join(directory, ".agents", "skills")),
     join(root, ".glorious", "skills"),
   ];
 };
@@ -114,28 +113,13 @@ const parseSkill = (text: string, location: string): Skill | null => {
   };
 };
 
-const nestedSkillFiles = async (base: string): Promise<string[]> => {
-  const files: string[] = [];
-  const entries = await readdir(base, { withFileTypes: true }).catch(() => []);
-  for (const entry of entries) {
-    const path = join(base, entry.name);
-    if (entry.isDirectory()) files.push(...(await nestedSkillFiles(path)));
-    else if (entry.name === "SKILL.md") files.push(path);
-  }
-  return files;
-};
-
 const discover = async (root: string): Promise<Skill[]> => {
   const found: Skill[] = [];
   const seen = new Set<string>();
-  const roots = skillRoots(root);
-  for (const [index, base] of roots.entries()) {
-    const locations =
-      index === roots.length - 2
-        ? await nestedSkillFiles(base)
-        : (await readdir(base, { withFileTypes: true }).catch(() => []))
-            .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-            .map((entry) => resolve(base, entry.name, "SKILL.md"));
+  for (const base of skillRoots(root)) {
+    const locations = (await readdir(base, { withFileTypes: true }).catch(() => []))
+      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+      .map((entry) => resolve(base, entry.name, "SKILL.md"));
     for (const location of locations) {
       const skillText = await Bun.file(location)
         .text()
