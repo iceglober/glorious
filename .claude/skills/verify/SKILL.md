@@ -21,9 +21,10 @@ description: Drive the glorious TUI end-to-end and capture what it paints — bu
 - Make a throwaway target repo in the scratchpad (`git init` + a couple of files) so the agent's
   edits and commands land somewhere disposable. Note this does *not* isolate sessions — those are
   global, see cleanup below.
-- Long multi-step turns intermittently die with `Item with id 'rs_…' not found` — an Azure
-  Responses API error about reasoning-item retention, seen through both `-p` and the TUI. Re-run
-  before believing a failure is yours.
+- If a turn dies with `Item with id 'rs_…' not found`, check you are not on a branch that predates
+  #222. That was the provider replaying assistant content as a server-side `item_reference`; the
+  fix is `store: false` in `providerOptions`. It is not an upstream flake and it does not need
+  re-running to diagnose.
 - A missing key fails fast with a one-line error before the alternate screen opens — that itself is a testable path.
 
 ## Drive it (no tmux on this machine; screen's hardcopy writes empty files)
