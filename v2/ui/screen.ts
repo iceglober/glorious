@@ -10,8 +10,7 @@ import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "
 import type { Extension } from "../extensions";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
-import type { Mode } from "../modes";
-import { type Line, modeLabel, statusWave, type Tone } from "../render";
+import { type Line, statusWave } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
@@ -32,7 +31,6 @@ export const createScreen = async (callbacks: {
   onCommand: (name: string, args: string) => void;
   onShortcut: (name: string, args: string) => void;
   extensions?: readonly Extension[];
-  onModeCycle: () => void;
   onWatchSubagents: () => void;
   onCycleSubagent: () => void;
   onSkillsReload: () => void;
@@ -112,8 +110,6 @@ export const createScreen = async (callbacks: {
     [autocompleteLabel],
   );
 
-  const modeRow = textNode({ content: "", width: "100%", height: 1, wrapMode: "none" });
-
   const composerRow = stack(
     {
       flexDirection: "row",
@@ -129,7 +125,7 @@ export const createScreen = async (callbacks: {
 
   const composerSlot = stack(
     { flexDirection: "column", width: "100%", minWidth: 0, flexShrink: 0 },
-    [composerRow, modeRow],
+    [composerRow],
   );
   const footer = stack({ flexDirection: "column", flexShrink: 0, width: "100%" }, [
     progress,
@@ -189,7 +185,6 @@ export const createScreen = async (callbacks: {
       slotted = node;
       if (node) composerSlot.add(node);
       composerRow.visible = node === null;
-      modeRow.visible = node === null;
     },
   };
   const overlays = createOverlays(
@@ -418,11 +413,6 @@ export const createScreen = async (callbacks: {
       callbacks.onWatchSubagents();
       return;
     }
-    if (event.name === "tab") {
-      event.stopPropagation();
-      callbacks.onModeCycle();
-      return;
-    }
     // Arrow keys move within what you are typing and only reach for history at
     // the edges, the way a shell does. Ctrl+P/Ctrl+N stay unconditional history,
     // so recalling a long prompt never costs you fast cycling.
@@ -562,8 +552,6 @@ export const createScreen = async (callbacks: {
     },
     columns,
     showHelp: () => overlays.showHelp(extensions),
-    showModes: (modes: readonly Mode[], active: string, onSelect: (name: string) => void) =>
-      overlays.showModes(modes, active, onSelect),
     showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
     showMcp: (servers: readonly McpServerSummary[], notes: readonly string[]) =>
       overlays.showMcp(servers, notes),
@@ -589,10 +577,6 @@ export const createScreen = async (callbacks: {
       if (overlays.isSubagentView()) overlays.paintSubagents(agents, at);
     },
     watchingSubagents: () => overlays.isSubagentView(),
-    setMode: (mode: { name: string; tone: Tone }) => {
-      modeRow.content = styled([modeLabel(mode)]);
-      draw();
-    },
     askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
       if (overlays.isOpen()) overlays.close();
       return questions.ask(items, signal);

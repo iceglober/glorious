@@ -29,10 +29,10 @@ describe("slash commands", () => {
     expect(commandName("help")).toBeNull();
   });
 
-  test("describes mode as a cycle", () => {
-    expect(commands().find((command) => command.name === "mode")?.description).toBe(
-      "Cycle through agent modes",
-    );
+  // One mode, so there is nothing to cycle. A command file is free to claim the
+  // name now, which the builtin table would previously have refused.
+  test("offers no mode command", () => {
+    expect(commands().find((command) => command.name === "mode")).toBeUndefined();
   });
 });
 

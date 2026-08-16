@@ -2,7 +2,6 @@ import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
 import { commands } from "../commands";
 import type { McpServerSummary } from "../mcp";
 import type { ModelOption, ProviderOption } from "../models";
-import type { Mode } from "../modes";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
 
@@ -242,34 +241,6 @@ export const createOverlays = (
       ]),
     );
     paintSubagents(agents, at);
-  };
-
-  const showModes = (
-    modes: readonly Mode[],
-    active: string,
-    onSelect: (name: string) => void,
-  ): void => {
-    if (view) return;
-    const picker = new tui.SelectRenderable(renderer, {
-      width: "100%",
-      height: Math.max(3, Math.min(modes.length, sheetRows() - listChrome)),
-      options: modes.map((mode) => ({
-        name: mode.name === active ? `${mode.name}  (current)` : mode.name,
-        description: mode.description,
-        value: mode.name,
-      })),
-    });
-    picker.selectedIndex = Math.max(
-      0,
-      modes.findIndex((mode) => mode.name === active),
-    );
-    picker.on("itemSelected", () => {
-      const chosen = picker.getSelectedOption()?.value as string | undefined;
-      close();
-      if (chosen) onSelect(chosen);
-    });
-    open(sheet({ title: "Mode", height: sheetHeight(picker.height) }, [picker]));
-    picker.focus();
   };
 
   const showModelVariants = (model: ModelOption, onSelect: (model: ModelOption) => void): void => {
@@ -614,7 +585,6 @@ export const createOverlays = (
     showSubagents,
     paintSubagents,
     isSubagentView: () => subagentView !== null,
-    showModes,
     showSkills,
     showMcp,
     showModels,

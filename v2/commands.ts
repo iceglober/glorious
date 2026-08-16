@@ -1,4 +1,4 @@
-export type BuiltinAction = "help" | "skills" | "mcp" | "models" | "mode" | "clear";
+export type BuiltinAction = "help" | "skills" | "mcp" | "models" | "clear";
 
 export type Command = {
   name: string;
@@ -17,7 +17,6 @@ const builtins: readonly Command[] = [
   { name: "skills", description: "List available skills", run: "skills" },
   { name: "mcp", description: "List active MCP servers", run: "mcp" },
   { name: "models", description: "Switch the active model", run: "models" },
-  { name: "mode", description: "Cycle through agent modes", run: "mode" },
 ];
 
 // Loaded from disk after startup, so the table has to be readable as a function

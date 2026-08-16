@@ -46,16 +46,6 @@ export type RunSubagent = (
   origin: number,
 ) => Promise<string>;
 
-export type PlanVerdict =
-  | { decision: "approved"; fresh: boolean }
-  | { decision: "feedback"; note: string }
-  | { decision: "cancelled" };
-
-export type PresentPlan = (
-  plan: { plan: string; files: string[] },
-  signal: AbortSignal | undefined,
-) => Promise<PlanVerdict>;
-
 export const BUILT_IN_TOOL_NAMES = [
   "ask_user",
   "bash",
@@ -67,27 +57,9 @@ export const BUILT_IN_TOOL_NAMES = [
   "web_fetch",
   "activate_skill",
   "run_subagent",
-  "present_plan",
 ] as const;
 
 export type BuiltInToolName = (typeof BUILT_IN_TOOL_NAMES)[number];
-
-// Tools that cannot change the project or the machine. bash is absent on
-// purpose: `ls` and `rm -rf` are indistinguishable before running them, so a
-// read-only bash cannot be enforced, only asked for — and asking is what a mode
-// exists to stop doing.
-export const READ_ONLY_TOOL_NAMES = [
-  "ask_user",
-  "read",
-  "grep",
-  "glob",
-  "web_fetch",
-  "activate_skill",
-] as const satisfies readonly BuiltInToolName[];
-
-// Presenting a plan for approval only means something in a mode that produces
-// plans, so this one is withheld from build rather than granted to plan.
-export const PLAN_ONLY_TOOL_NAMES = ["present_plan"] as const satisfies readonly BuiltInToolName[];
 
 const RESULT_LIMIT = 30_000;
 const STDOUT_LIMIT = 20_000;
@@ -251,7 +223,6 @@ export const createTools = (
   askQuestions: AskQuestions | null,
   skills: Skills,
   runSubagent?: RunSubagent,
-  presentPlan?: PresentPlan,
 ): ToolSet => {
   const base = resolve(root);
   const announce = (event: ToolEvent): void => {
@@ -327,36 +298,6 @@ export const createTools = (
             ),
         }),
         async ({ task, context }, signal, id) => runSubagent(task, context, signal, id),
-      )
-    : undefined;
-
-  const presentPlanTool = presentPlan
-    ? define(
-        "present_plan",
-        "Present your finished plan to the user for approval. This ends plan mode: on approval the agent switches to build mode and implements it, so the plan is the brief the implementation works from. The user may approve it, reply with feedback, or dismiss it. Approving may clear the conversation, so write the plan to stand on its own and list every file that matters in `files` — anything you leave out may have to be rediscovered.",
-        z.object({
-          plan: z
-            .string()
-            .min(1)
-            .max(20_000)
-            .describe(
-              "The plan, written to stand alone: what will change, in what order, and how it will be checked",
-            ),
-          files: z
-            .array(z.string().min(1))
-            .max(50)
-            .describe(
-              "Paths that matter for implementing this plan. Name the ones that matter, not everything you read",
-            ),
-        }),
-        async ({ plan, files }, signal) => {
-          const verdict = await presentPlan({ plan, files }, signal);
-          if (verdict.decision === "approved")
-            return "The user approved the plan. Stop now and say nothing further — implementation starts in a new turn.";
-          if (verdict.decision === "feedback")
-            return `The user did not approve the plan yet. Their feedback: ${verdict.note}\n\nRevise the plan and present it again.`;
-          return "The user dismissed the approval prompt without deciding. Stop and wait for them.";
-        },
       )
     : undefined;
 
@@ -513,6 +454,5 @@ export const createTools = (
     web_fetch: webFetch,
     ...(skills.tool ? { activate_skill: skills.tool } : {}),
     ...(runSubagentTool ? { run_subagent: runSubagentTool } : {}),
-    ...(presentPlanTool ? { present_plan: presentPlanTool } : {}),
   };
 };

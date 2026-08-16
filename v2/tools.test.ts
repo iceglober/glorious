@@ -11,7 +11,6 @@ const registry = async (everything: boolean): Promise<string[]> => {
       async () => "",
       skills,
       everything ? async () => "" : undefined,
-      everything ? async () => ({ decision: "cancelled" }) : undefined,
     ),
   );
 };

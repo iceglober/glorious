@@ -12,8 +12,6 @@ import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
 import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
-import { MODES, type Mode, modeByName, nextMode } from "./modes";
-import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
 import { shortcutPrompt } from "./prompt";
 import {
   assistantBlock,
@@ -220,17 +218,6 @@ const main = async (): Promise<void> => {
     skillTools: skills,
     mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
-    presentPlan: async ({ plan, files }, signal) => {
-      // Show the plan in the transcript first — the approval prompt sits in the
-      // composer and has no room to hold the thing being approved.
-      render({ type: "assistant", text: planBlock(plan, files) });
-      const verdict = planVerdict(
-        await screen.askQuestions([{ question: PLAN_QUESTION, options: PLAN_OPTIONS }], signal),
-      );
-      if (verdict.decision === "approved") chat.planApproved(plan, files, verdict.fresh);
-      if (verdict.decision === "feedback") screen.restoreInput(verdict.note);
-      return verdict;
-    },
   });
 
   const replaceMcp = async (): Promise<void> => {
@@ -253,16 +240,6 @@ const main = async (): Promise<void> => {
     previous.close();
     repaint();
   };
-
-  // Both the picker and the Tab shortcut land here, so the composer label can
-  // never disagree with the mode actually in force.
-  const applyMode = (next: Mode): void => {
-    agent.setMode(next);
-    screen.setMode(next);
-    repaint();
-  };
-
-  const cycleMode = (): void => applyMode(nextMode(agent.mode().name));
 
   const record = (event: SessionEvent): void => {
     session.events.push(event);
@@ -461,11 +438,6 @@ const main = async (): Promise<void> => {
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
       if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
-      if (name === "mode")
-        screen.showModes(MODES, agent.mode().name, (chosen) => {
-          const next = modeByName(chosen);
-          if (next) applyMode(next);
-        });
       if (name === "models") {
         const selectModel = (next: typeof model): void => {
           agent.setModel(next);
@@ -532,7 +504,6 @@ const main = async (): Promise<void> => {
       }
       repaint();
     },
-    onModeCycle: cycleMode,
     // Ctrl+O opens the stream the transcript no longer carries. With nothing
     // running there is nothing to show, so the key does nothing and the hint
     // stays hidden.
@@ -634,7 +605,6 @@ const main = async (): Promise<void> => {
 
   try {
     screen.start();
-    screen.setMode(agent.mode());
     repaint();
     process.on("SIGINT", onSigint);
     process.on("unhandledRejection", onStray);

@@ -262,10 +262,3 @@ export const statusWave = (
     ],
   ];
 };
-
-// The mode sits under the composer rather than in the status line: it changes
-// what the next thing you type can do, so it belongs with the typing.
-export const modeLabel = (mode: { name: string; tone: Tone }): Line => [
-  { text: "● ", tone: mode.tone },
-  { text: mode.name, tone: mode.tone, bold: true },
-];
