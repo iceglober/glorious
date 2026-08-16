@@ -139,11 +139,29 @@ const activity = (icon: Span, name: string, detail: string, gap: string): Line =
   return [{ text: "  " }, icon, { text: ` ${flatten(name)}` }, ...note];
 };
 
-export const toolRow = (name: string, detail: string, elapsedMs: number, ok: boolean): Line => {
+// An extension's renderer owns what its row says; glorious keeps the status
+// mark and the timing, because those have to mean the same thing on every row
+// whoever wrote the tool. Rows after the first indent under it.
+const decorate = (icon: Span, custom: Line[], trailer: Line): Line[] =>
+  custom.map((line, at) =>
+    at === 0
+      ? [{ text: "  " }, icon, { text: " " }, ...line, ...trailer]
+      : [{ text: "    " }, ...line],
+  );
+
+export const toolRow = (
+  name: string,
+  detail: string,
+  elapsedMs: number,
+  ok: boolean,
+  custom?: Line[],
+): Line[] => {
   const mark: Span = ok ? { text: "✓", tone: "success" } : { text: "✗", tone: "danger" };
   const took =
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
-  return [...activity(mark, name, detail, "  "), { text: `  ${took}`, tone: "muted" }];
+  const trailer: Line = [{ text: `  ${took}`, tone: "muted" }];
+  if (custom && custom.length > 0) return decorate(mark, custom, trailer);
+  return [[...activity(mark, name, detail, "  "), ...trailer]];
 };
 
 // Reasoning collapses once the answer starts: what matters afterwards is that it
@@ -161,14 +179,38 @@ export const reasoningDraft = (text: string): Line[] =>
     .slice(-6)
     .map((line): Line => [{ text: `░ ${line}`, tone: "muted", italic: true }]);
 
-export const eventBlock = (event: SessionEvent): { lines: Line[]; gap: boolean } => {
+// `custom` looks up an extension's renderer by tool name. It is resolved at
+// paint time rather than stored on the event, so a session replays with
+// whatever extensions are installed now — which is right: the extension owns
+// its rendering, and one that has been removed should not leave rows behind
+// that nothing can explain.
+export type ToolRender = (
+  name: string,
+  input: Record<string, unknown>,
+  result: string,
+  ok: boolean,
+) => Line[] | undefined;
+
+export const eventBlock = (
+  event: SessionEvent,
+  custom?: ToolRender,
+): { lines: Line[]; gap: boolean } => {
   switch (event.type) {
     case "user":
       return { lines: userBlock(event.text), gap: true };
     case "assistant":
       return { lines: assistantBlock(event.text), gap: true };
     case "tool":
-      return { lines: [toolRow(event.name, event.detail, event.elapsedMs, event.ok)], gap: false };
+      return {
+        lines: toolRow(
+          event.name,
+          event.detail,
+          event.elapsedMs,
+          event.ok,
+          custom?.(event.name, event.input ?? {}, event.result ?? "", event.ok),
+        ),
+        gap: false,
+      };
     case "reasoning":
       return { lines: reasoningBlock(event.elapsedMs), gap: true };
     case "notice":
@@ -183,23 +225,18 @@ export const eventBlock = (event: SessionEvent): { lines: Line[]; gap: boolean }
 export const transcript = (events: readonly SessionEvent[]): Line[] =>
   events.flatMap((event) => eventBlock(event).lines);
 
-const sweep = (frame: number): string => {
-  const step = Math.abs(frame) % 16;
-  const phase = step > 8 ? 16 - step : step;
-  return Array.from({ length: 5 }, (_, cell) => {
-    const behind = phase - cell;
-    return behind >= 0 && behind <= 4 ? "█" : " ";
-  }).join("");
+// A static mark, where a five-cell block used to march back and forth. A row
+// that is present already says the call is running; the marching said nothing
+// the row did not, eleven times a second.
+export const runningRow = (name: string, detail: string, custom?: Line[]): Line[] => {
+  const icon: Span = { text: "→", tone: "accent" };
+  if (custom && custom.length > 0) return decorate(icon, custom, []);
+  return [activity(icon, name, detail, " ")];
 };
-
-export const runningRow = (name: string, detail: string, frame: number): Line =>
-  activity({ text: sweep(frame), tone: "accent" }, name, detail, " ");
 
 export const queuedRow = (text: string): Line => [
   { text: `  ↳ queued: ${clip(flatten(text), 64)}`, tone: "warning" },
 ];
-
-const water = " ▁▂▃▄▅▆▇█";
 
 const tokenCount = (tokens: number | null): string => {
   if (tokens === null) return "unknown";
@@ -208,17 +245,23 @@ const tokenCount = (tokens: number | null): string => {
   return `${Math.max(0, Math.round(tokens))}`;
 };
 
+// Extension segments trail the model and context, so the fixed part of the line
+// keeps its position no matter what is installed.
 export const statusLine = (
   state: {
     model: string;
     tokens: number | null;
     percentUsed: number | null;
+    segments?: readonly string[];
   },
   columns: number,
 ): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
   const percent = state.percentUsed === null ? "unknown" : `${Math.round(state.percentUsed)}%`;
-  const line = `${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent})`;
+  const line = [
+    `${flatten(state.model)} · ctx ${tokenCount(state.tokens)}(${percent})`,
+    ...(state.segments ?? []).map(flatten).filter((segment) => segment !== ""),
+  ].join(" · ");
   return [[{ text: clip(line, limit), tone: "muted" }]];
 };
 
@@ -230,8 +273,12 @@ export const elapsed = (ms: number): string => {
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 };
 
-export const statusWave = (
-  frame: number,
+// What the model is doing and for how long, plus how to stop it. This used to
+// be that text pinned to the right of a full-width animated sine field; the
+// field carried no information and cost a repaint on every one of eleven frames
+// a second. The phase leads because it is the part that changes, so a narrow
+// terminal clips the fixed hint rather than the live reading.
+export const statusRow = (
   busy: boolean,
   queued: number,
   columns: number,
@@ -240,32 +287,6 @@ export const statusWave = (
   const limit = Math.max(0, Math.floor(columns));
   if (!busy || limit === 0) return [[{ text: "" }]];
   const waiting = queued > 0 ? ` · ${queued} queued` : "";
-  // The phase leads: it is the part that changes, and on a narrow terminal the
-  // clip should eat the fixed hint rather than the live one.
   const state = phase ? `${phase.name} ${elapsed(phase.ms)} · ` : "";
-  const hint = `${state}Esc interrupt${waiting}`;
-  const room = Math.max(0, limit - width(hint) - 2);
-  const waves = Array.from({ length: room }, (_, index) => {
-    const primary = Math.sin(index / 3 + frame / 5);
-    const ripple = Math.sin(index / 1.7 - frame / 8) * 0.8;
-    const height = Math.max(0, Math.min(water.length - 1, Math.round(4 + primary * 3.5 + ripple)));
-    return water[height];
-  }).join("");
-  // On a narrow terminal the field loses to the hint, and the separator has to
-  // go with it or the row is two columns wider than the screen.
-  const separator = room === 0 ? "" : "  ";
-  return [
-    [
-      { text: waves.slice(0, room), tone: "accent" },
-      { text: separator },
-      { text: clip(hint, Math.max(0, limit - room - separator.length)), tone: "accent" },
-    ],
-  ];
+  return [[{ text: clip(`${state}Esc interrupt${waiting}`, limit), tone: "accent" }]];
 };
-
-// The mode sits under the composer rather than in the status line: it changes
-// what the next thing you type can do, so it belongs with the typing.
-export const modeLabel = (mode: { name: string; tone: Tone }): Line => [
-  { text: "● ", tone: mode.tone },
-  { text: mode.name, tone: mode.tone, bold: true },
-];

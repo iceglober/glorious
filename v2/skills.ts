@@ -4,7 +4,6 @@ import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
 import type { Command } from "./commands";
-import type { McpServerConfig, McpSession } from "./mcp";
 
 type Skill = {
   name: string;
@@ -12,7 +11,6 @@ type Skill = {
   trigger: string;
   location: string;
   body: string;
-  mcpServers: Record<string, McpServerConfig>;
 };
 
 export type SkillSummary = {
@@ -71,47 +69,6 @@ const scalar = (value: string): string => {
   return trimmed;
 };
 
-const parseJson = (value: string): unknown => {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-};
-
-const parseMcpServers = (value: string): Record<string, McpServerConfig> => {
-  const parsed = parseJson(value) as Record<string, McpServerConfig> | null;
-  return parsed && typeof parsed === "object" ? parsed : {};
-};
-
-const parseMcpBlock = (lines: string[]): Record<string, McpServerConfig> => {
-  const servers: Record<string, McpServerConfig> = {};
-  let current = "";
-  for (const line of lines) {
-    const server = /^\s{2}([\w.-]+):\s*$/u.exec(line);
-    if (server) {
-      current = server[1];
-      servers[current] = { command: "" };
-      continue;
-    }
-    if (!current) continue;
-    const field = /^\s{4}(command|args|env|tools|disabled):\s*(.*)$/u.exec(line);
-    if (!field) continue;
-    const value = scalar(field[2]);
-    if (field[1] === "command") servers[current].command = value;
-    else if (field[1] === "disabled") servers[current].disabled = value === "true";
-    else if (field[1] === "args" || field[1] === "tools") {
-      const parsed = parseJson(value);
-      if (Array.isArray(parsed)) servers[current][field[1]] = parsed as string[];
-    } else {
-      const parsed = parseJson(value);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-        servers[current].env = parsed as Record<string, string>;
-    }
-  }
-  return Object.fromEntries(Object.entries(servers).filter(([, config]) => config.command));
-};
-
 const parseSkill = (text: string, location: string): Skill | null => {
   const lines = text.split("\n");
   if (lines[0]?.trim() !== "---") return null;
@@ -120,15 +77,7 @@ const parseSkill = (text: string, location: string): Skill | null => {
   let name = "";
   let description = "";
   let trigger = "";
-  let mcpServers: Record<string, McpServerConfig> = {};
   let block = "";
-  const frontmatter = lines.slice(1, end);
-  const mcpLine = frontmatter.findIndex((line) => /^mcpServers:/u.test(line));
-  if (mcpLine >= 0) {
-    const value = frontmatter[mcpLine].slice("mcpServers:".length).trim();
-    mcpServers =
-      value === "" ? parseMcpBlock(frontmatter.slice(mcpLine + 1)) : parseMcpServers(value);
-  }
   for (let index = 1; index < end; index += 1) {
     const line = lines[index];
     if (block) {
@@ -162,7 +111,6 @@ const parseSkill = (text: string, location: string): Skill | null => {
       .slice(end + 1)
       .join("\n")
       .trim(),
-    mcpServers,
   };
 };
 
@@ -192,24 +140,7 @@ const discover = async (root: string): Promise<Skill[]> => {
       const skillText = await Bun.file(location)
         .text()
         .catch(() => "");
-      const parsed = parseSkill(skillText, location);
-      const sibling = (await Bun.file(join(dirname(location), "mcp.json"))
-        .json()
-        .catch(() => null)) as
-        | { mcpServers?: Record<string, McpServerConfig> }
-        | Record<string, McpServerConfig>
-        | null;
-      const siblingServers: Record<string, McpServerConfig> =
-        sibling && "mcpServers" in sibling
-          ? ((sibling.mcpServers as Record<string, McpServerConfig> | undefined) ?? {})
-          : ((sibling as Record<string, McpServerConfig> | null) ?? {});
-      const skill = parsed
-        ? {
-            ...parsed,
-            mcpServers:
-              Object.keys(parsed.mcpServers).length > 0 ? parsed.mcpServers : siblingServers,
-          }
-        : null;
+      const skill = parseSkill(skillText, location);
       if (!skill || basename(dirname(location)) !== skill.name || seen.has(skill.name)) continue;
       seen.add(skill.name);
       found.push(skill);
@@ -230,7 +161,7 @@ const skillContent = (skill: Skill): string =>
 const triggerPrompt = (skill: Skill): string =>
   `Run the ${skill.name} skill now. The user invoked it as a slash command, so the instructions below are what to carry out — not background material, and not something to summarise or ask about. Follow them from the top. Any text after the command name is the skill's arguments.\n\n${skillContent(skill)}`;
 
-const createSkillTool = (skills: Skill[], mcp?: McpSession) => {
+const createSkillTool = (skills: Skill[]) => {
   if (skills.length === 0) return undefined;
   const byName = new Map(skills.map((skill) => [skill.name, skill]));
   return tool({
@@ -242,14 +173,12 @@ const createSkillTool = (skills: Skill[], mcp?: McpSession) => {
     execute: async ({ name }) => {
       const skill = byName.get(name);
       if (!skill) return `ERROR: unknown skill: ${name}`;
-      if (mcp && Object.keys(skill.mcpServers).length > 0)
-        await mcp.loadSkillServers(skill.name, skill.mcpServers);
       return `<skill_content name="${escapeXml(skill.name)}">\n${skill.body}\n\nSkill directory: ${escapeXml(dirname(skill.location))}\n</skill_content>`;
     },
   });
 };
 
-export const loadSkills = async (root: string, mcp?: McpSession): Promise<Skills> => {
+export const loadSkills = async (root: string): Promise<Skills> => {
   const skills = await discover(root);
   const catalog =
     skills.length === 0
@@ -274,6 +203,6 @@ export const loadSkills = async (root: string, mcp?: McpSession): Promise<Skills
       origin: skill.location,
     })),
     summaries: skills.map(({ name, description, location }) => ({ name, description, location })),
-    tool: createSkillTool(skills, mcp),
+    tool: createSkillTool(skills),
   };
 };

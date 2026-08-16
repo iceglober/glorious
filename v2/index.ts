@@ -1,26 +1,21 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
-import { approveMcp } from "./approvals";
 import { type ChatSignal, createChat } from "./chat";
 import { commandByName, expandCommand, setCustomCommands } from "./commands";
-import { loadConfig, writeConfigLayer } from "./config";
+import { loadConfig } from "./config";
 import { messagesOf, type SessionEvent } from "./events";
+import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
-import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
-import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
-import { MODES, type Mode, modeByName, nextMode } from "./modes";
-import { PLAN_OPTIONS, PLAN_QUESTION, planBlock, planVerdict } from "./plan";
+import { currentModel, modelLabel, modelMetadata } from "./models";
+import { runPrint } from "./print";
 import { shortcutPrompt } from "./prompt";
 import {
   assistantBlock,
-  clip,
   errorText,
   eventBlock,
-  flatten,
   type Line,
   noticeBlock,
   queuedRow,
@@ -29,7 +24,7 @@ import {
   statusLine,
   userBlock,
 } from "./render";
-import { providerKey, saveProviderKey } from "./secrets";
+import { loadSequences } from "./sequences";
 import {
   createSession,
   loadPromptHistory,
@@ -38,11 +33,11 @@ import {
   saveSession,
 } from "./session";
 import { loadSkills } from "./skills";
-import { runShell } from "./tools";
+import { runShell, type ToolEvent } from "./tools";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
 
-const FRAME_MS = 90;
+const TICK_MS = 100;
 const SETTLE_MS = 250;
 const PACKAGE_NAME = "@glrs-dev/glorious";
 const VERSION = packageJson.version;
@@ -78,6 +73,9 @@ const probe = () => {
   };
 };
 
+const USAGE =
+  "Usage: glorious [--version | update | doctor [--json] | --resume [session-id] | -p <prompt>]";
+
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--version") {
@@ -88,39 +86,33 @@ const main = async (): Promise<void> => {
     execFileSync("bun", ["add", "-g", `${PACKAGE_NAME}@next`], { stdio: "inherit" });
     return;
   }
+  // Headless, and handled before anything opens the terminal: the whole point
+  // is that this path never touches the alternate screen.
+  if (args[0] === "-p" || args[0] === "--print") {
+    const prompt = args.slice(1).join(" ").trim();
+    if (prompt === "") throw new Error("Nothing to run: -p needs a prompt.");
+    const { root, os, git } = probe();
+    process.exitCode = await runPrint(prompt, { root, os, git });
+    return;
+  }
   let resumeId: string | undefined;
   const doctor = args.length > 0 && args[0] === "doctor";
   const doctorJson = doctor && args[1] === "--json";
   if (args.length > 0 && !doctor) {
-    if (args[0] !== "--resume" || args.length > 2)
-      throw new Error(
-        "Usage: glorious [--version | update | doctor [--json] | --resume [session-id]]",
-      );
+    if (args[0] !== "--resume" || args.length > 2) throw new Error(USAGE);
     resumeId = args[1];
   }
-  if (doctor && args.length > 2)
-    throw new Error(
-      "Usage: glorious [--version | update | doctor [--json] | --resume [session-id]]",
-    );
+  if (doctor && args.length > 2) throw new Error(USAGE);
   const { root, os, branch, worktree, git, label } = probe();
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
     const report = {
       diagnostics: resolvedConfig.diagnostics,
       model: currentModel(resolvedConfig.config),
-      mcp: await doctorMcp(root, await resolveMcpServers(root, resolvedConfig)),
     };
     if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else {
-      const lines = [
-        `model: ${modelLabel(report.model)}`,
-        ...report.diagnostics.map((diagnostic) => `${diagnostic.layer}: ${diagnostic.message}`),
-        ...report.mcp.servers.map(
-          (server) =>
-            `mcp ${server.name}: ${server.status ?? "active"} (${server.source ?? "user"})`,
-        ),
-        ...report.mcp.notes,
-      ];
+      const lines = [`model: ${modelLabel(report.model)}`, ...report.diagnostics];
       process.stdout.write(`${lines.join("\n")}\n`);
     }
     return;
@@ -131,41 +123,68 @@ const main = async (): Promise<void> => {
       : await openSession(resumeId, pickSession);
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
-  let config = resolvedConfig;
+  const config = resolvedConfig;
   let model = currentModel(config.config);
-  let mcp = await startMcp(root, await resolveMcpServers(root, config));
-  let skills = await loadSkills(root, mcp);
+  let skills = await loadSkills(root);
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills that declare a trigger of their own.
   let userCommands = await loadUserCommands(root);
-  const registerCommands = (): void => setCustomCommands([...skills.commands, ...userCommands]);
+  // Extensions register commands as they load, so they are merged in here
+  // rather than pushed separately — one table, one collision rule.
+  const registry = createRegistry();
+  const registerCommands = (): void =>
+    setCustomCommands([...registry.commands, ...skills.commands, ...userCommands]);
   registerCommands();
-  // Extensions are deliberately not commands: they never reach the model, so
+  // Sequences are deliberately not commands: they never reach the model, so
   // they stay out of the table the model's slash commands live in.
-  let extensions = await loadExtensions(root);
+  let { sequences, legacy: legacySequences } = await loadSequences(root);
 
-  let frame = 0;
   const lastUsage = session.events.findLast((event) => event.type === "usage");
   let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
   let produced = false;
+  // the last thing the model said, so turn_end can hand it to an extension
+  let lastAnswer = "";
+  // Where an extension tool's events go. Extension tools are built once at
+  // load, but the handler that pairs start with end belongs to whichever turn
+  // is running, so the agent points this at the live one each turn.
+  let toolSink: (event: ToolEvent) => void = () => {};
   // what the current draft block is showing, so deltas append rather than replace
   let live: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
   // what the model call is doing, and since when — the wave shows both
   let phase: "sending" | "waiting" | "thinking" | "writing" | null = null;
   let phaseSince = Date.now();
-  const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
-  // Live subagents for this turn. Their tool calls are kept out of the
-  // transcript, so this is the only place they exist to be looked at.
-  type Subagent = {
+  const running: Array<{
     id: number;
-    task: string;
-    stream: Array<{ name: string; detail: string; ok: boolean | null }>;
-    tools: number;
+    name: string;
+    detail: string;
+    input: Record<string, unknown>;
     since: number;
-    done: boolean;
+  }> = [];
+
+  // A renderer is third-party code running on every frame. One that throws
+  // would otherwise take the paint loop down 11 times a second, so it loses its
+  // contribution for that frame and nothing else.
+  const safely = <T>(render: () => T): T | undefined => {
+    try {
+      return render();
+    } catch {
+      return undefined;
+    }
   };
-  const subagents: Subagent[] = [];
-  let watching = 0;
+
+  const renderCall = (name: string, input: Record<string, unknown>): Line[] | undefined =>
+    registry.renderers.get(name)?.call?.(input);
+
+  const renderTool = (
+    name: string,
+    input: Record<string, unknown>,
+    result: string,
+    ok: boolean,
+  ): Line[] | undefined => {
+    const renderer = registry.renderers.get(name);
+    if (!renderer) return undefined;
+    return safely(() => renderer.result?.(result, ok) ?? renderer.call?.(input));
+  };
 
   const repaint = (): void => {
     // one paint per frame for however many deltas landed since the last one
@@ -174,22 +193,18 @@ const main = async (): Promise<void> => {
     const progress: Line[] = [];
     for (const tool of running) {
       if (now - tool.since < SETTLE_MS) continue;
-      // A subagent's own calls never reach the transcript, so its row carries
-      // the evidence that work is happening: how much, and for how long.
-      const agent = subagents.find((entry) => entry.id === tool.id);
-      // Counts first: the brief is long, so anything appended after it is clipped
-      // off the end of the row and never seen.
-      const detail =
-        agent === undefined
-          ? tool.detail
-          : `${agent.tools} tools · ${Math.round((now - agent.since) / 1000)}s · ctrl+b   ${clip(flatten(tool.detail), 60)}`;
-      progress.push(runningRow(tool.name, detail, frame));
+      progress.push(
+        ...runningRow(
+          tool.name,
+          tool.detail,
+          safely(() => renderCall(tool.name, tool.input)),
+        ),
+      );
     }
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
-    if (screen.watchingSubagents()) screen.refreshSubagents(subagents, watching);
-    screen.setWave(
-      frame,
+    screen.setFooter(registry.footers.flatMap((render) => safely(render) ?? []));
+    screen.setStatusRow(
       chat.busy,
       chat.queued.length,
       phase === null ? null : { name: phase, ms: now - phaseSince },
@@ -201,6 +216,9 @@ const main = async (): Promise<void> => {
           tokens,
           percentUsed:
             model.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
+          segments: registry.statuses
+            .map((render) => safely(render))
+            .filter((segment): segment is string => typeof segment === "string"),
         },
         screen.columns(),
       ),
@@ -218,51 +236,13 @@ const main = async (): Promise<void> => {
     git,
     skills: skills.catalog,
     skillTools: skills,
-    mcp,
     askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
-    presentPlan: async ({ plan, files }, signal) => {
-      // Show the plan in the transcript first — the approval prompt sits in the
-      // composer and has no room to hold the thing being approved.
-      render({ type: "assistant", text: planBlock(plan, files) });
-      const verdict = planVerdict(
-        await screen.askQuestions([{ question: PLAN_QUESTION, options: PLAN_OPTIONS }], signal),
-      );
-      if (verdict.decision === "approved") chat.planApproved(plan, files, verdict.fresh);
-      if (verdict.decision === "feedback") screen.restoreInput(verdict.note);
-      return verdict;
+    extensionTools: (onTool) => {
+      toolSink = onTool;
+      return registry.tools;
     },
+    extensionPrompt: () => registry.promptLines,
   });
-
-  const replaceMcp = async (): Promise<void> => {
-    const nextConfig = await loadConfig(root);
-    const nextMcp = await startMcp(root, await resolveMcpServers(root, nextConfig));
-    const previous = mcp;
-    const previousHealthy = previous.servers.some((server) => server.status === "active");
-    const nextHealthy = nextMcp.servers.some((server) => server.status === "active");
-    const nextFailed = nextMcp.servers.some((server) => server.status === "failed");
-    if (previousHealthy && !nextHealthy && nextFailed) {
-      nextMcp.close();
-      throw new Error("MCP reload failed; keeping the current connected servers.");
-    }
-    config = nextConfig;
-    mcp = nextMcp;
-    agent.setMcp(nextMcp);
-    skills = await loadSkills(root, nextMcp);
-    registerCommands();
-    agent.setSkills(skills);
-    previous.close();
-    repaint();
-  };
-
-  // Both the picker and the Tab shortcut land here, so the composer label can
-  // never disagree with the mode actually in force.
-  const applyMode = (next: Mode): void => {
-    agent.setMode(next);
-    screen.setMode(next);
-    repaint();
-  };
-
-  const cycleMode = (): void => applyMode(nextMode(agent.mode().name));
 
   const record = (event: SessionEvent): void => {
     session.events.push(event);
@@ -276,9 +256,13 @@ const main = async (): Promise<void> => {
       tokens = event.tokens;
       session.contextTokens = event.tokens;
     }
-    if (event.type === "user") produced = false;
+    if (event.type === "user") {
+      produced = false;
+      void fire(registry, "turn_start", { text: event.text }, onExtensionFailure);
+    }
+    if (event.type === "assistant") lastAnswer = event.text;
     if (event.type === "assistant" || event.type === "tool") produced = true;
-    const { lines, gap } = eventBlock(event);
+    const { lines, gap } = eventBlock(event, renderTool);
     // A streamed answer is already on screen. Seal that block with its final
     // rendering rather than printing the same text a second time; the event is
     // recorded either way.
@@ -297,41 +281,25 @@ const main = async (): Promise<void> => {
   const react = (value: ChatSignal): void => {
     switch (value.type) {
       case "tool": {
-        const { origin } = value.tool;
-        if (origin !== undefined) {
-          // A subagent's own call belongs to that subagent's stream, which the
-          // transcript never shows — this is the only record it has.
-          const owner = subagents.find((entry) => entry.id === origin);
-          if (!owner) break;
-          if (value.tool.phase === "start") {
-            owner.stream.push({ name: value.tool.name, detail: value.tool.detail, ok: null });
-            break;
-          }
-          const open = owner.stream.findLast(
-            (step) => step.name === value.tool.name && step.ok === null,
-          );
-          if (open) open.ok = value.tool.ok;
-          owner.tools += 1;
-          break;
-        }
         if (value.tool.phase === "start") {
-          const { id, name, detail } = value.tool;
-          running.push({ id, name, detail, since: Date.now() });
-          if (name === "run_subagent")
-            subagents.push({
-              id,
-              task: detail,
-              stream: [],
-              tools: 0,
-              since: Date.now(),
-              done: false,
-            });
+          const { id, name, detail, input } = value.tool;
+          running.push({ id, name, detail, input, since: Date.now() });
+          void fire(registry, "tool_start", { name, input }, onExtensionFailure);
           break;
         }
         const slot = running.findIndex((tool) => tool.id === value.tool.id);
         if (slot >= 0) running.splice(slot, 1);
-        const ended = subagents.find((entry) => entry.id === value.tool.id);
-        if (ended) ended.done = true;
+        void fire(
+          registry,
+          "tool_end",
+          {
+            name: value.tool.name,
+            input: value.tool.input,
+            ok: value.tool.ok,
+            result: value.tool.result,
+          },
+          onExtensionFailure,
+        );
         break;
       }
       case "delta":
@@ -363,8 +331,7 @@ const main = async (): Promise<void> => {
         chat.flush();
         screen.sealDraft();
         live = { kind: "text", text: "" };
-        subagents.length = 0;
-        watching = 0;
+        void fire(registry, "turn_end", { text: lastAnswer }, onExtensionFailure);
         void saveSession(session);
         break;
     }
@@ -377,9 +344,17 @@ const main = async (): Promise<void> => {
     onPromptHistory: (prompts) => {
       void savePromptHistory(prompts);
     },
+    // An `input` handler can rewrite what was typed or swallow it entirely, so
+    // the send waits on the hooks rather than racing them.
     onSubmit: (text) => {
-      chat.send(text);
-      repaint();
+      void fire(registry, "input", { text }, onExtensionFailure).then((said) => {
+        if (said === false) {
+          repaint();
+          return;
+        }
+        chat.send(said ?? text);
+        repaint();
+      });
     },
     onShell: (command) => {
       screen.print(userBlock(`!${command}`), true);
@@ -388,27 +363,27 @@ const main = async (): Promise<void> => {
         repaint();
       });
     },
-    extensions,
-    // An extension runs first and asks questions afterwards: the shell is the
+    sequences,
+    // A sequence runs first and asks questions afterwards: the shell is the
     // point, and the prompt — if the file carries one — is a consequence of it.
     // A failed run produces neither, so a reset that did not happen cannot look
     // like one that did.
     onShortcut: (name, args) => {
-      const extension = extensions.find((entry) => entry.name === name);
-      if (extension === undefined) {
-        render({ type: "notice", text: `(unknown extension: $${name})` });
+      const sequence = sequences.find((entry) => entry.name === name);
+      if (sequence === undefined) {
+        render({ type: "notice", text: `(unknown sequence: $${name})` });
         return;
       }
       const invocation = `$${name}${args === "" ? "" : ` ${args}`}`;
       screen.print(userBlock(invocation), true);
       const words = args === "" ? [] : args.split(/\s+/u);
-      void runShell(root, extension.run, words).then(({ output, stdout, ok }) => {
+      void runShell(root, sequence.run, words).then(({ output, stdout, ok }) => {
         if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
         if (!ok) {
           repaint();
           return;
         }
-        if (extension.clear) {
+        if (sequence.clear) {
           const outcome = chat.clear();
           if (outcome === "cleared") {
             render({ type: "cleared", reason: invocation });
@@ -419,9 +394,9 @@ const main = async (): Promise<void> => {
         // The invocation was already echoed above, before the shell ran. Echoing
         // it again as the turn's label would print the same line twice with the
         // output wedged between them.
-        if (extension.body !== "")
+        if (sequence.body !== "")
           chat.send(
-            shortcutPrompt(expandCommand(extension.body, args), stdout),
+            shortcutPrompt(expandCommand(sequence.body, args), stdout),
             `(prompt from ${invocation})`,
           );
         repaint();
@@ -429,6 +404,20 @@ const main = async (): Promise<void> => {
     },
     cwd: root,
     onCommand: (name, args) => {
+      // An extension's command runs its own code rather than becoming a turn,
+      // so it is dispatched before the body-is-the-prompt path below.
+      const runner = registry.runners.get(name);
+      if (runner) {
+        void (async () => {
+          try {
+            await runner(args);
+          } catch (thrown) {
+            onExtensionFailure(`/${name} failed: ${errorText(thrown)}`);
+          }
+          repaint();
+        })();
+        return;
+      }
       // A command defined in a file or by a skill trigger has no UI action of
       // its own: its body becomes the turn.
       const custom = commandByName(name);
@@ -460,100 +449,23 @@ const main = async (): Promise<void> => {
       }
       if (name === "help") screen.showHelp();
       if (name === "skills") screen.showSkills(skills.summaries);
-      if (name === "mcp") screen.showMcp(mcp.servers, mcp.notes);
-      if (name === "mode")
-        screen.showModes(MODES, agent.mode().name, (chosen) => {
-          const next = modeByName(chosen);
-          if (next) applyMode(next);
-        });
-      if (name === "models") {
-        const selectModel = (next: typeof model): void => {
-          agent.setModel(next);
-          model = next;
-          void writeConfigLayer("local", root, (current) => ({
-            ...current,
-            model: { selected: modelLabel(next), variant: next.variant },
-            providers: { ...current.providers, [next.provider]: { enabled: true } },
-          }))
-            .then(() => loadConfig(root))
-            .then((nextConfig) => {
-              config = nextConfig;
-            })
-            .catch((failure) => screen.showModelError(errorText(failure)));
-          repaint();
-        };
-        const showModels = (options: Awaited<ReturnType<typeof loadModels>>): void =>
-          screen.showModels(options, selectModel, showProviders);
-        const selectProvider = (provider: string, apiKey?: string): void => {
-          void loadModels(model, config.config, provider, apiKey)
-            .then(showModels)
-            .catch((failure) => screen.showModelError(errorText(failure)));
-        };
-        const showProviders = (): void => {
-          void loadProviders(config.config)
-            .then((providers) =>
-              screen.showProviders(
-                providers,
-                (provider) => {
-                  if (provider.env.length === 0) {
-                    selectProvider(provider.id);
-                    return;
-                  }
-                  void providerKey(provider.id)
-                    .then((stored) => {
-                      if (stored) {
-                        selectProvider(provider.id, stored);
-                        return;
-                      }
-                      screen.showProviderKey(
-                        provider,
-                        (key) => {
-                          if (key === "") {
-                            selectProvider(provider.id);
-                            return;
-                          }
-                          void saveProviderKey(provider.id, key)
-                            .then(() => selectProvider(provider.id, key))
-                            .catch((failure) => screen.showModelError(errorText(failure)));
-                        },
-                        showProviders,
-                      );
-                    })
-                    .catch((failure) => screen.showModelError(errorText(failure)));
-                },
-                () => void loadModels(model, config.config).then(showModels),
-              ),
-            )
-            .catch((failure) => screen.showModelError(errorText(failure)));
-        };
-        void loadModels(model, config.config)
-          .then(showModels)
-          .catch((failure) => screen.showModelError(errorText(failure)));
-      }
+      if (name === "extensions")
+        screen.showExtensions(
+          loaded.extensions.map((entry) => ({
+            ...entry,
+            contributed: describeContribution(registry, entry.origin),
+          })),
+        );
       repaint();
-    },
-    onModeCycle: cycleMode,
-    // Ctrl+O opens the stream the transcript no longer carries. With nothing
-    // running there is nothing to show, so the key does nothing and the hint
-    // stays hidden.
-    onWatchSubagents: () => {
-      if (subagents.length === 0) return;
-      watching = Math.min(watching, subagents.length - 1);
-      screen.showSubagents(subagents, watching);
-    },
-    onCycleSubagent: () => {
-      if (subagents.length === 0) return;
-      watching = (watching + 1) % subagents.length;
-      screen.refreshSubagents(subagents, watching);
     },
     onSkillsReload: () => {
       void loadUserCommands(root).then((refreshed) => {
         userCommands = refreshed;
         registerCommands();
       });
-      void loadExtensions(root).then((refreshed) => {
-        extensions = refreshed;
-        screen.setExtensions(refreshed);
+      void loadSequences(root).then((refreshed) => {
+        sequences = refreshed.sequences;
+        screen.setSequences(refreshed.sequences);
       });
       void loadSkills(root).then((refreshed) => {
         skills = refreshed;
@@ -562,37 +474,58 @@ const main = async (): Promise<void> => {
         repaint();
       });
     },
-    onMcpReload: (setLoading) => {
-      setLoading(true);
-      void replaceMcp()
-        .catch((failure) => screen.showModelError(errorText(failure)))
-        .finally(() => setLoading(false));
-    },
-    onMcpApprove: (name) => {
-      const server = mcp.servers.find((item) => item.name === name && item.status === "unapproved");
-      if (!server?.fingerprint) return;
-      void approveMcp({ root: resolve(root), name, fingerprint: server.fingerprint })
-        .then(replaceMcp)
-        .catch((failure) => screen.showModelError(errorText(failure)));
-    },
     onEscape: () => interrupt(),
     onResize: () => repaint(),
     onQuit: () => quit(),
   });
 
+  const onExtensionFailure = (message: string): void => {
+    render({ type: "error", text: `(extension) ${message}` });
+  };
+
   for (const event of session.events) {
-    const { lines, gap } = eventBlock(event);
+    const { lines, gap } = eventBlock(event, renderTool);
     if (lines.length > 0) screen.print(lines, gap);
   }
 
-  void loadModels(model, config.config)
-    .then((options) => {
-      const metadata = options.find((option) => modelLabel(option) === modelLabel(model));
-      if (metadata) {
-        model = metadata;
-        agent.setModel(metadata);
+  // Loaded after the screen exists, so a failure has somewhere to be seen, and
+  // before the first turn, so a tool registered on the way up is callable.
+  const loaded = await loadExtensions(
+    root,
+    registry,
+    {
+      root,
+      exec: (command, args) => runShell(root, command, args),
+      send: (text, label) => {
+        chat.send(text, label);
         repaint();
-      }
+      },
+      print: (text, tone) => {
+        screen.print(noticeBlock(text, tone), false);
+        repaint();
+      },
+      ask: (questions) => screen.askQuestions(questions, undefined),
+    },
+    (event) => toolSink(event),
+  );
+  registerCommands();
+  for (const failure of loaded.failures)
+    render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
+  for (const path of legacySequences)
+    render({
+      type: "notice",
+      text: `(${path} is in an extensions/ directory — sequences live in .glorious/sequences/ now; extensions/ is for .ts extensions and this fallback goes away next release)`,
+    });
+  await fire(registry, "session_start", { root }, onExtensionFailure);
+
+  // The picker is gone; this is metadata only. Context size and pricing feed
+  // the status line's `ctx 12.3k(6%)` and the cost, and there is no denominator
+  // without it. Silent on failure: offline, the line reads `unknown`.
+  void modelMetadata(model)
+    .then((metadata) => {
+      model = { ...model, ...metadata };
+      agent.setModel(model);
+      repaint();
     })
     .catch(() => {});
 
@@ -611,7 +544,6 @@ const main = async (): Promise<void> => {
 
   const quit = (): void => {
     chat.abort();
-    mcp.close();
     release();
   };
 
@@ -619,10 +551,11 @@ const main = async (): Promise<void> => {
     if (!interrupt()) quit();
   };
 
-  const ticker = setInterval(() => {
-    frame += 1;
-    repaint();
-  }, FRAME_MS);
+  // Nothing animates any more; the only thing that moves between ticks is an
+  // elapsed reading, which carries one decimal. Every paint routes through the
+  // painter dedupe in screen.ts, so a tick where no number changed reaches the
+  // renderer not at all.
+  const ticker = setInterval(repaint, TICK_MS);
 
   // The TUI owns the terminal. Anything the runtime prints on its own — an
   // unhandled rejection, a stack trace — lands at whatever cursor position
@@ -634,7 +567,6 @@ const main = async (): Promise<void> => {
 
   try {
     screen.start();
-    screen.setMode(agent.mode());
     repaint();
     process.on("SIGINT", onSigint);
     process.on("unhandledRejection", onStray);

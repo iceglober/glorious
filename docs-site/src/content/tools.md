@@ -26,18 +26,26 @@ switching. The agent operates on the git repository you launched it in.
 
 ## Agent
 
-- **ask_user** — asks you questions with selectable options.
-- **run_subagent** — runs one focused task in a second agent and returns its
-  summary. The subagent starts without the conversation, cannot ask you
-  anything, and cannot delegate further.
+- **ask_user** — asks you questions with selectable options. Absent in `-p`
+  mode, where there is nobody to answer.
 - **activate_skill** — loads a skill's full instructions. Present only when
   skills are found.
 
-## MCP servers
+## Extensions
 
-Servers listed in `.glorious/mcp.json` — in the project or in `~/.glorious` —
-add their tools alongside these. A `tools` array acts as an allowlist; omit it
-to take everything the server offers. A built-in always wins a name collision.
+`web_fetch` is not a built-in: it is an extension that ships enabled. A `.ts`
+file in `.glorious/extensions/` can register tools of its own, and they arrive
+alongside these with the same event stream, output cap and error handling. A
+project extension wins a name collision, so you can replace `web_fetch` with
+your own.
+
+## Permissions
+
+There are none. glorious runs in YOLO mode, which is the only mode: once an
+agent can write and run code, a confirmation dialog is not a boundary. What is
+enforced, silently and without asking, is that file operations stay inside the
+project root, output is capped, and a killed command takes its process group
+with it.
 
 ## Output cap
 

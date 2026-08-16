@@ -19,36 +19,69 @@ it is missing. To skip it: `bun add --global @glrs-dev/glorious@next`.
 
 Documentation: [glrs.dev](https://glrs.dev)
 
+A small core, extended by you. Eight built-in tools, a ~40-line system prompt,
+no permission prompts, and a TypeScript extension API for everything else.
+
+```sh
+glorious                      # the chat TUI
+glorious -p "<prompt>"        # one turn, headless: answer on stdout, tools on stderr
+glorious --resume [id]        # pick a session back up
+```
+
+## Extending it
+
+Ask it. "Add a tool that lists my open PRs" is a request glorious answers by
+writing `.glorious/extensions/prs.ts` — its [docs](docs/extensions.md) ship with
+it and its system prompt says where they are.
+
+By hand, an extension is one file with no imports:
+
+```ts
+// .glorious/extensions/prs.ts
+export default function (g) {
+  g.tool({
+    name: "open_prs",
+    description: "List open pull requests for this repository.",
+    input: g.z.object({}),
+    execute: async () => (await g.exec("gh pr list")).stdout,
+  });
+}
+```
+
+Tools, slash commands, lifecycle hooks, status widgets and custom row rendering,
+all through the same object. A shell command plus a prompt needs no code at all
+— that is a [sequence](docs/sequences.md). Start at
+[docs/extensions.md](docs/extensions.md).
+
 ## Decisions
 
-The goal was to start from first-principles and make deliberate decisions about
-the glorious implementation. Here are some of them.
+Deliberate, and where there is a number it was measured.
 
-- **`edit` tool: extended batched edits across files to achieve 51% fewer input
-  tokens.** ([`eval/edit`](eval/edit))
-  - Against per-file batching, on work spanning four files. Also 1 call vs 4,
-    4 steps vs 7.
-  - No accuracy difference — 16/16 either way. The win is cost.
-- **Caching: moved volatile content out of the system prompt to achieve 98%
-  cache reuse on a resumed turn.** ([`eval/caching`](eval/caching))
-  - Environment, git state and skills ride in the per-turn message, frozen into
-    history when written.
-  - A test fails if anything volatile reappears in the system prompt.
-- **`web_fetch` tool: slimmed down
-  [pi-web-fetch](https://github.com/georgebashi/pi-web-fetch) to achieve zero
-  new dependencies.** Not benchmarked.
-  - Drives an already-installed Chrome instead of puppeteer's own ~300MB
-    Chromium. Still renders JavaScript.
-  - Dropped its extension hooks and in-tool summarisation; `run_subagent`
-    already covers the latter.
-  - Falls back to plain fetch without a browser, to a tag strip without `uv`.
-- **Semantic code tools: curated
-  [Serena](https://github.com/oraios/serena) to achieve 11 tools instead of
-  ~30.** Not benchmarked.
-  - The rest duplicate built-ins that already enforce path confinement, output
-    caps and process-group kill.
-  - Adoption needed prompting: the model kept reaching for `grep` until the
-    prompt named grep's failure mode.
+- **`edit` batches across files: 51% fewer input tokens.**
+  ([`eval/edit`](eval/edit)) Against per-file batching on work spanning four
+  files; also 1 call vs 4, 4 steps vs 7. No accuracy difference — 16/16 either
+  way. The win is cost.
+- **Volatile content stays out of the system prompt, for the cache.**
+  ([`eval/caching`](eval/caching)) Environment, git state, skills and extension
+  contributions ride in the per-turn message and freeze into history. In the
+  system prompt a resumed turn reuses 0% of its input; in the user message,
+  nearly all of it. A test fails if anything volatile reappears above.
+- **No subagents.** ([`eval/delegation`](eval/delegation)) Our own eval says
+  delegating cost ~1.8× the tokens and ~2.6× the wall clock for the same answers.
+  Its one real benefit — keeping the child's reading out of the parent's context
+  — survives as `glorious -p` invoked through `bash`, where every step of the
+  child is visible instead of hidden behind a keystroke.
+- **No MCP.** 7–9% of the context window for tool schemas you mostly do not
+  call, paid on every turn. An extension registers the same tools with no
+  subprocess, no JSON-RPC, and no cost until it is installed.
+- **No plan mode, no permission prompts, no model picker, no animation.** A
+  confirmation dialog is not a boundary once an agent can write and run code;
+  containers, worktrees and `git diff` are. The status line still says what the
+  model is doing and for how long — that is information, not decoration.
+- **`web_fetch` is a bundled extension, not a built-in.** It is the proof the
+  API is real: if the largest tool glorious has could not be written against it,
+  the API would be a toy. Drives an already-installed Chrome rather than
+  puppeteer's ~300MB Chromium; falls back to plain fetch, then to a tag strip.
 
 ## Development
 

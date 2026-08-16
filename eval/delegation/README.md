@@ -1,3 +1,8 @@
+> **Historical.** `run_subagent` was removed because of what this measured —
+> see the commit that removed it. The scripts are kept as the record; the
+> subagent arms build their own agent loop rather than calling a tool that
+> no longer exists.
+
 # Does the prompt get the agent to delegate?
 
 The task is a survey whose contents are worthless once the answer is known —

@@ -6,7 +6,7 @@ import type { Command } from "./commands";
 // Same shape the skill roots use: project directories win over the home
 // directory, so a repo can define a command that shadows a personal one.
 // Returned without a leaf so everything loaded per-agent-directory —
-// commands, extensions — walks the same list rather than each keeping its own
+// commands, sequences — walks the same list rather than each keeping its own
 // copy that can drift.
 export const agentDirectories = (root: string): string[] => {
   const home = homedir();

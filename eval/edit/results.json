@@ -6,9 +6,9 @@
     "note": "",
     "editCalls": 1,
     "steps": 4,
-    "input": 2640,
-    "output": 291,
-    "wall": 9641
+    "input": 2547,
+    "output": 258,
+    "wall": 19504
   },
   {
     "fixture": "one-file",
@@ -17,162 +17,74 @@
     "note": "",
     "editCalls": 1,
     "steps": 4,
-    "input": 3086,
+    "input": 2755,
+    "output": 281,
+    "wall": 20105
+  },
+  {
+    "fixture": "spread",
+    "variant": "batch",
+    "pass": true,
+    "note": "",
+    "editCalls": 4,
+    "steps": 7,
+    "input": 6331,
+    "output": 442,
+    "wall": 27979
+  },
+  {
+    "fixture": "spread",
+    "variant": "multi",
+    "pass": true,
+    "note": "",
+    "editCalls": 1,
+    "steps": 4,
+    "input": 3221,
+    "output": 437,
+    "wall": 22035
+  },
+  {
+    "fixture": "one-file",
+    "variant": "batch",
+    "pass": true,
+    "note": "",
+    "editCalls": 1,
+    "steps": 4,
+    "input": 2605,
+    "output": 288,
+    "wall": 16510
+  },
+  {
+    "fixture": "one-file",
+    "variant": "multi",
+    "pass": true,
+    "note": "",
+    "editCalls": 1,
+    "steps": 4,
+    "input": 3121,
+    "output": 374,
+    "wall": 16307
+  },
+  {
+    "fixture": "spread",
+    "variant": "batch",
+    "pass": true,
+    "note": "",
+    "editCalls": 4,
+    "steps": 7,
+    "input": 6090,
+    "output": 417,
+    "wall": 15053
+  },
+  {
+    "fixture": "spread",
+    "variant": "multi",
+    "pass": true,
+    "note": "",
+    "editCalls": 1,
+    "steps": 4,
+    "input": 2953,
     "output": 377,
-    "wall": 11094
-  },
-  {
-    "fixture": "spread",
-    "variant": "batch",
-    "pass": true,
-    "note": "",
-    "editCalls": 4,
-    "steps": 7,
-    "input": 6762,
-    "output": 479,
-    "wall": 15168
-  },
-  {
-    "fixture": "spread",
-    "variant": "multi",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 3251,
-    "output": 443,
-    "wall": 11264
-  },
-  {
-    "fixture": "one-file",
-    "variant": "batch",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 2838,
-    "output": 326,
-    "wall": 8165
-  },
-  {
-    "fixture": "one-file",
-    "variant": "multi",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 2784,
-    "output": 292,
-    "wall": 11205
-  },
-  {
-    "fixture": "spread",
-    "variant": "batch",
-    "pass": true,
-    "note": "",
-    "editCalls": 4,
-    "steps": 7,
-    "input": 6068,
-    "output": 409,
-    "wall": 13802
-  },
-  {
-    "fixture": "spread",
-    "variant": "multi",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 2998,
-    "output": 393,
-    "wall": 9964
-  },
-  {
-    "fixture": "one-file",
-    "variant": "batch",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 2843,
-    "output": 334,
-    "wall": 10220
-  },
-  {
-    "fixture": "one-file",
-    "variant": "multi",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 2750,
-    "output": 279,
-    "wall": 9781
-  },
-  {
-    "fixture": "spread",
-    "variant": "batch",
-    "pass": true,
-    "note": "",
-    "editCalls": 4,
-    "steps": 7,
-    "input": 6023,
-    "output": 404,
-    "wall": 17885
-  },
-  {
-    "fixture": "spread",
-    "variant": "multi",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 3012,
-    "output": 405,
-    "wall": 16009
-  },
-  {
-    "fixture": "one-file",
-    "variant": "batch",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 2726,
-    "output": 309,
-    "wall": 10556
-  },
-  {
-    "fixture": "one-file",
-    "variant": "multi",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 2961,
-    "output": 327,
-    "wall": 11233
-  },
-  {
-    "fixture": "spread",
-    "variant": "batch",
-    "pass": true,
-    "note": "",
-    "editCalls": 4,
-    "steps": 7,
-    "input": 6211,
-    "output": 440,
-    "wall": 14155
-  },
-  {
-    "fixture": "spread",
-    "variant": "multi",
-    "pass": true,
-    "note": "",
-    "editCalls": 1,
-    "steps": 4,
-    "input": 3028,
-    "output": 424,
-    "wall": 10899
+    "wall": 19797
   }
 ]

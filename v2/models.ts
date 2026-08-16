@@ -38,84 +38,8 @@ export type ModelOption = ModelRef & {
   location?: string;
 };
 
-export type ProviderOption = {
-  id: string;
-  name: string;
-  env: readonly string[];
-  connected: boolean;
-};
-
-type ModelsDevProvider = {
-  name?: string;
-  api?: string;
-  npm?: string;
-  env?: string[];
-  models?: Record<
-    string,
-    {
-      id?: string;
-      name?: string;
-      limit?: { context?: number };
-      cost?: { input?: number; output?: number };
-      reasoning_options?: Array<{ type?: string; values?: string[] }>;
-    }
-  >;
-};
-
 const catalogUrl = "https://models.dev/api.json";
 const azureEnv = ["AZURE_FOUNDRY_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY"];
-const supportedProviders = new Set([
-  "amazon-bedrock",
-  "anthropic",
-  "azure",
-  "cerebras",
-  "cohere",
-  "deepseek",
-  "google",
-  "google-vertex",
-  "groq",
-  "mistral",
-  "openai",
-  "openrouter",
-  "perplexity",
-  "togetherai",
-  "xai",
-]);
-const cloudCredentialEnv: Record<string, readonly string[]> = {
-  "amazon-bedrock": [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_PROFILE",
-    "AWS_WEB_IDENTITY_TOKEN_FILE",
-    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
-  ],
-  "google-vertex": [
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "GOOGLE_CLOUD_PROJECT",
-    "GOOGLE_VERTEX_PROJECT",
-  ],
-};
-
-const supported = (id: string, provider: ModelsDevProvider): boolean =>
-  supportedProviders.has(id) || provider.npm === "@ai-sdk/openai-compatible";
-
-const credentialsFor = (provider: string, value: ModelsDevProvider): string[] =>
-  provider === "azure" ? azureEnv : (value.env ?? []);
-
-const hasEnvironmentCredential = (env: readonly string[]): boolean =>
-  env.some((name) => Boolean(process.env[name]));
-
-const isEnvironmentConnected = (provider: string, value: ModelsDevProvider): boolean =>
-  hasEnvironmentCredential([
-    ...credentialsFor(provider, value),
-    ...(cloudCredentialEnv[provider] ?? []),
-  ]);
-
-const loadCatalog = async (): Promise<Record<string, ModelsDevProvider>> => {
-  const response = await fetch(catalogUrl, { signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
-  return (await response.json()) as Record<string, ModelsDevProvider>;
-};
-
 export const modelRef = (value: string, provider = "azure"): ModelRef => {
   const slash = value.indexOf("/");
   return slash < 1
@@ -143,19 +67,11 @@ export const modelCost = (
     ? undefined
     : ((model.inputCost ?? 0) * input + (model.outputCost ?? 0) * output) / 1_000_000;
 
-const withPrice = (model: ModelOption): ModelOption => ({
-  ...model,
-  inputCost:
-    model.inputCost === undefined ? undefined : model.inputCost * priceMultiplier(model.provider),
-  outputCost:
-    model.outputCost === undefined ? undefined : model.outputCost * priceMultiplier(model.provider),
-});
-
 const providerSettings = (
   provider: string,
   config?: Config,
-): Pick<ModelOption, "region" | "project" | "location"> => {
-  const metadata = config?.providers[provider];
+): Pick<ModelOption, "api" | "region" | "project" | "location"> => {
+  const metadata = config?.providers?.[provider];
   if (provider === "amazon-bedrock")
     return {
       region:
@@ -171,91 +87,65 @@ const providerSettings = (
         process.env.GOOGLE_VERTEX_LOCATION ??
         "global",
     };
-  return {};
+  return metadata?.api === undefined ? {} : { api: metadata.api };
 };
 
-const isConfigEnabled = (provider: string, config?: Config): boolean =>
-  config?.providers[provider]?.enabled === true;
-
 export const currentModel = (config?: Config): ModelOption => {
-  const model = process.env.GLORIOUS_MODEL ?? config?.model.selected ?? "gpt-5.6-luna";
+  const model = process.env.GLORIOUS_MODEL ?? config?.model ?? "gpt-5.6-luna";
   const ref = modelRef(model);
   return {
     ...ref,
     ...providerSettings(ref.provider, config),
     name: model,
-    variant: config?.model.variant,
+    variant: process.env.GLORIOUS_VARIANT ?? config?.variant,
+    // Azure answers to three names; every other provider's SDK finds its own
+    // single env var without help.
     env: ref.provider === "azure" ? azureEnv : [],
     npm: ref.provider === "azure" ? "@ai-sdk/azure" : undefined,
   };
 };
 
-export const loadProviders = async (config?: Config): Promise<ProviderOption[]> => {
-  const catalog = await loadCatalog();
-  return Object.entries(catalog)
-    .filter(([id, value]) => supported(id, value))
-    .map(([id, value]) => {
-      const env = credentialsFor(id, value);
-      return {
-        id,
-        name: value.name ?? id,
-        env,
-        connected: isConfigEnabled(id, config) || isEnvironmentConnected(id, value),
-      };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
-};
-
-export const loadModels = async (
-  current: ModelOption,
-  config?: Config | string | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>),
-  provider?: string,
-  apiKey?: string,
-): Promise<ModelOption[]> => {
-  const fetcher = typeof config === "function" ? config : fetch;
-  const [resolvedConfig, selectedProvider, selectedApiKey] =
-    typeof config === "string"
-      ? [undefined, config, provider]
-      : typeof config === "function"
-        ? [undefined, undefined, undefined]
-        : [config, provider, apiKey];
+// Context window and per-token pricing for the model that is already selected.
+// The picker is gone, but the status line still says `ctx 12.3k(6%)` and the
+// percentage needs a denominator — so this is a metadata lookup, not a catalog.
+// One request, at startup, silent when it fails: offline the status line reads
+// `unknown` and everything else works.
+export const modelMetadata = async (
+  model: ModelOption,
+  fetcher: typeof fetch = fetch,
+): Promise<Partial<ModelOption>> => {
   const response = await fetcher(catalogUrl, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
-  const catalog = (await response.json()) as Record<string, ModelsDevProvider>;
-  const options = Object.entries(catalog)
-    .filter(([id, value]) => {
-      if (!supported(id, value)) return false;
-      if (selectedProvider) return id === selectedProvider;
-      return (
-        id === current.provider ||
-        isConfigEnabled(id, resolvedConfig) ||
-        isEnvironmentConnected(id, value)
-      );
-    })
-    .flatMap(([id, value]) =>
-      Object.entries(value.models ?? {}).map(([modelId, model]) => ({
-        provider: id,
-        ...providerSettings(id, resolvedConfig),
-        modelId: model.id ?? modelId,
-        name: model.name ?? model.id ?? modelId,
-        api: value.api,
-        apiKey: id === selectedProvider ? selectedApiKey : undefined,
-        env: credentialsFor(id, value),
-        npm: value.npm,
-        inputCost: model.cost?.input,
-        outputCost: model.cost?.output,
-        context: model.limit?.context,
-        variants: model.reasoning_options?.find((option) => option.type === "effort")?.values,
-      })),
-    );
-  if (selectedProvider) return options.sort((a, b) => modelLabel(a).localeCompare(modelLabel(b)));
-  const currentKey = modelLabel(current);
-  const metadata = options.find((option) => modelLabel(option) === currentKey);
-  const priced = options.map(withPrice);
-  return [
-    withPrice({ ...current, ...metadata }),
-    ...priced.filter((option) => modelLabel(option) !== currentKey),
-  ].sort((a, b) => modelLabel(a).localeCompare(modelLabel(b)));
+  const catalog = (await response.json()) as Record<
+    string,
+    {
+      api?: string;
+      npm?: string;
+      models?: Record<
+        string,
+        {
+          id?: string;
+          limit?: { context?: number };
+          cost?: { input?: number; output?: number };
+          reasoning_options?: Array<{ type?: string; values?: string[] }>;
+        }
+      >;
+    }
+  >;
+  const provider = catalog[model.provider];
+  const entry = Object.values(provider?.models ?? {}).find(
+    (candidate) => (candidate.id ?? "") === model.modelId,
+  );
+  if (!entry) return {};
+  const scale = priceMultiplier(model.provider);
+  return {
+    api: model.api ?? provider?.api,
+    npm: model.npm ?? provider?.npm,
+    context: entry.limit?.context,
+    inputCost: entry.cost?.input === undefined ? undefined : entry.cost.input * scale,
+    outputCost: entry.cost?.output === undefined ? undefined : entry.cost.output * scale,
+    variants: entry.reasoning_options?.find((option) => option.type === "effort")?.values,
+  };
 };
 
 type ProviderFactory = (options: {

@@ -1,250 +1,87 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { z } from "zod";
-import type { McpServerConfig } from "./mcp";
+import { join } from "node:path";
 
-export const modelSelectionSchema = z
-  .object({
-    selected: z.string().optional(),
-    variant: z.string().optional(),
-  })
-  .strict();
+// Two files, read-only, no schema. The four-layer merge with provenance
+// tracking that used to live here served two fields once the model picker and
+// MCP were gone; a project file and a personal one, project wins, is the whole
+// of it. Nothing writes config at runtime any more — you edit the file.
 
-export const providerMetadataSchema = z
-  .object({
-    enabled: z.literal(true).optional(),
-    region: z.string().optional(),
-    project: z.string().optional(),
-    location: z.string().optional(),
-  })
-  .strict();
-
-const mcpEnvironmentSchema = z
-  .record(z.string(), z.string())
-  .superRefine((environment, context) => {
-    for (const name of Object.keys(environment)) {
-      if (["apikey", "secrets"].includes(name.toLowerCase()))
-        context.addIssue({
-          code: "custom",
-          path: [name],
-          message: "Secrets cannot be stored in config.",
-        });
-    }
-  });
-
-export const mcpServerConfigSchema = z
-  .object({
-    command: z.string(),
-    args: z.array(z.string()).optional(),
-    env: mcpEnvironmentSchema.optional(),
-    tools: z.array(z.string()).optional(),
-    disabled: z.boolean().optional(),
-  })
-  .strict();
-
-const configShape = {
-  model: modelSelectionSchema,
-  providers: z.record(z.string(), providerMetadataSchema),
-  mcpServers: z.record(z.string(), mcpServerConfigSchema),
+export type ProviderSettings = {
+  // Base URL, for an OpenAI-compatible endpoint that is not one of the named
+  // providers.
+  api?: string;
+  // amazon-bedrock
+  region?: string;
+  // google-vertex
+  project?: string;
+  location?: string;
 };
 
-export const configLayerSchema = z
-  .object({
-    model: modelSelectionSchema.optional(),
-    providers: z.record(z.string(), providerMetadataSchema).optional(),
-    mcpServers: z.record(z.string(), mcpServerConfigSchema).optional(),
-  })
-  .strict();
-
-export const configSchema = z.object(configShape).strict();
-
-export type ModelSelection = z.infer<typeof modelSelectionSchema>;
-export type ProviderMetadata = z.infer<typeof providerMetadataSchema>;
-export type Config = z.infer<typeof configSchema> & {
-  mcpServers: Record<string, McpServerConfig>;
-};
-export type ConfigLayerConfig = z.infer<typeof configLayerSchema>;
-export type ConfigLayer = "defaults" | "global" | "project" | "local";
-export type WritableConfigLayer = Exclude<ConfigLayer, "defaults">;
-export type ConfigLayers = Record<ConfigLayer, ConfigLayerConfig>;
-
-export type ConfigDiagnostic = {
-  layer: WritableConfigLayer;
-  path: string;
-  kind: "missing" | "malformed" | "invalid";
-  message: string;
+export type Config = {
+  // "provider/model-id", e.g. "azure/gpt-5.6-luna". A bare id means azure.
+  model?: string;
+  // Reasoning effort, when the model advertises one.
+  variant?: string;
+  providers?: Record<string, ProviderSettings>;
 };
 
-export type ConfigFileSystem = {
-  readFile: (path: string) => Promise<string>;
-  mkdir: (path: string, options: { recursive: true }) => Promise<void>;
-  writeFile: (path: string, contents: string, options: { mode: number }) => Promise<void>;
-  rename: (from: string, to: string) => Promise<void>;
-  rm: (path: string, options: { force: true }) => Promise<void>;
-};
+export type LoadedConfig = { config: Config; diagnostics: string[] };
 
-const fileSystem: ConfigFileSystem = {
-  readFile: (path) => readFile(path, "utf8"),
-  mkdir: async (path, options) => {
-    await mkdir(path, options);
-  },
-  writeFile,
-  rename,
-  rm,
-};
-
-export type ConfigOptions = {
-  globalPath?: string;
-  fileSystem?: ConfigFileSystem;
-};
-
-export type LoadedConfig = {
-  config: Config;
-  layers: ConfigLayers;
-  diagnostics: ConfigDiagnostic[];
-};
+export const configPaths = (root: string): string[] => [
+  join(root, ".glorious", "config.json"),
+  join(homedir(), ".config", "glorious", "config.json"),
+];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const stringOf = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() !== "" ? value : undefined;
 
-export const mergeConfig = (...sources: Record<string, unknown>[]): Record<string, unknown> => {
-  const result: Record<string, unknown> = {};
-  for (const source of sources) {
-    for (const [key, value] of Object.entries(source)) {
-      const current = result[key];
-      result[key] =
-        isObject(current) && isObject(value) ? mergeConfig(current, value) : clone(value);
-    }
-  }
-  return result;
-};
-
-export const configLayerPath = (
-  layer: WritableConfigLayer,
-  root: string,
-  options: ConfigOptions = {},
-): string => {
-  if (layer === "global")
-    return options.globalPath ?? join(homedir(), ".config", "glorious", "config.json");
-  return join(root, ".glorious", layer === "project" ? "config.json" : "config.local.json");
-};
-
-const defaults: ConfigLayerConfig = { model: {}, providers: {}, mcpServers: {} };
-
-const readLayer = async (
-  layer: WritableConfigLayer,
-  root: string,
-  options: ConfigOptions,
-): Promise<{ config: ConfigLayerConfig; diagnostic?: ConfigDiagnostic }> => {
-  const path = configLayerPath(layer, root, options);
-  try {
-    const text = await (options.fileSystem ?? fileSystem).readFile(path);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return {
-        config: {},
-        diagnostic: { layer, path, kind: "malformed", message: "Config file is not valid JSON." },
+// Read what is recognised and ignore the rest. A config file that has grown a
+// key glorious no longer knows about is not a broken config — refusing to start
+// over one would be the worse failure.
+const shapeOf = (raw: unknown): Config => {
+  if (!isObject(raw)) return {};
+  const providers: Record<string, ProviderSettings> = {};
+  if (isObject(raw.providers))
+    for (const [name, value] of Object.entries(raw.providers)) {
+      if (!isObject(value)) continue;
+      providers[name] = {
+        api: stringOf(value.api),
+        region: stringOf(value.region),
+        project: stringOf(value.project),
+        location: stringOf(value.location),
       };
     }
-    const result = configLayerSchema.safeParse(parsed);
-    if (!result.success) {
-      return {
-        config: {},
-        diagnostic: {
-          layer,
-          path,
-          kind: "invalid",
-          message: result.error.issues[0]?.message ?? "Invalid config.",
-        },
-      };
-    }
-    return { config: result.data };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return {
-        config: {},
-        diagnostic: { layer, path, kind: "missing", message: "Config file is missing." },
-      };
-    }
-    return {
-      config: {},
-      diagnostic: { layer, path, kind: "malformed", message: String(error) },
-    };
-  }
-};
-
-export const loadConfig = async (
-  root: string,
-  options: ConfigOptions = {},
-): Promise<LoadedConfig> => {
-  const [global, project, local] = await Promise.all(
-    (["global", "project", "local"] as const).map((layer) => readLayer(layer, root, options)),
-  );
-  const layers: ConfigLayers = {
-    defaults,
-    global: global.config,
-    project: project.config,
-    local: local.config,
+  return {
+    model: stringOf(raw.model),
+    variant: stringOf(raw.variant),
+    ...(Object.keys(providers).length > 0 ? { providers } : {}),
   };
-  const diagnostics = [global.diagnostic, project.diagnostic, local.diagnostic].filter(
-    (diagnostic): diagnostic is ConfigDiagnostic => diagnostic !== undefined,
-  );
-  return { config: configSchema.parse(mergeConfig(...Object.values(layers))), layers, diagnostics };
 };
 
-const pathParts = (path: string | readonly string[]): readonly string[] =>
-  typeof path === "string" ? path.split(".").filter(Boolean) : path;
+const merge = (near: Config, far: Config): Config => ({
+  model: near.model ?? far.model,
+  variant: near.variant ?? far.variant,
+  providers: { ...far.providers, ...near.providers },
+});
 
-export const configProvenance = (
-  layers: ConfigLayers,
-  path: string | readonly string[],
-): ConfigLayer | undefined => {
-  const parts = pathParts(path);
-  for (const layer of ["local", "project", "global", "defaults"] as const) {
-    let current: unknown = layers[layer];
-    let found = true;
-    for (const part of parts) {
-      if (!isObject(current) || !Object.hasOwn(current, part)) {
-        found = false;
-        break;
-      }
-      current = current[part];
+// Malformed JSON is reported rather than swallowed — a config that silently
+// does nothing is the hardest kind to debug. A missing file is not a problem.
+export const loadConfig = async (root: string): Promise<LoadedConfig> => {
+  const diagnostics: string[] = [];
+  const read = async (path: string): Promise<Config> => {
+    const text = await readFile(path, "utf8").catch(() => null);
+    if (text === null) return {};
+    try {
+      return shapeOf(JSON.parse(text));
+    } catch {
+      diagnostics.push(`${path}: not valid JSON, ignored`);
+      return {};
     }
-    if (found) return layer;
-  }
-  return undefined;
-};
-
-export type ConfigLayerMutation =
-  | ConfigLayerConfig
-  | ((current: ConfigLayerConfig) => ConfigLayerConfig);
-
-export const writeConfigLayer = async (
-  layer: WritableConfigLayer,
-  root: string,
-  mutation: ConfigLayerMutation,
-  options: ConfigOptions = {},
-): Promise<void> => {
-  const current = await readLayer(layer, root, options);
-  const changed =
-    typeof mutation === "function"
-      ? mutation(clone(current.config))
-      : mergeConfig(current.config, mutation);
-  const config = configLayerSchema.parse(changed);
-  const path = configLayerPath(layer, root, options);
-  const fs = options.fileSystem ?? fileSystem;
-  const temporary = join(dirname(path), `.config-${process.pid}-${crypto.randomUUID()}.tmp`);
-  try {
-    await fs.mkdir(dirname(path), { recursive: true });
-    await fs.writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-    await fs.rename(temporary, path);
-  } catch (error) {
-    await fs.rm(temporary, { force: true }).catch(() => undefined);
-    throw error;
-  }
+  };
+  const [project, global] = await Promise.all(configPaths(root).map(read));
+  return { config: merge(project, global), diagnostics };
 };

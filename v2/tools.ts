@@ -5,9 +5,9 @@ import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
 import { z } from "zod";
 import { loadAgentRules } from "./guidance";
+import { docsPath } from "./prompt";
 import { errorText } from "./render";
 import type { Skills } from "./skills";
-import { fetchPages, MAX_PAGES } from "./web";
 
 let events = 0;
 
@@ -20,14 +20,19 @@ export const nextToolEventId = (): number => {
   return events;
 };
 
-// `origin` is the run_subagent row this event belongs to. Absent means the main
-// agent, which is what the transcript shows; a subagent's own tool calls carry
-// the id of the row that spawned them, so they can be grouped and drilled into
-// without crowding the session.
-export type ToolEvent = { origin?: number } & (
-  | { id: number; name: string; detail: string; phase: "start" }
-  | { id: number; name: string; detail: string; phase: "end"; ok: boolean }
-);
+// `input` and `result` are what an extension's renderer draws from — `detail`
+// is only ever the one string a generic row can fit.
+export type ToolEvent =
+  | { id: number; name: string; detail: string; input: Record<string, unknown>; phase: "start" }
+  | {
+      id: number;
+      name: string;
+      detail: string;
+      input: Record<string, unknown>;
+      phase: "end";
+      ok: boolean;
+      result: string;
+    };
 
 export type Question = {
   question: string;
@@ -39,23 +44,6 @@ export type AskQuestions = (
   signal: AbortSignal | undefined,
 ) => Promise<string>;
 
-export type RunSubagent = (
-  task: string,
-  context: string,
-  signal: AbortSignal | undefined,
-  origin: number,
-) => Promise<string>;
-
-export type PlanVerdict =
-  | { decision: "approved"; fresh: boolean }
-  | { decision: "feedback"; note: string }
-  | { decision: "cancelled" };
-
-export type PresentPlan = (
-  plan: { plan: string; files: string[] },
-  signal: AbortSignal | undefined,
-) => Promise<PlanVerdict>;
-
 export const BUILT_IN_TOOL_NAMES = [
   "ask_user",
   "bash",
@@ -64,30 +52,10 @@ export const BUILT_IN_TOOL_NAMES = [
   "edit",
   "grep",
   "glob",
-  "web_fetch",
   "activate_skill",
-  "run_subagent",
-  "present_plan",
 ] as const;
 
 export type BuiltInToolName = (typeof BUILT_IN_TOOL_NAMES)[number];
-
-// Tools that cannot change the project or the machine. bash is absent on
-// purpose: `ls` and `rm -rf` are indistinguishable before running them, so a
-// read-only bash cannot be enforced, only asked for — and asking is what a mode
-// exists to stop doing.
-export const READ_ONLY_TOOL_NAMES = [
-  "ask_user",
-  "read",
-  "grep",
-  "glob",
-  "web_fetch",
-  "activate_skill",
-] as const satisfies readonly BuiltInToolName[];
-
-// Presenting a plan for approval only means something in a mode that produces
-// plans, so this one is withheld from build rather than granted to plan.
-export const PLAN_ONLY_TOOL_NAMES = ["present_plan"] as const satisfies readonly BuiltInToolName[];
 
 const RESULT_LIMIT = 30_000;
 const STDOUT_LIMIT = 20_000;
@@ -159,7 +127,7 @@ const launch = async (
 };
 
 // `output` is everything, for the transcript. `stdout` is kept apart because an
-// extension that carries a prompt sends its stdout to the model as data, and
+// sequence that carries a prompt sends its stdout to the model as data, and
 // diagnostics on stderr would read as part of the request. Arguments are handed
 // to bash as real positional parameters rather than pasted into the command
 // text, so `$1` and `$@` mean what a script author expects and nothing has to
@@ -230,6 +198,40 @@ const patch = (
   return text.slice(0, at) + edit.new_string + text.slice(at + edit.old_string.length);
 };
 
+// One wrapper for every tool the model can call, built-in or contributed by an
+// extension. It is what makes an extension's tool a real tool: the same event
+// stream drives the live row, the same 30k cap keeps one call from eating the
+// context, and the same catch turns a throw into an `ERROR:` the model can read
+// and recover from rather than a dead turn.
+export const wrapTool = <Schema extends z.ZodType>(
+  onEvent: (event: ToolEvent) => void,
+  name: string,
+  description: string,
+  inputSchema: Schema,
+  body: (input: z.infer<Schema>, signal: AbortSignal | undefined, id: number) => Promise<string>,
+) => {
+  const announce = (event: ToolEvent): void => {
+    try {
+      onEvent(event);
+    } catch {}
+  };
+  return tool({
+    description,
+    inputSchema,
+    execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
+      const raw = input as Record<string, unknown>;
+      const step = { id: nextToolEventId(), name, detail: firstDetail(raw), input: raw };
+      announce({ ...step, phase: "start" });
+      const told = await body(input, call.abortSignal, step.id).catch(
+        (bad) => `ERROR: ${errorText(bad)}`,
+      );
+      const result = capText(told, RESULT_LIMIT);
+      announce({ ...step, phase: "end", ok: !FAILED.test(result), result });
+      return result;
+    },
+  });
+};
+
 const firstDetail = (raw: Record<string, unknown>): string => {
   for (const key of ["command", "pattern", "path", "task"]) {
     const value = raw[key];
@@ -250,19 +252,26 @@ export const createTools = (
   onEvent: (event: ToolEvent) => void,
   askQuestions: AskQuestions | null,
   skills: Skills,
-  runSubagent?: RunSubagent,
-  presentPlan?: PresentPlan,
 ): ToolSet => {
   const base = resolve(root);
-  const announce = (event: ToolEvent): void => {
-    try {
-      onEvent(event);
-    } catch {}
-  };
+
+  const under = (full: string, root: string): boolean =>
+    full === root || full.startsWith(`${root}${sep}`);
 
   const within = (target?: string): string => {
     const full = resolve(base, target ?? ".");
-    if (full === base || full.startsWith(`${base}${sep}`)) return full;
+    if (under(full, base)) return full;
+    throw new Error(`path escapes root: ${target}`);
+  };
+
+  // Reading also reaches glorious's own docs. The system prompt hands the model
+  // an absolute path to them and tells it to read them; confining reads to the
+  // project root made that instruction false everywhere except inside the
+  // glorious repo itself, and the model routed around it with `bash cat` — a
+  // wasted step and a ✗ row about a file that was there all along.
+  const readable = (target?: string): string => {
+    const full = resolve(base, target ?? ".");
+    if (under(full, base) || under(full, docsPath())) return full;
     throw new Error(`path escapes root: ${target}`);
   };
 
@@ -271,26 +280,7 @@ export const createTools = (
     description: string,
     inputSchema: Schema,
     body: (input: z.infer<Schema>, signal: AbortSignal | undefined, id: number) => Promise<string>,
-  ) =>
-    tool({
-      description,
-      inputSchema,
-      execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
-        const raw = input as Record<string, unknown>;
-        const step = {
-          id: nextToolEventId(),
-          name,
-          detail: firstDetail(raw),
-        };
-        announce({ ...step, phase: "start" });
-        const told = await body(input, call.abortSignal, step.id).catch(
-          (bad) => `ERROR: ${errorText(bad)}`,
-        );
-        const result = capText(told, RESULT_LIMIT);
-        announce({ ...step, phase: "end", ok: !FAILED.test(result) });
-        return result;
-      },
-    });
+  ) => wrapTool(onEvent, name, description, inputSchema, body);
 
   const askUser =
     askQuestions === null
@@ -311,54 +301,6 @@ export const createTools = (
           }),
           async ({ questions }, signal) => askQuestions(questions, signal),
         );
-
-  const runSubagentTool = runSubagent
-    ? define(
-        "run_subagent",
-        "Launch a dedicated coding agent for one focused task. Before calling it, provide a standalone brief with the goal, current findings, relevant files and symbols, constraints, non-goals, acceptance criteria, and checks to run. Include precise paths or snippets; it starts without the parent conversation, plan, or earlier tool results. It can inspect or edit the project with the regular file tools. Do not use it for decisions that need the user.",
-        z.object({
-          task: z.string().min(1).max(4_000).describe("Self-contained task for the subagent"),
-          context: z
-            .string()
-            .min(1)
-            .max(30_000)
-            .describe(
-              "Standalone brief: goal, current findings, relevant paths and symbols, constraints, non-goals, acceptance criteria, and checks; do not include unrelated conversation history",
-            ),
-        }),
-        async ({ task, context }, signal, id) => runSubagent(task, context, signal, id),
-      )
-    : undefined;
-
-  const presentPlanTool = presentPlan
-    ? define(
-        "present_plan",
-        "Present your finished plan to the user for approval. This ends plan mode: on approval the agent switches to build mode and implements it, so the plan is the brief the implementation works from. The user may approve it, reply with feedback, or dismiss it. Approving may clear the conversation, so write the plan to stand on its own and list every file that matters in `files` — anything you leave out may have to be rediscovered.",
-        z.object({
-          plan: z
-            .string()
-            .min(1)
-            .max(20_000)
-            .describe(
-              "The plan, written to stand alone: what will change, in what order, and how it will be checked",
-            ),
-          files: z
-            .array(z.string().min(1))
-            .max(50)
-            .describe(
-              "Paths that matter for implementing this plan. Name the ones that matter, not everything you read",
-            ),
-        }),
-        async ({ plan, files }, signal) => {
-          const verdict = await presentPlan({ plan, files }, signal);
-          if (verdict.decision === "approved")
-            return "The user approved the plan. Stop now and say nothing further — implementation starts in a new turn.";
-          if (verdict.decision === "feedback")
-            return `The user did not approve the plan yet. Their feedback: ${verdict.note}\n\nRevise the plan and present it again.`;
-          return "The user dismissed the approval prompt without deciding. Stop and wait for them.";
-        },
-      )
-    : undefined;
 
   const bash = define(
     "bash",
@@ -383,7 +325,7 @@ export const createTools = (
       path: z.string().describe("File to read, relative to the project root or absolute"),
     }),
     async ({ path }) => {
-      const target = within(path);
+      const target = readable(path);
       const text = await Bun.file(target).text();
       const numbered = text
         .split("\n")
@@ -462,7 +404,7 @@ export const createTools = (
       if (input.fixedString) argv.push("--fixed-strings");
       if (input.includeIgnored) argv.push("--no-ignore", "--hidden");
       if (input.glob) argv.push("--glob", input.glob);
-      argv.push(...SKIP_GIT, "-e", input.pattern, within(input.path));
+      argv.push(...SKIP_GIT, "-e", input.pattern, readable(input.path));
       const got = await launch(argv, base, signal, input.maxResults + 1);
       return rgReport(got, input.maxResults, "matches", "No matches.");
     },
@@ -478,7 +420,7 @@ export const createTools = (
       maxResults: z.number().int().min(1).max(1000).default(200),
     }),
     async ({ pattern, path, includeIgnored, maxResults }, signal) => {
-      const dir = within(path);
+      const dir = readable(path);
       if (!(await stat(dir).catch(() => null))?.isDirectory())
         return `ERROR: no such directory: ${path ?? dir}`;
       const argv = [rgPath, "--files", "--sortr", "modified"];
@@ -489,19 +431,6 @@ export const createTools = (
     },
   );
 
-  const webFetch = define(
-    "web_fetch",
-    `Fetch web pages and return their main content as markdown, with navigation, boilerplate and markup removed. Read-only: it retrieves public pages and sends nothing. Renders with headless Chrome when one is installed, so pages that build their content with JavaScript work. Pass up to ${MAX_PAGES} URLs to fetch them together. A URL that redirects to a different host is reported rather than followed, so a login wall or shortener does not silently become the answer. Results are cached for 15 minutes.`,
-    z.object({
-      urls: z
-        .array(z.string().min(1))
-        .min(1)
-        .max(MAX_PAGES)
-        .describe("Absolute http(s) URLs to fetch"),
-    }),
-    async ({ urls }, signal) => fetchPages(urls, signal),
-  );
-
   return {
     ...(askUser ? { ask_user: askUser } : {}),
     bash,
@@ -510,9 +439,6 @@ export const createTools = (
     edit,
     grep,
     glob,
-    web_fetch: webFetch,
     ...(skills.tool ? { activate_skill: skills.tool } : {}),
-    ...(runSubagentTool ? { run_subagent: runSubagentTool } : {}),
-    ...(presentPlanTool ? { present_plan: presentPlanTool } : {}),
   };
 };

@@ -1,3 +1,13 @@
+import type { Glorious } from "../extension-api";
+
+// Bundled, enabled by default, and written the way any extension is: it reaches
+// for nothing but Bun globals and the API object. That is the point — this is
+// the largest tool glorious has, and if the extension API could not express it
+// the API would be a toy.
+//
+// Delete it, shadow it with your own .glorious/extensions/web-fetch.ts, or
+// leave it alone; none of that touches the core.
+
 const CACHE_MS = 15 * 60_000;
 const RENDER_MS = 25_000;
 const EXTRACT_MS = 25_000;
@@ -217,3 +227,27 @@ export const fetchPages = async (
 };
 
 export const clearWebCache = (): void => cache.clear();
+
+export default function webFetch(g: Glorious): void {
+  g.tool({
+    name: "web_fetch",
+    description: `Fetch web pages and return their main content as markdown, with navigation, boilerplate and markup removed. Read-only: it retrieves public pages and sends nothing. Renders with headless Chrome when one is installed, so pages that build their content with JavaScript work. Pass up to ${MAX_PAGES} URLs to fetch them together. A URL that redirects to a different host is reported rather than followed, so a login wall or shortener does not silently become the answer. Results are cached for 15 minutes.`,
+    input: g.z.object({
+      urls: g.z
+        .array(g.z.string().min(1))
+        .min(1)
+        .max(MAX_PAGES)
+        .describe("Absolute http(s) URLs to fetch"),
+    }),
+    execute: (input, signal) => fetchPages(input.urls, signal),
+    renderCall: ({ urls }) => [
+      [
+        { text: "web_fetch " },
+        {
+          text: urls.length === 1 ? urls[0] : `${urls.length} pages`,
+          tone: "muted",
+        },
+      ],
+    ],
+  });
+}

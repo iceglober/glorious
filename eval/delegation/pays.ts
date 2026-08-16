@@ -4,7 +4,26 @@ import { join } from "node:path";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, stepCountIs, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { craftRules, systemPrompt } from "../../v2/prompt";
+import { systemPrompt } from "../../v2/prompt";
+
+// The subagent instructions as of adbd6fa, the commit whose numbers the README
+// reports. They used to be v2/prompt.ts's craftRules export; run_subagent and
+// that export were removed *because* of what this eval measured, so the text is
+// pinned here rather than imported — an arm that reads today's prompt would not
+// be re-running the same experiment.
+const craftRules = `<non-negotiables>
+  - Conventions: do what the neighboring code does — naming, layout, error
+    handling, test shape. Read it before you write.
+  - Dependencies: a library exists only if the manifest or an existing import
+    says so. Check first, then use it.
+  - Scope: touch what the task needs and nothing more.
+</non-negotiables>
+
+<grounding>
+  A path, symbol, signature, config value, or passing check is real once a tool
+  showed it to you this session. Re-read a file right before editing it; re-run
+  a check before calling it green.
+</grounding>`;
 
 // Does delegating actually pay, or does it only move tokens around?
 //

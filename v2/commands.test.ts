@@ -20,8 +20,8 @@ describe("slash commands", () => {
     expect(matchingCommands("hp").map((command) => command.name)).toEqual(["help"]);
   });
 
-  test("includes the mcp command", () => {
-    expect(matchingCommands("mcp").map((command) => command.name)).toEqual(["mcp"]);
+  test("includes the extensions command", () => {
+    expect(matchingCommands("ext").map((command) => command.name)).toEqual(["extensions"]);
   });
 
   test("parses a command submission", () => {
@@ -29,14 +29,14 @@ describe("slash commands", () => {
     expect(commandName("help")).toBeNull();
   });
 
-  test("describes mode as a cycle", () => {
-    expect(commands().find((command) => command.name === "mode")?.description).toBe(
-      "Cycle through agent modes",
-    );
+  // One mode, so there is nothing to cycle. A command file is free to claim the
+  // name now, which the builtin table would previously have refused.
+  test("offers no mode command", () => {
+    expect(commands().find((command) => command.name === "mode")).toBeUndefined();
   });
 });
 
-describe("extension shortcuts", () => {
+describe("sequence shortcuts", () => {
   test("each sigil completes only its own namespace", () => {
     expect(activeSigil("$fr", 3, both)).toEqual({ sigil: "$", start: 0, query: "fr" });
     expect(activeSigil("/he", 3, both)).toEqual({ sigil: "/", start: 0, query: "he" });
