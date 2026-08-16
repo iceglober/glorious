@@ -28,6 +28,7 @@
     "remove-completion-grounding",
     "skills-as-commands",
     "slash-command-execution",
+    "stream-model-output",
     "surface-intermediate-text",
     "teardown-basic-chat",
     "trim-published-tarball",
