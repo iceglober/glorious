@@ -1,5 +1,59 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.18
+
+### Minor Changes
+
+- 30a400a: Add `$` extensions — named project scripts that run without calling the model.
+
+  A slash command always ends in a turn; `!` never does but has to be typed out in full. There was
+  no way for a project to name a deterministic action and reach it quickly. Neither the Agent
+  Skills spec nor Claude Code's slash commands cover this: both can run shell, but only ever to
+  build a prompt, so "run this, change local state, send nothing to the model" had nowhere to live.
+
+  An extension is a markdown file in `.glorious/extensions/<name>.md`, invoked by typing `$` and
+  completing the name. Frontmatter holds the deterministic part, the body is an optional prompt:
+
+  ```markdown
+  ---
+  description: Reset to a clean main
+  run: |
+    git checkout main
+    git pull --ff-only
+  clear: true
+  ---
+
+  The working tree was reset. Anything you knew about the previous branch is stale.
+  ```
+
+  `run` always executes, with arguments passed as real positional parameters so `$fresh main` gives
+  the script `$1` — nothing is interpolated into the command text. With a body, a turn is sent once
+  the shell succeeds, carrying the script's stdout as fenced evidence; `run: git diff` plus "review
+  this" is a whole workflow in one file. Without a body no turn is produced at all, which is the
+  part nothing else offers. `clear` drops the conversation for a script that moves the ground the
+  model was standing on. A non-zero exit shows the output and stops: nothing sent, nothing cleared.
+
+  Extensions are user-invoked only — the model cannot decide to reset your working tree. They are
+  discovered like commands (project directories shadow personal ones), listed in `/help`, and
+  reloaded by `/skills`. Autocomplete is now sigil-aware, so `/` and `$` each complete their own
+  namespace, and `$` is withheld in shell mode where `$VAR` is a real variable.
+
+- 8b09362: Say what the model is doing while you wait for it.
+
+  The wave now carries a phase and how long it has been in it — `waiting 2.3s`, `thinking 11.9s`, `writing 0.4s` — driven by the model call itself rather than a timer. Tool activity is left to the rows above it, which already name the tool and its elapsed time.
+
+  This closes the gap streaming did not. Streaming works, but a median assistant message here is 205 characters, which arrives in under half a second; the wait _before_ any text appears was measured at 2.3 seconds, and a high-effort turn can reason for twelve. That stretch used to be an animated line with no information in it.
+
+  Also fixes a long-standing overrun: on a narrow terminal the interrupt hint was clipped to the full width and then given a two-space separator, making the row two columns wider than the screen.
+
+### Patch Changes
+
+- 30a400a: Stop a failed turn from shredding the screen.
+
+  `streamText`'s default error handler is `console.error`, which writes a raw stack trace straight to the terminal — landing at whatever cursor position the TUI happened to be at, interleaved with the transcript and the composer. A failed model call now renders as a single error line, as it did before streaming.
+
+  Two supporting fixes: the promises carrying a turn's final text, messages and steps are subscribed before the stream is iterated, so a mid-stream failure cannot strand them as unhandled rejections (three per failure, each printed to stderr); and an error arriving as a stream part is now thrown rather than silently ending the turn as if it had produced nothing. A process-level guard routes any remaining stray runtime output into the transcript instead of over the screen.
+
 ## 1.0.0-next.17
 
 ### Minor Changes
