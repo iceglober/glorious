@@ -20,14 +20,9 @@ export const nextToolEventId = (): number => {
   return events;
 };
 
-// `origin` is the run_subagent row this event belongs to. Absent means the main
-// agent, which is what the transcript shows; a subagent's own tool calls carry
-// the id of the row that spawned them, so they can be grouped and drilled into
-// without crowding the session.
-export type ToolEvent = { origin?: number } & (
+export type ToolEvent =
   | { id: number; name: string; detail: string; phase: "start" }
-  | { id: number; name: string; detail: string; phase: "end"; ok: boolean }
-);
+  | { id: number; name: string; detail: string; phase: "end"; ok: boolean };
 
 export type Question = {
   question: string;
@@ -37,13 +32,6 @@ export type Question = {
 export type AskQuestions = (
   questions: Question[],
   signal: AbortSignal | undefined,
-) => Promise<string>;
-
-export type RunSubagent = (
-  task: string,
-  context: string,
-  signal: AbortSignal | undefined,
-  origin: number,
 ) => Promise<string>;
 
 export const BUILT_IN_TOOL_NAMES = [
@@ -56,7 +44,6 @@ export const BUILT_IN_TOOL_NAMES = [
   "glob",
   "web_fetch",
   "activate_skill",
-  "run_subagent",
 ] as const;
 
 export type BuiltInToolName = (typeof BUILT_IN_TOOL_NAMES)[number];
@@ -222,7 +209,6 @@ export const createTools = (
   onEvent: (event: ToolEvent) => void,
   askQuestions: AskQuestions | null,
   skills: Skills,
-  runSubagent?: RunSubagent,
 ): ToolSet => {
   const base = resolve(root);
   const announce = (event: ToolEvent): void => {
@@ -282,24 +268,6 @@ export const createTools = (
           }),
           async ({ questions }, signal) => askQuestions(questions, signal),
         );
-
-  const runSubagentTool = runSubagent
-    ? define(
-        "run_subagent",
-        "Launch a dedicated coding agent for one focused task. Before calling it, provide a standalone brief with the goal, current findings, relevant files and symbols, constraints, non-goals, acceptance criteria, and checks to run. Include precise paths or snippets; it starts without the parent conversation, plan, or earlier tool results. It can inspect or edit the project with the regular file tools. Do not use it for decisions that need the user.",
-        z.object({
-          task: z.string().min(1).max(4_000).describe("Self-contained task for the subagent"),
-          context: z
-            .string()
-            .min(1)
-            .max(30_000)
-            .describe(
-              "Standalone brief: goal, current findings, relevant paths and symbols, constraints, non-goals, acceptance criteria, and checks; do not include unrelated conversation history",
-            ),
-        }),
-        async ({ task, context }, signal, id) => runSubagent(task, context, signal, id),
-      )
-    : undefined;
 
   const bash = define(
     "bash",
@@ -453,6 +421,5 @@ export const createTools = (
     glob,
     web_fetch: webFetch,
     ...(skills.tool ? { activate_skill: skills.tool } : {}),
-    ...(runSubagentTool ? { run_subagent: runSubagentTool } : {}),
   };
 };

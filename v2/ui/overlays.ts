@@ -5,13 +5,6 @@ import type { ModelOption, ProviderOption } from "../models";
 import { clip, type Line } from "../render";
 import type { SkillSummary } from "../skills";
 
-export type SubagentView = {
-  task: string;
-  stream: ReadonlyArray<{ name: string; detail: string; ok: boolean | null }>;
-  tools: number;
-  done: boolean;
-};
-
 import { type Chrome, dimHex, fillHex, type Host, listChrome, sheetHeight } from "./chrome";
 import { createSearchablePicker, type SearchablePicker } from "./searchable-picker";
 
@@ -21,7 +14,6 @@ export const createOverlays = (
   onSkillsReload: () => void,
   onMcpReload: (setLoading: (loading: boolean) => void) => void,
   onMcpApprove: (name: string) => void,
-  onCycleSubagent: () => void,
 ) => {
   const { tui, renderer, columns, textNode, styled, sheet, sheetRows } = chrome;
   let view: Renderable | null = null;
@@ -54,7 +46,6 @@ export const createOverlays = (
     toolSearch = null;
     toolList = null;
     modelSearch = null;
-    subagentView = null;
     providerCatalog = null;
     providerForm = null;
     reloadMcp = false;
@@ -183,64 +174,6 @@ export const createOverlays = (
       ]),
       true,
     );
-  };
-
-  // A subagent's stream, shown on demand rather than in the session. Rebuilt in
-  // place on every frame while open, since the thing being watched is running.
-  let subagentView: { body: TextRenderable; footer: TextRenderable } | null = null;
-
-  const subagentLines = (agent: SubagentView, columns: number): Line[] =>
-    agent.stream.length === 0
-      ? [[{ text: "No tool calls yet.", tone: "muted" }]]
-      : agent.stream.map(
-          (step): Line => [
-            {
-              text: step.ok === null ? "· " : step.ok ? "✓ " : "✗ ",
-              tone: step.ok === false ? "danger" : step.ok === null ? "muted" : "success",
-            },
-            { text: step.name, tone: "highlight" },
-            { text: `  ${clip(step.detail, Math.max(8, columns - 12))}`, tone: "muted" },
-          ],
-        );
-
-  const paintSubagents = (agents: readonly SubagentView[], at: number): void => {
-    if (!subagentView) return;
-    const agent = agents[at];
-    if (!agent) {
-      close();
-      return;
-    }
-    subagentView.body.content = styled(subagentLines(agent, columns()));
-    subagentView.footer.content = `${at + 1}/${agents.length} · ${agent.done ? "finished" : "running"} · ${agent.tools} tools${agents.length > 1 ? " · Tab next" : ""} · Esc closes`;
-    host.draw();
-  };
-
-  const showSubagents = (agents: readonly SubagentView[], at: number): void => {
-    if (view || agents.length === 0) return;
-    const rows = Math.max(3, sheetRows() - listChrome);
-    scroll = new tui.ScrollBoxRenderable(renderer, {
-      width: "100%",
-      height: rows,
-      minHeight: 1,
-      scrollY: true,
-      stickyScroll: true,
-      stickyStart: "bottom",
-      backgroundColor: fillHex,
-      contentOptions: { flexDirection: "column" },
-    });
-    const body = textNode({ content: "", width: "100%", wrapMode: "none" });
-    scroll.add(body);
-    const footer = textNode({ content: "", width: "100%", height: 1, fg: dimHex });
-    subagentView = { body, footer };
-    open(
-      sheet({ title: "Subagent", height: sheetHeight(rows + listChrome) }, [
-        gap(),
-        scroll,
-        gap(),
-        footer,
-      ]),
-    );
-    paintSubagents(agents, at);
   };
 
   const showModelVariants = (model: ModelOption, onSelect: (model: ModelOption) => void): void => {
@@ -549,9 +482,6 @@ export const createOverlays = (
     ) {
       event.stopPropagation();
       toolSearch.activate(event.sequence);
-    } else if (subagentView && event.name === "tab") {
-      event.stopPropagation();
-      onCycleSubagent();
     } else if (event.name === "escape" || (event.ctrl && event.name === "c")) {
       event.stopPropagation();
       const onBack = providerCatalog?.onBack;
@@ -582,9 +512,6 @@ export const createOverlays = (
 
   return {
     showHelp,
-    showSubagents,
-    paintSubagents,
-    isSubagentView: () => subagentView !== null,
     showSkills,
     showMcp,
     showModels,

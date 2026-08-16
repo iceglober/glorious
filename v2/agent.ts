@@ -1,20 +1,16 @@
 import { createHash } from "node:crypto";
-import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
+import { type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "./models";
 import {
   contextPrompt,
-  craftRules,
   environmentPrompt,
-  fence,
   navigationPrompt,
   skillsPrompt,
   systemPrompt,
 } from "./prompt";
-import { type AskQuestions, createTools, type RunSubagent, type ToolEvent } from "./tools";
+import { type AskQuestions, createTools, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
-export const SUBAGENT_STEP_LIMIT = 50;
-const SUBAGENT_OUTPUT_TOKENS = 12_000;
 const DEADLINES_MS = [30 * 60_000, 10 * 60_000, 10 * 60_000];
 const BREATH_MS = 500;
 const RETRY_NAMES = new Set([
@@ -55,28 +51,18 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     model: ModelOption;
     sessionId: string;
     skills: string;
-    askQuestions: AskQuestions;
+    // null withholds ask_user, for a run with nobody to answer it
+    askQuestions: AskQuestions | null;
     skillTools: import("./skills").Skills;
     mcp?: import("./mcp").McpSession;
   };
 
-// The main loop turns a step-limited turn into a [system-reminder]; a subagent
-// has no turn of its own, so the same fact has to travel in the result the
-// parent reads. Returning "" would tell the parent nothing at all.
 // Subscribe now so a later throw cannot leave this rejected with nobody
 // listening. Bun prints an unhandled rejection straight to stderr, which lands
 // at whatever cursor position the TUI happens to be at and shreds the screen.
 // The failure still travels — the stream iteration throws it.
 export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
   Promise.resolve(value).catch(() => fallback);
-
-export const subagentReport = (text: string, steps: number): string => {
-  const summary = text.trim();
-  if (summary !== "") return summary;
-  return steps >= SUBAGENT_STEP_LIMIT
-    ? "ERROR: the subagent used all its steps without reporting back. Narrow the task or split it into smaller briefs."
-    : "ERROR: the subagent finished without reporting anything.";
-};
 
 export const createAgent = (setup: Setup) => {
   let model = createModel(setup.model, fetchWithDeadline as typeof fetch);
@@ -96,48 +82,10 @@ export const createAgent = (setup: Setup) => {
     promptCacheKey: cacheKey(scope),
   });
 
-  const subagentInstructions = `<identity>
-  You are a dedicated subagent working for Glorious.
-</identity>
-
-${craftRules}
-
-${fence("rules", setup.rules)}
-
-The brief you are given is your complete starting context; do not assume access to the parent conversation, plan, or tool results. Work only on the task in that brief. Inspect the repository when needed, make the requested changes, and verify them with focused checks. You have no way to ask anyone anything and cannot delegate further; decide with what the brief gives you. Return a concise summary of what you did and any checks that ran.`;
-
-  const toolsFor = (onTool: (event: ToolEvent) => void) => {
-    const runSubagent: RunSubagent = async (task, context, signal, origin) => {
-      const result = await generateText({
-        model,
-        instructions: subagentInstructions,
-        // stamped with the row that spawned them, so the session shows one
-        // summary line instead of the subagent's whole stream
-        tools: createTools(
-          setup.root,
-          (event) => onTool({ ...event, origin }),
-          null,
-          setup.skillTools,
-        ),
-        stopWhen: [stepCountIs(SUBAGENT_STEP_LIMIT)],
-        maxOutputTokens: SUBAGENT_OUTPUT_TOKENS,
-        maxRetries: 5,
-        providerOptions: { openai: openaiOptions("subagent") },
-        messages: [
-          {
-            role: "user",
-            content: `<task>\n${task}\n</task>\n\n<context>\n${context}\n</context>`,
-          },
-        ],
-        abortSignal: signal,
-      });
-      return subagentReport(result.text, result.steps.length);
-    };
-    return {
-      ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, runSubagent),
-      ...(setup.mcp?.toolsFor(onTool) ?? {}),
-    };
-  };
+  const toolsFor = (onTool: (event: ToolEvent) => void) => ({
+    ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
+    ...(setup.mcp?.toolsFor(onTool) ?? {}),
+  });
 
   const settings = () => ({
     model,

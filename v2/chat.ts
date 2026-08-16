@@ -54,9 +54,6 @@ export const createChat = (
     }
     const since = started.get(tool.id);
     started.delete(tool.id);
-    // A subagent's tools stay out of the transcript; they are still signalled,
-    // so the live view can group and show them on demand.
-    if (tool.origin !== undefined) return;
     announce({
       type: "tool",
       name: tool.name,

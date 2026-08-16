@@ -132,7 +132,6 @@ describe("the prompt agrees with the tool registry", () => {
         () => {},
         async () => "",
         skills,
-        async () => "",
       ),
     );
     const surfaces = [systemPrompt({ rules: "" }), skillsPrompt("PLACEHOLDER")];
@@ -156,25 +155,18 @@ describe("skillsPrompt", () => {
   });
 });
 
-describe("delegation guidance", () => {
-  test("the main prompt carries it", () => {
-    expect(rendered).toContain("<delegation>");
-    expect(rendered).toContain("run_subagent");
+// 5f0e9c4 removed run_subagent: the repo's own eval/delegation measured the same
+// answers for ~1.8x the tokens and ~2.6x the wall clock. Nothing in the prompt
+// may offer a tool the model has no way to call.
+describe("no delegation guidance survives", () => {
+  test("the prompt never mentions a subagent", () => {
+    for (const gone of ["<delegation>", "run_subagent", "subagent", "Delegate"])
+      expect(rendered).not.toContain(gone);
   });
 
-  test("it names the context cost, which is the argument most often missed", () => {
-    expect(rendered).toContain("30k");
-    expect(rendered).toMatch(/summary/u);
-  });
-
-  test("it states that the parent cannot steer a running subagent", () => {
-    expect(rendered).toMatch(/cannot steer it/u);
-  });
-
-  // craftRules is shared with the subagent, which has no run_subagent tool.
-  test("a subagent is never told to delegate", () => {
-    expect(craftRules).not.toContain("<delegation>");
-    expect(craftRules).not.toContain("run_subagent");
+  test("craftRules does not either", () => {
+    for (const gone of ["<delegation>", "run_subagent", "subagent"])
+      expect(craftRules).not.toContain(gone);
   });
 });
 

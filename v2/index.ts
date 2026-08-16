@@ -12,13 +12,12 @@ import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { doctorMcp, resolveMcpServers, startMcp } from "./mcp";
 import { currentModel, loadModels, loadProviders, modelLabel } from "./models";
+import { runPrint } from "./print";
 import { shortcutPrompt } from "./prompt";
 import {
   assistantBlock,
-  clip,
   errorText,
   eventBlock,
-  flatten,
   type Line,
   noticeBlock,
   queuedRow,
@@ -76,6 +75,9 @@ const probe = () => {
   };
 };
 
+const USAGE =
+  "Usage: glorious [--version | update | doctor [--json] | --resume [session-id] | -p <prompt>]";
+
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--version") {
@@ -86,20 +88,23 @@ const main = async (): Promise<void> => {
     execFileSync("bun", ["add", "-g", `${PACKAGE_NAME}@next`], { stdio: "inherit" });
     return;
   }
+  // Headless, and handled before anything opens the terminal: the whole point
+  // is that this path never touches the alternate screen.
+  if (args[0] === "-p" || args[0] === "--print") {
+    const prompt = args.slice(1).join(" ").trim();
+    if (prompt === "") throw new Error("Nothing to run: -p needs a prompt.");
+    const { root, os, git } = probe();
+    process.exitCode = await runPrint(prompt, { root, os, git });
+    return;
+  }
   let resumeId: string | undefined;
   const doctor = args.length > 0 && args[0] === "doctor";
   const doctorJson = doctor && args[1] === "--json";
   if (args.length > 0 && !doctor) {
-    if (args[0] !== "--resume" || args.length > 2)
-      throw new Error(
-        "Usage: glorious [--version | update | doctor [--json] | --resume [session-id]]",
-      );
+    if (args[0] !== "--resume" || args.length > 2) throw new Error(USAGE);
     resumeId = args[1];
   }
-  if (doctor && args.length > 2)
-    throw new Error(
-      "Usage: glorious [--version | update | doctor [--json] | --resume [session-id]]",
-    );
+  if (doctor && args.length > 2) throw new Error(USAGE);
   const { root, os, branch, worktree, git, label } = probe();
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
@@ -152,18 +157,6 @@ const main = async (): Promise<void> => {
   let phase: "sending" | "waiting" | "thinking" | "writing" | null = null;
   let phaseSince = Date.now();
   const running: Array<{ id: number; name: string; detail: string; since: number }> = [];
-  // Live subagents for this turn. Their tool calls are kept out of the
-  // transcript, so this is the only place they exist to be looked at.
-  type Subagent = {
-    id: number;
-    task: string;
-    stream: Array<{ name: string; detail: string; ok: boolean | null }>;
-    tools: number;
-    since: number;
-    done: boolean;
-  };
-  const subagents: Subagent[] = [];
-  let watching = 0;
 
   const repaint = (): void => {
     // one paint per frame for however many deltas landed since the last one
@@ -172,20 +165,10 @@ const main = async (): Promise<void> => {
     const progress: Line[] = [];
     for (const tool of running) {
       if (now - tool.since < SETTLE_MS) continue;
-      // A subagent's own calls never reach the transcript, so its row carries
-      // the evidence that work is happening: how much, and for how long.
-      const agent = subagents.find((entry) => entry.id === tool.id);
-      // Counts first: the brief is long, so anything appended after it is clipped
-      // off the end of the row and never seen.
-      const detail =
-        agent === undefined
-          ? tool.detail
-          : `${agent.tools} tools · ${Math.round((now - agent.since) / 1000)}s · ctrl+b   ${clip(flatten(tool.detail), 60)}`;
-      progress.push(runningRow(tool.name, detail, frame));
+      progress.push(runningRow(tool.name, tool.detail, frame));
     }
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
-    if (screen.watchingSubagents()) screen.refreshSubagents(subagents, watching);
     screen.setWave(
       frame,
       chat.busy,
@@ -274,41 +257,13 @@ const main = async (): Promise<void> => {
   const react = (value: ChatSignal): void => {
     switch (value.type) {
       case "tool": {
-        const { origin } = value.tool;
-        if (origin !== undefined) {
-          // A subagent's own call belongs to that subagent's stream, which the
-          // transcript never shows — this is the only record it has.
-          const owner = subagents.find((entry) => entry.id === origin);
-          if (!owner) break;
-          if (value.tool.phase === "start") {
-            owner.stream.push({ name: value.tool.name, detail: value.tool.detail, ok: null });
-            break;
-          }
-          const open = owner.stream.findLast(
-            (step) => step.name === value.tool.name && step.ok === null,
-          );
-          if (open) open.ok = value.tool.ok;
-          owner.tools += 1;
-          break;
-        }
         if (value.tool.phase === "start") {
           const { id, name, detail } = value.tool;
           running.push({ id, name, detail, since: Date.now() });
-          if (name === "run_subagent")
-            subagents.push({
-              id,
-              task: detail,
-              stream: [],
-              tools: 0,
-              since: Date.now(),
-              done: false,
-            });
           break;
         }
         const slot = running.findIndex((tool) => tool.id === value.tool.id);
         if (slot >= 0) running.splice(slot, 1);
-        const ended = subagents.find((entry) => entry.id === value.tool.id);
-        if (ended) ended.done = true;
         break;
       }
       case "delta":
@@ -340,8 +295,6 @@ const main = async (): Promise<void> => {
         chat.flush();
         screen.sealDraft();
         live = { kind: "text", text: "" };
-        subagents.length = 0;
-        watching = 0;
         void saveSession(session);
         break;
     }
@@ -503,19 +456,6 @@ const main = async (): Promise<void> => {
           .catch((failure) => screen.showModelError(errorText(failure)));
       }
       repaint();
-    },
-    // Ctrl+O opens the stream the transcript no longer carries. With nothing
-    // running there is nothing to show, so the key does nothing and the hint
-    // stays hidden.
-    onWatchSubagents: () => {
-      if (subagents.length === 0) return;
-      watching = Math.min(watching, subagents.length - 1);
-      screen.showSubagents(subagents, watching);
-    },
-    onCycleSubagent: () => {
-      if (subagents.length === 0) return;
-      watching = (watching + 1) % subagents.length;
-      screen.refreshSubagents(subagents, watching);
     },
     onSkillsReload: () => {
       void loadUserCommands(root).then((refreshed) => {

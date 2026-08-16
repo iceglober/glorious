@@ -180,7 +180,7 @@ describe("sending an expanded slash command", () => {
   });
 });
 
-describe("keeping a subagent's tools out of the transcript", () => {
+describe("tool events reaching the transcript", () => {
   const toolEvent = (over: Partial<ToolEvent> = {}): ToolEvent =>
     ({ id: 1, name: "read", detail: "a.ts", phase: "end", ok: true, ...over }) as ToolEvent;
 
@@ -206,38 +206,29 @@ describe("keeping a subagent's tools out of the transcript", () => {
     return { seen, signalled };
   };
 
-  test("a subagent's own call never reaches the transcript", async () => {
-    const { seen } = await drive([
-      toolEvent({ id: 7, name: "grep", phase: "start", origin: 3 } as Partial<ToolEvent>),
-      toolEvent({ id: 7, name: "grep", origin: 3 }),
-    ]);
-    expect(seen.filter((event) => event.type === "tool")).toHaveLength(0);
-  });
-
-  test("but it is still signalled, so the live view can show it", async () => {
-    const { signalled } = await drive([toolEvent({ id: 7, name: "grep", origin: 3 })]);
-    expect(signalled.filter((value) => value.type === "tool")).toHaveLength(1);
-  });
-
-  test("the parent's own calls are unaffected", async () => {
+  // Every tool call is now the agent's own — there is no second agent whose
+  // calls have to be filtered out. The transcript records one row per call.
+  test("a completed call becomes one transcript row", async () => {
     const { seen } = await drive([
       toolEvent({ id: 1, name: "read", phase: "start" } as Partial<ToolEvent>),
       toolEvent({ id: 1, name: "read" }),
     ]);
-    expect(seen.filter((event) => event.type === "tool")).toHaveLength(1);
+    expect(seen.filter((event) => event.type === "tool")).toMatchObject([{ name: "read" }]);
   });
 
-  test("the run_subagent row itself stays, since it is the parent's call", async () => {
+  test("a start on its own records nothing, so a running call cannot look finished", async () => {
     const { seen } = await drive([
-      toolEvent({
-        id: 3,
-        name: "run_subagent",
-        detail: "audit",
-        phase: "start",
-      } as Partial<ToolEvent>),
-      toolEvent({ id: 3, name: "run_subagent", detail: "audit" }),
+      toolEvent({ id: 1, name: "bash", phase: "start" } as Partial<ToolEvent>),
     ]);
-    expect(seen.filter((event) => event.type === "tool")).toMatchObject([{ name: "run_subagent" }]);
+    expect(seen.filter((event) => event.type === "tool")).toHaveLength(0);
+  });
+
+  test("both phases are signalled, which is what paints the running row", async () => {
+    const { signalled } = await drive([
+      toolEvent({ id: 1, name: "bash", phase: "start" } as Partial<ToolEvent>),
+      toolEvent({ id: 1, name: "bash" }),
+    ]);
+    expect(signalled.filter((value) => value.type === "tool")).toHaveLength(2);
   });
 });
 

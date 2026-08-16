@@ -14,7 +14,7 @@ import { type Line, statusWave } from "../render";
 import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
-import { createOverlays, type SubagentView } from "./overlays";
+import { createOverlays } from "./overlays";
 import { createQuestions } from "./questions";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;
@@ -31,8 +31,6 @@ export const createScreen = async (callbacks: {
   onCommand: (name: string, args: string) => void;
   onShortcut: (name: string, args: string) => void;
   extensions?: readonly Extension[];
-  onWatchSubagents: () => void;
-  onCycleSubagent: () => void;
   onSkillsReload: () => void;
   onMcpReload: (setLoading: (loading: boolean) => void) => void;
   onMcpApprove: (name: string) => void;
@@ -193,7 +191,6 @@ export const createScreen = async (callbacks: {
     callbacks.onSkillsReload,
     callbacks.onMcpReload,
     callbacks.onMcpApprove,
-    callbacks.onCycleSubagent,
   );
   const questions = createQuestions(chrome, host);
 
@@ -405,14 +402,6 @@ export const createScreen = async (callbacks: {
         return;
       }
     }
-    // Ctrl+B, not Ctrl+O: ^O is the terminal's discard character on BSD and macOS
-    // and never reaches the app. ^R is reprint and ^T is status, out for the
-    // same reason.
-    if (event.ctrl && event.name === "b") {
-      event.stopPropagation();
-      callbacks.onWatchSubagents();
-      return;
-    }
     // Arrow keys move within what you are typing and only reach for history at
     // the edges, the way a shell does. Ctrl+P/Ctrl+N stay unconditional history,
     // so recalling a long prompt never costs you fast cycling.
@@ -571,12 +560,6 @@ export const createScreen = async (callbacks: {
       onCancel: () => void,
     ) => overlays.showProviderKey(provider, onSave, onCancel),
     showModelError: (message: string) => overlays.showModelError(message),
-    showSubagents: (agents: readonly SubagentView[], at: number) =>
-      overlays.showSubagents(agents, at),
-    refreshSubagents: (agents: readonly SubagentView[], at: number) => {
-      if (overlays.isSubagentView()) overlays.paintSubagents(agents, at);
-    },
-    watchingSubagents: () => overlays.isSubagentView(),
     askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
       if (overlays.isOpen()) overlays.close();
       return questions.ask(items, signal);
