@@ -21,11 +21,14 @@ afterAll(async () => {
 });
 
 describe("loadConfig", () => {
-  test("reads the model and variant a project pins", async () => {
-    const root = await project(`{"model":"anthropic/claude-opus-5","variant":"high"}`);
+  test("reads the model, variant, and tool timeout a project pins", async () => {
+    const root = await project(
+      `{"model":"anthropic/claude-opus-5","variant":"high","tool_timeout_ms":120000}`,
+    );
     expect((await loadConfig(root)).config).toMatchObject({
       model: "anthropic/claude-opus-5",
       variant: "high",
+      tool_timeout_ms: 120000,
     });
   });
 

@@ -1,6 +1,7 @@
 # Node / TS
 node_modules/
 dist/
+docs-site/src/generated/
 *.tsbuildinfo
 
 # OS

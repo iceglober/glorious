@@ -13,7 +13,7 @@ export const fence = (tag: string, body: string): string =>
 // to change. tools.ts lets the read-only tools reach this directory and no
 // further.
 const here = import.meta.dir;
-export const docsPath = (): string => join(here, "..", "docs");
+export const docsPath = (): string => join(here, "..", "docs", "published");
 
 // Every block the agent prepends to a user turn. events.ts strips these when
 // replaying a transcript, so a new preamble block must be named here or it will

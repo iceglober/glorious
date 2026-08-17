@@ -178,6 +178,11 @@ const main = async (): Promise<void> => {
   const rules = await loadAgentRules(root);
   const config = resolvedConfig;
   let model = currentModel(config.config);
+  const envToolTimeout = Number(process.env.GLORIOUS_TOOL_TIMEOUT_MS);
+  const toolTimeoutMs =
+    Number.isFinite(envToolTimeout) && envToolTimeout > 0
+      ? envToolTimeout
+      : config.config.tool_timeout_ms;
   let skills = await loadSkills(root);
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills, which answer under a `skill:` prefix of their own.
@@ -299,6 +304,7 @@ const main = async (): Promise<void> => {
   const agent = createAgent({
     root,
     model,
+    toolTimeoutMs,
     sessionId: session.id,
     rules,
     cwd: root,

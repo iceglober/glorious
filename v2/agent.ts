@@ -75,6 +75,7 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     // null withholds ask_user, for a run with nobody to answer it
     askQuestions: AskQuestions | null;
     skillTools: import("./skills").Skills;
+    toolTimeoutMs?: number;
     // Handed the turn's event sink and asked afresh each turn, exactly as MCP
     // is: an extension's tools are built once at load, so this is what lets
     // their rows reach the turn that is actually running.
@@ -127,7 +128,7 @@ export const createAgent = (setup: Setup) => {
   // "closest definition wins" rule commands and sequences already follow.
   const toolsFor = (onTool: (event: ToolEvent) => void) => {
     const all = {
-      ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
+      ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, setup.toolTimeoutMs),
       ...(setup.extensionTools?.(onTool) ?? {}),
     };
     if (allowed === null) return all;

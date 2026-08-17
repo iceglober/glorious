@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createAgent } from "./agent";
+import { loadConfig } from "./config";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
@@ -32,11 +33,21 @@ export const runPrint = async (
     ...currentModel(),
     ...(await modelMetadata(currentModel()).catch(() => ({}))),
   };
-  const [rules, skills] = await Promise.all([loadAgentRules(where.root), loadSkills(where.root)]);
+  const [rules, skills, loadedConfig] = await Promise.all([
+    loadAgentRules(where.root),
+    loadSkills(where.root),
+    loadConfig(where.root),
+  ]);
+  const envToolTimeout = Number(process.env.GLORIOUS_TOOL_TIMEOUT_MS);
+  const toolTimeoutMs =
+    Number.isFinite(envToolTimeout) && envToolTimeout > 0
+      ? envToolTimeout
+      : loadedConfig.config.tool_timeout_ms;
 
   const agent = createAgent({
     root: where.root,
     model,
+    toolTimeoutMs,
     // Fresh every run. This becomes the provider's promptCacheKey, and a
     // constant one tells the backend that unrelated runs are the same
     // conversation — after which it looks for reasoning items the previous run

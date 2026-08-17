@@ -1,23 +1,22 @@
 import { NavLink, Outlet, useLocation, Link } from "react-router";
+import { Search } from "./Search";
 
 const NAV = [
-  { to: "/install", label: "install" },
-  { to: "/quickstart", label: "quickstart" },
-  { to: "/tools", label: "tools" },
-  { to: "/cli", label: "cli" },
+  { to: "/install", label: "get started" },
+  { to: "/philosophy", label: "concepts" },
+  { to: "/extensions", label: "extend" },
+  { to: "/tools", label: "reference" },
+  { to: "/troubleshooting", label: "help" },
 ];
 
 function Breadcrumbs() {
   const { pathname } = useLocation();
   const segments = pathname.split("/").filter(Boolean);
-
   if (segments.length === 0) return null;
-
   const crumbs = segments.slice(0, -1).map((seg, i) => ({
     label: seg,
     to: "/" + segments.slice(0, i + 1).join("/"),
   }));
-
   return (
     <nav className="breadcrumbs">
       <Link to="/">glrs</Link>
@@ -37,25 +36,21 @@ export function Layout() {
   return (
     <>
       <header className="site-header">
-        <NavLink to="/" className="logo">
-          glrs
-        </NavLink>
+        <NavLink to="/" className="logo">glrs</NavLink>
         <nav>
           {NAV.map(({ to, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => (isActive ? "active" : "")}
-            >
+            <NavLink key={to} to={to} className={({ isActive }) => (isActive ? "active" : "")}>
               {label}
             </NavLink>
           ))}
         </nav>
+        <Search />
       </header>
       <Breadcrumbs />
       <Outlet />
       <footer className="site-footer">
         <span className="footer-mark">glorious</span>
+        <span>next</span>
       </footer>
     </>
   );

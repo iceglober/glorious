@@ -76,6 +76,42 @@ body {
   color: var(--red);
 }
 
+.site-search {
+  position: relative;
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+
+.site-search input {
+  width: 12rem;
+  font: inherit;
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.5rem;
+  color: var(--black);
+  background: var(--white);
+}
+
+.search-results {
+  position: absolute;
+  right: 0;
+  top: 2rem;
+  width: 12rem;
+  border: 1px solid var(--black);
+  background: var(--white);
+  z-index: 20;
+}
+
+.search-results a {
+  display: block;
+  padding: 0.3rem 0.5rem;
+  color: var(--black);
+  text-decoration: none;
+}
+
+.search-results a:hover {
+  color: var(--red);
+}
+
 /* ── BREADCRUMBS ───────────────────────────────────────────────── */
 
 .breadcrumbs {
@@ -311,6 +347,34 @@ body {
   background: var(--black);
 }
 
+.doc-map {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem;
+}
+
+.doc-map h2 {
+  font-size: 0.85rem;
+  color: var(--gray);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.doc-map a {
+  display: block;
+  color: var(--black);
+  text-decoration: none;
+}
+
+.doc-map a::before {
+  content: "→ ";
+  color: var(--gray);
+}
+
+.doc-map a:hover {
+  color: var(--red);
+}
+
 .home hr {
   border: none;
   border-top: 1px solid var(--border);
@@ -483,6 +547,20 @@ body {
   .site-header nav {
     gap: 1rem;
     font-size: 0.8rem;
+  }
+
+  .site-search {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .site-search input,
+  .search-results {
+    width: 100%;
+  }
+
+  .doc-map {
+    grid-template-columns: 1fr;
   }
 
   .home {

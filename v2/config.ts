@@ -23,6 +23,8 @@ export type Config = {
   model?: string;
   // Reasoning effort, when the model advertises one.
   variant?: string;
+  // Maximum time in milliseconds for a built-in shell/search tool.
+  tool_timeout_ms?: number;
   providers?: Record<string, ProviderSettings>;
 };
 
@@ -45,6 +47,9 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const stringOf = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() !== "" ? value : undefined;
 
+const positiveNumberOf = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+
 // Read what is recognised and ignore the rest. A config file that has grown a
 // key glorious no longer knows about is not a broken config — refusing to start
 // over one would be the worse failure.
@@ -64,6 +69,7 @@ const shapeOf = (raw: unknown): Config => {
   return {
     model: stringOf(raw.model),
     variant: stringOf(raw.variant),
+    tool_timeout_ms: positiveNumberOf(raw.tool_timeout_ms),
     ...(Object.keys(providers).length > 0 ? { providers } : {}),
   };
 };
@@ -71,6 +77,7 @@ const shapeOf = (raw: unknown): Config => {
 const merge = (near: Config, far: Config): Config => ({
   model: near.model ?? far.model,
   variant: near.variant ?? far.variant,
+  tool_timeout_ms: near.tool_timeout_ms ?? far.tool_timeout_ms,
   providers: { ...far.providers, ...near.providers },
 });
 

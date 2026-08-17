@@ -68,7 +68,7 @@ const COMMAND_MS = 600_000;
 const GRACE_MS = 5_000;
 const SKIP_GIT = ["--glob", "!.git"];
 const STOPPED = "[interrupted]";
-const EXPIRED = `[timed out after ${COMMAND_MS / 1000}s]`;
+const expired = (timeoutMs: number): string => `[timed out after ${timeoutMs / 1000}s]`;
 const FAILED = /^ERROR:|\[interrupted\]|\[timed out/u;
 
 type Capture = { out: string; err: string; code: number; note: string };
@@ -108,10 +108,11 @@ const launch = async (
   cwd: string,
   caller: AbortSignal | undefined,
   lineCap?: number,
+  timeoutMs = COMMAND_MS,
 ): Promise<Capture> => {
   if (caller?.aborted) return { out: "", err: "", code: 130, note: STOPPED };
   const child = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe", detached: true });
-  const clock = AbortSignal.timeout(COMMAND_MS);
+  const clock = AbortSignal.timeout(timeoutMs);
   const stopper = caller ? AbortSignal.any([caller, clock]) : clock;
   const settled = new AbortController();
   let note = "";
@@ -121,7 +122,7 @@ const launch = async (
     signalGroup(child.pid, "SIGTERM");
     escalation ??= setTimeout(() => signalGroup(child.pid, "SIGKILL"), GRACE_MS).unref();
   };
-  const bail = (): void => strike(caller?.aborted ? STOPPED : EXPIRED);
+  const bail = (): void => strike(caller?.aborted ? STOPPED : expired(timeoutMs));
   stopper.addEventListener("abort", bail, { once: true, signal: settled.signal });
   const [out, err] = await Promise.all([drain(child.stdout, lineCap, strike), drain(child.stderr)]);
   const code = await child.exited;
@@ -329,6 +330,7 @@ export const createTools = (
   onEvent: (event: ToolEvent) => void,
   askQuestions: AskQuestions | null,
   skills: Skills,
+  timeoutMs = COMMAND_MS,
 ): ToolSet => {
   const base = resolve(root);
 
@@ -384,7 +386,7 @@ export const createTools = (
     "Run a command with bash in the project root. Returns stdout, then stderr, then `[exit N]` when the command fails. Commands are killed after 10 minutes. Use it for builds, tests, git, and package managers; prefer read, write, edit, grep, and glob over cat, sed, find, and shell redirection.",
     z.object({ command: z.string().describe("Shell command to run") }),
     async ({ command }, signal) => {
-      const got = await launch(["bash", "-lc", command], base, signal);
+      const got = await launch(["bash", "-lc", command], base, signal, undefined, timeoutMs);
       const parts = [
         capText(got.out.trimEnd(), STDOUT_LIMIT),
         capText(got.err.trimEnd(), STDERR_LIMIT),
@@ -482,7 +484,7 @@ export const createTools = (
       if (input.includeIgnored) argv.push("--no-ignore", "--hidden");
       if (input.glob) argv.push("--glob", input.glob);
       argv.push(...SKIP_GIT, "-e", input.pattern, readable(input.path));
-      const got = await launch(argv, base, signal, input.maxResults + 1);
+      const got = await launch(argv, base, signal, input.maxResults + 1, timeoutMs);
       return rgReport(got, input.maxResults, "matches", "No matches.");
     },
   );
@@ -503,7 +505,7 @@ export const createTools = (
       const argv = [rgPath, "--files", "--sortr", "modified"];
       if (includeIgnored) argv.push("--no-ignore", "--hidden");
       argv.push("--glob", pattern, ...SKIP_GIT);
-      const got = await launch(argv, dir, signal, maxResults + 1);
+      const got = await launch(argv, dir, signal, maxResults + 1, timeoutMs);
       return rgReport(got, maxResults, "files", "No files match.");
     },
   );
