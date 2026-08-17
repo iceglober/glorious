@@ -13,7 +13,7 @@
     "isolatedModules": true,
     "forceConsistentCasingInFileNames": true,
     "useDefineForClassFields": true,
-    "types": ["bun-types", "node"],
+    "types": ["bun", "node"],
     "skipLibCheck": true
   },
   "include": ["v2/**/*.ts", "docs/**/*.ts"],

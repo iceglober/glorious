@@ -1,0 +1,14 @@
+{
+  "name": "@glrs-dev/glorious-core",
+  "version": "1.0.0-next.38",
+  "description": "Provider-neutral agent runtime and extension SDK for glorious.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ]
+}

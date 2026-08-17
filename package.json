@@ -2,7 +2,10 @@
   "name": "@glrs-dev/glorious",
   "version": "1.0.0-next.38",
   "private": false,
-  "description": "glorious: a simple terminal coding agent — a barebones chat TUI over an agent with bash/read/write/edit/grep/glob tools. The sole product lives in v2/.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "description": "glorious monorepo: a provider-neutral agent core and the glorious coding-agent product.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,6 +35,7 @@
     "glorious": "bun v2/index.ts",
     "test": "bun test --timeout 60000",
     "typecheck": "tsc --noEmit",
+    "typecheck:packages": "tsc --noEmit -p packages/tsconfig.json",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",

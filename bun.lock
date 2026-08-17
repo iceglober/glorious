@@ -34,6 +34,25 @@
         "typescript": "^5.9.2",
       },
     },
+    "packages/glorious-coding-agent": {
+      "name": "@glrs-dev/glorious-coding-agent",
+      "version": "1.0.0-next.38",
+      "dependencies": {
+        "@glrs-dev/glorious-core": "workspace:*",
+        "@glrs-dev/provider-registry": "workspace:*",
+      },
+    },
+    "packages/glorious-core": {
+      "name": "@glrs-dev/glorious-core",
+      "version": "1.0.0-next.38",
+    },
+    "packages/provider-registry": {
+      "name": "@glrs-dev/provider-registry",
+      "version": "1.0.0-next.38",
+      "dependencies": {
+        "@glrs-dev/glorious-core": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@ai-sdk/amazon-bedrock": ["@ai-sdk/amazon-bedrock@5.0.50", "", { "dependencies": { "@ai-sdk/anthropic": "4.0.36", "@ai-sdk/openai": "4.0.36", "@ai-sdk/provider": "4.0.7", "@ai-sdk/provider-utils": "5.0.25", "@smithy/eventstream-codec": "^4.3.3", "@smithy/util-utf8": "^4.3.3", "aws4fetch": "^1.0.20" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-Z00rPc94bu4UawE30K6ppRPU1yRUyp4Vn+NBXo4xRJGek5cqCfuoRzwcKk3X7pexphEUohJaAO17OnOghDDcbA=="],
@@ -125,6 +144,12 @@
     "@changesets/types": ["@changesets/types@6.1.0", "", {}, "sha512-rKQcJ+o1nKNgeoYRHKOS07tAMNd3YSN0uHaJOZYjBAgxfV7TUE7JE+z4BzZdQwb5hKaYbayKN5KrYV7ODb2rAA=="],
 
     "@changesets/write": ["@changesets/write@0.4.0", "", { "dependencies": { "@changesets/types": "^6.1.0", "fs-extra": "^7.0.1", "human-id": "^4.1.1", "prettier": "^2.7.1" } }, "sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q=="],
+
+    "@glrs-dev/glorious-coding-agent": ["@glrs-dev/glorious-coding-agent@workspace:packages/glorious-coding-agent"],
+
+    "@glrs-dev/glorious-core": ["@glrs-dev/glorious-core@workspace:packages/glorious-core"],
+
+    "@glrs-dev/provider-registry": ["@glrs-dev/provider-registry@workspace:packages/provider-registry"],
 
     "@inquirer/external-editor": ["@inquirer/external-editor@1.0.3", "", { "dependencies": { "chardet": "^2.1.1", "iconv-lite": "^0.7.0" }, "peerDependencies": { "@types/node": ">=18" }, "optionalPeers": ["@types/node"] }, "sha512-RWbSrDiYmO4LbejWY7ttpxczuwQyZLBUyygsA9Nsv95hpzUWwnNTVQmAq3xuh7vNwCp07UTmE5i11XAEExx4RA=="],
 

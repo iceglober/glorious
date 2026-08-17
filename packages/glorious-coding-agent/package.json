@@ -1,0 +1,15 @@
+{
+  "name": "@glrs-dev/glorious-coding-agent",
+  "version": "1.0.0-next.38",
+  "description": "Terminal coding-agent product built on glorious-core.",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@glrs-dev/glorious-core": "workspace:*",
+    "@glrs-dev/provider-registry": "workspace:*"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ]
+}

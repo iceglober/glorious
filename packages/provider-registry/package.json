@@ -1,0 +1,17 @@
+{
+  "name": "@glrs-dev/provider-registry",
+  "version": "1.0.0-next.38",
+  "description": "Provider adapters, credentials, and model metadata for glorious products.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@glrs-dev/glorious-core": "workspace:*"
+  }
+}
