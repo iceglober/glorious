@@ -1,9 +1,12 @@
 import type { ModelMessage } from "ai";
-import type { Agent } from "./agent";
+import type { Agent, TurnPhase } from "./agent";
 import { compactedPrompt, type SessionEvent } from "./events";
 import { reminder } from "./prompt";
 import { errorText } from "./render";
 import type { ToolEvent } from "./tools";
+
+// Everything a turn reports, plus the one thing only the chat can be doing.
+export type ChatPhase = TurnPhase | "compacting" | null;
 
 export type Compaction =
   | { outcome: "compacted"; dropped: number; kept: number }
@@ -19,7 +22,7 @@ export type ChatSignal =
   | { type: "delta"; kind: "text" | "reasoning"; text: string }
   | { type: "sealed" }
   // which part of the model call is in flight, for the wave's sub-status
-  | { type: "phase"; name: "sending" | "waiting" | "thinking" | "writing" | "compacting" | null }
+  | { type: "phase"; name: ChatPhase }
   | { type: "idle" };
 
 const NOTE_CHARS = 160;

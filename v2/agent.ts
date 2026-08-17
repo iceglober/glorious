@@ -34,6 +34,11 @@ const RETRY_CODES = new Set([
 
 const CACHE_KEY_CHARS = 32;
 
+// The parts of a model call worth naming while it is in flight. One list:
+// index.ts and chat.ts each carried their own copy, and adding a phase to
+// one of them was a type error in the other.
+export type TurnPhase = "sending" | "waiting" | "thinking" | "writing";
+
 export const worthRetrying = (failure: unknown): boolean => {
   if (failure instanceof TypeError) return true;
   if (!(failure instanceof Error)) return false;
@@ -204,7 +209,7 @@ export const createAgent = (setup: Setup) => {
         onDelta: (delta: { kind: "text" | "reasoning"; text: string }) => void;
         onReasoningEnd: (reasoning: { text: string; elapsedMs: number }) => void;
         // which part of the model call is in flight, so the wave can say so
-        onPhase: (name: "sending" | "waiting" | "thinking" | "writing" | null) => void;
+        onPhase: (name: TurnPhase | null) => void;
       },
     ) => {
       // What extensions contribute rides in the per-turn message, not the

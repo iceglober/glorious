@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
-import { type ChatSignal, createChat } from "./chat";
+import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig } from "./config";
 import { messagesOf, type SessionEvent, usageTotals } from "./events";
@@ -205,7 +205,7 @@ const main = async (): Promise<void> => {
   // what the current draft block is showing, so deltas append rather than replace
   let live: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
   // what the model call is doing, and since when — the wave shows both
-  let phase: "sending" | "waiting" | "thinking" | "writing" | null = null;
+  let phase: ChatPhase = null;
   let phaseSince = Date.now();
   const running: Array<{
     id: number;
