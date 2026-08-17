@@ -12,6 +12,7 @@
     "azure-env-credentials",
     "cli-version-update",
     "cloud-auth-connect",
+    "compaction-visible",
     "config-paths",
     "config-tui",
     "configurable-model-pricing",
