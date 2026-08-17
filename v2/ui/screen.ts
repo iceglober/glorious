@@ -7,7 +7,7 @@ import {
   composerKeyBindings,
   composerWrapMode,
 } from "../composer";
-import type { Line } from "../render";
+import type { Key, Line } from "../extension-api";
 import { createChrome, fillHex, panelHex } from "./chrome";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;

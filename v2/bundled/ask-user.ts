@@ -1,20 +1,4 @@
-import type { Glorious } from "../extension-api";
-
-// The `ask_user` tool, which used to be built in. It is here to keep the core
-// to the six tools that touch the machine — bash, read, write, edit, grep,
-// glob — and because a tool that opens a widget and waits for a person is
-// exactly the kind of thing the extension API exists to make possible. If it
-// could not be written against `g`, "extensible" would be a claim rather than a
-// fact.
-//
-// It registers only when there is somebody to answer. In print mode `g.ask`
-// throws, so a registered tool would hang the model on a question that can
-// never be answered, and it would retry until something timed out. Withholding
-// the tool tells the model the option does not exist, which is the honest
-// version of the same thing.
-//
-// Shadow it with `.glorious/extensions/ask-user.ts`, or delete it and the model
-// simply stops being able to ask.
+import type { Glorious, Key, Line } from "../extension-api";
 
 export default function askUser(g: Glorious): void {
   if (!g.hasUI) return;
@@ -34,9 +18,65 @@ export default function askUser(g: Glorious): void {
         .min(1)
         .max(20),
     }),
-    execute: async ({ questions }) => g.ask(questions),
-    // The row says what was asked, not that a tool ran. A question is the one
-    // tool call the user was part of, so echoing it is the whole of the row.
+    execute: async ({ questions }) => {
+      let question = 0;
+      let option = 0;
+      let resolveAnswer: ((answer: string) => void) | undefined;
+      let capture: { close: () => void; repaint: () => void } | undefined;
+      const answer = new Promise<string>((resolve) => {
+        resolveAnswer = resolve;
+        capture = g.ui.capture({
+          render: (columns): Line[] => {
+            const current = questions[question];
+            if (!current) return [];
+            const lines: Line[] = [[{ text: current.question, tone: "accent", bold: true }]];
+            for (const [index, choice] of current.options.entries())
+              lines.push([
+                { text: index === option ? "› " : "  ", tone: "accent" },
+                { text: choice, tone: index === option ? "highlight" : "muted" },
+              ]);
+            lines.push([
+              {
+                text: `${question + 1}/${questions.length} · ↑↓ choose · Enter select · Esc cancel`,
+                tone: "muted",
+              },
+            ]);
+            return lines.map((line) =>
+              line.map((span) => ({ ...span, text: span.text.slice(0, columns) })),
+            );
+          },
+          onKey: (key: Key) => {
+            const current = questions[question];
+            if (!current) return;
+            if (key.key === "up")
+              option = (option + current.options.length - 1) % current.options.length;
+            if (key.key === "down") option = (option + 1) % current.options.length;
+            if (key.key === "return") {
+              if (question + 1 < questions.length) {
+                question += 1;
+                option = 0;
+              } else {
+                resolveAnswer?.(
+                  JSON.stringify({
+                    answers: questions.map((item, index) => ({
+                      question: item.question,
+                      option: item.options[index === question ? option : 0],
+                    })),
+                  }),
+                );
+                capture?.close();
+              }
+            }
+            if (key.key === "escape") {
+              resolveAnswer?.(JSON.stringify({ cancelled: true }));
+              capture?.close();
+            }
+            capture?.repaint();
+          },
+        });
+      });
+      return answer;
+    },
     renderCall: (input) => [
       [
         {
@@ -50,9 +90,6 @@ export default function askUser(g: Glorious): void {
     ],
   });
 
-  // The guidance travels with the tool. It used to sit in the core prompt,
-  // which meant deleting the tool left the model instructed to use something
-  // that no longer existed.
   g.prompt(
     "Use ask_user when intent, scope, or a material choice is uncertain, and always when you would otherwise offer the user options in prose.",
   );

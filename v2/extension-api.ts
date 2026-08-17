@@ -4,7 +4,7 @@ import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import { clip, type Line, type Tone } from "./render";
 import type { SkillSummary } from "./skills";
-import type { Question, ToolEvent } from "./tools";
+import type { ToolEvent } from "./tools";
 import { wrapTool } from "./tools";
 
 // The public surface an extension is written against. Everything on it is a

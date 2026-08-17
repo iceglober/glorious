@@ -13,7 +13,6 @@ import { loadExtensions } from "./extensions";
 import type { ToolEvent } from "./tools";
 
 let root = "";
-const asked: string[] = [];
 const printed: string[] = [];
 const sent: string[] = [];
 
@@ -32,10 +31,6 @@ const host: ExtensionHost = {
         : content.map((line) => line.map((span) => span.text).join("")).join("\n"),
     );
   },
-  ask: async (questions) => {
-    asked.push(questions[0].question);
-    return "{}";
-  },
   inspect: () => ({ commands: [], skills: [], extensions: [] }),
   clear: () => "cleared" as const,
   compact: async () => ({ outcome: "too-short" as const }),
@@ -43,6 +38,7 @@ const host: ExtensionHost = {
   mode: "tui" as const,
   setInput: () => {},
   columns: () => 100,
+  capture: () => ({ close: () => {}, repaint: () => {} }),
   tools: () => ["read", "write"],
   setTools: () => {},
   model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
