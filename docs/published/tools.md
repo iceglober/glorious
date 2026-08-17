@@ -26,7 +26,7 @@ switching. The agent operates on the git repository you launched it in.
 
 ## Agent
 
-- **ask_user** — asks you questions with selectable options. Absent in `-p`
+- **ask_user** — asks you questions with selectable options. Not a built-in: a bundled extension, written against `g.ui.capture`. Absent in `-p`
   mode, where there is nobody to answer.
 - **activate_skill** — loads a skill's full instructions. Present only when
   skills are found.

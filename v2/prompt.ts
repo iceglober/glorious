@@ -63,8 +63,6 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   - Verify with this repo's own tests, linter, and typechecker. Find those
     commands in the repo; never invent them. Static checks do not prove
     user-facing behaviour — check that separately.
-  - Use ask_user when intent, scope, or a material choice is uncertain, and
-    always when you would otherwise offer the user options in prose.
   - Be concise. Show file paths clearly. Close with what changed and the
     evidence that it works.
 </guidelines>

@@ -4,7 +4,7 @@ import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import { clip, type Line, type Tone } from "./render";
 import type { SkillSummary } from "./skills";
-import type { Question, ToolEvent } from "./tools";
+import type { ToolEvent } from "./tools";
 import { wrapTool } from "./tools";
 
 // The public surface an extension is written against. Everything on it is a
@@ -174,13 +174,40 @@ export type FlagSpec = {
   run: (value: string) => void | Promise<void>;
 };
 
+/** A keypress, in glorious's own vocabulary rather than the renderer's. */
+export type Key = {
+  /** "return", "escape", "up", "backspace", "a" … */
+  key: string;
+  ctrl: boolean;
+  shift: boolean;
+  /** The printable text this key produced. Empty for control keys. */
+  text: string;
+};
+
+export type Capture = {
+  /** Draw the composer area. Called on every key, and on resize. */
+  render: (columns: number) => Line[];
+  /** Every keypress, until you close. Nothing else sees them. */
+  onKey: (key: Key) => void;
+};
+
 export type Ui = {
-  /** Pick one of a list. Resolves to null if dismissed. */
-  select: (title: string, options: readonly string[]) => Promise<string | null>;
-  /** Yes/no. Resolves false if dismissed. */
-  confirm: (title: string, message?: string) => Promise<boolean>;
-  /** Free text. Resolves to null if dismissed. */
-  input: (title: string) => Promise<string | null>;
+  /**
+   * Take over the composer area: draw your own lines there and receive every
+   * key, until you call close().
+   *
+   * This is the whole of glorious's input primitive, and it is deliberately the
+   * only one. There was an `ask`, a `select`, a `confirm` and an `input` here,
+   * which meant the core had an opinion about what a question looks like — a
+   * 234-line widget lived in the renderer for the sake of one tool, and the
+   * "generic" helpers around it were parsing the JSON that tool returned to the
+   * model. A coding agent's core does not need to know what asking is.
+   *
+   * The bundled `ask-user` extension is a question widget written against
+   * nothing but this. A picker, a form, a diff viewer are the same amount of
+   * work, and none of them is privileged over yours.
+   */
+  capture: (spec: Capture) => { close: () => void; repaint: () => void };
   /** Put text in the composer, ready to edit. */
   setInput: (text: string) => void;
 };
@@ -281,8 +308,6 @@ export type Glorious = {
     emit: (name: string, payload?: unknown) => void;
     on: (name: string, handler: (payload: unknown) => void) => void;
   };
-  /** Ask the user, using the same widget the ask_user tool uses. */
-  ask: (questions: Question[]) => Promise<string>;
   /** Append a line to the per-turn preamble the model reads. */
   prompt: (text: string) => void;
   /** Contribute a segment to the status line. Return null to show nothing. */
@@ -307,7 +332,7 @@ export type ExtensionHost = {
   send: (text: string, options: { label?: string; steer?: boolean }) => void;
   print: (content: string | Line[], tone: Tone) => void;
   columns: () => number;
-  ask: (questions: Question[]) => Promise<string>;
+  capture: (spec: Capture) => { close: () => void; repaint: () => void };
   setInput: (text: string) => void;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
@@ -440,7 +465,6 @@ export const createApi = (
     print: (content, tone = "muted") => host.print(content, tone),
     columns: host.columns,
     clip,
-    ask: host.ask,
     inspect: host.inspect,
     clear: host.clear,
     compact: host.compact,
@@ -449,28 +473,7 @@ export const createApi = (
     mode: host.mode,
     hasUI: host.mode === "tui",
     ui: {
-      select: async (title, options) => {
-        const answered = JSON.parse(
-          await host.ask([{ question: title, options: [...options] }]),
-        ) as { cancelled?: boolean; answers?: Array<{ option: string | null }> };
-        if (answered.cancelled) return null;
-        return answered.answers?.[0]?.option ?? null;
-      },
-      confirm: async (title, message) => {
-        const answered = JSON.parse(
-          await host.ask([
-            { question: message ? `${title} — ${message}` : title, options: ["Yes", "No"] },
-          ]),
-        ) as { cancelled?: boolean; answers?: Array<{ option: string | null }> };
-        return !answered.cancelled && answered.answers?.[0]?.option === "Yes";
-      },
-      input: async (title) => {
-        const answered = JSON.parse(
-          await host.ask([{ question: title, options: ["Type your answer as a note"] }]),
-        ) as { cancelled?: boolean; answers?: Array<{ note?: string }> };
-        if (answered.cancelled) return null;
-        return answered.answers?.[0]?.note?.trim() || null;
-      },
+      capture: host.capture,
       setInput: host.setInput,
     },
     tools: host.tools,
