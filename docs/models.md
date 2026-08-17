@@ -7,8 +7,9 @@ In order of precedence:
 1. `--model provider/model-id` on the command line
 2. `GLORIOUS_MODEL` / `GLORIOUS_VARIANT`
 3. `.glorious/config.json` in the project
-4. `~/.config/glorious/config.json`
-5. the default, `azure/gpt-5.6-luna`
+4. `~/.glorious/config.json`
+5. `~/.config/glorious/config.json`
+6. the default, `azure/gpt-5.6-luna`
 
 ```json
 {
@@ -19,6 +20,11 @@ In order of precedence:
 
 `model` is `provider/model-id`; a bare id means azure. `variant` is the
 reasoning effort, when the model advertises one.
+
+Merged nearest-first, one key at a time: a project may pin the model while your
+personal config supplies the provider settings it does not mention. `~/.glorious/`
+is read because that is already where your extensions, sequences and commands
+live; `~/.config/glorious/` works too, for the XDG layout.
 
 Config is read-only — nothing writes it at runtime. The core has no model
 picker: edit the file or set the environment variable and restart, and

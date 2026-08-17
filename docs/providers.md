@@ -26,9 +26,18 @@ config. `glorious doctor` names the provider and anything missing.
 | Perplexity | `perplexity` | `PERPLEXITY_API_KEY` | |
 | Together AI | `togetherai` | `TOGETHER_AI_API_KEY` | |
 
+Shorthands resolve: `vertex`, `bedrock`, `aws`, `gemini`, `claude`, `foundry`,
+`azure-openai`, `together`, `grok`, `open-router`. A name close to a built-in one
+is named rather than treated as an unknown endpoint — `--model vertexai/x` asks
+whether you meant `google-vertex`.
+
 Azure accepts three names because the portal, the CLI and the SDK each use a
 different one, and the SDK reads only its own — a key sitting in the environment
 under the wrong name used to fail a session with no explanation.
+
+Provider settings can sit in the project's `.glorious/config.json`, in
+`~/.glorious/config.json`, or in `~/.config/glorious/config.json` — merged
+nearest-first, so a project overrides one key without restating the rest.
 
 ## Anything else
 

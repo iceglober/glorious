@@ -68,6 +68,7 @@ session inherits whichever happened.
 | `.glorious/commands/*.md` | `/name` prompts |
 | `.agents/skills/*/SKILL.md` | skills, listed to the model and loaded on demand |
 | `.glorious/config.json` | model, variant, provider settings |
+| `~/.glorious/config.json` | the same, for you rather than the project |
 
 Also `~/.agents/` and `~/.config/agents/`. Nothing reads another tool's
 directories.
@@ -75,7 +76,9 @@ directories.
 ## Providers
 
 Fifteen built in, plus any OpenAI-compatible endpoint given a base URL. Common
-shorthands (`vertex`, `bedrock`, `gemini`, `claude`) resolve to the right one.
+shorthands (`vertex`, `bedrock`, `gemini`, `claude`, `foundry`, `together`,
+`grok`) resolve to the right one, and a near-miss is named rather than treated
+as an unknown endpoint.
 Credentials come from the environment; nothing is stored in a keychain and
 nothing prompts. See `providers.md`.
 
