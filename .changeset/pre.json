@@ -7,6 +7,7 @@
   "changesets": [
     "activity-row",
     "agent-modes-and-commands",
+    "api-smells",
     "arrows-and-subagent-drilldown",
     "assistant-response-marker",
     "azure-env-credentials",
