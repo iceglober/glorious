@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createAgent } from "./agent";
+import { loadConfig } from "./config";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
@@ -28,15 +29,30 @@ export const runPrint = async (
   // every cost as zero — and scripting a cost report is exactly what -p is for,
   // so the one place it must work is the one place it did not. Silent on
   // failure: offline you get tokens without prices, as in the TUI.
+  const [rules, skills, loadedConfig] = await Promise.all([
+    loadAgentRules(where.root),
+    loadSkills(where.root),
+    loadConfig(where.root),
+  ]);
+  // Built from the config, which it was not: currentModel() was called with no
+  // arguments here, so a model set in .glorious/config.json worked in the TUI
+  // and was ignored by every headless run — including the ones the agent uses to
+  // check its own work.
+  const chosen = currentModel(loadedConfig.config);
   const model = {
-    ...currentModel(),
-    ...(await modelMetadata(currentModel()).catch(() => ({}))),
+    ...chosen,
+    ...(await modelMetadata(chosen).catch(() => ({}))),
   };
-  const [rules, skills] = await Promise.all([loadAgentRules(where.root), loadSkills(where.root)]);
+  const envToolTimeout = Number(process.env.GLORIOUS_TOOL_TIMEOUT_MS);
+  const toolTimeoutMs =
+    Number.isFinite(envToolTimeout) && envToolTimeout > 0
+      ? envToolTimeout
+      : loadedConfig.config.tool_timeout_ms;
 
   const agent = createAgent({
     root: where.root,
     model,
+    toolTimeoutMs,
     // Fresh every run. This becomes the provider's promptCacheKey, and a
     // constant one tells the backend that unrelated runs are the same
     // conversation — after which it looks for reasoning items the previous run
@@ -143,6 +159,7 @@ export const runPrint = async (
   );
   for (const failure of loaded.failures) note(`[extension ${failure.origin}] ${failure.message}`);
   for (const warning of skills.warnings) note(`[skill] ${warning}`);
+  for (const problem of loadedConfig.diagnostics) note(`[config] ${problem}`);
 
   const onSigint = (): void => stop.abort();
   process.on("SIGINT", onSigint);

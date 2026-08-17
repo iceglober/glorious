@@ -178,6 +178,11 @@ const main = async (): Promise<void> => {
   const rules = await loadAgentRules(root);
   const config = resolvedConfig;
   let model = currentModel(config.config);
+  const envToolTimeout = Number(process.env.GLORIOUS_TOOL_TIMEOUT_MS);
+  const toolTimeoutMs =
+    Number.isFinite(envToolTimeout) && envToolTimeout > 0
+      ? envToolTimeout
+      : config.config.tool_timeout_ms;
   let skills = await loadSkills(root);
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills, which answer under a `skill:` prefix of their own.
@@ -299,6 +304,7 @@ const main = async (): Promise<void> => {
   const agent = createAgent({
     root,
     model,
+    toolTimeoutMs,
     sessionId: session.id,
     rules,
     cwd: root,
@@ -789,6 +795,12 @@ const main = async (): Promise<void> => {
   registerCommands();
   for (const failure of loaded.failures)
     render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
+  // Config problems were reported only by `glorious doctor`, which is a command
+  // you run once you already suspect something — and a config that silently does
+  // nothing gives you nothing to suspect. A model set in a file that was never
+  // read looks exactly like a model that was never set.
+  for (const note of resolvedConfig.diagnostics)
+    render({ type: "notice", text: `(config) ${note}` });
   // A skill file that could not be read said nothing and simply was not there,
   // which looks exactly like a skill nobody wrote. Same bet as extensions: say
   // what is wrong, keep going with what loaded.

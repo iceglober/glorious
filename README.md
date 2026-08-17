@@ -31,7 +31,7 @@ glorious --resume [id]        # pick a session back up
 ## Extending it
 
 Ask it. "Add a tool that lists my open PRs" is a request glorious answers by
-writing `.glorious/extensions/prs.ts` — its [docs](docs/extensions.md) ship with
+writing `.glorious/extensions/prs.ts` — its [docs](docs/published/extensions.md) ship with
 it and its system prompt says where they are.
 
 By hand, an extension is one file with no imports:
@@ -49,9 +49,10 @@ export default function (g) {
 ```
 
 Tools, slash commands, lifecycle hooks, status widgets and custom row rendering,
-all through the same object. A shell command plus a prompt needs no code at all
-— that is a [sequence](docs/sequences.md). Start at
-[docs/extensions.md](docs/extensions.md).
+all go through the same object. A shell command plus a prompt is a small extension.
+Start at
+[docs/published/extensions.md](docs/published/extensions.md) or the
+[docs site](https://glrs.dev).
 
 ## Decisions
 

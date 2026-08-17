@@ -8,6 +8,8 @@ export default defineConfig({
     alias: { "~": resolve(__dirname, "src") },
   },
   server: {
+    // The published Markdown is shared with the repository docs.
+    fs: { allow: [resolve(__dirname, ".."), resolve(__dirname)] },
     // SPA fallback — serve index.html for all routes
     historyApiFallback: true,
   },
