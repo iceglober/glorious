@@ -38,6 +38,7 @@
     "skills-as-commands",
     "slash-command-execution",
     "small-core-extensible",
+    "standard-providers",
     "stream-errors-stay-in-the-tui",
     "stream-model-output",
     "surface-intermediate-text",
