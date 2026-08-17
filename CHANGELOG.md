@@ -1,5 +1,21 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.32
+
+### Minor Changes
+
+- ddf0eea: Read personal config from `~/.glorious/config.json` as well.
+
+  Extensions, sequences and commands already come from `~/.glorious/` — the ancestor walk reaches it whenever a project sits under home — but config was read only from the project and `~/.config/glorious/`. The same directory holding your resources but not your settings is a rule nobody should have to learn. Both personal locations are now read, merged nearest-first one key at a time, so a project can pin the model while your personal config supplies the provider settings it does not mention.
+
+  Also fixes a lint error that reached main: a regex written with a literal escape character, in the test that tolerates ANSI in a child process's output.
+
+### Patch Changes
+
+- 35785f6: `/help` now describes what Esc actually does: it interrupts the turn, and only takes back the newest queued message when nothing is running. The line read "interrupt the turn · drop the newest queued message" as if it did both — which is exactly the behaviour that was fixed when it stopped silently dequeueing mid-turn.
+
+  Also makes a test immune to the environment it runs in. It spawns a child and parses its stdout as a number; with `FORCE_COLOR` set in the parent — which a terminal or a CI wrapper may well do — Bun wraps even a bare number in colour codes, so the parse yields `NaN`. It failed locally and passed in CI, which is the worst way for a test to be wrong: it teaches you to ignore a red suite.
+
 ## 1.0.0-next.31
 
 ### Minor Changes
