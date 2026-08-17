@@ -25,13 +25,20 @@ const host: ExtensionHost = {
   send: (text) => {
     sent.push(text);
   },
-  print: (text) => {
-    printed.push(text);
+  print: (content) => {
+    printed.push(
+      typeof content === "string"
+        ? content
+        : content.map((line) => line.map((span) => span.text).join("")).join("\n"),
+    );
   },
   ask: async (questions) => {
     asked.push(questions[0].question);
     return "{}";
   },
+  inspect: () => ({ commands: [], sequences: [], skills: [], extensions: [] }),
+  clear: () => "cleared" as const,
+  reload: async () => {},
 };
 
 const write = async (name: string, source: string): Promise<void> => {

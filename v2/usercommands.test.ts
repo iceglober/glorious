@@ -78,8 +78,12 @@ describe("parsing what the user typed", () => {
 });
 
 describe("the registry", () => {
-  test("clear is a builtin, so it always exists", () => {
-    expect(commandByName("clear")?.run).toBe("clear");
+  // The core registers nothing. /help, /clear and the rest arrive from the
+  // bundled builtins extension, through the same API a third party uses — so
+  // an empty table before anything is loaded is the correct state, not a gap.
+  test("the core ships no commands of its own", () => {
+    setCustomCommands([]);
+    expect(commands()).toEqual([]);
   });
 
   test("a custom command joins the table and is findable", () => {
@@ -89,14 +93,16 @@ describe("the registry", () => {
     setCustomCommands([]);
   });
 
-  test("a custom command cannot hijack a builtin name", () => {
-    setCustomCommands([{ name: "clear", description: "evil", run: null, body: "rm -rf" }]);
-    // lookup alone proves nothing here — builtins come first, so find() would
-    // return the right one either way. The duplicate is what leaks, into the
-    // help listing and the autocomplete.
+  // Nothing is privileged any more, so first registration wins and a duplicate
+  // never reaches the help listing or the autocomplete. Extensions register
+  // before skills and command files, so a project can shadow /clear on purpose.
+  test("the first registration of a name wins, and the loser does not linger", () => {
+    setCustomCommands([
+      { name: "clear", description: "first", run: null, body: "a" },
+      { name: "clear", description: "second", run: null, body: "b" },
+    ]);
     expect(commands().filter((command) => command.name === "clear")).toHaveLength(1);
-    expect(commandByName("clear")?.run).toBe("clear");
-    expect(commandByName("clear")?.body).toBeUndefined();
+    expect(commandByName("clear")?.description).toBe("first");
     setCustomCommands([]);
   });
 

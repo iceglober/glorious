@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
-import { commandByName, expandCommand, setCustomCommands } from "./commands";
+import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig } from "./config";
 import { messagesOf, type SessionEvent } from "./events";
 import { createRegistry, describeContribution, fire } from "./extension-api";
@@ -418,61 +418,18 @@ const main = async (): Promise<void> => {
         })();
         return;
       }
-      // A command defined in a file or by a skill trigger has no UI action of
-      // its own: its body becomes the turn.
+      // A command defined in a file or by a skill trigger has no code of its
+      // own: its body becomes the turn.
       const custom = commandByName(name);
-      if (custom && custom.run === null && custom.body !== undefined) {
+      if (custom?.body !== undefined) {
         chat.send(expandCommand(custom.body, args), `/${name}${args === "" ? "" : ` ${args}`}`);
         repaint();
         return;
       }
-      if (name === "clear") {
-        const outcome = chat.clear();
-        if (outcome === "cleared") {
-          render({ type: "cleared", reason: "user cleared" });
-          render({ type: "notice", text: "(context cleared)" });
-        } else
-          render({
-            type: "notice",
-            text:
-              outcome === "busy"
-                ? "(cannot clear while a turn is running \u2014 press Esc first)"
-                : "(nothing to clear)",
-          });
-      }
-      // Everything below is a builtin. Falling off the end silently cleared the
-      // composer and produced no turn, which reads as the app being dead — so an
-      // unrecognised command says so instead.
-      if (custom === undefined) {
-        render({ type: "notice", text: `(unknown command: /${name} — /help lists what exists)` });
-        return;
-      }
-      if (name === "help") screen.showHelp();
-      if (name === "skills") screen.showSkills(skills.summaries);
-      if (name === "extensions")
-        screen.showExtensions(
-          loaded.extensions.map((entry) => ({
-            ...entry,
-            contributed: describeContribution(registry, entry.origin),
-          })),
-        );
+      // Falling off the end silently cleared the composer and produced no turn,
+      // which reads as the app being dead.
+      render({ type: "notice", text: `(unknown command: /${name} — /help lists what exists)` });
       repaint();
-    },
-    onSkillsReload: () => {
-      void loadUserCommands(root).then((refreshed) => {
-        userCommands = refreshed;
-        registerCommands();
-      });
-      void loadSequences(root).then((refreshed) => {
-        sequences = refreshed.sequences;
-        screen.setSequences(refreshed.sequences);
-      });
-      void loadSkills(root).then((refreshed) => {
-        skills = refreshed;
-        agent.setSkills(refreshed);
-        screen.showSkills(skills.summaries);
-        repaint();
-      });
     },
     onEscape: () => interrupt(),
     onResize: () => repaint(),
@@ -500,11 +457,39 @@ const main = async (): Promise<void> => {
         chat.send(text, label);
         repaint();
       },
-      print: (text, tone) => {
-        screen.print(noticeBlock(text, tone), false);
+      print: (content, tone) => {
+        screen.print(typeof content === "string" ? noticeBlock(content, tone) : content, false);
         repaint();
       },
       ask: (questions) => screen.askQuestions(questions, undefined),
+      inspect: () => ({
+        commands: commands(),
+        sequences,
+        skills: skills.summaries,
+        extensions: loaded.extensions.map((entry) => ({
+          ...entry,
+          contributed: describeContribution(registry, entry.origin),
+        })),
+      }),
+      clear: () => {
+        const outcome = chat.clear();
+        if (outcome === "cleared") render({ type: "cleared", reason: "user cleared" });
+        return outcome;
+      },
+      reload: async () => {
+        const [refreshedCommands, refreshedSequences, refreshedSkills] = await Promise.all([
+          loadUserCommands(root),
+          loadSequences(root),
+          loadSkills(root),
+        ]);
+        userCommands = refreshedCommands;
+        sequences = refreshedSequences.sequences;
+        skills = refreshedSkills;
+        registerCommands();
+        agent.setSkills(refreshedSkills);
+        screen.setSequences(sequences);
+        repaint();
+      },
     },
     (event) => toolSink(event),
   );

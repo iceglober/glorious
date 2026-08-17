@@ -1,39 +1,27 @@
-export type BuiltinAction = "help" | "skills" | "extensions" | "clear";
-
 export type Command = {
   name: string;
   description: string;
-  // A builtin drives the UI. A custom command has no action: its body is sent
-  // as a turn, which is how a command defined in a markdown file — or a skill
-  // that declares a trigger — reaches the model.
-  run: BuiltinAction | null;
+  // null means the body is the prompt: a markdown command file, or a skill that
+  // declares a trigger. An extension's command has a runner instead, held by
+  // the registry rather than here.
+  run: null;
   body?: string;
   origin?: string;
 };
 
-const builtins: readonly Command[] = [
-  { name: "help", description: "Show help and tips", run: "help" },
-  { name: "clear", description: "Clear the conversation context", run: "clear" },
-  { name: "skills", description: "List available skills", run: "skills" },
-  {
-    name: "extensions",
-    description: "List loaded extensions and where they came from",
-    run: "extensions",
-  },
-];
-
-// Loaded from disk after startup, so the table has to be readable as a function
-// rather than frozen at import time.
+// The core registers no commands of its own. /help, /clear, /skills,
+// /extensions and /reload are a bundled extension, written against the same API
+// a third party gets — which is the only way "extensible" is a fact rather than
+// a claim. Nothing here treats them specially, so any of them can be shadowed
+// or dropped.
 let custom: readonly Command[] = [];
 
-// A builtin always wins a name collision: a command file cannot capture /clear
-// and quietly change what it does.
 export const setCustomCommands = (loaded: readonly Command[]): void => {
-  const taken = new Set(builtins.map((command) => command.name));
-  custom = loaded.filter((command) => !taken.has(command.name));
+  const seen = new Set<string>();
+  custom = loaded.filter((command) => !seen.has(command.name) && seen.add(command.name));
 };
 
-export const commands = (): readonly Command[] => [...builtins, ...custom];
+export const commands = (): readonly Command[] => custom;
 
 export const commandByName = (name: string): Command | undefined =>
   commands().find((command) => command.name === name.toLowerCase());

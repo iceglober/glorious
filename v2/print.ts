@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createAgent } from "./agent";
-import { createRegistry, fire } from "./extension-api";
+import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { currentModel } from "./models";
@@ -42,10 +42,28 @@ export const runPrint = async (
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
       send: () => note("[extension] send() has no meaning in print mode; ignored"),
-      print: (text) => note(text),
+      print: (content) =>
+        note(
+          typeof content === "string"
+            ? content
+            : content.map((line) => line.map((span) => span.text).join("")).join("\n"),
+        ),
       ask: async () => {
         throw new Error("ask() has no meaning in print mode: there is nobody to answer");
       },
+      // Extensions load headlessly too, so anything they inspect has to answer.
+      // A one-shot run has no command table or sequences of its own.
+      inspect: () => ({
+        commands: [],
+        sequences: [],
+        skills: skills.summaries,
+        extensions: loaded.extensions.map((entry) => ({
+          ...entry,
+          contributed: describeContribution(registry, entry.origin),
+        })),
+      }),
+      clear: () => "empty" as const,
+      reload: async () => note("[extension] reload() has no meaning in print mode; ignored"),
     },
     (event) => toolSink(event),
   );

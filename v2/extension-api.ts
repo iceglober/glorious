@@ -62,6 +62,16 @@ export type CommandSpec = {
   run: (args: string) => void | Promise<void>;
 };
 
+// What is loaded right now. Every listing glorious used to ship as a built-in
+// command is a view over this and nothing more, which is why none of them are
+// built in any longer.
+export type Loaded = {
+  commands: ReadonlyArray<{ name: string; description: string; origin?: string }>;
+  sequences: ReadonlyArray<{ name: string; description: string; origin: string }>;
+  skills: ReadonlyArray<{ name: string; description: string; location: string }>;
+  extensions: ReadonlyArray<{ name: string; origin: string; contributed: string }>;
+};
+
 export type Glorious = {
   /** The project root every path is resolved against. */
   root: string;
@@ -82,8 +92,14 @@ export type Glorious = {
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
   /** Start a turn. `label` is what the transcript shows instead of the text. */
   send: (text: string, label?: string) => void;
-  /** Write into the transcript. */
-  print: (text: string, tone?: Tone) => void;
+  /** Write into the transcript. Pass Line[] when you want it styled. */
+  print: (content: string | Line[], tone?: Tone) => void;
+  /** What is loaded: commands, sequences, skills, extensions. */
+  inspect: () => Loaded;
+  /** Drop the conversation the model replays. The transcript is untouched. */
+  clear: () => "cleared" | "busy" | "empty";
+  /** Re-read skills, commands and sequences from disk. */
+  reload: () => Promise<void>;
   /** Ask the user, using the same widget the ask_user tool uses. */
   ask: (questions: Question[]) => Promise<string>;
   /** Append a line to the per-turn preamble the model reads. */
@@ -100,8 +116,11 @@ export type ExtensionHost = {
   root: string;
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
   send: (text: string, label: string | null) => void;
-  print: (text: string, tone: Tone) => void;
+  print: (content: string | Line[], tone: Tone) => void;
   ask: (questions: Question[]) => Promise<string>;
+  inspect: () => Loaded;
+  clear: () => "cleared" | "busy" | "empty";
+  reload: () => Promise<void>;
 };
 
 export type ToolRenderer = {
@@ -195,8 +214,11 @@ export const createApi = (
     },
     exec: host.exec,
     send: (text, label) => host.send(text, label ?? null),
-    print: (text, tone = "muted") => host.print(text, tone),
+    print: (content, tone = "muted") => host.print(content, tone),
     ask: host.ask,
+    inspect: host.inspect,
+    clear: host.clear,
+    reload: host.reload,
     prompt: (text) => registry.promptLines.push(text),
     status: (render) => {
       ledger.ui += 1;
