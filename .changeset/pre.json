@@ -21,6 +21,7 @@
     "layered-provider-mcp-config",
     "model-switching-and-tui",
     "multi-file-edit-and-subagents",
+    "no-builtin-commands",
     "own-directories-only",
     "permissions-acl",
     "picker-provider-catalog",
