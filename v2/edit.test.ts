@@ -7,7 +7,7 @@ import { createTools } from "./tools";
 
 const dir = await mkdtemp(join(tmpdir(), "glorious-edit-"));
 const skills = await loadSkills(process.cwd());
-const tools = createTools(dir, () => {}, null, skills);
+const tools = createTools(dir, () => {}, skills);
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true });

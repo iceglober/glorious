@@ -108,14 +108,7 @@ describe("the prompt agrees with the tool registry", () => {
     const { createTools } = await import("./tools");
     const { loadSkills } = await import("./skills");
     const skills = await loadSkills(process.cwd());
-    const registry = Object.keys(
-      createTools(
-        "/tmp",
-        () => {},
-        async () => "",
-        skills,
-      ),
-    );
+    const registry = Object.keys(createTools("/tmp", () => {}, skills));
     const surfaces = [systemPrompt({ rules: "" }), skillsPrompt("PLACEHOLDER")];
     const named = new Set(
       surfaces.flatMap((text) =>

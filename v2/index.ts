@@ -12,7 +12,7 @@ import { loadAgentRules } from "./guidance";
 import { expandMentions, fileCandidates } from "./mentions";
 import { currentModel, loadCatalogue, modelLabel, modelMetadata, modelRef } from "./models";
 import { runPrint } from "./print";
-import { fence, shortcutPrompt } from "./prompt";
+import { fence } from "./prompt";
 import { missingFor, providerSpec } from "./providers";
 import {
   advanceToolRun,
@@ -29,7 +29,6 @@ import {
   statusRow,
   userBlock,
 } from "./render";
-import { loadSequences } from "./sequences";
 import {
   createSession,
   loadPromptHistory,
@@ -106,7 +105,7 @@ const main = async (): Promise<void> => {
     // Piped input joins the prompt rather than replacing it, so both
     // `cat log | glorious -p "what failed?"` and a bare `cat log | glorious -p`
     // work. Fenced, so a diff or a log reads as material rather than as further
-    // instructions — the same treatment a sequence's stdout gets.
+    // instructions — the same treatment piped input gets.
     const piped = process.stdin.isTTY ? "" : (await Bun.stdin.text()).trim();
     const asked = args
       .slice(printAt + 1)
@@ -193,10 +192,6 @@ const main = async (): Promise<void> => {
   const registerCommands = (): void =>
     setCustomCommands([...registry.commands, ...skills.commands, ...userCommands]);
   registerCommands();
-  // Sequences are deliberately not commands: they never reach the model, so
-  // they stay out of the table the model's slash commands live in.
-  let { sequences, legacy: legacySequences } = await loadSequences(root);
-
   const resumedUsage = session.events.findLast((event) => event.type === "usage");
   let tokens =
     session.contextTokens ?? (resumedUsage?.type === "usage" ? resumedUsage.tokens : null);
@@ -313,7 +308,6 @@ const main = async (): Promise<void> => {
     git,
     skills: skills.catalog,
     skillTools: skills,
-    askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
     extensionTools: (onTool) => {
       toolSink = onTool;
       return registry.tools;
@@ -490,45 +484,6 @@ const main = async (): Promise<void> => {
         repaint();
       });
     },
-    sequences,
-    // A sequence runs first and asks questions afterwards: the shell is the
-    // point, and the prompt — if the file carries one — is a consequence of it.
-    // A failed run produces neither, so a reset that did not happen cannot look
-    // like one that did.
-    onShortcut: (name, args) => {
-      const sequence = sequences.find((entry) => entry.name === name);
-      if (sequence === undefined) {
-        render({ type: "notice", text: `(unknown sequence: $${name})` });
-        return;
-      }
-      const invocation = `$${name}${args === "" ? "" : ` ${args}`}`;
-      screen.print(userBlock(invocation), true);
-      const words = args === "" ? [] : args.split(/\s+/u);
-      void runShell(root, sequence.run, words).then(({ output, stdout, ok }) => {
-        if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
-        if (!ok) {
-          repaint();
-          return;
-        }
-        if (sequence.clear) {
-          const outcome = chat.clear();
-          if (outcome === "cleared") {
-            render({ type: "cleared", reason: invocation });
-            render({ type: "notice", text: "(context cleared)" });
-          } else if (outcome === "busy")
-            render({ type: "notice", text: "(context kept — a turn is running)" });
-        }
-        // The invocation was already echoed above, before the shell ran. Echoing
-        // it again as the turn's label would print the same line twice with the
-        // output wedged between them.
-        if (sequence.body !== "")
-          chat.send(
-            shortcutPrompt(expandCommand(sequence.body, args), stdout),
-            `(prompt from ${invocation})`,
-          );
-        repaint();
-      });
-    },
     cwd: root,
     onCommand: (name, args) => {
       // An extension's command runs its own code rather than becoming a turn,
@@ -696,10 +651,9 @@ const main = async (): Promise<void> => {
         repaint();
       },
       columns: () => screen.columnsNow(),
-      ask: (questions) => screen.askQuestions(questions, undefined),
+      capture: (spec) => screen.capture(spec),
       inspect: () => ({
         commands: commands(),
-        sequences,
         skills: skills.summaries,
         extensions: loaded.extensions.map((entry) => ({
           ...entry,
@@ -772,13 +726,11 @@ const main = async (): Promise<void> => {
       },
       compact: (options) => runCompaction(options ?? {}, false),
       reload: async () => {
-        const [refreshedCommands, refreshedSequences, refreshedSkills] = await Promise.all([
+        const [refreshedCommands, refreshedSkills] = await Promise.all([
           loadUserCommands(root),
-          loadSequences(root),
           loadSkills(root),
         ]);
         userCommands = refreshedCommands;
-        sequences = refreshedSequences.sequences;
         skills = refreshedSkills;
         // /reload is when a skill file was just edited, so it is the moment its
         // mistakes matter most.
@@ -786,7 +738,6 @@ const main = async (): Promise<void> => {
           render({ type: "notice", text: `(skill) ${warning}` });
         registerCommands();
         agent.setSkills(refreshedSkills);
-        screen.setSequences(sequences);
         repaint();
       },
     },
@@ -805,11 +756,6 @@ const main = async (): Promise<void> => {
   // which looks exactly like a skill nobody wrote. Same bet as extensions: say
   // what is wrong, keep going with what loaded.
   for (const warning of skills.warnings) render({ type: "notice", text: `(skill) ${warning}` });
-  for (const path of legacySequences)
-    render({
-      type: "notice",
-      text: `(${path} is in an extensions/ directory — sequences live in .glorious/sequences/ now; extensions/ is for .ts extensions and this fallback goes away next release)`,
-    });
   // A tool_call handler returning false refuses the call; the model is told so
   // by name, which is what lets an extension implement a read-only mode or a
   // confirmation gate without the core knowing either exists.

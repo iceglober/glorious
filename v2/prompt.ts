@@ -26,12 +26,6 @@ export const REMINDER_CLOSE = "[/system-reminder]";
 export const reminder = (body: string): string =>
   `${REMINDER_OPEN}\n${body.replaceAll(REMINDER_CLOSE, "[∕system-reminder]")}\n${REMINDER_CLOSE}`;
 
-// A sequence's prose is the request; its stdout is what the shell found on
-// the way. Fenced apart so a diff or a log is read as evidence rather than as
-// further instructions.
-export const shortcutPrompt = (body: string, output: string): string =>
-  output.trim() === "" ? body : `${body}\n\n${fence("output", output)}`;
-
 // Roughly forty lines, about a thousand tokens with the tool schemas. What was
 // here before — a four-step method, four worked
 // examples, a delegation argument, a permission table, a grounding clause, a
@@ -63,8 +57,6 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   - Verify with this repo's own tests, linter, and typechecker. Find those
     commands in the repo; never invent them. Static checks do not prove
     user-facing behaviour — check that separately.
-  - Use ask_user when intent, scope, or a material choice is uncertain, and
-    always when you would otherwise offer the user options in prose.
   - Be concise. Show file paths clearly. Close with what changed and the
     evidence that it works.
 </guidelines>
@@ -77,7 +69,6 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   Read them whole; they are written for you and they cross-reference each other.
 
   - extensions.md   writing an extension: the API, discovery, rendering
-  - sequences.md    \`$name\` markdown shortcuts: shell, then optionally a prompt
   - commands.md     \`/name\` markdown commands, skills, and AGENTS.md
   - skills.md       SKILL.md frontmatter, where skills are found, how they load
   - tools.md        the built-in tools, their limits, and why nothing prompts
@@ -93,9 +84,6 @@ export const systemPrompt = (ctx: { rules: string }): string => `
 
   Write it rather than handing the request back. Verify it with
   \`glorious -p "<prompt>"\`, which loads extensions exactly as the app does.
-
-  A shell command plus a prompt needs no code at all — that is a sequence, in
-  sequences.md. Reach for an extension when a sequence cannot do it.
 </extending-yourself>
 
 ${fence("repo-rules", ctx.rules)}

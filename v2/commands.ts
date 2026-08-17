@@ -55,8 +55,7 @@ const score = (query: string, candidate: string): number | null => {
   return total - candidate.length / 100;
 };
 
-// Generic over the list so the composer can complete commands and sequences
-// with one ranking, rather than two that drift apart.
+// Generic over the list so the composer can complete commands with one ranking.
 export const matchNames = <T extends { name: string }>(items: readonly T[], query: string): T[] =>
   items
     .map((item, index) => ({ item, index, score: score(query, item.name) }))
@@ -90,7 +89,7 @@ export const activeSigil = (
 export const commandName = (text: string): string | null => commandInvocation(text)?.name ?? null;
 
 // Everything after the name travels with it; a custom command is useless
-// without it, and a sequence takes arguments the same way.
+// without it.
 export const sigilInvocation = (
   text: string,
   sigil: string,
@@ -107,6 +106,3 @@ export const sigilInvocation = (
 
 export const commandInvocation = (text: string): { name: string; args: string } | null =>
   sigilInvocation(text, "/");
-
-export const shortcutInvocation = (text: string): { name: string; args: string } | null =>
-  sigilInvocation(text, "$");

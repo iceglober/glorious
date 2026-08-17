@@ -10,7 +10,7 @@ import { wrapTool } from "./tools";
 // The public surface an extension is written against. Everything on it is a
 // facade over a seam that already exists inside glorious — `tool` lands where
 // MCP tools used to be merged, `on` is the internal signal bus made public,
-// `exec` is the same shell a sequence runs. Nothing here is a second mechanism
+// `exec` is the same shell the `!` command runs. Nothing here is a second mechanism
 // alongside the first.
 //
 // Renderers return Line[], glorious's own span structure, never opentui types.
@@ -122,7 +122,6 @@ export type CommandSpec = {
 // built in any longer.
 export type Loaded = {
   commands: ReadonlyArray<{ name: string; description: string; origin?: string }>;
-  sequences: ReadonlyArray<{ name: string; description: string; origin: string }>;
   // The real type, not a copy of its fields — a second declaration of the same
   // shape is a second thing to remember to update, and this one had already
   // fallen behind.
@@ -174,13 +173,36 @@ export type FlagSpec = {
   run: (value: string) => void | Promise<void>;
 };
 
+/** A keypress, in glorious's own vocabulary rather than the renderer's. */
+export type Key = {
+  /** "return", "escape", "up", "backspace", "a" … */
+  key: string;
+  ctrl: boolean;
+  shift: boolean;
+  /** The printable characters this key produced, empty for control keys. */
+  text: string;
+};
+
+export type Capture = {
+  /** Draw the composer area. Called on every key and every repaint. */
+  render: (columns: number) => Line[];
+  /** Every keypress, until you close. Nothing else sees them. */
+  onKey: (key: Key) => void;
+};
+
 export type Ui = {
-  /** Pick one of a list. Resolves to null if dismissed. */
-  select: (title: string, options: readonly string[]) => Promise<string | null>;
-  /** Yes/no. Resolves false if dismissed. */
-  confirm: (title: string, message?: string) => Promise<boolean>;
-  /** Free text. Resolves to null if dismissed. */
-  input: (title: string) => Promise<string | null>;
+  /**
+   * Take over the composer area: draw your own lines there, receive every key,
+   * until you call close().
+   *
+   * This is the whole of glorious's input primitive. There is deliberately no
+   * `ask`, no `select`, no `confirm` — a core that knows what a question looks
+   * like has already decided what asking is, and asking is not something a
+   * coding agent's core has to have an opinion about. The bundled `ask-user`
+   * extension is a question widget written entirely against this; anything you
+   * want instead is the same amount of work and none of it is privileged.
+   */
+  capture: (spec: Capture) => { close: () => void; repaint: () => void };
   /** Put text in the composer, ready to edit. */
   setInput: (text: string) => void;
 };
@@ -218,7 +240,7 @@ export type Glorious = {
   columns: () => number;
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
-  /** What is loaded: commands, sequences, skills, extensions. */
+  /** What is loaded: commands, skills, extensions. */
   inspect: () => Loaded;
   /** Drop the conversation the model replays. The transcript is untouched. */
   clear: () => "cleared" | "busy" | "empty";
@@ -228,7 +250,7 @@ export type Glorious = {
    * tokens of recent turns to leave verbatim.
    */
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
-  /** Re-read skills, commands and sequences from disk. */
+  /** Re-read skills and commands from disk. */
   reload: () => Promise<void>;
 
   /** "tui" when a terminal is attached, "print" for a headless -p run. */
@@ -281,8 +303,6 @@ export type Glorious = {
     emit: (name: string, payload?: unknown) => void;
     on: (name: string, handler: (payload: unknown) => void) => void;
   };
-  /** Ask the user, using the same widget the ask_user tool uses. */
-  ask: (questions: Question[]) => Promise<string>;
   /** Append a line to the per-turn preamble the model reads. */
   prompt: (text: string) => void;
   /** Contribute a segment to the status line. Return null to show nothing. */
@@ -307,7 +327,7 @@ export type ExtensionHost = {
   send: (text: string, options: { label?: string; steer?: boolean }) => void;
   print: (content: string | Line[], tone: Tone) => void;
   columns: () => number;
-  ask: (questions: Question[]) => Promise<string>;
+  capture: (spec: Capture) => { close: () => void; repaint: () => void };
   setInput: (text: string) => void;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
@@ -440,7 +460,6 @@ export const createApi = (
     print: (content, tone = "muted") => host.print(content, tone),
     columns: host.columns,
     clip,
-    ask: host.ask,
     inspect: host.inspect,
     clear: host.clear,
     compact: host.compact,
@@ -449,28 +468,7 @@ export const createApi = (
     mode: host.mode,
     hasUI: host.mode === "tui",
     ui: {
-      select: async (title, options) => {
-        const answered = JSON.parse(
-          await host.ask([{ question: title, options: [...options] }]),
-        ) as { cancelled?: boolean; answers?: Array<{ option: string | null }> };
-        if (answered.cancelled) return null;
-        return answered.answers?.[0]?.option ?? null;
-      },
-      confirm: async (title, message) => {
-        const answered = JSON.parse(
-          await host.ask([
-            { question: message ? `${title} — ${message}` : title, options: ["Yes", "No"] },
-          ]),
-        ) as { cancelled?: boolean; answers?: Array<{ option: string | null }> };
-        return !answered.cancelled && answered.answers?.[0]?.option === "Yes";
-      },
-      input: async (title) => {
-        const answered = JSON.parse(
-          await host.ask([{ question: title, options: ["Type your answer as a note"] }]),
-        ) as { cancelled?: boolean; answers?: Array<{ note?: string }> };
-        if (answered.cancelled) return null;
-        return answered.answers?.[0]?.note?.trim() || null;
-      },
+      capture: host.capture,
       setInput: host.setInput,
     },
     tools: host.tools,

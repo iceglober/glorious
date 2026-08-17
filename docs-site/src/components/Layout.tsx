@@ -4,7 +4,7 @@ import { Search } from "./Search";
 export const SECTIONS = [
   { to: "/get-started", label: "get started", pages: [["Install", "/install"], ["Quickstart", "/quickstart"]] },
   { to: "/concepts", label: "concepts", pages: [["Philosophy", "/philosophy"], ["Glossary", "/glossary"], ["Architecture", "/architecture"]] },
-  { to: "/extend", label: "extend", pages: [["Extensions", "/extensions"], ["Skills", "/skills"], ["Commands", "/commands"], ["Sequences", "/sequences"]] },
+  { to: "/extend", label: "extend", pages: [["Extensions", "/extensions"], ["Skills", "/skills"], ["Commands", "/commands"]] },
   { to: "/reference", label: "reference", pages: [["Tools", "/tools"], ["Providers", "/providers"], ["Models", "/models"], ["Configuration", "/configuration"], ["CLI", "/cli"], ["Extension API", "/api"]] },
   { to: "/help", label: "help", pages: [["Troubleshooting", "/troubleshooting"], ["Changelog", "/changelog"]] },
 ] as const;

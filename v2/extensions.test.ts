@@ -36,7 +36,7 @@ const host: ExtensionHost = {
     asked.push(questions[0].question);
     return "{}";
   },
-  inspect: () => ({ commands: [], sequences: [], skills: [], extensions: [] }),
+  inspect: () => ({ commands: [], skills: [], extensions: [] }),
   clear: () => "cleared" as const,
   compact: async () => ({ outcome: "too-short" as const }),
   reload: async () => {},

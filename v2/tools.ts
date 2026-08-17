@@ -48,8 +48,11 @@ export type AskQuestions = (
   signal: AbortSignal | undefined,
 ) => Promise<string>;
 
+// The six that touch the machine, plus the one that opens a skill. `ask_user`
+// was here and is a bundled extension now: it needs a person rather than the
+// filesystem, and the core is the part that cannot be written against the
+// extension API.
 export const BUILT_IN_TOOL_NAMES = [
-  "ask_user",
   "bash",
   "read",
   "write",
@@ -132,7 +135,6 @@ const launch = async (
 };
 
 // `output` is everything, for the transcript. `stdout` is kept apart because an
-// sequence that carries a prompt sends its stdout to the model as data, and
 // diagnostics on stderr would read as part of the request. Arguments are handed
 // to bash as real positional parameters rather than pasted into the command
 // text, so `$1` and `$@` mean what a script author expects and nothing has to
@@ -328,7 +330,6 @@ export const resultSummary = (name: string, result: string, ok: boolean): string
 export const createTools = (
   root: string,
   onEvent: (event: ToolEvent) => void,
-  askQuestions: AskQuestions | null,
   skills: Skills,
   timeoutMs = COMMAND_MS,
 ): ToolSet => {
@@ -360,26 +361,6 @@ export const createTools = (
     inputSchema: Schema,
     body: (input: z.infer<Schema>, signal: AbortSignal | undefined, id: number) => Promise<string>,
   ) => wrapTool(onEvent, name, description, inputSchema, body);
-
-  const askUser =
-    askQuestions === null
-      ? undefined
-      : define(
-          "ask_user",
-          "Ask the user one or more questions. Each question must include concise options. The user can choose an option, add a note, or do both. Ask related questions together so the user can answer them in one batch. Use the answers to continue the current task.",
-          z.object({
-            questions: z
-              .array(
-                z.object({
-                  question: z.string().min(1).describe("Question to show the user"),
-                  options: z.array(z.string().min(1)).min(1).max(10).describe("Selectable answers"),
-                }),
-              )
-              .min(1)
-              .max(20),
-          }),
-          async ({ questions }, signal) => askQuestions(questions, signal),
-        );
 
   const bash = define(
     "bash",
@@ -511,7 +492,6 @@ export const createTools = (
   );
 
   return {
-    ...(askUser ? { ask_user: askUser } : {}),
     bash,
     read,
     write,

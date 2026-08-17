@@ -66,7 +66,6 @@ export const runPrint = async (
     git: where.git,
     skills: skills.catalog,
     skillTools: skills,
-    askQuestions: null,
     extensionTools: (onTool) => {
       toolSink = onTool;
       return registry.tools;
@@ -98,14 +97,13 @@ export const runPrint = async (
             : content.map((line) => line.map((span) => span.text).join("")).join("\n"),
         ),
       columns: () => Number(process.env.COLUMNS ?? 100),
-      ask: async () => {
-        throw new Error("ask() has no meaning in print mode: there is nobody to answer");
+      capture: () => {
+        throw new Error("ui.capture() has no meaning in print mode: there is no composer");
       },
       // Extensions load headlessly too, so anything they inspect has to answer.
-      // A one-shot run has no command table or sequences of its own.
+      // A one-shot run has no command table of its own.
       inspect: () => ({
         commands: [],
-        sequences: [],
         skills: skills.summaries,
         extensions: loaded.extensions.map((entry) => ({
           ...entry,

@@ -1,11 +1,5 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
-import {
-  activeSigil,
-  commandInvocation,
-  matchingCommands,
-  matchNames,
-  shortcutInvocation,
-} from "../commands";
+import { activeSigil, commandInvocation, matchingCommands } from "../commands";
 import {
   atFirstLine,
   atLastLine,
@@ -14,10 +8,7 @@ import {
   composerWrapMode,
 } from "../composer";
 import type { Line } from "../render";
-import type { Sequence } from "../sequences";
-import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
-import { createQuestions } from "./questions";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;
 const pastLimit = 100;
@@ -32,8 +23,6 @@ export const createScreen = async (callbacks: {
   cwd: string;
   onCommand: (name: string, args: string) => void;
   onFileSearch: (query: string) => Promise<readonly string[]>;
-  onShortcut: (name: string, args: string) => void;
-  sequences?: readonly Sequence[];
   onKeyBinding?: (event: KeyEvent) => boolean;
   onEscape: () => void;
   onResize: () => void;
@@ -166,7 +155,6 @@ export const createScreen = async (callbacks: {
     syncAutocomplete();
   };
   let shellMode = false;
-  let sequences: readonly Sequence[] = callbacks.sequences ?? [];
   // index into `log` of the block still being streamed into, if any
   let drafting: number | null = null;
 
@@ -204,7 +192,36 @@ export const createScreen = async (callbacks: {
       composerRow.visible = node === null;
     },
   };
-  const questions = createQuestions(chrome, host);
+  // Taking over the composer area is the whole of glorious's input primitive.
+  // A question widget used to live in the core — 234 lines of it, for one tool
+  // — which meant the core had opinions about what asking looks like. It draws
+  // whatever lines it is given and hands over every key until it closes; a
+  // picker, a form, a confirmation are all things somebody else writes.
+  let captured: { render: (columns: number) => Line[]; onKey: (key: Key) => void } | null = null;
+  const captureNode = textNode({ content: "", width: "100%", wrapMode: "word" });
+
+  const paintCapture = (): void => {
+    if (!captured) return;
+    captureNode.content = styled(captured.render(columns()));
+    draw();
+  };
+
+  const capture = (spec: { render: (columns: number) => Line[]; onKey: (key: Key) => void }) => {
+    captured = spec;
+    host.useComposerSlot(captureNode);
+    input.blur();
+    paintCapture();
+    return {
+      close: (): void => {
+        if (captured !== spec) return;
+        captured = null;
+        host.useComposerSlot(null);
+        host.focusComposer();
+        draw();
+      },
+      repaint: paintCapture,
+    };
+  };
 
   const painter = (node: TextRenderable) => {
     let shown = "";
@@ -262,18 +279,16 @@ export const createScreen = async (callbacks: {
     autocompleteSigil = activeSigil(
       input.plainText,
       input.cursorOffset,
-      shellMode ? ["/"] : ["/", "$", "@"],
+      shellMode ? ["/"] : ["/", "@"],
     );
     const matches =
       autocompleteSigil === null
         ? []
-        : autocompleteSigil.sigil === "$"
-          ? matchNames(sequences, autocompleteSigil.query)
-          : autocompleteSigil.sigil === "@"
-            ? // Files are found on disk, so the list arrives after the keystroke
-              // that asked for it; whatever the last lookup returned is shown.
-              fileMatches
-            : matchingCommands(autocompleteSigil.query);
+        : autocompleteSigil.sigil === "@"
+          ? // Files are found on disk, so the list arrives after the keystroke
+            // that asked for it; whatever the last lookup returned is shown.
+            fileMatches
+          : matchingCommands(autocompleteSigil.query);
     if (autocompleteSigil?.sigil === "@") void refreshFiles(autocompleteSigil.query);
     const sigil = autocompleteSigil?.sigil ?? "/";
     autocompleteItems = matches;
@@ -366,14 +381,6 @@ export const createScreen = async (callbacks: {
       callbacks.onCommand(invocation.name, invocation.args);
       return;
     }
-    // Only a name that resolves is routed as a sequence; anything else is
-    // prose that happens to start with `$` and belongs in the turn.
-    const shortcut = shellMode ? null : shortcutInvocation(text);
-    if (shortcut && sequences.some((entry) => entry.name === shortcut.name)) {
-      dismiss();
-      callbacks.onShortcut(shortcut.name, shortcut.args);
-      return;
-    }
     if (shellMode) {
       shellMode = false;
       syncShellMode();
@@ -407,7 +414,19 @@ export const createScreen = async (callbacks: {
 
   const onKey = (event: KeyEvent): void => {
     if (phase !== "live") return;
-    if (questions.handleKey(event)) return;
+    // Whoever holds the composer area sees every key first, and sees it as
+    // glorious's own shape rather than the renderer's.
+    if (captured) {
+      event.stopPropagation();
+      captured.onKey({
+        key: event.name ?? "",
+        ctrl: event.ctrl ?? false,
+        shift: event.shift ?? false,
+        text: typeof event.sequence === "string" && !event.ctrl ? event.sequence : "",
+      });
+      paintCapture();
+      return;
+    }
     // An extension's binding runs before anything the composer would do with
     // the key, and consuming it stops the composer seeing it at all.
     if (callbacks.onKeyBinding?.(event)) return;
@@ -552,13 +571,6 @@ export const createScreen = async (callbacks: {
       return true;
     },
     isDrafting: () => drafting !== null,
-    // Extensions are discovered from disk like skills and commands, so the
-    // composer has to be told when that list changes or autocomplete keeps
-    // offering something the reload dropped.
-    setSequences: (next: readonly Sequence[]) => {
-      sequences = next;
-      syncAutocomplete();
-    },
     print: printBlock,
     setProgress: painter(progress),
     setFooter: painter(extra),
@@ -579,7 +591,6 @@ export const createScreen = async (callbacks: {
       input.cursorOffset = text.length;
     },
     columns,
-    askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
-      questions.ask(items, signal),
+    capture,
   };
 };

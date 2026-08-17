@@ -19,7 +19,6 @@ import modelsMd from "../../docs/published/models.md?raw";
 import configurationMd from "../../docs/published/configuration.md?raw";
 import extensionsMd from "../../docs/published/extensions.md?raw";
 import skillsMd from "../../docs/published/skills.md?raw";
-import sequencesMd from "../../docs/published/sequences.md?raw";
 import architectureMd from "../../docs/published/architecture.md?raw";
 import troubleshootingMd from "../../docs/published/troubleshooting.md?raw";
 import apiMd from "./generated/extension-api.md?raw";
@@ -49,7 +48,6 @@ export function App() {
             <Route path="configuration" element={<Doc md={configurationMd} title="Configuration" />} />
             <Route path="extensions" element={<Doc md={extensionsMd} title="Extensions" />} />
             <Route path="skills" element={<Doc md={skillsMd} title="Skills" />} />
-            <Route path="sequences" element={<Doc md={sequencesMd} title="Sequences" />} />
             <Route path="architecture" element={<Doc md={architectureMd} title="Architecture" />} />
             <Route path="troubleshooting" element={<Doc md={troubleshootingMd} title="Troubleshooting" />} />
             <Route path="api" element={<Doc md={apiMd} title="Extension API" />} />
