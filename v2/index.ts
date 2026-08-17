@@ -313,7 +313,6 @@ const main = async (): Promise<void> => {
     git,
     skills: skills.catalog,
     skillTools: skills,
-    askQuestions: (questions, signal) => screen.askQuestions(questions, signal),
     extensionTools: (onTool) => {
       toolSink = onTool;
       return registry.tools;
@@ -696,7 +695,7 @@ const main = async (): Promise<void> => {
         repaint();
       },
       columns: () => screen.columnsNow(),
-      ask: (questions) => screen.askQuestions(questions, undefined),
+      capture: (spec) => screen.capture(spec),
       inspect: () => ({
         commands: commands(),
         sequences,

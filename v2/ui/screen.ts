@@ -13,11 +13,10 @@ import {
   composerKeyBindings,
   composerWrapMode,
 } from "../composer";
+import type { Capture } from "../extension-api";
 import type { Line } from "../render";
 import type { Sequence } from "../sequences";
-import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
-import { createQuestions } from "./questions";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;
 const pastLimit = 100;
@@ -204,7 +203,39 @@ export const createScreen = async (callbacks: {
       composerRow.visible = node === null;
     },
   };
-  const questions = createQuestions(chrome, host);
+  // Taking over the composer area is the whole of glorious's input primitive.
+  // A question widget used to live here — 234 lines of renderer code, for the
+  // sake of one tool — which meant the core had an opinion about what asking
+  // looks like. This draws whatever lines it is handed and gives away every key
+  // until it closes; a picker, a form, a confirmation are all somebody else's.
+  let captured: Capture | null = null;
+  const captureNode = textNode({ content: "", width: "100%", wrapMode: "word" });
+
+  const paintCapture = (): void => {
+    if (!captured) return;
+    captureNode.content = styled(captured.render(columns()));
+    draw();
+  };
+
+  const capture = (spec: Capture): { close: () => void; repaint: () => void } => {
+    captured = spec;
+    host.useComposerSlot(captureNode);
+    input.blur();
+    paintCapture();
+    return {
+      // Idempotent, and only the holder can close: a second call, or a call
+      // from something that has since been replaced, must not steal the
+      // composer back from whoever holds it now.
+      close: (): void => {
+        if (captured !== spec) return;
+        captured = null;
+        host.useComposerSlot(null);
+        host.focusComposer();
+        draw();
+      },
+      repaint: paintCapture,
+    };
+  };
 
   const painter = (node: TextRenderable) => {
     let shown = "";
@@ -407,7 +438,21 @@ export const createScreen = async (callbacks: {
 
   const onKey = (event: KeyEvent): void => {
     if (phase !== "live") return;
-    if (questions.handleKey(event)) return;
+    // Whoever holds the composer area sees every key first, in glorious's own
+    // shape rather than the renderer's — the same vocabulary g.key() uses, so
+    // an extension never meets an opentui type.
+    if (captured) {
+      event.stopPropagation();
+      captured.onKey({
+        key: event.name ?? "",
+        ctrl: event.ctrl ?? false,
+        shift: event.shift ?? false,
+        text:
+          !event.ctrl && !event.meta && typeof event.sequence === "string" ? event.sequence : "",
+      });
+      paintCapture();
+      return;
+    }
     // An extension's binding runs before anything the composer would do with
     // the key, and consuming it stops the composer seeing it at all.
     if (callbacks.onKeyBinding?.(event)) return;
@@ -579,7 +624,6 @@ export const createScreen = async (callbacks: {
       input.cursorOffset = text.length;
     },
     columns,
-    askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
-      questions.ask(items, signal),
+    capture,
   };
 };

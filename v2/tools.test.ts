@@ -14,14 +14,7 @@ import {
 
 const registry = async (): Promise<string[]> => {
   const skills = await loadSkills(process.cwd());
-  return Object.keys(
-    createTools(
-      "/tmp",
-      () => {},
-      async () => "",
-      skills,
-    ),
-  );
+  return Object.keys(createTools("/tmp", () => {}, skills));
 };
 
 describe("BUILT_IN_TOOL_NAMES", () => {
@@ -40,26 +33,12 @@ describe("BUILT_IN_TOOL_NAMES", () => {
   test("gives separate registries distinct event IDs", async () => {
     const skills = await loadSkills(process.cwd());
     const events: ToolEvent[] = [];
-    const first = createTools(
-      "/tmp",
-      (event) => events.push(event),
-      async () => "",
-      skills,
-    );
-    const second = createTools(
-      "/tmp",
-      (event) => events.push(event),
-      async () => "",
-      skills,
-    );
-    const questions = { questions: [{ question: "Continue?", options: ["Yes"] }] };
+    const first = createTools("/tmp", (event) => events.push(event), skills);
+    const second = createTools("/tmp", (event) => events.push(event), skills);
+    const input = { pattern: "*.ts", path: "/tmp" };
 
-    await (
-      first.ask_user.execute as (input: typeof questions, options: unknown) => Promise<string>
-    )(questions, {});
-    await (
-      second.ask_user.execute as (input: typeof questions, options: unknown) => Promise<string>
-    )(questions, {});
+    await (first.glob.execute as (i: typeof input, o: unknown) => Promise<string>)(input, {});
+    await (second.glob.execute as (i: typeof input, o: unknown) => Promise<string>)(input, {});
 
     expect(events.filter((event) => event.phase === "start").map((event) => event.id)).toHaveLength(
       2,
@@ -77,12 +56,7 @@ describe("BUILT_IN_TOOL_NAMES", () => {
 describe("reaching glorious's own docs", () => {
   const call = async (tool: string, input: Record<string, unknown>): Promise<string> => {
     const skills = await loadSkills(process.cwd());
-    const tools = createTools(
-      "/tmp",
-      () => {},
-      async () => "",
-      skills,
-    );
+    const tools = createTools("/tmp", () => {}, skills);
     const execute = tools[tool].execute as (i: unknown, c: unknown) => Promise<string>;
     return execute(input, {});
   };

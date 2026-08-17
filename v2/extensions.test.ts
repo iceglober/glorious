@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  type Capture,
   createRegistry,
   describeContribution,
   type ExtensionHost,
@@ -13,7 +14,7 @@ import { loadExtensions } from "./extensions";
 import type { ToolEvent } from "./tools";
 
 let root = "";
-const asked: string[] = [];
+const captured: Capture[] = [];
 const printed: string[] = [];
 const sent: string[] = [];
 
@@ -32,9 +33,9 @@ const host: ExtensionHost = {
         : content.map((line) => line.map((span) => span.text).join("")).join("\n"),
     );
   },
-  ask: async (questions) => {
-    asked.push(questions[0].question);
-    return "{}";
+  capture: (spec) => {
+    captured.push(spec);
+    return { close: () => {}, repaint: () => {} };
   },
   inspect: () => ({ commands: [], sequences: [], skills: [], extensions: [] }),
   clear: () => "cleared" as const,

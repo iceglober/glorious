@@ -149,7 +149,7 @@ The model is told why, by name, so it chooses something else instead of seeing
 an unexplained failure. Withholding beats instructing — a blocked tool cannot be
 talked into running.
 
-**Be careful blocking a tool headlessly.** `g.ui.*` needs a person, so a gate
+**Be careful blocking a tool headlessly.** `g.ui.capture` needs a person, so a gate
 that asks for confirmation has to decide what to do when `g.hasUI` is false.
 Refusing every `bash` in print mode makes `glorious -p` unusable — including the
 run the agent uses to verify its own work, which will then retry until something
@@ -162,7 +162,7 @@ g.on("tool_call", async ({ name, input }) => {
   const command = String(input.command ?? "");
   if (!/rm -rf|force-push|drop table/iu.test(command)) return;   // narrow
   if (!g.hasUI) return `refused headlessly: ${command}`;         // and explicit
-  if (!(await g.ui.confirm("Run this?", command))) return "you declined";
+  if (!(await confirm(g, "Run this?", command))) return "you declined";   // your own, on g.ui.capture
 });
 ```
 
@@ -183,26 +183,62 @@ The project root, absolute. Every relative path an extension resolves should
 resolve against this, not `process.cwd()` — a sequence or a tool may have moved
 the working directory.
 
-### `g.ui`
+### `g.ui.capture(spec)`
 
-Prompts, in the composer rather than over the transcript. All of them throw in
-print mode, so guard on `g.hasUI` if the extension should also work headlessly.
+Take over the composer area: draw your own lines there and receive every key,
+until you close.
 
 ```ts
-const choice = await g.ui.select("Which branch?", ["main", "next"]);  // string | null
-const sure   = await g.ui.confirm("Delete it?", "This cannot be undone");  // boolean
-const name   = await g.ui.input("New session name");  // string | null
-g.ui.setInput("git status");   // put text in the composer, ready to edit
+g.command("branch", {
+  description: "Switch branch",
+  run: async () => {
+    const names = (await g.exec("git branch --format=%(refname:short)")).stdout.trim().split("\n");
+    let at = 0;
+    const held = g.ui.capture({
+      render: () => names.map((name, index): Line => [
+        { text: index === at ? "› " : "  ", tone: "accent" },
+        { text: name, bold: index === at },
+      ]),
+      onKey: (key) => {
+        if (key.key === "up") at = (at + names.length - 1) % names.length;
+        if (key.key === "down") at = (at + 1) % names.length;
+        if (key.key === "escape") held.close();
+        if (key.key === "return") {
+          held.close();
+          void g.exec(`git switch ${names[at]}`);
+        }
+      },
+    });
+  },
+});
 ```
 
-`select` and `input` resolve to `null` when dismissed; `confirm` resolves
-`false`. Dismissal is never mistaken for agreement.
+`render` is called on every key and on resize; `onKey` sees every keypress and
+nothing else does. `close()` gives the composer back, and is safe to call twice.
+A `Key` is `{ key, ctrl, shift, text }` — `key` is a name like `"return"` or
+`"escape"`, `text` is what the key would type and is empty for control keys.
 
-### `g.send(text, options?)` / `g.print(content, tone?)` / `g.ask(questions)`
+**This is the only input primitive, deliberately.** There used to be `g.ask`,
+`g.ui.select`, `g.ui.confirm` and `g.ui.input`, which meant the core had an
+opinion about what a question looks like — a 234-line question widget lived in
+the renderer for the sake of one tool, and the "generic" helpers around it
+worked by parsing the JSON that tool returned to the model. A coding agent's
+core does not need to know what asking is.
 
-Start a turn, write into the transcript, or ask the user with the same widget
-the `ask_user` tool uses. Tones: `accent`, `highlight`, `muted`, `prompt`,
-`success`, `warning`, `danger`.
+The bundled `ask-user` extension is a full question widget — options, a cursor,
+free-text notes, several questions in a row — written against nothing but
+`g.ui.capture`. Read `v2/bundled/ask-user.ts`; yours starts the same way and is
+not competing with anything privileged.
+
+`g.ui.capture` throws in print mode, where there is no composer. Guard on
+`g.hasUI`.
+
+`g.ui.setInput("git status")` puts text in the composer, ready to edit.
+
+### `g.send(text, options?)` / `g.print(content, tone?)`
+
+Start a turn, or write into the transcript. Tones: `accent`, `highlight`,
+`muted`, `prompt`, `success`, `warning`, `danger`.
 
 `g.send(text, { label, steer })` — `label` is what the transcript shows instead
 of the text, which matters when the text is a 30k expansion nobody typed.
@@ -304,7 +340,7 @@ g.events.emit(name, payload) · g.events.on(name, handler)   // extension to ext
 ### Run mode
 
 `g.mode` is `"tui"` or `"print"`, and `g.hasUI` is false headlessly. Anything
-that needs a person — `g.ui.*` — throws in print mode rather than hanging. Guard
+that needs a person — `g.ui.capture` — throws in print mode rather than hanging. Guard
 on `g.hasUI` and your extension works in both.
 
 ### `g.prompt(text)`

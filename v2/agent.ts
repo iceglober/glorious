@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "./models";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
-import { type AskQuestions, createTools, type ToolEvent } from "./tools";
+import { createTools, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
 const DEADLINES_MS = [30 * 60_000, 10 * 60_000, 10 * 60_000];
@@ -72,8 +72,6 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     model: ModelOption;
     sessionId: string;
     skills: string;
-    // null withholds ask_user, for a run with nobody to answer it
-    askQuestions: AskQuestions | null;
     skillTools: import("./skills").Skills;
     toolTimeoutMs?: number;
     // Handed the turn's event sink and asked afresh each turn, exactly as MCP
@@ -128,7 +126,7 @@ export const createAgent = (setup: Setup) => {
   // "closest definition wins" rule commands and sequences already follow.
   const toolsFor = (onTool: (event: ToolEvent) => void) => {
     const all = {
-      ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools, setup.toolTimeoutMs),
+      ...createTools(setup.root, onTool, setup.skillTools, setup.toolTimeoutMs),
       ...(setup.extensionTools?.(onTool) ?? {}),
     };
     if (allowed === null) return all;
