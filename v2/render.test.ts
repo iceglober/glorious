@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  advanceToolRun,
   elapsed,
   eventBlock,
   type Line,
+  NO_TOOL_RUN,
   queuedRow,
   reasoningBlock,
   reasoningDraft,
@@ -10,7 +12,9 @@ import {
   runningRow,
   statusLine,
   statusRow,
+  toolGroupFooter,
   toolRow,
+  transcript,
   width,
 } from "./render";
 
@@ -162,105 +166,156 @@ describe("the activity row", () => {
 // The model always received the reason — it is the tool's return value — but
 // the transcript showed only `✗ edit 2 files`, so a failure the agent then
 // worked around looked, from the outside, like nothing had happened.
-// The row reads as the call it was: name and arguments together on the header,
-// the tail of the output under arrows, and the duration closing it. A 30k
-// result still contributes three lines.
+// A row is one line now: what was called, what came back, how long it took. It
+// was five, which cost sixty lines of scrollback for a turn doing twelve
+// things.
 describe("the tool row format", () => {
   const text = (lines: Line[]): string =>
     lines.map((line) => line.map((span) => span.text).join("")).join("\n");
 
-  test("the call, the last lines of output, then how long it took", () => {
-    const rows = toolRow("bash", "git status", 1240, true, undefined, "a\nb\nc\nd\ne");
-    expect(text(rows).split("\n")).toEqual([
-      "  ✓ bash(git status)",
-      "        ↳ c",
-      "        ↳ d",
-      "        ↳ e",
-      "    completed in 1.2s",
-    ]);
+  test("a successful call is one line", () => {
+    const rows = toolRow("bash", "git status", 1240, true, undefined, "M a.ts", 80, "1 line");
+    expect(rows).toHaveLength(1);
+    expect(text(rows)).toContain("bash");
+    expect(text(rows)).toContain("git status · 1 line");
+    expect(text(rows)).toContain("1.2s");
   });
 
-  test("the tool name is bold, so the call reads before its arguments do", () => {
+  test("the name sits in a fixed column, so calls line up without coordinating", () => {
+    const one = text(toolRow("read", "a.ts", 1, true, undefined, "", 80));
+    const two = text(toolRow("bash", "b.sh", 1, true, undefined, "", 80));
+    expect(one.indexOf("a.ts")).toBe(two.indexOf("b.sh"));
+  });
+
+  test("the tool name is bold, so the call reads before its arguments", () => {
     const name = toolRow("bash", "git status", 1, true)
       .flat()
-      .find((span) => span.text === "bash");
+      .find((span) => span.text.trim() === "bash");
     expect(name?.bold).toBe(true);
   });
 
-  test("a running row has no duration — there is nothing to report yet", () => {
-    const rows = runningRow("bash", "sleep 3");
-    expect(text(rows)).toBe("  → bash(sleep 3)");
+  test("the duration is pushed to the right margin", () => {
+    const line = text(toolRow("read", "a.ts", 8, true, undefined, "", 60));
+    expect(line).toEndWith("8ms");
+    expect(line.length).toBeLessThanOrEqual(60);
   });
 
-  test("a failure says so where the duration goes", () => {
-    expect(text(toolRow("edit", "a.ts", 240, false))).toContain("failed in 240ms");
-  });
-
-  test("at most three output lines, however much came back", () => {
-    const rows = toolRow("bash", "x", 1, true, undefined, "l".repeat(10).split("").join("\n"));
-    expect(rows).toHaveLength(5);
-  });
-
-  test("blank lines do not count toward the three", () => {
-    const rows = toolRow("bash", "x", 1, true, undefined, "a\n\n\n\nb");
-    expect(text(rows).split("\n").slice(1, -1)).toEqual(["        ↳ a", "        ↳ b"]);
-  });
-
-  // A path eats a one-line budget whole, so the arguments get a second line —
-  // and stop there, or the transcript becomes mostly arguments.
-  test("long arguments fold onto a second line and no further", () => {
-    const rows = toolRow(
-      "bash",
-      `git commit -m "${"word ".repeat(80)}"`,
-      1,
-      true,
-      undefined,
-      "",
-      60,
-    );
-    const header = text(rows).split("\n").slice(0, -1);
-    expect(header).toHaveLength(2);
-    for (const line of header) expect(line.length).toBeLessThanOrEqual(60);
-    expect(header.at(-1)).toMatch(/…\)$/u);
-  });
-
-  test("the fold prefers a space, so a path is not split mid-segment", () => {
-    const rows = toolRow(
-      "bash",
-      `cd ${"/some/path".repeat(4)} && make build test`,
-      1,
-      true,
-      undefined,
-      "",
-      60,
-    );
-    expect(text(rows).split("\n")[1]).not.toMatch(/^\s+\/?[a-z]+\//u);
-  });
-
-  test("a line no wider than the terminal stays on one line", () => {
-    const rows = toolRow("bash", "git status", 1, true, undefined, "", 60);
-    expect(text(rows).split("\n")[0]).toBe("  ✓ bash(git status)");
-  });
-
-  test("a long line is clamped rather than wrapped across the transcript", () => {
-    const rows = toolRow("bash", "y".repeat(500), 1, true, undefined, "z".repeat(500));
-    for (const line of text(rows).split("\n")) expect(line.length).toBeLessThan(160);
-  });
-
-  test("failure output is danger-toned, and the ERROR: prefix is dropped", () => {
-    const rows = toolRow("edit", "2 files", 24, false, undefined, "ERROR: old_string not found");
+  // The reason a call failed is the one piece of output nobody should have to
+  // go looking for.
+  test("a failure earns a second line carrying the reason", () => {
+    const rows = toolRow("edit", "a.ts", 24, false, undefined, "ERROR: old_string not found", 80);
+    expect(rows).toHaveLength(2);
     expect(text(rows)).toContain("old_string not found");
     expect(text(rows)).not.toContain("ERROR:");
-    expect(rows.at(-2)?.at(-1)?.tone).toBe("danger");
+    expect(rows[1][0].tone).toBe("danger");
   });
 
-  test("a tool with nothing to show carries no empty parentheses", () => {
-    expect(text(toolRow("glob", "", 3, true, undefined, "")).split("\n")[0]).toBe("  ✓ glob");
+  test("a running row has no duration — there is nothing to report yet", () => {
+    expect(text(runningRow("bash", "sleep 3", undefined, 80)).trim()).toBe("→ bash    sleep 3");
   });
 
-  test("an extension's renderer replaces the body, not the header", () => {
-    const rows = toolRow("web_fetch", "x", 3000, true, [[{ text: "fetched 2 pages" }]], "ignored");
-    expect(text(rows)).toBe("  ✓ web_fetch(x)\n        fetched 2 pages\n    completed in 3.0s");
+  test("however much came back, the row stays one line", () => {
+    const huge = "x".repeat(200).split("").join("\n");
+    expect(
+      toolRow("bash", "y".repeat(500), 1, true, undefined, huge, 80, "200 lines"),
+    ).toHaveLength(1);
+  });
+
+  test("no row is ever wider than the terminal", () => {
+    for (const columns of [40, 60, 100, 200]) {
+      const rows = toolRow(
+        "bash",
+        "z".repeat(300),
+        4200,
+        true,
+        undefined,
+        "",
+        columns,
+        "y".repeat(300),
+      );
+      for (const line of text(rows).split("\n")) expect(line.length).toBeLessThanOrEqual(columns);
+    }
+  });
+
+  test("a tool with nothing to say is still a row", () => {
+    expect(text(toolRow("glob", "", 3, true, undefined, "", 80)).trim()).toStartWith("✓ glob");
+  });
+
+  // One seam, not two: an extension already describes its tool through
+  // renderResult, so that is where the row's summary comes from.
+  test("an extension's renderer supplies the summary", () => {
+    const rows = toolRow(
+      "web_fetch",
+      "x",
+      3000,
+      true,
+      [[{ text: "fetched 2 pages" }]],
+      "ignored",
+      80,
+    );
+    expect(rows).toHaveLength(1);
+    expect(text(rows)).toContain("x · fetched 2 pages");
+  });
+
+  test("a renderer wanting more than a line gets more than a line", () => {
+    const rows = toolRow(
+      "web_fetch",
+      "x",
+      10,
+      true,
+      [[{ text: "fetched 2 pages" }], [{ text: "one.com" }]],
+      "ignored",
+      80,
+    );
+    expect(rows).toHaveLength(2);
+    expect(text(rows)).toContain("one.com");
+  });
+});
+
+// A run of calls is whatever happened between two things the model said. Live
+// rendering and session replay both fold events through the same rule, because
+// two views of one session disagreeing about it is exactly the bug this shape
+// invites.
+describe("the receipt that closes a run of calls", () => {
+  const call = (ok = true, elapsedMs = 100) =>
+    ({ type: "tool", name: "bash", detail: "x", elapsedMs, ok, input: {}, result: "out" }) as const;
+  const text = (lines: Line[]): string =>
+    lines.map((line) => line.map((span) => span.text).join("")).join("\n");
+
+  test("it totals the calls and the time they took", () => {
+    expect(text(toolGroupFooter(4, 24_000, 0))).toContain("4 calls · 24.0s");
+  });
+
+  test("failures are counted where they cannot be missed", () => {
+    const footer = toolGroupFooter(4, 100, 1);
+    expect(text(footer)).toContain("1 failed");
+    expect(footer[0][0].tone).toBe("danger");
+  });
+
+  // For one call the row above already says everything the receipt would.
+  test("a single call gets no receipt", () => {
+    expect(toolGroupFooter(1, 100, 0)).toEqual([]);
+  });
+
+  test("a run closes when the model says something", () => {
+    let run = NO_TOOL_RUN;
+    for (const event of [call(), call()]) run = advanceToolRun(run, event).run;
+    const closing = advanceToolRun(run, { type: "assistant", text: "done" });
+    expect(text(closing.footer)).toContain("2 calls");
+    expect(closing.run).toEqual(NO_TOOL_RUN);
+  });
+
+  test("a tool event never closes the run it is part of", () => {
+    expect(advanceToolRun(NO_TOOL_RUN, call()).footer).toEqual([]);
+  });
+
+  test("replaying a session prints the same receipts the live screen did", () => {
+    const events = [call(), call(false), { type: "assistant" as const, text: "ok" }, call()];
+    const replayed = text(transcript(events, 100));
+    expect(replayed).toContain("2 calls · 200ms · 1 failed");
+    // the trailing single call closes at the end of the transcript, and one
+    // call earns no receipt
+    expect(replayed.match(/calls ·/gu)).toHaveLength(1);
   });
 });
 

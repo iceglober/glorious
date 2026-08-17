@@ -5,9 +5,9 @@ import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { expandMentions } from "./mentions";
 import { currentModel, modelMetadata } from "./models";
-import { errorText, toolRow } from "./render";
+import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
 import { loadSkills } from "./skills";
-import { firstDetail, runShell, setToolGate, type ToolEvent } from "./tools";
+import { firstDetail, resultSummary, runShell, setToolGate, type ToolEvent } from "./tools";
 
 // Headless. One turn, no TUI, no session file, and nobody to ask — so ask_user
 // is withheld rather than left to hang on an answer that cannot arrive.
@@ -147,6 +147,12 @@ export const runPrint = async (
   process.on("SIGINT", onSigint);
 
   const started = new Map<number, number>();
+  let run = NO_TOOL_RUN;
+  const closeRun = (): void => {
+    const stepped = advanceToolRun(run, { type: "assistant", text: "" });
+    run = stepped.run;
+    for (const line of stepped.footer) note(line.map((span) => span.text).join(""));
+  };
   let streamed = false;
   let seenTokens: number | null = null;
   let lastUsage: { input: number; output: number; cached: number; cost?: number } | undefined;
@@ -182,6 +188,10 @@ export const runPrint = async (
         // Reasoning is the model talking to itself; in a pipe it is noise the
         // caller did not ask for.
         if (kind !== "text") return;
+        // The model speaking closes the run of calls before it, exactly as it
+        // does on screen — same rule, same function, so `2>&1` and a watched
+        // session describe the same turn the same way.
+        closeRun();
         streamed = true;
         process.stdout.write(text);
       },
@@ -205,12 +215,22 @@ export const runPrint = async (
           undefined,
           event.result,
           TRAIL_CHARS,
+          resultSummary(event.name, event.result, event.ok),
         );
         const text = rows
           .map((line) => line.map((span) => span.text).join(""))
           .join("\n")
           .trimEnd();
         process.stderr.write(`${text}\n`);
+        run = advanceToolRun(run, {
+          type: "tool",
+          name: event.name,
+          detail: event.detail,
+          elapsedMs: since === undefined ? 0 : Date.now() - since,
+          ok: event.ok,
+          input: event.input,
+          result: event.result,
+        }).run;
       },
       // Print mode discarded usage entirely, so an extension running headlessly
       // could see none of it. It reports the same figures the TUI does.
@@ -232,6 +252,9 @@ export const runPrint = async (
       onReasoningEnd: () => {},
       onPhase: () => {},
     });
+    // A turn that ends on a tool call still closes its run, or the last thing
+    // the agent did would be the one thing with no receipt.
+    closeRun();
     if (!streamed && result.text.trim() !== "") process.stdout.write(result.text);
     process.stdout.write("\n");
     await fire(registry, "turn_end", { text: result.text }, note);

@@ -15,10 +15,12 @@ import { runPrint } from "./print";
 import { fence, shortcutPrompt } from "./prompt";
 import { missingFor, providerSpec } from "./providers";
 import {
+  advanceToolRun,
   assistantBlock,
   errorText,
   eventBlock,
   type Line,
+  NO_TOOL_RUN,
   noticeBlock,
   queuedRow,
   reasoningDraft,
@@ -194,6 +196,8 @@ const main = async (): Promise<void> => {
   let tokens =
     session.contextTokens ?? (resumedUsage?.type === "usage" ? resumedUsage.tokens : null);
   let produced = false;
+  // The run of tool calls currently open, for the receipt that closes it.
+  let group = NO_TOOL_RUN;
   // the last thing the model said, so turn_end can hand it to an extension
   let lastAnswer = "";
   // the most recent model call's figures, for g.usage()
@@ -360,6 +364,13 @@ const main = async (): Promise<void> => {
     if (event.type === "error" && !event.text.startsWith("(extension"))
       void fire(registry, "error", { message: event.text }, onExtensionFailure);
     if (event.type === "assistant" || event.type === "tool") produced = true;
+    // A run of consecutive calls gets one receipt, printed when the run ends —
+    // which is the moment the model says something, or the turn does. Nothing
+    // is buffered to achieve this: each row still prints as its call lands, and
+    // the footer is one more line appended after the last of them.
+    const stepped = advanceToolRun(group, event);
+    group = stepped.run;
+    if (stepped.footer.length > 0) screen.print(stepped.footer, false);
     const { lines, gap } = eventBlock(
       event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
       renderTool,
@@ -618,7 +629,11 @@ const main = async (): Promise<void> => {
     render({ type: "error", text: `(extension) ${message}` });
   };
 
+  let replayRun = NO_TOOL_RUN;
   for (const event of session.events) {
+    const stepped = advanceToolRun(replayRun, event);
+    replayRun = stepped.run;
+    if (stepped.footer.length > 0) screen.print(stepped.footer, false);
     const { lines, gap } = eventBlock(
       event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
       renderTool,
