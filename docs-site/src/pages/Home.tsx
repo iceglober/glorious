@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Link } from "react-router";
 import { PkgSwitcher, Cmd } from "~/components/PkgManager";
 import { NpmVersions } from "~/components/NpmVersions";
+import { AnchorHeading } from "~/components/AnchorHeading";
 
 const links = [
   ["Get started", "/get-started"],
@@ -11,10 +13,11 @@ const links = [
 ] as const;
 
 export function Home() {
+  useEffect(() => { document.title = "glorious — glrs"; }, []);
   const copyBash = () => navigator.clipboard.writeText("curl -fsSL https://glrs.dev/install.sh | bash");
   return (
     <main className="home">
-      <div className="home-hero"><h1>glorious</h1><p className="tagline">a simple coding agent · minimal core · maximum extensibility</p></div>
+      <div className="home-hero"><AnchorHeading level={1} id="glorious">glorious</AnchorHeading><p className="tagline">a simple coding agent · minimal core · maximum extensibility</p></div>
       <NpmVersions />
       <div className="install-block">
         <div className="install-cmd" onClick={copyBash} title="copy to clipboard">curl -fsSL https://glrs.dev/install.sh | bash</div>

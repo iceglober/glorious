@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router";
+import { AnchorHeading } from "~/components/AnchorHeading";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -45,8 +46,9 @@ export function Doc({ md, title }: { md: string; title: string }) {
       <article className="doc">
         <Markdown remarkPlugins={[remarkGfm]} components={{
           a: MdLink,
-          h2: ({ children }) => <h2 id={headingId(children)}>{children}</h2>,
-          h3: ({ children }) => <h3 id={headingId(children)}>{children}</h3>,
+          h1: ({ children }) => <AnchorHeading level={1} id={headingId(children)}>{children}</AnchorHeading>,
+          h2: ({ children }) => <AnchorHeading level={2} id={headingId(children)}>{children}</AnchorHeading>,
+          h3: ({ children }) => <AnchorHeading level={3} id={headingId(children)}>{children}</AnchorHeading>,
         }}>{md}</Markdown>
       </article>
       {headings.length > 0 && <aside className="on-page"><strong>On this page</strong><nav>{headings.map(({ depth, text, id }) => <a className={depth === 3 ? "nested" : ""} key={id} href={`#${id}`} onClick={(event) => { event.preventDefault(); jumpTo(id); }}>{text}</a>)}</nav></aside>}

@@ -1,4 +1,4 @@
-# Commands and skills
+# Commands
 
 ## Slash commands from markdown
 

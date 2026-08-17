@@ -1,4 +1,4 @@
-# Models and configuration
+# Models
 
 ## Choosing a model
 

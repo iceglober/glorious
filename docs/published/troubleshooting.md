@@ -1,6 +1,6 @@
 # Troubleshooting
 
-## Start with doctor
+## Diagnostics
 
 ```sh
 glorious doctor

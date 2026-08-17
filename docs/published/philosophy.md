@@ -1,4 +1,4 @@
-# What glorious is
+# Philosophy
 
 glorious is a simple coding agent for developers and technical problem solvers.
 It combines a model, tools, context, and a turn loop that can inspect and change
@@ -22,5 +22,5 @@ model/tool work it causes. Extensions are TypeScript modules discovered from a
 project or personal configuration and loaded through the public API.
 
 The interactive terminal UI and `glorious -p` are two front ends to the same
-turn-oriented runtime. Describe concrete behavior rather than labeling the
-agent autonomous or collaborative.
+turn-oriented runtime. Its behavior is defined by the tools, context, and
+turn loop exposed through the runtime.

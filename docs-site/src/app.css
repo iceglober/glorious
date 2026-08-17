@@ -535,6 +535,25 @@ body {
 
 /* ── MARKDOWN ──────────────────────────────────────────────────── */
 
+.heading-anchor {
+  display: inline-block;
+  margin-left: 0.5em;
+  color: var(--border);
+  font-size: 0.65em;
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+h1:hover .heading-anchor,
+h2:hover .heading-anchor,
+h3:hover .heading-anchor,
+.heading-anchor:focus {
+  opacity: 1;
+  color: var(--red);
+}
+
 .doc h1 {
   font-size: 1.8rem;
   font-weight: 700;
@@ -817,6 +836,7 @@ body { background: var(--white); }
 .home { max-width: 100rem; padding: 0 clamp(1rem, 5vw, 5rem) 6rem; }
 .home-hero { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(13rem, 0.8fr); gap: 3rem; align-items: end; padding: clamp(4rem, 11vw, 10rem) 0 3rem; border-bottom: 2px solid var(--black); }
 .home h1 { font-size: var(--display); line-height: 0.83; letter-spacing: -0.1em; }
+.home h1 .heading-anchor { font-size: 0.25em; vertical-align: middle; }
 .home .tagline { max-width: 25ch; font-size: var(--step-1); line-height: 1.25; color: var(--black); margin: 0; }
 .home .npm-versions { margin-top: 1.5rem; }
 .home .install-block { padding: 2rem 0; margin: 0; }

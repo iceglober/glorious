@@ -1,23 +1,24 @@
 import { useEffect } from "react";
 import { Cmd, PkgSwitcher } from "~/components/PkgManager";
 import { CodeBlock } from "~/components/CodeBlock";
+import { AnchorHeading } from "~/components/AnchorHeading";
 
 export function Install() {
   useEffect(() => {
-    document.title = "install — glrs";
+    document.title = "Install — glrs";
   }, []);
 
   return (
     <main className="site-main doc">
-      <h1>Install</h1>
+      <AnchorHeading level={1} id="install">Install</AnchorHeading>
 
-      <h2>Recommended</h2>
+      <AnchorHeading level={2} id="recommended">Recommended</AnchorHeading>
 
       <CodeBlock copy="curl -fsSL https://glrs.dev/install.sh | bash">
         curl -fsSL https://glrs.dev/install.sh | bash
       </CodeBlock>
 
-      <h2>Manual</h2>
+      <AnchorHeading level={2} id="manual">Manual</AnchorHeading>
 
       <p>
         Requires <a href="https://bun.sh">Bun</a> ≥ 1.2 and git.
@@ -37,7 +38,7 @@ export function Install() {
         </code>
       </pre>
 
-      <h2>First run</h2>
+      <AnchorHeading level={2} id="first-run">First run</AnchorHeading>
 
       <pre>
         <code>
@@ -51,7 +52,7 @@ export function Install() {
         See the <a href="/quickstart">quickstart</a>.
       </p>
 
-      <h2>Update</h2>
+      <AnchorHeading level={2} id="update">Update</AnchorHeading>
 
       <pre>
         <code>
@@ -59,7 +60,7 @@ export function Install() {
         </code>
       </pre>
 
-      <h2>Uninstall</h2>
+      <AnchorHeading level={2} id="uninstall">Uninstall</AnchorHeading>
 
       <pre>
         <code>

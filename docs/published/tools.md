@@ -1,4 +1,4 @@
-# Built-in tools
+# Tools
 
 Every tool is always available — there is no permission system and no mode
 switching. The agent operates on the git repository you launched it in.
