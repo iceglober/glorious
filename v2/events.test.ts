@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
-import { eventsFromMessages, messagesOf, type SessionEvent, typedText } from "./events";
+import {
+  eventsFromMessages,
+  messagesOf,
+  type SessionEvent,
+  typedText,
+  usageTotals,
+} from "./events";
 import { transcript } from "./render";
 
 const text = (lines: ReturnType<typeof transcript>): string =>
@@ -106,5 +112,46 @@ describe("transcript", () => {
         { type: "turn", messages: [{ role: "user", content: "x" }] },
       ]),
     ).toEqual([]);
+  });
+});
+
+// A cost tracker resumed mid-session should report what the session has spent,
+// not what it has spent since reopening — so totals come from the events, which
+// survive on disk.
+describe("usage totals", () => {
+  const usage = (over: Partial<Extract<SessionEvent, { type: "usage" }>> = {}): SessionEvent => ({
+    type: "usage",
+    tokens: 100,
+    cached: 10,
+    input: 100,
+    output: 20,
+    cost: 0.5,
+    ...over,
+  });
+
+  test("sums every model call in the session", () => {
+    expect(usageTotals([usage(), usage(), usage()])).toEqual({
+      input: 300,
+      output: 60,
+      cached: 30,
+      cost: 1.5,
+      steps: 3,
+    });
+  });
+
+  // Clearing drops what the model replays, not what the run cost.
+  test("a clear does not reset the bill", () => {
+    const events: SessionEvent[] = [usage(), { type: "cleared", reason: "user" }, usage()];
+    expect(usageTotals(events).steps).toBe(2);
+    expect(usageTotals(events).cost).toBe(1);
+  });
+
+  test("missing optional figures count as zero rather than NaN", () => {
+    const totals = usageTotals([{ type: "usage", tokens: 5, cached: 0 }]);
+    expect(totals).toEqual({ input: 0, output: 0, cached: 0, cost: 0, steps: 1 });
+  });
+
+  test("a session with no model call yet totals zero", () => {
+    expect(usageTotals([{ type: "user", text: "hi" }]).steps).toBe(0);
   });
 });

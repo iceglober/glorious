@@ -32,7 +32,10 @@ export type EventName =
   | "tool_call"
   | "tool_start"
   | "tool_end"
-  | "model_select";
+  | "model_select"
+  | "usage"
+  | "reasoning"
+  | "error";
 
 export type EventPayload = {
   session_start: { root: string };
@@ -57,8 +60,29 @@ export type EventPayload = {
   tool_call: { name: string; input: Record<string, unknown> };
   tool_start: { name: string; input: Record<string, unknown> };
   // Returning a string replaces what the model is told the tool returned.
-  tool_end: { name: string; input: Record<string, unknown>; ok: boolean; result: string };
+  tool_end: {
+    name: string;
+    input: Record<string, unknown>;
+    ok: boolean;
+    result: string;
+    detail: string;
+    elapsedMs: number;
+  };
   model_select: { model: string; variant?: string };
+  // Fires once per model call, which is once per step — a turn that runs three
+  // tools reports four times. `cached` is what the provider served from its
+  // prompt cache rather than reprocessing, so cached/input is the hit rate.
+  usage: {
+    input: number;
+    output: number;
+    cached: number;
+    cost?: number;
+    contextTokens: number;
+  };
+  // The collapsed reasoning summary, once the model stops thinking.
+  reasoning: { text: string; elapsedMs: number };
+  // A turn that failed, with the message the transcript shows.
+  error: { message: string };
 };
 
 // undefined rather than void, so the union is unambiguous: a handler that
@@ -102,6 +126,17 @@ export type ModelInfo = {
   variant?: string;
   variants?: readonly string[];
   context?: number;
+};
+
+export type Usage = {
+  /** Context size the provider last reported, or null before the first call. */
+  tokens: number | null;
+  /** The model's window, when the catalogue knows it. */
+  context?: number;
+  /** The most recent model call. */
+  last?: { input: number; output: number; cached: number; cost?: number };
+  /** Summed across the session, including turns replayed from disk on resume. */
+  total: { input: number; output: number; cached: number; cost: number; steps: number };
 };
 
 export type SessionInfo = {
@@ -204,8 +239,8 @@ export type Glorious = {
   pending: () => number;
   /** Interrupt the running turn. True if there was one. */
   abort: () => boolean;
-  /** Context tokens in play, and the window they are spending. */
-  usage: () => { tokens: number | null; context?: number };
+  /** Tokens, cache hits and cost: the last call and the session total. */
+  usage: () => Usage;
   /** The system prompt exactly as the model receives it. */
   systemPrompt: () => string;
   /** Quit glorious. */
@@ -256,7 +291,7 @@ export type ExtensionHost = {
   idle: () => boolean;
   pending: () => number;
   abort: () => boolean;
-  usage: () => { tokens: number | null; context?: number };
+  usage: () => Usage;
   systemPrompt: () => string;
   shutdown: () => void;
   session: () => SessionInfo;

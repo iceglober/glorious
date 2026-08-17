@@ -3,10 +3,10 @@ import { createAgent } from "./agent";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
-import { currentModel } from "./models";
+import { currentModel, modelMetadata } from "./models";
 import { errorText, flatten } from "./render";
 import { loadSkills } from "./skills";
-import { runShell, setToolGate, type ToolEvent } from "./tools";
+import { firstDetail, runShell, setToolGate, type ToolEvent } from "./tools";
 
 // Headless. One turn, no TUI, no session file, and nobody to ask — so ask_user
 // is withheld rather than left to hang on an answer that cannot arrive.
@@ -23,7 +23,14 @@ export const runPrint = async (
   prompt: string,
   where: { root: string; os: string; git: string },
 ): Promise<number> => {
-  const model = currentModel();
+  // Hydrated here as well as in the TUI. Without it a headless run reports
+  // every cost as zero — and scripting a cost report is exactly what -p is for,
+  // so the one place it must work is the one place it did not. Silent on
+  // failure: offline you get tokens without prices, as in the TUI.
+  const model = {
+    ...currentModel(),
+    ...(await modelMetadata(currentModel()).catch(() => ({}))),
+  };
   const [rules, skills] = await Promise.all([loadAgentRules(where.root), loadSkills(where.root)]);
 
   const agent = createAgent({
@@ -117,7 +124,12 @@ export const runPrint = async (
         stop.abort();
         return true;
       },
-      usage: () => ({ tokens: null, context: model.context }),
+      usage: () => ({
+        tokens: seenTokens,
+        context: model.context,
+        last: lastUsage,
+        total: totals,
+      }),
       systemPrompt: () => agent.prompt(),
       shutdown: () => stop.abort(),
       session: () => ({ id: "print", file: "", title: "print", events: 0 }),
@@ -133,6 +145,10 @@ export const runPrint = async (
 
   const started = new Map<number, number>();
   let streamed = false;
+  let seenTokens: number | null = null;
+  let lastUsage: { input: number; output: number; cached: number; cost?: number } | undefined;
+  // A one-shot run has no session file to sum, so the totals are kept here.
+  const totals = { input: 0, output: 0, cached: 0, cost: 0, steps: 0 };
   try {
     // A tool_call handler returning false refuses the call; the model is told so
     // by name, which is what lets an extension implement a read-only mode or a
@@ -143,8 +159,13 @@ export const runPrint = async (
         if (verdict === false) return `ERROR: an extension blocked ${name} for this turn.`;
         return typeof verdict === "string" ? `ERROR: ${verdict}` : undefined;
       },
-      after: async (name, input, ok, result) => {
-        const replaced = await fire(registry, "tool_end", { name, input, ok, result }, note);
+      after: async (name, input, ok, result, elapsedMs) => {
+        const replaced = await fire(
+          registry,
+          "tool_end",
+          { name, input, ok, result, detail: firstDetail(input), elapsedMs },
+          note,
+        );
         return typeof replaced === "string" ? replaced : undefined;
       },
     });
@@ -177,13 +198,33 @@ export const runPrint = async (
           `${event.ok ? "✓" : "✗"} ${event.name}${detail && ` ${detail}`}${took}${why}\n`,
         );
       },
-      onStep: () => {},
+      // Print mode discarded usage entirely, so an extension running headlessly
+      // could see none of it. It reports the same figures the TUI does.
+      onStep: (step) => {
+        seenTokens = step.contextTokens;
+        lastUsage = {
+          input: step.contextTokens,
+          output: step.outputTokens,
+          cached: step.cachedTokens,
+          cost: step.cost,
+        };
+        totals.input += step.contextTokens;
+        totals.output += step.outputTokens;
+        totals.cached += step.cachedTokens;
+        totals.cost += step.cost ?? 0;
+        totals.steps += 1;
+        void fire(registry, "usage", { ...lastUsage, contextTokens: step.contextTokens }, note);
+      },
       onReasoningEnd: () => {},
       onPhase: () => {},
     });
     if (!streamed && result.text.trim() !== "") process.stdout.write(result.text);
     process.stdout.write("\n");
     await fire(registry, "turn_end", { text: result.text }, note);
+    // The queue is empty and nothing is running: the same thing "idle" means in
+    // the TUI. An extension that reports totals when a turn settles has to fire
+    // here too, or it works interactively and silently does nothing headlessly.
+    await fire(registry, "idle", {}, note);
     if (result.stoppedAtStepLimit) {
       process.stderr.write("[stopped at the step limit without finishing]\n");
       return 1;

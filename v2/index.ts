@@ -5,7 +5,7 @@ import { createAgent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig } from "./config";
-import { messagesOf, type SessionEvent } from "./events";
+import { messagesOf, type SessionEvent, usageTotals } from "./events";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
@@ -34,7 +34,7 @@ import {
   sessionFile,
 } from "./session";
 import { loadSkills } from "./skills";
-import { runShell, setToolGate, type ToolEvent } from "./tools";
+import { firstDetail, runShell, setToolGate, type ToolEvent } from "./tools";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
 
@@ -153,11 +153,14 @@ const main = async (): Promise<void> => {
   // they stay out of the table the model's slash commands live in.
   let { sequences, legacy: legacySequences } = await loadSequences(root);
 
-  const lastUsage = session.events.findLast((event) => event.type === "usage");
-  let tokens = session.contextTokens ?? (lastUsage?.type === "usage" ? lastUsage.tokens : null);
+  const resumedUsage = session.events.findLast((event) => event.type === "usage");
+  let tokens =
+    session.contextTokens ?? (resumedUsage?.type === "usage" ? resumedUsage.tokens : null);
   let produced = false;
   // the last thing the model said, so turn_end can hand it to an extension
   let lastAnswer = "";
+  // the most recent model call's figures, for g.usage()
+  let lastUsage: { input: number; output: number; cached: number; cost?: number } | undefined;
   // Where an extension tool's events go. Extension tools are built once at
   // load, but the handler that pairs start with end belongs to whichever turn
   // is running, so the agent points this at the live one each turn.
@@ -277,12 +280,35 @@ const main = async (): Promise<void> => {
     if (event.type === "usage") {
       tokens = event.tokens;
       session.contextTokens = event.tokens;
+      lastUsage = {
+        input: event.input ?? 0,
+        output: event.output ?? 0,
+        cached: event.cached,
+        cost: event.cost,
+      };
+      void fire(
+        registry,
+        "usage",
+        { ...lastUsage, contextTokens: event.tokens },
+        onExtensionFailure,
+      );
     }
     if (event.type === "user") {
       produced = false;
       void fire(registry, "turn_start", { text: event.text }, onExtensionFailure);
     }
     if (event.type === "assistant") lastAnswer = event.text;
+    if (event.type === "reasoning")
+      void fire(
+        registry,
+        "reasoning",
+        { text: event.text, elapsedMs: event.elapsedMs },
+        onExtensionFailure,
+      );
+    // Fired for a failed turn, not for an extension's own reported failure —
+    // an error handler that itself throws would otherwise loop.
+    if (event.type === "error" && !event.text.startsWith("(extension"))
+      void fire(registry, "error", { message: event.text }, onExtensionFailure);
     if (event.type === "assistant" || event.type === "tool") produced = true;
     const { lines, gap } = eventBlock(
       event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
@@ -582,7 +608,14 @@ const main = async (): Promise<void> => {
       idle: () => !chat.busy,
       pending: () => chat.queued.length,
       abort: () => chat.abort(),
-      usage: () => ({ tokens, context: model.context }),
+      usage: () => ({
+        tokens,
+        context: model.context,
+        last: lastUsage,
+        // From the session's own events, so a resumed run reports what the
+        // whole session cost rather than what it cost since reopening.
+        total: usageTotals(session.events),
+      }),
       systemPrompt: () => agent.prompt(),
       shutdown: () => quit(),
       session: () => ({
@@ -645,11 +678,11 @@ const main = async (): Promise<void> => {
       if (verdict === false) return `ERROR: an extension blocked ${name} for this turn.`;
       return typeof verdict === "string" ? `ERROR: ${verdict}` : undefined;
     },
-    after: async (name, input, ok, result) => {
+    after: async (name, input, ok, result, elapsedMs) => {
       const replaced = await fire(
         registry,
         "tool_end",
-        { name, input, ok, result },
+        { name, input, ok, result, detail: firstDetail(input), elapsedMs },
         onExtensionFailure,
       );
       return typeof replaced === "string" ? replaced : undefined;

@@ -45,6 +45,33 @@ export const messagesOf = (events: readonly SessionEvent[]): ModelMessage[] => {
     .flatMap((event) => (event.type === "turn" ? event.messages : []));
 };
 
+export type UsageTotals = {
+  input: number;
+  output: number;
+  cached: number;
+  cost: number;
+  steps: number;
+};
+
+// Summed over every usage event the session holds, so a resumed session reports
+// what it has spent in total rather than what it has spent since reopening.
+// Unlike messagesOf this does not restart at the last clear: clearing drops what
+// the model replays, not what the run cost.
+export const usageTotals = (events: readonly SessionEvent[]): UsageTotals =>
+  events.reduce<UsageTotals>(
+    (carried, event) =>
+      event.type !== "usage"
+        ? carried
+        : {
+            input: carried.input + (event.input ?? 0),
+            output: carried.output + (event.output ?? 0),
+            cached: carried.cached + event.cached,
+            cost: carried.cost + (event.cost ?? 0),
+            steps: carried.steps + 1,
+          },
+    { input: 0, output: 0, cached: 0, cost: 0, steps: 0 },
+  );
+
 export const contextTokensOf = (events: readonly SessionEvent[]): number | undefined => {
   const last = events.findLast((event) => event.type === "usage");
   return last?.type === "usage" ? last.tokens : undefined;

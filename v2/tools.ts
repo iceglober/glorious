@@ -32,6 +32,10 @@ export type ToolEvent =
       phase: "end";
       ok: boolean;
       result: string;
+      // Measured here, where the call actually happens, so the transcript, the
+      // session and an extension all read the same number rather than each
+      // pairing start with end and arriving at their own.
+      elapsedMs: number;
     };
 
 export type Question = {
@@ -216,6 +220,7 @@ export type ToolGate = {
     input: Record<string, unknown>,
     ok: boolean,
     result: string,
+    elapsedMs: number,
   ) => Promise<string | undefined>;
 };
 
@@ -248,23 +253,25 @@ export const wrapTool = <Schema extends z.ZodType>(
       const refused = await gate?.before(name, raw);
       if (refused !== undefined) {
         announce({ ...step, phase: "start" });
-        announce({ ...step, phase: "end", ok: false, result: refused });
+        announce({ ...step, phase: "end", ok: false, result: refused, elapsedMs: 0 });
         return refused;
       }
       announce({ ...step, phase: "start" });
+      const began = Date.now();
       const told = await body(input, call.abortSignal, step.id).catch(
         (bad) => `ERROR: ${errorText(bad)}`,
       );
+      const elapsedMs = Date.now() - began;
       const capped = capText(told, RESULT_LIMIT);
       const ok = !FAILED.test(capped);
-      const result = (await gate?.after(name, raw, ok, capped)) ?? capped;
-      announce({ ...step, phase: "end", ok, result });
+      const result = (await gate?.after(name, raw, ok, capped, elapsedMs)) ?? capped;
+      announce({ ...step, phase: "end", ok, result, elapsedMs });
       return result;
     },
   });
 };
 
-const firstDetail = (raw: Record<string, unknown>): string => {
+export const firstDetail = (raw: Record<string, unknown>): string => {
   for (const key of ["command", "pattern", "path", "task"]) {
     const value = raw[key];
     if (typeof value === "string") return value;
