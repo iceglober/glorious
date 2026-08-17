@@ -350,24 +350,39 @@ type Line = Span[];
 Never opentui types. That is deliberate — the renderer can be replaced without
 breaking a single extension.
 
-A tool row is the call, its output, and how long it took:
+A tool row is one line — what was called, what came back, how long it took:
 
 ```
-  ✓ bash(git status --short)
-        ↳ M v2/render.ts
-        ↳ M v2/index.ts
-    completed in 1.2s
+  ✓ read    v2/render.ts · 432 lines                            8ms
+  ✓ grep    "toolRow" in v2/ · 2 matches                      124ms
+  ✗ edit    v2/render.ts                                       24ms
+    old_string not found in file
+  ✓ bash    bun test --timeout 60000 · 308 pass               23.8s
+  └ 4 calls · 24.0s · 1 failed
 ```
 
-The header reads as the call that was made — arguments fold onto a second line
-when they need it, then get cut. Under it the last three lines of output hang
-off arrows, so a 30k result still contributes three lines. Print mode writes the
-same row to stderr, so a piped trail and a watched session describe a call the
-same way.
+The tool name has a fixed column, so calls line up without any row knowing about
+the others. What comes back is a **summary**, not a tail: `432 lines`, not the
+last three lines of the file. Only a failure earns a second line, carrying the
+reason. The footer closes a run of calls — everything between two things the
+model said — and is skipped for a single call, where the row already says it.
 
-Your renderer owns the lines between the header and the duration; glorious keeps
-the `✓`/`✗`, the call itself and the elapsed time, so those mean the same thing
-on every row whoever wrote the tool.
+`renderResult` is where your tool describes its own result. **Its first line
+becomes the row's summary**; return more lines and they hang under the row:
+
+```ts
+g.tool({
+  name: "count_todos",
+  // …
+  renderResult: (result, ok) => [[{ text: ok ? `${result} found` : result }]],
+});
+```
+
+There is deliberately no second mechanism for this — one seam, so the row and
+anything else reading a result cannot drift apart. glorious keeps the `✓`/`✗`,
+the call, and the elapsed time, so those mean the same thing on every row
+whoever wrote the tool. Print mode renders the identical row and the identical
+footer to stderr.
 
 ## Testing one
 

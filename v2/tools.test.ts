@@ -3,7 +3,14 @@ import { join } from "node:path";
 import { z } from "zod";
 import { docsPath } from "./prompt";
 import { loadSkills } from "./skills";
-import { BUILT_IN_TOOL_NAMES, createTools, setToolGate, type ToolEvent, wrapTool } from "./tools";
+import {
+  BUILT_IN_TOOL_NAMES,
+  createTools,
+  resultSummary,
+  setToolGate,
+  type ToolEvent,
+  wrapTool,
+} from "./tools";
 
 const registry = async (): Promise<string[]> => {
   const skills = await loadSkills(process.cwd());
@@ -183,5 +190,53 @@ describe("the tool gate", () => {
     );
     await (tool.execute as (i: unknown, c: unknown) => Promise<string>)({}, {});
     expect(seen).toBe(false);
+  });
+});
+
+// The row shows what a call is worth saying about its own result, not the tail
+// of it: `432 lines` is what you want from a read, and the last three lines of
+// a file are not.
+describe("what a call says about its result", () => {
+  test("a read reports its size, not its last line", () => {
+    const file = Array.from({ length: 432 }, (_, at) => `${at + 1}|code`).join("\n");
+    expect(resultSummary("read", file, true)).toBe("432 lines");
+  });
+
+  test("one line of anything is its own summary", () => {
+    expect(resultSummary("write", "wrote v2/render.ts", true)).toBe("wrote v2/render.ts");
+    expect(resultSummary("edit", "applied 2 edit(s) to a.ts", true)).toBe(
+      "applied 2 edit(s) to a.ts",
+    );
+  });
+
+  test("a search counts what it found", () => {
+    expect(resultSummary("grep", "a.ts:1:x\nb.ts:2:y", true)).toBe("2 matches");
+    expect(resultSummary("glob", "a.ts", true)).toBe("1 file");
+  });
+
+  // The count would otherwise be one too many: these lines are prose about the
+  // result rather than part of it.
+  test("a truncation notice is not counted as a match", () => {
+    expect(resultSummary("grep", "a.ts:1:x\n[truncated at 1 matches]", true)).toBe("1 match");
+  });
+
+  test("nothing found reads as nothing found, not as zero", () => {
+    expect(resultSummary("grep", "No matches.", true)).toBe("No matches");
+  });
+
+  test("a command is summarised by how it ended", () => {
+    expect(resultSummary("bash", "compiling\nlinking\nBuild succeeded", true)).toBe(
+      "Build succeeded",
+    );
+  });
+
+  // A failed call puts its reason on its own line, so the row saying it too
+  // would be saying it twice.
+  test("a failure says nothing here", () => {
+    expect(resultSummary("bash", "ERROR: no such file", false)).toBe("");
+  });
+
+  test("an empty result says nothing rather than guessing", () => {
+    expect(resultSummary("bash", "", true)).toBe("");
   });
 });

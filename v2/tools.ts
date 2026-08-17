@@ -286,6 +286,44 @@ export const firstDetail = (raw: Record<string, unknown>): string => {
   return "";
 };
 
+// What a call is worth saying about its own result, in a phrase. The row shows
+// this instead of the last three lines of output: `432 lines` is what you want
+// from a read, and the last three lines of a file are not.
+//
+// Keyed by name, like firstDetail above it, because these tools already return
+// a known shape and a generic guess would be wrong more often than right — the
+// last line of a file read is not a summary of anything. A tool that is not
+// listed says how much came back, which is true of everything.
+//
+// An extension's tool describes itself through renderResult; its first line
+// lands where this would. There is deliberately no second mechanism.
+// Both words written out. Deriving one from the other needs a rule about -es
+// after -ch, and a rule that is wrong once ships "1 fil".
+const countable: Record<string, readonly [one: string, many: string]> = {
+  read: ["line", "lines"],
+  grep: ["match", "matches"],
+  glob: ["file", "files"],
+};
+
+export const resultSummary = (name: string, result: string, ok: boolean): string => {
+  // A failed call gets its reason on its own line, so the row itself says
+  // nothing rather than saying it twice.
+  if (!ok) return "";
+  const lines = result.split("\n").filter((line) => line.trim() !== "");
+  // "No matches." and "[truncated at N matches]" are prose about the result,
+  // not part of it, so counting them would overstate by one.
+  const body = lines.filter((line) => !line.startsWith("[truncated at "));
+  const unit = countable[name];
+  if (unit !== undefined) {
+    if (body.length === 1 && body[0].startsWith("No ")) return body[0].replace(/\.$/u, "");
+    return `${body.length} ${unit[body.length === 1 ? 0 : 1]}`;
+  }
+  // Everything else: one line is its own summary, and the last line of many is
+  // where a command says how it went.
+  if (body.length === 0) return "";
+  return body.length === 1 ? body[0] : (body.at(-1) ?? "");
+};
+
 export const createTools = (
   root: string,
   onEvent: (event: ToolEvent) => void,

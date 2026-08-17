@@ -1,4 +1,5 @@
 import type { SessionEvent } from "./events";
+import { resultSummary } from "./tools";
 
 export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
 
@@ -166,114 +167,84 @@ export const compactedBlock = (summary: string, dropped: number): Line[] => [
     .map((row): Line => [{ text: row, tone: "muted" }]),
 ];
 
-// A tool row is a call, its output, and how long it took:
+// A tool row is one line. What was called, what came back, how long it took:
 //
-//   ✓ bash(git status --short)
-//         ↳ M v2/render.ts
-//         ↳ M v2/index.ts
-//     completed in 1.2s
+//   ✓ read   v2/render.ts · 432 lines                            8ms
+//   ✓ grep   "toolRow" in v2/ · 2 matches                      124ms
+//   ✗ edit   v2/render.ts                                       24ms
+//     old_string not found in file
+//   ✓ bash   bun test --timeout 60000 · 308 pass               23.8s
+//   └ 4 calls · 24.0s · 1 failed
 //
-// The header reads as the call it was — name and arguments together, the way
-// they were written — and the mark in front says whether it worked. The output
-// hangs off it under arrows, so the tail of a 30k result is three lines that
-// are visibly output rather than three lines that could be anything. Those sit
-// a step further in than everything else: output is the part you scan past, and
-// its own margin makes the call and the duration read as the frame around it.
-// The duration closes the row instead of sitting in the header, where it
-// competed with the arguments for the part of the line the eye lands on first.
-const ARG_LINES = 2;
-const OUTPUT_CHARS = 140;
-const OUTPUT_LINES = 3;
-const INDENT = "    ";
-const OUTPUT_INDENT = `${INDENT}${INDENT}`;
-const ARROW = "↳ ";
-// What the header is clamped against when the caller does not say. Every real
-// caller passes the terminal's width; this keeps the function usable without
-// one and matches the width the row was clamped to before it took the argument.
+// It was five lines per call, which meant a turn doing twelve things cost sixty
+// lines of scrollback to carry maybe three facts worth having. The tool name
+// gets a fixed column so the calls line up down the page without any row having
+// to know about the others — the alignment is free, and nothing has to be
+// buffered or redrawn to get it.
+//
+// The result is a summary rather than its tail: `432 lines`, not the last three
+// lines of the file. Tools describe their own output (see resultSummary), and a
+// tool from an extension describes itself through renderResult, whose first
+// line is what lands here.
+//
+// Only a failure earns a second line, because the reason a call failed is the
+// one piece of output nobody wants to go looking for. The footer closes the
+// group and is the receipt for it — it says how much the agent just did, which
+// no individual row can.
+const NAME_COLUMN = 7;
+const SUMMARY_CHARS = 90;
+// What the row is clamped against when the caller does not say. Every real
+// caller passes the terminal's width.
 const DEFAULT_COLUMNS = 140;
+const INDENT = "    ";
 
 const took = (elapsedMs: number): string =>
   elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
 
-// clip() but without the ellipsis, for measuring how much fits before deciding
-// where to fold.
-const clipRaw = (text: string, limit: number): string => {
-  let room = limit;
-  let kept = "";
-  for (const part of graphemes(text)) {
-    room -= cells(part);
-    if (room < 0) break;
-    kept += part;
-  }
-  return kept;
-};
+// The call and what came back, joined. `detail` is the arguments, `summary` is
+// the result — together they read as the sentence the call was.
+const said = (detail: string, summary: string): string =>
+  [flatten(detail), flatten(summary)].filter((part) => part !== "").join(" · ");
 
-// The arguments may run onto a second line before they are cut. One line was
-// too little for the calls worth reading — a bash command with a path in it
-// spent its whole budget on the path — and a third line makes the transcript
-// mostly arguments. Wrapped on a space where there is one, because breaking a
-// path mid-segment reads as two paths.
-const foldArgs = (said: string, room: number): string[] => {
-  if (room <= 0 || said === "") return [];
-  const rows: string[] = [];
-  let rest = said;
-  while (rows.length < ARG_LINES - 1 && width(rest) > room) {
-    const head = clipRaw(rest, room);
-    const space = head.lastIndexOf(" ");
-    // Only break on a space that saved a useful amount of the line; otherwise
-    // the row is mostly whitespace and the fold bought nothing.
-    const at = space > room / 2 ? space : head.length;
-    rows.push(rest.slice(0, at).trimEnd());
-    rest = rest.slice(at).trimStart();
-  }
-  return [...rows, clip(rest, room)];
-};
-
-// `✓ bash(git status)`, folded onto a second line when the call is long enough
-// to need it. A tool called with nothing to show carries no empty parentheses.
-const header = (icon: Span, name: string, detail: string, columns: number): Line[] => {
-  const said = flatten(detail);
+// One line: mark, name in its column, the call, and the duration pushed to the
+// right margin. The duration goes last because it is what you check after
+// reading what happened, and it lands in space the row was not using.
+const row = (
+  mark: Span,
+  name: string,
+  body: string,
+  elapsedMs: number | null,
+  columns: number,
+): Line => {
   const label = flatten(name);
-  if (said === "") return [[{ text: "  " }, icon, { text: " " }, { text: label, bold: true }]];
-  // "  ✓ " ahead of it, and the two parentheses around it.
-  const first = Math.max(8, columns - width(label) - 6);
-  const [lead, ...rest] = foldArgs(said, first);
-  const close = rest.length === 0 ? ")" : "";
+  const gutter = 2 + 1 + 1 + Math.max(NAME_COLUMN, width(label)) + 1;
+  const timing = elapsedMs === null ? "" : took(elapsedMs);
+  const room = Math.max(8, Math.min(SUMMARY_CHARS, columns - gutter - width(timing) - 2));
+  const text = clip(body, room);
+  const pad = Math.max(1, columns - gutter - width(text) - width(timing) - 1);
   return [
-    [
-      { text: "  " },
-      icon,
-      { text: " " },
-      { text: label, bold: true },
-      { text: "(" },
-      { text: lead, tone: "muted" },
-      { text: close },
-    ],
-    ...rest.map(
-      (row, at): Line => [
-        { text: INDENT },
-        { text: row, tone: "muted" },
-        { text: at === rest.length - 1 ? ")" : "" },
-      ],
-    ),
+    { text: "  " },
+    mark,
+    { text: " " },
+    { text: label.padEnd(NAME_COLUMN), bold: true },
+    { text: " " },
+    { text, tone: "muted" },
+    ...(timing === "" ? [] : [{ text: `${" ".repeat(pad)}${timing}`, tone: "muted" as const }]),
   ];
 };
 
-// The tail, not the head: a command's last lines are the ones that say how it
-// ended. Blank lines are dropped so three lines of output means three lines
-// worth reading.
-const outputRows = (result: string, ok: boolean): Line[] =>
-  clean(result.replace(/^ERROR:\s*/u, ""))
+// The reason a call failed, on its own line under it. Never a tail of output:
+// what is wanted here is the sentence explaining the ✗, and tools already put
+// that first.
+const reason = (result: string): Line[] => {
+  const first = clean(result.replace(/^ERROR:\s*/u, ""))
     .split("\n")
-    .map((row) => row.trim())
-    .filter((row) => row !== "")
-    .slice(-OUTPUT_LINES)
-    .map(
-      (row): Line => [
-        { text: `${OUTPUT_INDENT}${ARROW}`, tone: "muted" },
-        { text: clip(row, OUTPUT_CHARS), tone: ok ? "muted" : "danger" },
-      ],
-    );
+    .map((line) => line.trim())
+    .find((line) => line !== "");
+  return first === undefined
+    ? []
+    : [[{ text: `${INDENT}${clip(first, SUMMARY_CHARS)}`, tone: "danger" }]];
+};
 
 export const toolRow = (
   name: string,
@@ -283,22 +254,60 @@ export const toolRow = (
   custom?: Line[],
   result?: string,
   columns: number = DEFAULT_COLUMNS,
+  summary = "",
 ): Line[] => {
   const mark: Span = ok ? { text: "✓", tone: "success" } : { text: "✗", tone: "danger" };
-  const body =
-    custom && custom.length > 0
-      ? custom.map((line): Line => [{ text: OUTPUT_INDENT }, ...line])
-      : result === undefined
-        ? []
-        : outputRows(result, ok);
+  // An extension's renderResult replaces what the row says came back. Its first
+  // line is the summary; a renderer that wants more than a line gets more than
+  // a line, under the row, the way a failure does.
+  const [lead, ...rest] = custom ?? [];
+  const shown = lead === undefined ? summary : lead.map((span) => span.text).join("");
   return [
-    ...header(mark, name, detail, columns),
-    ...body,
-    // Last, not in the header: a duration is what you check after reading what
-    // happened, and it was crowding out the arguments up there.
-    [{ text: `${INDENT}${ok ? "completed" : "failed"} in ${took(elapsedMs)}`, tone: "muted" }],
+    row(mark, name, said(detail, shown), elapsedMs, columns),
+    ...rest.map((line): Line => [{ text: INDENT }, ...line]),
+    ...(ok || result === undefined ? [] : reason(result)),
   ];
 };
+
+// A run of calls is whatever happened between two things the model said. Live
+// rendering, session replay and transcript() each need to know where one ends,
+// and each knowing separately is how two views of the same session end up
+// disagreeing — so the rule is here and they fold events through it.
+export type ToolRun = { calls: number; elapsedMs: number; failed: number };
+
+export const NO_TOOL_RUN: ToolRun = { calls: 0, elapsedMs: 0, failed: 0 };
+
+export const advanceToolRun = (
+  run: ToolRun,
+  event: SessionEvent,
+): { run: ToolRun; footer: Line[] } =>
+  event.type === "tool"
+    ? {
+        run: {
+          calls: run.calls + 1,
+          elapsedMs: run.elapsedMs + event.elapsedMs,
+          failed: run.failed + (event.ok ? 0 : 1),
+        },
+        footer: [],
+      }
+    : {
+        run: NO_TOOL_RUN,
+        footer: run.calls > 0 ? toolGroupFooter(run.calls, run.elapsedMs, run.failed) : [],
+      };
+
+// The receipt for a run of calls. Only worth drawing for more than one — for a
+// single call the row above it already says everything this would.
+export const toolGroupFooter = (calls: number, elapsedMs: number, failed: number): Line[] =>
+  calls < 2
+    ? []
+    : [
+        [
+          {
+            text: `  └ ${calls} calls · ${took(elapsedMs)}${failed > 0 ? ` · ${failed} failed` : ""}`,
+            tone: failed > 0 ? "danger" : "muted",
+          },
+        ],
+      ];
 
 // Reasoning collapses once the answer starts: what matters afterwards is that it
 // happened and for how long, not a wall of text already read past. The full text
@@ -347,6 +356,7 @@ export const eventBlock = (
           custom?.(event.name, event.input ?? {}, event.result ?? "", event.ok),
           event.result,
           columns,
+          resultSummary(event.name, event.result ?? "", event.ok),
         ),
         gap: false,
       };
@@ -367,8 +377,19 @@ export const eventBlock = (
   }
 };
 
-export const transcript = (events: readonly SessionEvent[]): Line[] =>
-  events.flatMap((event) => eventBlock(event).lines);
+export const transcript = (
+  events: readonly SessionEvent[],
+  columns: number = DEFAULT_COLUMNS,
+): Line[] => {
+  let run = NO_TOOL_RUN;
+  const lines: Line[] = [];
+  for (const event of events) {
+    const stepped = advanceToolRun(run, event);
+    run = stepped.run;
+    lines.push(...stepped.footer, ...eventBlock(event, undefined, columns).lines);
+  }
+  return [...lines, ...toolGroupFooter(run.calls, run.elapsedMs, run.failed)];
+};
 
 // A static mark, where a five-cell block used to march back and forth. A row
 // that is present already says the call is running; the marching said nothing
@@ -382,9 +403,11 @@ export const runningRow = (
   columns: number = DEFAULT_COLUMNS,
 ): Line[] => {
   const icon: Span = { text: "→", tone: "accent" };
+  const [lead, ...rest] = custom ?? [];
+  const shown = lead === undefined ? "" : lead.map((span) => span.text).join("");
   return [
-    ...header(icon, name, detail, columns),
-    ...(custom ?? []).map((line): Line => [{ text: OUTPUT_INDENT }, ...line]),
+    row(icon, name, said(detail, shown), null, columns),
+    ...rest.map((line): Line => [{ text: INDENT }, ...line]),
   ];
 };
 

@@ -29,6 +29,12 @@ glorious's own `docs/`.
 There are no permission prompts. An extension can add them — see
 `tools.md` and `extensions.md`.
 
+Each call is one line in the transcript — the call, a summary of what came back,
+and how long it took — and a run of calls is closed by a receipt saying how many
+there were and what they cost. Only a failure adds a second line, carrying the
+reason. A tool describes its own result through `renderResult`; see
+`extensions.md`.
+
 ## Typing
 
 | | |
