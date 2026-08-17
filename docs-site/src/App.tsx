@@ -5,6 +5,7 @@ import { Home } from "./pages/Home";
 import { Install } from "./pages/Install";
 import { Doc } from "./pages/Doc";
 import { Changelog } from "./pages/Changelog";
+import { SectionPage } from "./pages/SectionPage";
 
 import quickstartMd from "../../docs/published/quickstart.md?raw";
 import featuresMd from "../../docs/published/features.md?raw";
@@ -30,6 +31,11 @@ export function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Home />} />
+            <Route path="get-started" element={<SectionPage path="/get-started" />} />
+            <Route path="concepts" element={<SectionPage path="/concepts" />} />
+            <Route path="extend" element={<SectionPage path="/extend" />} />
+            <Route path="reference" element={<SectionPage path="/reference" />} />
+            <Route path="help" element={<SectionPage path="/help" />} />
             <Route path="install" element={<Install />} />
             <Route path="quickstart" element={<Doc md={quickstartMd} title="quickstart" />} />
             <Route path="features" element={<Doc md={featuresMd} title="features" />} />

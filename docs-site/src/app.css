@@ -76,6 +76,62 @@ body {
   color: var(--red);
 }
 
+.page-shell {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  max-width: 84rem;
+  min-height: calc(100vh - 8rem);
+}
+
+.page-content {
+  min-width: 0;
+}
+
+.home-shell {
+  display: block;
+}
+
+.side-nav {
+  position: sticky;
+  top: 4.2rem;
+  align-self: start;
+  height: calc(100vh - 4.2rem);
+  padding: 2rem 1.5rem 2rem 2rem;
+  border-right: 1px solid var(--border);
+}
+
+.side-title {
+  display: block;
+  color: var(--black);
+  font-weight: 700;
+  text-transform: lowercase;
+  text-decoration: none;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--black);
+  margin-bottom: 0.75rem;
+}
+
+.side-nav nav {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.side-nav nav a {
+  color: var(--gray);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  font-size: 0.82rem;
+}
+
+.side-nav nav a:hover,
+.side-nav nav a.active {
+  color: var(--red);
+}
+
+.side-nav nav a.active::before {
+  content: "→ ";
+}
+
 .site-search {
   position: relative;
   margin-left: auto;
@@ -163,9 +219,16 @@ body {
 /* ── FOOTER ────────────────────────────────────────────────────── */
 
 .site-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   border-top: 1px solid var(--border);
   padding: 1.5rem 2rem;
   margin-top: 4rem;
+}
+
+.footer-separator {
+  color: var(--border);
 }
 
 .footer-mark {
@@ -349,8 +412,27 @@ body {
 
 .doc-map {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 32rem;
+}
+
+.doc-map a {
+  display: flex;
+  justify-content: space-between;
   gap: 2rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--black);
+  text-decoration: none;
+}
+
+.doc-map a span {
+  color: var(--gray);
+  font-size: 0.8rem;
+}
+
+.doc-map a:hover {
+  color: var(--red);
 }
 
 .doc-map h2 {
@@ -358,21 +440,6 @@ body {
   color: var(--gray);
   text-transform: uppercase;
   margin-bottom: 0.5rem;
-}
-
-.doc-map a {
-  display: block;
-  color: var(--black);
-  text-decoration: none;
-}
-
-.doc-map a::before {
-  content: "→ ";
-  color: var(--gray);
-}
-
-.doc-map a:hover {
-  color: var(--red);
 }
 
 .home hr {
@@ -416,6 +483,54 @@ body {
   color: var(--red);
 }
 
+.section-page {
+  max-width: 52rem;
+}
+
+.eyebrow {
+  color: var(--gray);
+  font-size: 0.8rem;
+  text-transform: lowercase;
+  margin-bottom: 1rem;
+}
+
+.section-page h1 {
+  font-size: 2.5rem;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+
+.section-intro {
+  color: var(--gray);
+  font-size: 1.1rem;
+  max-width: 52ch;
+  margin-bottom: 3rem;
+}
+
+.section-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.section-links a {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  color: var(--black);
+  text-decoration: none;
+}
+
+.section-links a:hover {
+  border-color: var(--red);
+}
+
+.section-links span {
+  color: var(--gray);
+  font-size: 0.8rem;
+}
+
 /* ── MARKDOWN ──────────────────────────────────────────────────── */
 
 .doc h1 {
@@ -425,6 +540,46 @@ body {
   margin-bottom: 2rem;
   padding-bottom: 0.5rem;
   border-bottom: 2px solid var(--black);
+}
+
+.doc-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 72ch) 12rem;
+  gap: 3rem;
+  max-width: 88rem;
+}
+
+.on-page {
+  position: sticky;
+  top: 5rem;
+  align-self: start;
+  border-left: 1px solid var(--border);
+  padding-left: 1rem;
+  font-size: 0.75rem;
+}
+
+.on-page strong {
+  display: block;
+  margin-bottom: 0.75rem;
+  color: var(--black);
+}
+
+.on-page nav {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.on-page a {
+  color: var(--gray);
+  text-decoration: none;
+}
+
+.on-page a.nested {
+  padding-left: 0.75rem;
+}
+
+.on-page a:hover {
+  color: var(--red);
 }
 
 .doc h2 {
@@ -559,7 +714,44 @@ body {
     width: 100%;
   }
 
-  .doc-map {
+  .page-shell {
+    display: block;
+  }
+
+  .side-nav {
+    position: static;
+    height: auto;
+    padding: 1rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .side-title {
+    display: inline-block;
+    border-bottom: none;
+    margin-right: 1rem;
+    padding: 0;
+  }
+
+  .side-nav nav {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .doc-layout {
+    display: block;
+  }
+
+  .on-page {
+    position: static;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+    padding: 1rem 0;
+  }
+
+  .section-links {
     grid-template-columns: 1fr;
   }
 
