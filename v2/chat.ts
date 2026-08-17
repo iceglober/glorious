@@ -49,19 +49,17 @@ export const createChat = (
     } catch {}
   };
 
-  const onTool = (started: Map<number, number>, tool: ToolEvent): void => {
+  // The elapsed time arrives on the event, measured where the call ran. This
+  // used to pair start with end here and subtract, which meant the transcript
+  // and anything else reading it could disagree about the same call.
+  const onTool = (tool: ToolEvent): void => {
     signal({ type: "tool", tool });
-    if (tool.phase === "start") {
-      started.set(tool.id, Date.now());
-      return;
-    }
-    const since = started.get(tool.id);
-    started.delete(tool.id);
+    if (tool.phase === "start") return;
     announce({
       type: "tool",
       name: tool.name,
       detail: tool.detail,
-      elapsedMs: since === undefined ? 0 : Date.now() - since,
+      elapsedMs: tool.elapsedMs,
       ok: tool.ok,
       input: tool.input,
       result: tool.result,
@@ -89,7 +87,6 @@ export const createChat = (
     note = "";
     const added = await wiring.onBeforeRequest?.(prompt, history.length);
     if (added !== undefined && added !== "") prompt = `${prompt}\n\n${added}`;
-    const started = new Map<number, number>();
     const before = history.length;
     let spoken = "";
     let failed = "";
@@ -109,7 +106,7 @@ export const createChat = (
           signal({ type: "sealed" });
           announce({ type: "reasoning", text, elapsedMs });
         },
-        onTool: (tool) => onTool(started, tool),
+        onTool,
         onStep: (step) => {
           // the step's complete text is about to be announced; anything still
           // buffered belongs to it, not to the next step

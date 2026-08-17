@@ -127,6 +127,9 @@ then feeds its output to the model, write a sequence — see `sequences.md`.
 | `turn_end` | `{ text }` | — |
 | `idle` | — | — |
 | `model_select` | `{ model, variant }` | — |
+| `usage` | `{ input, output, cached, cost, contextTokens }` | — |
+| `reasoning` | `{ text, elapsedMs }` | — |
+| `error` | `{ message }` | — |
 
 `tool_call` and `tool_end` are the powerful pair. A read-only mode is the whole
 of this:
@@ -228,6 +231,36 @@ g.command("skills", {
 `clear()` drops the conversation the model replays, leaving the transcript
 alone, and returns `"cleared"`, `"busy"` (a turn is running) or `"empty"`.
 `reload()` re-reads skills, commands and sequences from disk.
+
+### Tokens, cache and cost
+
+`usage` fires once per model call — a turn running three tools reports four
+times. `cached` is what the provider served from its prompt cache instead of
+reprocessing, so `cached / input` is the hit rate.
+
+```ts
+g.on("usage", ({ input, output, cached, cost, contextTokens }) => {
+  const hit = input > 0 ? Math.round((cached / input) * 100) : 0;
+  g.print(`in ${input} out ${output} · ${hit}% cached · $${(cost ?? 0).toFixed(4)}`);
+});
+```
+
+`g.usage()` gives the current picture and the session total:
+
+```ts
+const { tokens, context, last, total } = g.usage();
+// tokens  — context size the provider last reported
+// context — the model's window
+// last    — { input, output, cached, cost } for the most recent call
+// total   — the same, summed across the session, plus `steps`
+```
+
+`total` is summed from the session's own events, so a resumed session reports
+what the whole session cost rather than what it has cost since reopening — and
+a `/clear` does not reset it, because clearing drops what the model replays, not
+what the run spent.
+
+All of it works under `-p` as well as in the TUI, including prices.
 
 ### Keys and flags
 
