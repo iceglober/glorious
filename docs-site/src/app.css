@@ -730,6 +730,8 @@ body {
     border-bottom: 1px solid var(--border);
   }
 
+  .side-group + .side-group { margin-top: 1rem; }
+
   .side-title {
     display: inline-block;
     border-bottom: none;
@@ -806,7 +808,9 @@ body { background: var(--white); }
 .breadcrumbs { padding-inline: clamp(1rem, 4vw, 3.5rem); background: #ebe9e1; border-bottom-color: var(--border); }
 .page-shell { max-width: 100rem; }
 .side-nav { background: #ebe9e1; border-right-color: var(--border); padding-inline: clamp(1rem, 2.5vw, 2.5rem); }
+.side-group + .side-group { margin-top: 1.5rem; }
 .side-title { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; }
+.side-title.active { color: var(--red); }
 .side-nav nav a { color: var(--gray); }
 .side-nav nav a.active { color: var(--red); font-weight: 700; }
 

@@ -9,18 +9,18 @@ export const SECTIONS = [
   { to: "/help", label: "help", pages: [["Troubleshooting", "/troubleshooting"], ["Changelog", "/changelog"]] },
 ] as const;
 
-const sectionFor = (pathname: string) => SECTIONS.find((section) => pathname.startsWith(section.to) || section.pages.some(([, to]) => pathname === to));
+const isCurrentSection = (pathname: string, to: string, pages: readonly (readonly [string, string])[]) => pathname === to || pages.some(([, page]) => pathname === page);
 
 function Sidebar() {
   const { pathname } = useLocation();
-  const section = sectionFor(pathname);
-  if (!section) return null;
   return (
     <aside className="side-nav">
-      <Link className="side-title" to={section.to}>{section.label}</Link>
-      <nav>
-        {section.pages.map(([label, to]) => <NavLink key={to} to={to}>{label}</NavLink>)}
-      </nav>
+      {SECTIONS.map((section) => (
+        <section className="side-group" key={section.to}>
+          <Link className={isCurrentSection(pathname, section.to, section.pages) ? "side-title active" : "side-title"} to={section.to}>{section.label}</Link>
+          <nav>{section.pages.map(([label, to]) => <NavLink key={to} to={to}>{label}</NavLink>)}</nav>
+        </section>
+      ))}
     </aside>
   );
 }
@@ -33,17 +33,14 @@ function Breadcrumbs() {
 }
 
 export function Layout() {
-  const { pathname } = useLocation();
-  const hasSidebar = pathname !== "/";
   return (
     <>
       <header className="site-header">
         <NavLink to="/" className="logo">glrs</NavLink>
-        <nav className="top-nav">{SECTIONS.map(({ to, label }) => <NavLink key={to} to={to} className={({ isActive }) => isActive || pathname.startsWith(to) ? "active" : ""}>{label}</NavLink>)}</nav>
         <Search />
       </header>
       <Breadcrumbs />
-      <div className={hasSidebar ? "page-shell" : "page-shell home-shell"}>
+      <div className="page-shell">
         <Sidebar />
         <div className="page-content"><Outlet /></div>
       </div>
