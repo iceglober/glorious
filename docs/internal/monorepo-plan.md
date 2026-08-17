@@ -7,8 +7,9 @@ keeping one repository, one test strategy, and one release workflow.
 
 ```text
 packages/
-  glorious-core/          # SDK/runtime: provider loop, tools, sessions, extensions
+  glorious-core/          # SDK/runtime: turns, sessions, events, tools, extensions
   glorious-coding-agent/  # terminal product: TUI, CLI, coding defaults, bundled UX
+  provider-registry/      # provider adapters, credentials, and model metadata
   extensions/
     builtins/             # first-party commands and default capabilities
     web-fetch/            # browser-backed web_fetch extension
@@ -25,10 +26,10 @@ to a separate release decision.
 
 Core owns the SDK contract and runtime primitives:
 
-- model/provider abstraction and turn execution
+- provider-neutral model ports and turn execution
 - tool registration and tool lifecycle events
 - extension loading and the `Glorious` API
-- sessions, transcript events, compaction, usage, and configuration primitives
+- session repository ports, transcript events, compaction, usage, and configuration primitives
 - stable types for tools, commands, hooks, render lines, and host capabilities
 
 Core does not know about OpenTUI, terminal keybindings, coding-specific prompts,
@@ -44,7 +45,14 @@ The coding agent owns the product experience:
 - default tools for files, shell, search, mentions, and skills
 - the default package and executable named `glorious`
 
-The coding agent depends on core. Core never imports the coding agent.
+The coding agent depends on core and the provider registry. Core never imports
+products, provider implementations, or extensions.
+
+### provider-registry
+
+The provider registry is a sibling package consumed by products. It owns provider
+adapters, credentials, model metadata, and model instance construction. Core
+consumes only the provider-neutral model port.
 
 ### First-party extensions
 
@@ -59,7 +67,8 @@ usable through the same extension API as a user extension.
 
 ## Migration phases
 
-1. **Inventory and contracts** — classify every current module as core,
+1. **Domain artifact and contracts** — land `docs/internal/domain-model.md`,
+   classify every current module as core, coding-agent, provider, or extension,
    coding-agent, or extension; freeze the public core API and identify imports
    that cross the intended boundary.
 2. **Workspace skeleton** — add the package manager workspace, package manifests,
@@ -80,8 +89,8 @@ usable through the same extension API as a user extension.
 ## Decisions to make before phase 2
 
 - workspace manager and package layout (`bun` workspaces versus another tool)
-- whether core owns provider implementations or only provider interfaces
-- session file compatibility and schema ownership
-- whether `Line[]` is a core UI contract or a coding-agent renderer contract
-- versioning policy for core, coding agent, and first-party extensions
+- provider registry API and the provider-neutral model port
+- session repository API, event schema ownership, and branch/fork semantics
+- the neutral UI capability interface and whether `Line[]` remains its core render primitive
+- synchronized versioning policy for core, coding agent, provider registry, and first-party extensions
 - compatibility package strategy for `@glrs-dev/glorious`
