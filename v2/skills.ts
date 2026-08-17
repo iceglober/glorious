@@ -26,6 +26,9 @@ export type SkillSummary = {
   name: string;
   description: string;
   location: string;
+  // What to type to run it, without the leading slash. Carried rather than
+  // recomputed by every listing that wants to show it.
+  command: string;
   trigger: string;
   modelInvocable: boolean;
   allowedTools: readonly string[];
@@ -51,6 +54,16 @@ export type Skills = {
 // convention, not a standard, and is documented as one in docs/skills.md.
 const MODEL_INVOCATION_FIELD = "disable-model-invocation";
 
+// Skills answer to `/skill:name`. They used to take the bare `/name`, which put
+// them in the same namespace as every command an extension or a markdown file
+// registers — so installing a skill could quietly shadow a command you already
+// had, and there was no way to look at `/deploy` and know which of the two it
+// was. The prefix says where it comes from. `trigger:` renames the part after
+// the colon; the prefix itself is not optional, or the namespace would not be
+// one.
+const commandFor = (skill: { name: string; trigger: string }): string =>
+  `skill:${skill.trigger === "" ? skill.name.toLowerCase() : skill.trigger}`;
+
 // The standard: 1–64 characters, lowercase letters, numbers and single inner
 // hyphens. Enforced leniently — a name that breaks the rule warns and still
 // loads, because refusing to run someone's skill over a capital letter helps
@@ -60,8 +73,7 @@ const DESCRIPTION_MAX = 1024;
 const COMPATIBILITY_MAX = 500;
 const LEGAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
-const ancestors = (root: string): string[] => {
-  const home = homedir();
+const ancestors = (root: string, home: string): string[] => {
   const directories: string[] = [];
   let current = resolve(root);
   while (true) {
@@ -80,12 +92,11 @@ const ancestors = (root: string): string[] => {
 // tool's whole skill surface arrived as glorious slash commands, and every one
 // of those names and descriptions was paid for in the per-turn preamble. Put a
 // symlink in .agents/skills/ if you want one of them here.
-const skillRoots = (root: string): string[] => {
-  const home = homedir();
+const skillRoots = (root: string, home: string): string[] => {
   return [
     join(home, ".config", "agents", "skills"),
     join(home, ".agents", "skills"),
-    ...ancestors(root).map((directory) => join(directory, ".agents", "skills")),
+    ...ancestors(root, home).map((directory) => join(directory, ".agents", "skills")),
     join(root, ".glorious", "skills"),
   ];
 };
@@ -119,9 +130,10 @@ const truthy = (value: string): boolean => ["true", "yes", "1", "on"].includes(v
 const parseSkill = (
   text: string,
   location: string,
+  home: string,
 ): { skill: Skill | null; warnings: string[] } => {
   const warnings: string[] = [];
-  const where = location.replace(homedir(), "~");
+  const where = location.replace(home, "~");
   const lines = text.split("\n");
   if (lines[0]?.trim() !== "---")
     return { skill: null, warnings: [`${where}: no frontmatter — a skill needs --- at the top`] };
@@ -238,16 +250,19 @@ const skillFiles = async (base: string, depth = 0): Promise<string[]> => {
   return found.flat();
 };
 
-const discover = async (root: string): Promise<{ skills: Skill[]; warnings: string[] }> => {
+const discover = async (
+  root: string,
+  home: string,
+): Promise<{ skills: Skill[]; warnings: string[] }> => {
   const found: Skill[] = [];
   const warnings: string[] = [];
   const seen = new Map<string, string>();
-  for (const base of skillRoots(root)) {
+  for (const base of skillRoots(root, home)) {
     for (const location of await skillFiles(resolve(base))) {
       const text = await Bun.file(location)
         .text()
         .catch(() => "");
-      const parsed = parseSkill(text, location);
+      const parsed = parseSkill(text, location, home);
       warnings.push(...parsed.warnings);
       const skill = parsed.skill;
       if (!skill) continue;
@@ -257,12 +272,12 @@ const discover = async (root: string): Promise<{ skills: Skill[]; warnings: stri
       const folder = basename(dirname(location));
       if (folder !== skill.name)
         warnings.push(
-          `${location.replace(homedir(), "~")}: skill is named "${skill.name}" but sits in ${folder}/`,
+          `${location.replace(home, "~")}: skill is named "${skill.name}" but sits in ${folder}/`,
         );
       const already = seen.get(skill.name);
       if (already !== undefined) {
         warnings.push(
-          `two skills are named "${skill.name}" — using ${already.replace(homedir(), "~")}, ignoring ${location.replace(homedir(), "~")}`,
+          `two skills are named "${skill.name}" — using ${already.replace(home, "~")}, ignoring ${location.replace(home, "~")}`,
         );
         continue;
       }
@@ -302,8 +317,12 @@ const createSkillTool = (skills: Skill[]) => {
   });
 };
 
-export const loadSkills = async (root: string): Promise<Skills> => {
-  const { skills, warnings } = await discover(root);
+// `home` is a parameter rather than a call to homedir() so a test can point the
+// search somewhere empty. It could not: homedir() ignores $HOME on Bun, so the
+// suite read whatever skills were actually installed on the machine running it
+// — green on CI, red on any laptop with skills of its own.
+export const loadSkills = async (root: string, home: string = homedir()): Promise<Skills> => {
+  const { skills, warnings } = await discover(root, home);
   // What the model is told exists. A skill that opted out of model invocation is
   // absent from here — which is the whole of that field: it does not appear in
   // the preamble, it is not activatable, and the only way to it is typing its
@@ -321,12 +340,11 @@ export const loadSkills = async (root: string): Promise<Skills> => {
   return {
     catalog,
     warnings,
-    // Every skill is reachable as a slash command named after it. Gating this on
-    // a `trigger:` field meant a skill that dropped the field lost its command
-    // without warning — which is exactly what happened when graphify shipped
-    // 0.9.41. `trigger:` now only renames the command.
+    // Every skill is reachable as a slash command. Gating this on a `trigger:`
+    // field meant a skill that dropped the field lost its command without
+    // warning — which is exactly what happened when graphify shipped 0.9.41.
     commands: skills.map((skill) => ({
-      name: skill.trigger === "" ? skill.name.toLowerCase() : skill.trigger,
+      name: commandFor(skill),
       description: skill.description,
       run: null,
       body: triggerPrompt(skill),
@@ -337,6 +355,7 @@ export const loadSkills = async (root: string): Promise<Skills> => {
         name,
         description,
         location,
+        command: commandFor({ name, trigger }),
         trigger,
         modelInvocable,
         allowedTools,

@@ -52,8 +52,11 @@ turned someone else's whole skill surface into glorious slash commands — and p
 every one of their descriptions in the per-turn preamble. Symlink one into
 `.agents/skills/` if you want it here.
 
-A skill may declare `trigger: /name` to rename its slash command. Without one
-the command is the skill's own name.
+Skills answer under a `skill:` prefix — `/skill:changelog` — so installing one
+cannot shadow a command you already had, and `/deploy` is never ambiguous about
+where it came from. Completion is a subsequence match, so typing `/changelog`
+still finds it. A skill may declare `trigger: /name` to rename the part after
+the colon; without one it is the skill's own name. See `skills.md`.
 
 ## AGENTS.md
 

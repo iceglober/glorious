@@ -180,7 +180,7 @@ const main = async (): Promise<void> => {
   let model = currentModel(config.config);
   let skills = await loadSkills(root);
   // Slash commands come from two places: markdown files in a commands
-  // directory, and skills that declare a trigger of their own.
+  // directory, and skills, which answer under a `skill:` prefix of their own.
   let userCommands = await loadUserCommands(root);
   // Extensions register commands as they load, so they are merged in here
   // rather than pushed separately — one table, one collision rule.
