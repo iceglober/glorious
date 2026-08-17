@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import { clip, type Line, type Tone } from "./render";
+import type { SkillSummary } from "./skills";
 import type { Question, ToolEvent } from "./tools";
 import { wrapTool } from "./tools";
 
@@ -122,7 +123,10 @@ export type CommandSpec = {
 export type Loaded = {
   commands: ReadonlyArray<{ name: string; description: string; origin?: string }>;
   sequences: ReadonlyArray<{ name: string; description: string; origin: string }>;
-  skills: ReadonlyArray<{ name: string; description: string; location: string }>;
+  // The real type, not a copy of its fields — a second declaration of the same
+  // shape is a second thing to remember to update, and this one had already
+  // fallen behind.
+  skills: readonly SkillSummary[];
   extensions: ReadonlyArray<{ name: string; origin: string; contributed: string }>;
 };
 

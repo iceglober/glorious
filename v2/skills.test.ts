@@ -44,8 +44,12 @@ describe("discover", () => {
     expect(names).toContain("zz-project-fixture");
   });
 
-  test("requires the skill directory name to match its frontmatter", () => {
-    expect(names).not.toContain("zz-rejected-fixture");
+  // It used to be dropped outright, so renaming a folder made a skill vanish
+  // with nothing said. The frontmatter names the skill; the folder is where it
+  // happens to live.
+  test("a skill in a differently-named directory loads, and says so", () => {
+    expect(names).toContain("zz-rejected-fixture");
+    expect(loaded.warnings.join("\n")).toContain('named "zz-rejected-fixture" but sits in');
   });
 
   test("finds a skill whose directory is a symlink", () => {
@@ -172,5 +176,144 @@ describe("what a triggered skill actually sends", () => {
     const body = skills.commands.find((entry) => entry.name === "framefixture")?.body ?? "";
     expect(body).toContain("Step 1. Do it.");
     expect(body).toContain("<skill_content");
+  });
+});
+
+// The Agent Skills standard's frontmatter, plus the one field that is not in it.
+describe("frontmatter", () => {
+  const load = async (frontmatter: string, name = "zz-fm") => {
+    const dir = await mkdtemp(join(tmpdir(), "glorious-fm-"));
+    await mkdir(join(dir, ".glorious", "skills", name), { recursive: true });
+    await writeFile(
+      join(dir, ".glorious", "skills", name, "SKILL.md"),
+      `---\n${frontmatter}\n---\n\nBody.\n`,
+    );
+    const result = await loadSkills(dir);
+    await rm(dir, { recursive: true, force: true });
+    return result;
+  };
+
+  test("the standard's optional fields are carried, not dropped", async () => {
+    const loaded = await load(
+      [
+        "name: zz-fm",
+        "description: A fixture.",
+        "license: MIT",
+        "compatibility: needs bun",
+        "allowed-tools: read grep  bash",
+        "metadata:",
+        "  author: austin",
+        "  version: 2",
+      ].join("\n"),
+    );
+    expect(loaded.summaries[0]).toMatchObject({
+      compatibility: "needs bun",
+      allowedTools: ["read", "grep", "bash"],
+    });
+  });
+
+  test("a field nothing knows about is ignored rather than fatal", async () => {
+    const loaded = await load("name: zz-fm\ndescription: A fixture.\ninvented-field: 3");
+    expect(loaded.summaries).toHaveLength(1);
+  });
+
+  // Not part of the specification — a convention enough agents adopted that a
+  // skill carrying it expects it honoured. See docs/skills.md.
+  test("disable-model-invocation keeps a skill out of the model's reach", async () => {
+    const loaded = await load(
+      "name: zz-fm\ndescription: A fixture.\ndisable-model-invocation: true",
+    );
+    expect(loaded.summaries[0].modelInvocable).toBe(false);
+    // absent from the preamble, so it costs nothing per turn and cannot be chosen
+    expect(loaded.catalog).toBe("");
+    // and absent from what activate_skill can reach
+    expect(loaded.tool).toBeUndefined();
+    // but still yours to type
+    expect(loaded.commands.map((command) => command.name)).toEqual(["zz-fm"]);
+  });
+
+  test("without the field a skill is offered to the model", async () => {
+    const loaded = await load("name: zz-fm\ndescription: A fixture.");
+    expect(loaded.summaries[0].modelInvocable).toBe(true);
+    expect(loaded.catalog).toContain("zz-fm");
+  });
+
+  test("a skill with no description does not load, and says why", async () => {
+    const loaded = await load("name: zz-fm");
+    expect(loaded.summaries).toHaveLength(0);
+    expect(loaded.warnings.join("\n")).toContain("no description");
+  });
+
+  // Lenient: refusing to run someone's skill over a capital letter helps nobody.
+  test("a non-standard name warns and still loads", async () => {
+    const loaded = await load("name: ZZ_Fm\ndescription: A fixture.", "ZZ_Fm");
+    expect(loaded.summaries).toHaveLength(1);
+    expect(loaded.warnings.join("\n")).toContain("not a standard skill name");
+  });
+
+  test("an oversized description warns, because it is paid for every turn", async () => {
+    const loaded = await load(`name: zz-fm\ndescription: ${"x".repeat(1100)}`);
+    expect(loaded.warnings.join("\n")).toContain("over the 1024");
+  });
+
+  test("a file with no frontmatter at all says so", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glorious-fm-"));
+    await mkdir(join(dir, ".glorious", "skills", "zz-bare"), { recursive: true });
+    await writeFile(join(dir, ".glorious", "skills", "zz-bare", "SKILL.md"), "just a body\n");
+    const loaded = await loadSkills(dir);
+    expect(loaded.warnings.join("\n")).toContain("no frontmatter");
+    await rm(dir, { recursive: true, force: true });
+  });
+});
+
+describe("discovery reaches skills that are organised", () => {
+  test("a skill nested in a folder of skills is found", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glorious-nested-"));
+    const nested = join(dir, ".glorious", "skills", "writing", "deep", "zz-nested");
+    await mkdir(nested, { recursive: true });
+    await writeFile(
+      join(nested, "SKILL.md"),
+      "---\nname: zz-nested\ndescription: Buried a few folders down.\n---\n\nBody.\n",
+    );
+    const loaded = await loadSkills(dir);
+    expect(loaded.summaries.map((skill) => skill.name)).toContain("zz-nested");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("a skill's own references and scripts are not searched for more skills", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glorious-bundle-"));
+    const skill = join(dir, ".glorious", "skills", "zz-bundle");
+    await mkdir(join(skill, "references"), { recursive: true });
+    await writeFile(
+      join(skill, "SKILL.md"),
+      "---\nname: zz-bundle\ndescription: Has bundled material.\n---\n\nBody.\n",
+    );
+    await writeFile(
+      join(skill, "references", "SKILL.md"),
+      "---\nname: zz-not-a-skill\ndescription: Reference material.\n---\n\nBody.\n",
+    );
+    const loaded = await loadSkills(dir);
+    const names = loaded.summaries.map((one) => one.name);
+    expect(names).toContain("zz-bundle");
+    expect(names).not.toContain("zz-not-a-skill");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("two skills with one name warn, and the first found wins", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glorious-dupe-"));
+    for (const where of [
+      join(dir, ".agents", "skills", "zz-dupe"),
+      join(dir, ".glorious", "skills", "zz-dupe"),
+    ]) {
+      await mkdir(where, { recursive: true });
+      await writeFile(
+        join(where, "SKILL.md"),
+        `---\nname: zz-dupe\ndescription: From ${where}.\n---\n\nBody.\n`,
+      );
+    }
+    const loaded = await loadSkills(dir);
+    expect(loaded.summaries.filter((one) => one.name === "zz-dupe")).toHaveLength(1);
+    expect(loaded.warnings.join("\n")).toContain('two skills are named "zz-dupe"');
+    await rm(dir, { recursive: true, force: true });
   });
 });
