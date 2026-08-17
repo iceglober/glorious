@@ -145,6 +145,23 @@ The model is told why, by name, so it chooses something else instead of seeing
 an unexplained failure. Withholding beats instructing — a blocked tool cannot be
 talked into running.
 
+**Be careful blocking a tool headlessly.** `g.ui.*` needs a person, so a gate
+that asks for confirmation has to decide what to do when `g.hasUI` is false.
+Refusing every `bash` in print mode makes `glorious -p` unusable — including the
+run the agent uses to verify its own work, which will then retry until something
+times out. Either allow the call when there is no UI, or narrow the gate to the
+commands that actually warrant it:
+
+```ts
+g.on("tool_call", async ({ name, input }) => {
+  if (name !== "bash") return;
+  const command = String(input.command ?? "");
+  if (!/rm -rf|force-push|drop table/iu.test(command)) return;   // narrow
+  if (!g.hasUI) return `refused headlessly: ${command}`;         // and explicit
+  if (!(await g.ui.confirm("Run this?", command))) return "you declined";
+});
+```
+
 Async handlers are awaited. `session_start` completes before the first turn, so
 an extension that fetches or reads on the way up has finished registering by the
 time anything can call it. A handler that throws is reported and the turn
@@ -156,11 +173,37 @@ Runs a shell command in the project root. Returns `{ output, stdout, ok }`;
 `args` arrive as real positional parameters, so `$1` and `$@` mean what a script
 author expects and nothing needs quoting to stay safe.
 
-### `g.send(text, label?)` / `g.print(content, tone?)` / `g.ask(questions)`
+### `g.root`
+
+The project root, absolute. Every relative path an extension resolves should
+resolve against this, not `process.cwd()` — a sequence or a tool may have moved
+the working directory.
+
+### `g.ui`
+
+Prompts, in the composer rather than over the transcript. All of them throw in
+print mode, so guard on `g.hasUI` if the extension should also work headlessly.
+
+```ts
+const choice = await g.ui.select("Which branch?", ["main", "next"]);  // string | null
+const sure   = await g.ui.confirm("Delete it?", "This cannot be undone");  // boolean
+const name   = await g.ui.input("New session name");  // string | null
+g.ui.setInput("git status");   // put text in the composer, ready to edit
+```
+
+`select` and `input` resolve to `null` when dismissed; `confirm` resolves
+`false`. Dismissal is never mistaken for agreement.
+
+### `g.send(text, options?)` / `g.print(content, tone?)` / `g.ask(questions)`
 
 Start a turn, write into the transcript, or ask the user with the same widget
 the `ask_user` tool uses. Tones: `accent`, `highlight`, `muted`, `prompt`,
 `success`, `warning`, `danger`.
+
+`g.send(text, { label, steer })` — `label` is what the transcript shows instead
+of the text, which matters when the text is a 30k expansion nobody typed.
+`steer: true` puts the message next in the queue rather than last; the running
+turn is never interrupted by it.
 
 `g.print` takes a string, or `Line[]` when you want it styled — that is how the
 bundled `builtins` extension draws `/help`.

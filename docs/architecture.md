@@ -1,6 +1,6 @@
 # How glorious is put together
 
-Roughly 5,000 lines of TypeScript in `v2/`, run by Bun with no build step.
+Roughly 5,300 lines of TypeScript in `v2/`, run by Bun with no build step.
 
 This file is for a person changing glorious. The agent is pointed at `docs/`,
 not at `v2/` — the documented API is the contract it writes extensions against,
@@ -9,12 +9,15 @@ and handing it the implementation invites it to reach past that contract.
 ## The turn loop
 
 ```
-index.ts     owns the session: wiring, state, paint
-  chat.ts    queues turns, pairs tool starts with ends, holds history
-  agent.ts   builds the request, streams the response
-  tools.ts   the tools the model can call
-  render.ts  everything -> Line[]
-  ui/        Line[] -> the terminal, via opentui
+index.ts            owns the session: wiring, state, paint
+  chat.ts           queues turns, pairs tool starts with ends, holds history
+  agent.ts          builds the request, streams the response
+  tools.ts          the tools the model can call, and the gate around them
+  extension-api.ts  the surface extensions are written against
+  extensions.ts     finds and loads them
+  bundled/          the extensions glorious ships: builtins, web-fetch
+  render.ts         everything -> Line[]
+  ui/               Line[] -> the terminal, via opentui
 ```
 
 `index.ts` is the only module that knows about all the others. Everything below
@@ -70,6 +73,11 @@ and the same catch turns a throw into an `ERROR:` the model can recover from.
 
 Path confinement, output caps and process-group kill live in `tools.ts` and are
 not negotiable per-call — they never prompt, so they are not permission theatre.
+
+`wrapTool` also carries the gate an extension's `tool_call`/`tool_end` handlers
+drive: refuse a call before it runs, or rewrite what the model is told came
+back. Because every tool goes through the same wrapper, a policy written once
+covers built-ins, bundled extensions and third-party tools alike.
 
 ## Two entry points
 
