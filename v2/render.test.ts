@@ -162,45 +162,60 @@ describe("the activity row", () => {
 // The model always received the reason — it is the tool's return value — but
 // the transcript showed only `✗ edit 2 files`, so a failure the agent then
 // worked around looked, from the outside, like nothing had happened.
-describe("a failed tool row says why", () => {
+// The row is three parts: what happened on the header, the arguments under it,
+// and the tail of the output under that. A 30k result contributes three lines.
+describe("the tool row format", () => {
   const text = (lines: Line[]): string =>
     lines.map((line) => line.map((span) => span.text).join("")).join("\n");
 
-  test("the reason lands under the row", () => {
-    const rows = toolRow(
-      "edit",
-      "2 files",
-      24,
-      false,
-      undefined,
-      "ERROR: file 2/2 (b.txt) edit 1/1: old_string not found. Nothing was written.",
-    );
-    expect(rows).toHaveLength(2);
-    expect(text(rows)).toContain("b.txt");
+  test("header, args, then the last lines of output", () => {
+    const rows = toolRow("bash", "git status", 1240, true, undefined, "a\nb\nc\nd\ne");
+    expect(text(rows).split("\n")).toEqual([
+      "  ✓ bash  1.2s",
+      "    git status",
+      "    c",
+      "    d",
+      "    e",
+    ]);
+  });
+
+  test("a running row has no duration — there is nothing to report yet", () => {
+    const rows = runningRow("bash", "sleep 3");
+    expect(text(rows)).toBe("  → bash\n    sleep 3");
+  });
+
+  test("at most three output lines, however much came back", () => {
+    const rows = toolRow("bash", "x", 1, true, undefined, "l".repeat(10).split("").join("\n"));
+    expect(rows).toHaveLength(5);
+  });
+
+  test("blank lines do not count toward the three", () => {
+    const rows = toolRow("bash", "x", 1, true, undefined, "a\n\n\n\nb");
+    expect(text(rows).split("\n").slice(2)).toEqual(["    a", "    b"]);
+  });
+
+  test("a long line is clamped rather than wrapped across the transcript", () => {
+    const rows = toolRow("bash", "y".repeat(500), 1, true, undefined, "z".repeat(500));
+    for (const line of text(rows).split("\n")) expect(line.length).toBeLessThan(160);
+  });
+
+  test("failure output is danger-toned, and the ERROR: prefix is dropped", () => {
+    const rows = toolRow("edit", "2 files", 24, false, undefined, "ERROR: old_string not found");
     expect(text(rows)).toContain("old_string not found");
+    expect(text(rows)).not.toContain("ERROR:");
+    expect(rows.at(-1)?.[0].tone).toBe("danger");
   });
 
-  test("the ERROR: prefix is dropped — the ✗ already says that", () => {
-    expect(text(toolRow("read", "x", 1, false, undefined, "ERROR: nope"))).not.toContain("ERROR:");
+  test("nothing to say means a single line", () => {
+    expect(toolRow("glob", "", 3, true, undefined, "")).toHaveLength(1);
   });
 
-  test("a successful row is unchanged", () => {
-    expect(toolRow("read", "a.txt", 1, true, undefined, "file contents")).toHaveLength(1);
-  });
-
-  test("a long result is clipped rather than pasted into the transcript", () => {
-    const rows = toolRow("bash", "x", 1, false, undefined, `ERROR: ${"y".repeat(30_000)}`);
-    expect(text(rows).length).toBeLessThan(400);
-  });
-
-  test("an empty result adds no row", () => {
-    expect(toolRow("bash", "x", 1, false, undefined, "")).toHaveLength(1);
+  test("an extension's renderer replaces the body, not the header", () => {
+    const rows = toolRow("web_fetch", "x", 3000, true, [[{ text: "fetched 2 pages" }]], "ignored");
+    expect(text(rows)).toBe("  ✓ web_fetch  3.0s\n    fetched 2 pages");
   });
 });
 
-// The count and the rows it counts should read as one thing. The count was
-// accent like the rest of the line, so it looked like part of the hint rather
-// than a tally of the warning-toned rows sitting above it.
 describe("the queued count matches the queued rows", () => {
   const spans = (queued: number, columns = 140) =>
     statusRow({ busy: true, queued, columns, phase: { name: "writing", ms: 400 } })[0];

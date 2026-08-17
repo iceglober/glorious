@@ -4,7 +4,7 @@ import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { currentModel, modelMetadata } from "./models";
-import { errorText, flatten } from "./render";
+import { clean, errorText, flatten } from "./render";
 import { loadSkills } from "./skills";
 import { firstDetail, runShell, setToolGate, type ToolEvent } from "./tools";
 
@@ -188,15 +188,22 @@ export const runPrint = async (
         }
         const since = started.get(event.id);
         started.delete(event.id);
-        const took = since === undefined ? "" : ` ${((Date.now() - since) / 1000).toFixed(1)}s`;
-        const detail = flatten(event.detail).slice(0, TRAIL_CHARS);
-        // The reason, on a failed call, for the same reason the TUI shows it:
-        // piping the trail to a log and finding only `✗ edit 2 files` tells you
-        // nothing about what broke.
-        const why = event.ok ? "" : `\n    ${flatten(event.result).slice(0, TRAIL_CHARS * 2)}`;
-        process.stderr.write(
-          `${event.ok ? "✓" : "✗"} ${event.name}${detail && ` ${detail}`}${took}${why}\n`,
-        );
+        // The same three parts the TUI draws, so a piped trail and a watched
+        // session describe a call the same way.
+        const took = since === undefined ? "" : `  ${((Date.now() - since) / 1000).toFixed(1)}s`;
+        const rows = [
+          `${event.ok ? "✓" : "✗"} ${event.name}${took}`,
+          ...(flatten(event.detail) === ""
+            ? []
+            : [`    ${flatten(event.detail).slice(0, TRAIL_CHARS)}`]),
+          ...clean(event.result.replace(/^ERROR:\s*/u, ""))
+            .split("\n")
+            .map((row) => row.trim())
+            .filter((row) => row !== "")
+            .slice(-3)
+            .map((row) => `    ${row.slice(0, TRAIL_CHARS)}`),
+        ];
+        process.stderr.write(`${rows.join("\n")}\n`);
       },
       // Print mode discarded usage entirely, so an extension running headlessly
       // could see none of it. It reports the same figures the TUI does.

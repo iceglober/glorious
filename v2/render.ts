@@ -61,7 +61,7 @@ export const width = (text: string): number =>
 
 const noise = /[\p{Cc}\p{Bidi_Control}]/gu;
 
-const clean = (text: string): string =>
+export const clean = (text: string): string =>
   text.replaceAll("\r", "").replace(noise, (char) => (char === "\n" ? "\n" : " "));
 
 export const flatten = (text: string): string => clean(text).replaceAll("\n", " ").trim();
@@ -150,34 +150,47 @@ export const noticeBlock = (text: string, tone: Tone = "muted"): Line[] =>
     .split("\n")
     .map((row): Line => [{ text: row, tone }]);
 
-const activity = (icon: Span, name: string, detail: string, gap: string): Line => {
-  const label = flatten(detail);
-  const note: Line = label ? [{ text: `${gap}${clip(label, 80)}`, tone: "muted" }] : [];
-  return [{ text: "  " }, icon, { text: ` ${flatten(name)}` }, ...note];
+// A tool row is three parts, each on its own line:
+//
+//   ✓ bash  1.2s
+//     git status --short
+//     M v2/render.ts
+//
+// The header carries only what is true at a glance — did it work, what was it,
+// how long did it take — and the duration appears only once there is one. The
+// arguments and the tail of the output sit under it, indented and clamped, so a
+// row stays a row: a 30k result contributes three lines, never thirty.
+const ARG_CHARS = 140;
+const OUTPUT_CHARS = 140;
+const OUTPUT_LINES = 3;
+const INDENT = "    ";
+
+const header = (icon: Span, name: string, took?: string): Line => [
+  { text: "  " },
+  icon,
+  { text: ` ${flatten(name)}` },
+  ...(took === undefined ? [] : [{ text: `  ${took}`, tone: "muted" as const }]),
+];
+
+const argRow = (detail: string): Line[] => {
+  const said = flatten(detail);
+  return said === "" ? [] : [[{ text: `${INDENT}${clip(said, ARG_CHARS)}`, tone: "muted" }]];
 };
 
-// An extension's renderer owns what its row says; glorious keeps the status
-// mark and the timing, because those have to mean the same thing on every row
-// whoever wrote the tool. Rows after the first indent under it.
-const decorate = (icon: Span, custom: Line[], trailer: Line): Line[] =>
-  custom.map((line, at) =>
-    at === 0
-      ? [{ text: "  " }, icon, { text: " " }, ...line, ...trailer]
-      : [{ text: "    " }, ...line],
-  );
-
-const REASON_CHARS = 160;
-
-// Why a call failed, for the person watching. The model always received this —
-// it is the tool's return value — but the transcript showed only `✗ edit 2
-// files`, so a failure that the agent then worked around looked from the outside
-// like nothing had happened. One line, under the row, clipped: enough to know
-// what broke and which file, without a 30k result landing in the transcript.
-const reasonRow = (result: string): Line[] => {
-  const said = flatten(result.replace(/^ERROR:\s*/u, ""));
-  if (said === "") return [];
-  return [[{ text: `    ${clip(said, REASON_CHARS)}`, tone: "danger" }]];
-};
+// The tail, not the head: a command's last lines are the ones that say how it
+// ended. Blank lines are dropped so three lines of output means three lines
+// worth reading.
+const outputRows = (result: string, ok: boolean): Line[] =>
+  clean(result.replace(/^ERROR:\s*/u, ""))
+    .split("\n")
+    .map((row) => row.trim())
+    .filter((row) => row !== "")
+    .slice(-OUTPUT_LINES)
+    .map(
+      (row): Line => [
+        { text: `${INDENT}${clip(row, OUTPUT_CHARS)}`, tone: ok ? "muted" : "danger" },
+      ],
+    );
 
 export const toolRow = (
   name: string,
@@ -190,10 +203,11 @@ export const toolRow = (
   const mark: Span = ok ? { text: "✓", tone: "success" } : { text: "✗", tone: "danger" };
   const took =
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
-  const trailer: Line = [{ text: `  ${took}`, tone: "muted" }];
-  const why = ok || result === undefined ? [] : reasonRow(result);
-  if (custom && custom.length > 0) return [...decorate(mark, custom, trailer), ...why];
-  return [[...activity(mark, name, detail, "  "), ...trailer], ...why];
+  const body =
+    custom && custom.length > 0
+      ? custom.map((line): Line => [{ text: INDENT }, ...line])
+      : [...argRow(detail), ...(result === undefined ? [] : outputRows(result, ok))];
+  return [header(mark, name, took), ...body];
 };
 
 // Reasoning collapses once the answer starts: what matters afterwards is that it
@@ -261,10 +275,15 @@ export const transcript = (events: readonly SessionEvent[]): Line[] =>
 // A static mark, where a five-cell block used to march back and forth. A row
 // that is present already says the call is running; the marching said nothing
 // the row did not, eleven times a second.
+// No duration yet — there is nothing to report until it finishes, and a number
+// counting up in place is the animation this deliberately does not have.
 export const runningRow = (name: string, detail: string, custom?: Line[]): Line[] => {
   const icon: Span = { text: "→", tone: "accent" };
-  if (custom && custom.length > 0) return decorate(icon, custom, []);
-  return [activity(icon, name, detail, " ")];
+  const body =
+    custom && custom.length > 0
+      ? custom.map((line): Line => [{ text: INDENT }, ...line])
+      : argRow(detail);
+  return [header(icon, name), ...body];
 };
 
 export const queuedRow = (text: string): Line => [
