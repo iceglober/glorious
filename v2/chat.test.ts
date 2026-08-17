@@ -51,10 +51,12 @@ describe("the reminder channel", () => {
     await settle(chat);
 
     expect(prompts[0]).toBe("first");
-    expect(prompts[1]).toStartWith(REMINDER_OPEN);
+    // The request leads; the reminder trails it. A model that led with the
+    // reminder answered it instead of the request.
+    expect(prompts[1]).toStartWith("second");
     expect(prompts[1]).toContain("ran out of steps");
-    expect(prompts[1]).toContain(REMINDER_CLOSE);
-    expect(prompts[1]).toEndWith("second");
+    expect(prompts[1]).toContain(REMINDER_OPEN);
+    expect(prompts[1]).toEndWith(REMINDER_CLOSE);
   });
 
   test("a failed turn reports the failure to the next turn", async () => {
@@ -70,7 +72,7 @@ describe("the reminder channel", () => {
     await settle(chat);
 
     expect(prompts[1]).toContain("connection reset");
-    expect(prompts[1]).toStartWith(REMINDER_OPEN);
+    expect(prompts[1]).toStartWith("second");
   });
 
   test("it fires once, not on every following turn", async () => {
@@ -315,5 +317,166 @@ describe("streaming deltas", () => {
     chat.send("go");
     await settle(chat);
     expect(seen.filter((e) => e.type === "assistant")).toMatchObject([{ text: "final answer" }]);
+  });
+});
+
+// Compaction is the answer to a full context that is not "throw it all away".
+// The cut has to land on a user message: a tool result separated from the call
+// it answers is an invalid request, and the provider rejects the whole turn.
+describe("compacting a long conversation", () => {
+  const conversation = (turns: number): ModelMessage[] =>
+    Array.from({ length: turns }, (_, at) => [
+      { role: "user" as const, content: `ask ${at} ${"x".repeat(400)}` },
+      {
+        role: "assistant" as const,
+        content: [
+          { type: "tool-call" as const, toolCallId: `t${at}`, toolName: "read", input: {} },
+        ],
+      },
+      {
+        role: "tool" as const,
+        content: [
+          {
+            type: "tool-result" as const,
+            toolCallId: `t${at}`,
+            toolName: "read",
+            output: { type: "text" as const, value: "y".repeat(400) },
+          },
+        ],
+      },
+      { role: "assistant" as const, content: `answered ${at}` },
+    ]).flat();
+
+  const harnessWith = (history: ModelMessage[], summary = "the brief") => {
+    const events: SessionEvent[] = [];
+    let sent: ModelMessage[] = [];
+    const agent = {
+      summarise: async () => summary,
+      run: async (_p: string, replayed: ModelMessage[]) => {
+        sent = replayed;
+        return done("ok");
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, {
+      onEvent: (event) => events.push(event),
+      onSignal: () => {},
+      history,
+    });
+    return { chat, events, sent: () => sent };
+  };
+
+  // A tool message whose call was summarised away is an invalid request, and
+  // the provider rejects the entire turn — so this is the invariant compaction
+  // lives or dies by.
+  const orphans = (messages: ModelMessage[]): string[] => {
+    const called = new Set<string>();
+    const loose: string[] = [];
+    for (const message of messages) {
+      if (message.role === "assistant" && Array.isArray(message.content))
+        for (const part of message.content)
+          if (part.type === "tool-call") called.add(part.toolCallId);
+      if (message.role === "tool" && Array.isArray(message.content))
+        for (const part of message.content) {
+          const id = (part as { toolCallId?: string }).toolCallId;
+          if (id !== undefined && !called.has(id)) loose.push(id);
+        }
+    }
+    return loose;
+  };
+
+  test("the fixture would fail this check if cut anywhere", () => {
+    // proves the check has teeth: slicing mid-turn orphans a result
+    expect(orphans(conversation(4).slice(2))).not.toEqual([]);
+  });
+
+  test("what the next turn replays has no orphaned tool results", async () => {
+    const { chat, sent } = harnessWith(conversation(12));
+    expect((await chat.compact("summarise", 2_000)).outcome).toBe("compacted");
+    chat.send("next");
+    await settle(chat);
+    expect(orphans(sent())).toEqual([]);
+    expect(sent().length).toBeLessThan(conversation(12).length);
+  });
+
+  test("the summary leads the replayed history", async () => {
+    const { chat, sent } = harnessWith(conversation(12), "WHAT HAPPENED BEFORE");
+    await chat.compact("summarise", 2_000);
+    chat.send("next");
+    await settle(chat);
+    expect(JSON.stringify(sent()[0])).toContain("WHAT HAPPENED BEFORE");
+  });
+
+  test("a short conversation is left alone", async () => {
+    const { chat } = harnessWith(conversation(1));
+    expect((await chat.compact("summarise", 50_000)).outcome).toBe("too-short");
+  });
+
+  test("an empty summary is a failure, not a silently emptied history", async () => {
+    const { chat, events } = harnessWith(conversation(12), "");
+    expect((await chat.compact("summarise", 2_000)).outcome).toBe("failed");
+    expect(events.some((event) => event.type === "compacted")).toBe(false);
+  });
+
+  test("it refuses while a turn is running", async () => {
+    const { chat } = harnessWith(conversation(12));
+    chat.send("busy");
+    expect((await chat.compact("summarise", 2_000)).outcome).toBe("busy");
+    await settle(chat);
+  });
+});
+
+// Reported from a live session: Esc during a turn with something queued pulled
+// the queued message back and left the turn running, so it read as Esc doing
+// nothing and the message was never sent.
+describe("what Esc does", () => {
+  test("it stops the running turn rather than the queued message", async () => {
+    let aborted = false;
+    const agent = {
+      run: async (_p: string, _h: ModelMessage[], turn: { signal: AbortSignal }) => {
+        turn.signal.addEventListener("abort", () => {
+          aborted = true;
+        });
+        await Bun.sleep(30);
+        return done("ok");
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
+    chat.send("first");
+    chat.send("queued");
+    await Bun.sleep(5); // let the first turn actually start
+    // exactly what index.ts's interrupt() does
+    const stopped = chat.abort() || chat.dequeue() !== null;
+    expect(stopped).toBe(true);
+    expect(aborted).toBe(true);
+    // the queued message is still queued, not silently removed
+    expect(chat.queued).toEqual(["queued"]);
+    await settle(chat);
+  });
+
+  test("with nothing running, it takes the newest queued message back", async () => {
+    const { chat } = harness([() => done("a"), () => done("b")]);
+    expect(chat.abort() || chat.dequeue() !== null).toBe(false);
+  });
+});
+
+// The reminder trails the request. It led once, and a model answered it instead
+// of the page of instructions that followed.
+describe("where an interrupt reminder sits", () => {
+  test("what the user typed comes first", async () => {
+    const { chat, prompts } = harness([
+      () => {
+        throw new Error("stopped");
+      },
+      () => done("ok"),
+    ]);
+    chat.send("first");
+    await settle(chat);
+    chat.send("the actual new request");
+    await settle(chat);
+    expect(prompts[1]).toStartWith("the actual new request");
+    expect(prompts[1]).toContain(REMINDER_OPEN);
+    expect(prompts[1].indexOf("the actual new request")).toBeLessThan(
+      prompts[1].indexOf(REMINDER_OPEN),
+    );
   });
 });

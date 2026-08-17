@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { type ModelMessage, stepCountIs, streamText } from "ai";
+import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "./models";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { type AskQuestions, createTools, type ToolEvent } from "./tools";
@@ -139,6 +139,39 @@ export const createAgent = (setup: Setup) => {
   });
 
   return {
+    // Turns the older part of a conversation into something short enough to
+    // keep carrying. No tools: this reads what already happened, it does not go
+    // looking for more. Its own cache scope, so a compaction never evicts the
+    // conversation's own cached prefix.
+    summarise: async (
+      messages: ModelMessage[],
+      instruction: string,
+      signal?: AbortSignal,
+    ): Promise<string> => {
+      const result = await generateText({
+        model,
+        instructions:
+          "You are compacting a coding session so work can continue past the context limit. " +
+          "Write a dense brief for the agent that will pick this up with none of the detail " +
+          "below in front of it. Keep: what the user asked for and any constraint they gave, " +
+          "decisions taken and why, exact paths and symbols touched, what has been verified and " +
+          "how, what failed and what that ruled out, and what is left to do. Drop: narration, " +
+          "tool output that has served its purpose, and anything already superseded. Prefer " +
+          "specifics — a path, a command, an error string — over description of them.",
+        maxOutputTokens: 4_000,
+        maxRetries: 3,
+        providerOptions: { openai: providerOptions(undefined, cacheKey("compact")) },
+        messages: [
+          ...messages,
+          {
+            role: "user",
+            content: `${instruction}\n\nWrite the brief now. No preamble, no closing remark.`,
+          },
+        ],
+        abortSignal: signal,
+      });
+      return result.text.trim();
+    },
     toolNames: (): readonly string[] => Object.keys(toolsFor(() => {})),
     setTools: (names: readonly string[] | null): void => {
       allowed = names;

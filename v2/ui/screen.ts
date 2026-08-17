@@ -25,6 +25,7 @@ export const createScreen = async (callbacks: {
   onShell: (command: string) => void;
   cwd: string;
   onCommand: (name: string, args: string) => void;
+  onFileSearch: (query: string) => Promise<readonly string[]>;
   onShortcut: (name: string, args: string) => void;
   sequences?: readonly Sequence[];
   onKeyBinding?: (event: KeyEvent) => boolean;
@@ -145,6 +146,16 @@ export const createScreen = async (callbacks: {
   let autocompleteItems: readonly { name: string; description: string }[] = [];
   let autocompleteIndex = 0;
   let autocompleteOpen = false;
+  let fileMatches: readonly { name: string; description: string }[] = [];
+  let fileQuery: string | null = null;
+  const refreshFiles = async (query: string): Promise<void> => {
+    if (query === fileQuery) return;
+    fileQuery = query;
+    const found = await callbacks.onFileSearch(query);
+    if (fileQuery !== query) return;
+    fileMatches = found.map((path) => ({ name: path, description: "" }));
+    syncAutocomplete();
+  };
   let shellMode = false;
   let sequences: readonly Sequence[] = callbacks.sequences ?? [];
   // index into `log` of the block still being streamed into, if any
@@ -242,14 +253,19 @@ export const createScreen = async (callbacks: {
     autocompleteSigil = activeSigil(
       input.plainText,
       input.cursorOffset,
-      shellMode ? ["/"] : ["/", "$"],
+      shellMode ? ["/"] : ["/", "$", "@"],
     );
     const matches =
       autocompleteSigil === null
         ? []
         : autocompleteSigil.sigil === "$"
           ? matchNames(sequences, autocompleteSigil.query)
-          : matchingCommands(autocompleteSigil.query);
+          : autocompleteSigil.sigil === "@"
+            ? // Files are found on disk, so the list arrives after the keystroke
+              // that asked for it; whatever the last lookup returned is shown.
+              fileMatches
+            : matchingCommands(autocompleteSigil.query);
+    if (autocompleteSigil?.sigil === "@") void refreshFiles(autocompleteSigil.query);
     const sigil = autocompleteSigil?.sigil ?? "/";
     autocompleteItems = matches;
     autocompleteIndex = Math.min(autocompleteIndex, Math.max(0, matches.length - 1));

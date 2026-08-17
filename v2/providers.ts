@@ -74,7 +74,42 @@ export const PROVIDERS: readonly ProviderSpec[] = [
 
 const byId = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
 
-export const providerSpec = (id: string): ProviderSpec | undefined => byId.get(id);
+// What people actually type. The canonical ids follow the SDK packages, which
+// is why Vertex is `google-vertex` and Bedrock is `amazon-bedrock` — reasonable
+// as identifiers, not what anyone reaches for. An alias that resolves is worth
+// more than an error that is technically correct.
+const ALIASES: Record<string, string> = {
+  vertex: "google-vertex",
+  "google-vertex-ai": "google-vertex",
+  gemini: "google",
+  "google-ai": "google",
+  bedrock: "amazon-bedrock",
+  aws: "amazon-bedrock",
+  claude: "anthropic",
+  "azure-openai": "azure",
+  "azure-ai": "azure",
+  foundry: "azure",
+  together: "togetherai",
+  "together-ai": "togetherai",
+  grok: "xai",
+  "open-router": "openrouter",
+};
+
+export const canonicalProvider = (id: string): string => ALIASES[id] ?? id;
+
+export const providerSpec = (id: string): ProviderSpec | undefined =>
+  byId.get(canonicalProvider(id));
+
+// An unknown id that is nearly a known one is almost always a near-miss rather
+// than a local endpoint. Saying which beats telling someone to configure a base
+// URL for a provider that ships built in.
+export const nearestProvider = (id: string): string | undefined => {
+  if (byId.has(canonicalProvider(id))) return undefined;
+  const lower = id.toLowerCase();
+  return PROVIDERS.map((provider) => provider.id).find(
+    (known) => known.includes(lower) || lower.includes(known.split("-").pop() ?? known),
+  );
+};
 
 // Any id glorious does not know is treated as an OpenAI-compatible endpoint,
 // which is what makes Ollama, LM Studio, vLLM, a gateway or a company proxy
@@ -89,11 +124,17 @@ export const missingFor = (
   settings: { api?: string } | undefined,
   environment: NodeJS.ProcessEnv = process.env,
 ): string[] => {
-  const spec = byId.get(id);
-  if (!spec)
-    return settings?.api
-      ? []
-      : [`providers.${id}.api (base URL for an OpenAI-compatible endpoint)`];
+  const spec = providerSpec(id);
+  if (!spec) {
+    if (settings?.api) return [];
+    const near = nearestProvider(id);
+    return [
+      near === undefined
+        ? `providers.${id}.api (base URL for an OpenAI-compatible endpoint)`
+        : `unknown provider "${id}" — did you mean "${near}"? Otherwise set providers.${id}.api ` +
+          "for an OpenAI-compatible endpoint",
+    ];
+  }
   const gaps: string[] = [];
   if (spec.env.length > 0 && !spec.env.some((name) => environment[name]))
     gaps.push(spec.env.join(" or "));

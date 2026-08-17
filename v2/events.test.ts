@@ -155,3 +155,44 @@ describe("usage totals", () => {
     expect(usageTotals([{ type: "user", text: "hi" }]).steps).toBe(0);
   });
 });
+
+// A resumed session has to inherit the compaction, not re-inflate to the full
+// history and blow the same limit on its first turn.
+describe("replaying a compacted session", () => {
+  const turn = (text: string): SessionEvent => ({
+    type: "turn",
+    messages: [{ role: "user", content: text }],
+  });
+
+  test("the fold restarts at the compaction and leads with the summary", () => {
+    const replayed = messagesOf([
+      turn("ancient"),
+      turn("old"),
+      { type: "compacted", summary: "THE BRIEF", dropped: 2 },
+      turn("recent"),
+    ]);
+    expect(JSON.stringify(replayed[0])).toContain("THE BRIEF");
+    expect(JSON.stringify(replayed)).not.toContain("ancient");
+    expect(JSON.stringify(replayed)).toContain("recent");
+  });
+
+  test("a later clear still wins, and drops the summary too", () => {
+    const replayed = messagesOf([
+      { type: "compacted", summary: "THE BRIEF", dropped: 2 },
+      turn("after compaction"),
+      { type: "cleared", reason: "user" },
+      turn("after clear"),
+    ]);
+    expect(JSON.stringify(replayed)).not.toContain("THE BRIEF");
+    expect(JSON.stringify(replayed)).toContain("after clear");
+  });
+
+  test("the transcript is untouched — compaction changes what the model replays", () => {
+    const events: SessionEvent[] = [
+      { type: "user", text: "ancient" },
+      { type: "compacted", summary: "THE BRIEF", dropped: 2 },
+      { type: "user", text: "recent" },
+    ];
+    expect(events.filter((event) => event.type === "user")).toHaveLength(2);
+  });
+});

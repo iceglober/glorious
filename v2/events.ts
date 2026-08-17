@@ -33,17 +33,31 @@ export type SessionEvent =
   // model. messagesOf ignores it; eventBlock draws nothing for it.
   | { type: "custom"; custom: string; data: unknown }
   | { type: "cleared"; reason: string }
+  // The conversation up to this point, summarised. Replayed like a clear: the
+  // fold restarts here and begins with the summary, so a resumed session
+  // carries exactly the context the live one did rather than re-inflating to
+  // the full history and blowing the limit again on the first turn.
+  | { type: "compacted"; summary: string; dropped: number }
   | { type: "turn"; messages: ModelMessage[] };
 
 // A clear resets what the model sees, not what the user sees. The transcript
 // replays every event; the fold restarts at the last clear, so a resumed
 // session inherits the same trimmed context the live one had.
 export const messagesOf = (events: readonly SessionEvent[]): ModelMessage[] => {
-  const cleared = events.findLastIndex((event) => event.type === "cleared");
-  return events
-    .slice(cleared + 1)
-    .flatMap((event) => (event.type === "turn" ? event.messages : []));
+  const restart = events.findLastIndex(
+    (event) => event.type === "cleared" || event.type === "compacted",
+  );
+  const from = events[restart];
+  const carried: ModelMessage[] =
+    from?.type === "compacted" ? [{ role: "user", content: compactedPrompt(from.summary) }] : [];
+  return [
+    ...carried,
+    ...events.slice(restart + 1).flatMap((event) => (event.type === "turn" ? event.messages : [])),
+  ];
 };
+
+export const compactedPrompt = (summary: string): string =>
+  `<earlier-conversation>\n${summary}\n</earlier-conversation>\n\nThe conversation above this point was compacted to stay within the context limit. Continue from the brief.`;
 
 export type UsageTotals = {
   input: number;

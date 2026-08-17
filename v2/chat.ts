@@ -1,9 +1,15 @@
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
-import type { SessionEvent } from "./events";
+import { compactedPrompt, type SessionEvent } from "./events";
 import { reminder } from "./prompt";
 import { errorText } from "./render";
 import type { ToolEvent } from "./tools";
+
+export type Compaction =
+  | { outcome: "compacted"; dropped: number; kept: number }
+  | { outcome: "busy" }
+  | { outcome: "too-short" }
+  | { outcome: "failed"; error: string };
 
 export type ChatSignal =
   | { type: "tool"; tool: ToolEvent }
@@ -36,6 +42,7 @@ export const createChat = (
   let history: ModelMessage[] = wiring.history?.slice() ?? [];
   let live: AbortController | null = null;
   let note = "";
+  let compacting = false;
 
   const announce = (event: SessionEvent): void => {
     try {
@@ -83,7 +90,11 @@ export const createChat = (
     } else {
       announce({ type: "notice", text: label });
     }
-    let prompt = note === "" ? text : `${note}\n\n${text}`;
+    // The reminder trails what was asked. It led, once, and a model that had
+    // just been interrupted answered the reminder instead of the request —
+    // replying "Retried successfully" to a page of new instructions. What the
+    // user typed is the turn; the reminder is context about the last one.
+    let prompt = note === "" ? text : `${text}\n\n${note}`;
     note = "";
     const added = await wiring.onBeforeRequest?.(prompt, history.length);
     if (added !== undefined && added !== "") prompt = `${prompt}\n\n${added}`;
@@ -152,6 +163,48 @@ export const createChat = (
     signal({ type: "idle" });
   };
 
+  // Roughly four characters to a token. Good enough to choose a cut point;
+  // the provider's own count is what decides whether to cut at all.
+  const weigh = (message: ModelMessage): number => JSON.stringify(message).length / 4;
+
+  // The cut has to land on a user message. A tool result separated from the
+  // call it answers is an invalid request, so cutting anywhere is not an option
+  // — this walks back to the nearest boundary that keeps at least `keep` tokens.
+  const cutPoint = (keep: number, force: boolean): number => {
+    let carried = 0;
+    let lastBoundary = 0;
+    for (let at = history.length - 1; at > 0; at -= 1) {
+      carried += weigh(history[at]);
+      if (history[at].role !== "user") continue;
+      lastBoundary = at;
+      if (carried >= keep) return at;
+    }
+    // Asked for directly, nothing is big enough to satisfy `keep`, and there is
+    // more than one turn: compact what there is and keep the last turn. Without
+    // this `/compact` declines on every conversation short of the automatic
+    // threshold, which is every conversation anyone types it into.
+    return force ? lastBoundary : 0;
+  };
+
+  const compact = async (instruction: string, keep: number, force = false): Promise<Compaction> => {
+    if (queue.length > 0) return { outcome: "busy" };
+    const cut = cutPoint(keep, force);
+    if (cut === 0) return { outcome: "too-short" };
+    compacting = true;
+    try {
+      const summary = await agent.summarise(history.slice(0, cut), instruction);
+      if (summary === "") return { outcome: "failed", error: "the summary came back empty" };
+      const dropped = cut;
+      history = [{ role: "user", content: compactedPrompt(summary) }, ...history.slice(cut)];
+      announce({ type: "compacted", summary, dropped });
+      return { outcome: "compacted", dropped, kept: history.length - 1 };
+    } catch (thrown) {
+      return { outcome: "failed", error: errorText(thrown) };
+    } finally {
+      compacting = false;
+    }
+  };
+
   const drain = async (): Promise<void> => {
     while (queue.length > 0) {
       await turn(queue[0]);
@@ -181,6 +234,13 @@ export const createChat = (
     // Refused mid-turn on purpose: the running request already holds its own
     // copy of the messages, and when it lands it overwrites history with the
     // full set — so a clear during a turn would silently undo itself.
+    // Summarise the older part of the conversation and carry the brief forward.
+    // This necessarily invalidates the prompt cache — the prefix it was keyed on
+    // no longer exists — which is a one-off cost that buys the session's life.
+    compact,
+    get compacting(): boolean {
+      return compacting;
+    },
     clear: (): "cleared" | "busy" | "empty" => {
       if (queue.length > 0) return "busy";
       if (history.length === 0) return "empty";
