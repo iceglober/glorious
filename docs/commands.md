@@ -17,8 +17,9 @@ arguments appended inside `<arguments>`, so `/review src/auth.ts` does not
 silently drop the path.
 
 Searched in `.glorious/commands/` and `.agents/commands/` up the directory tree,
-then `~/.config/agents/commands/`. First name wins. A built-in always beats a file, so a command file cannot
-capture `/clear` and quietly change what it does.
+then `~/.config/agents/commands/`. First name wins, and nothing is reserved — the core registers no commands, so a
+file may claim `/clear` or `/help` if you want it to. Extensions register before
+skills and command files, so the bundled ones win by default.
 
 For a command that runs code instead of producing a prompt, register one from an
 extension — see `extensions.md`.

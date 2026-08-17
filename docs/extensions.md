@@ -49,6 +49,11 @@ Loaded in this order; the first file to claim a name wins.
 Because project files load first, `.glorious/extensions/web-fetch.ts` replaces
 the bundled `web_fetch` rather than colliding with it.
 
+Two extensions ship enabled: `web-fetch` (the `web_fetch` tool) and `builtins`
+(`/help`, `/clear`, `/skills`, `/extensions`, `/reload`). **The core registers no
+slash commands and no tools of its own** — everything glorious ships is written
+against the API on this page. Shadow either by name, or delete them.
+
 `/extensions` lists what loaded, what each one registered, and the file it came
 from. An extension that fails to load says so in the transcript — loudly, not by
 disappearing — and takes nothing else down with it.
@@ -127,13 +132,35 @@ Runs a shell command in the project root. Returns `{ output, stdout, ok }`;
 `args` arrive as real positional parameters, so `$1` and `$@` mean what a script
 author expects and nothing needs quoting to stay safe.
 
-### `g.send(text, label?)` / `g.print(text, tone?)` / `g.ask(questions)`
+### `g.send(text, label?)` / `g.print(content, tone?)` / `g.ask(questions)`
 
 Start a turn, write into the transcript, or ask the user with the same widget
 the `ask_user` tool uses. Tones: `accent`, `highlight`, `muted`, `prompt`,
 `success`, `warning`, `danger`.
 
+`g.print` takes a string, or `Line[]` when you want it styled — that is how the
+bundled `builtins` extension draws `/help`.
+
 `g.ask` throws in print mode — there is nobody to answer.
+
+### `g.inspect()` / `g.clear()` / `g.reload()`
+
+`inspect()` returns what is loaded right now — `{ commands, sequences, skills,
+extensions }`. Every listing glorious ships is a view over it and nothing more,
+which is why none of them are built in:
+
+```ts
+g.command("skills", {
+  description: "List available skills",
+  run: () => {
+    for (const skill of g.inspect().skills) g.print(`${skill.name}  ${skill.description}`);
+  },
+});
+```
+
+`clear()` drops the conversation the model replays, leaving the transcript
+alone, and returns `"cleared"`, `"busy"` (a turn is running) or `"empty"`.
+`reload()` re-reads skills, commands and sequences from disk.
 
 ### `g.prompt(text)`
 

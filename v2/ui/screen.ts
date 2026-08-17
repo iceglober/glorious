@@ -9,10 +9,8 @@ import {
 import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
 import { type Line, statusRow } from "../render";
 import type { Sequence } from "../sequences";
-import type { SkillSummary } from "../skills";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
-import { createOverlays } from "./overlays";
 import { createQuestions } from "./questions";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;
@@ -29,7 +27,6 @@ export const createScreen = async (callbacks: {
   onCommand: (name: string, args: string) => void;
   onShortcut: (name: string, args: string) => void;
   sequences?: readonly Sequence[];
-  onSkillsReload: () => void;
   onEscape: () => void;
   onResize: () => void;
   onQuit: () => void;
@@ -186,7 +183,6 @@ export const createScreen = async (callbacks: {
       composerRow.visible = node === null;
     },
   };
-  const overlays = createOverlays(chrome, host, callbacks.onSkillsReload);
   const questions = createQuestions(chrome, host);
 
   const painter = (node: TextRenderable) => {
@@ -362,7 +358,6 @@ export const createScreen = async (callbacks: {
 
   const onKey = (event: KeyEvent): void => {
     if (phase !== "live") return;
-    if (overlays.handleKey(event)) return;
     if (questions.handleKey(event)) return;
     if (shellMode && input.plainText === "" && event.name === "backspace") {
       event.stopPropagation();
@@ -451,7 +446,6 @@ export const createScreen = async (callbacks: {
     renderer.keyInput.off("keypress", onKey);
     renderer.off("resize", onResize);
     renderer.off("selection", onSelect);
-    overlays.close();
     for (const signal of fatalSignals) process.off(signal, raise);
     renderer.destroy();
     process.stdout.write(
@@ -531,13 +525,7 @@ export const createScreen = async (callbacks: {
       input.cursorOffset = text.length;
     },
     columns,
-    showHelp: () => overlays.showHelp(sequences),
-    showSkills: (summaries: readonly SkillSummary[]) => overlays.showSkills(summaries),
-    showExtensions: (loaded: readonly { name: string; origin: string; contributed: string }[]) =>
-      overlays.showExtensions(loaded),
-    askQuestions: (items: Question[], signal: AbortSignal | undefined) => {
-      if (overlays.isOpen()) overlays.close();
-      return questions.ask(items, signal);
-    },
+    askQuestions: (items: Question[], signal: AbortSignal | undefined) =>
+      questions.ask(items, signal),
   };
 };

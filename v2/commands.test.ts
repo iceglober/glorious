@@ -4,11 +4,18 @@ import {
   commandName,
   commands,
   matchingCommands,
+  setCustomCommands,
   shortcutInvocation,
 } from "./commands";
 
 const slashes = ["/"] as const;
 const both = ["/", "$"] as const;
+
+// The table is empty until something registers into it — the core ships no
+// commands of its own — so these seed what they are matching against rather
+// than leaning on a builtin list that no longer exists.
+const seed = (...names: string[]): void =>
+  setCustomCommands(names.map((name) => ({ name, description: name, run: null, body: name })));
 
 describe("slash commands", () => {
   test("activates after whitespace but not inside a word", () => {
@@ -17,11 +24,10 @@ describe("slash commands", () => {
   });
 
   test("fuzzy matches command names", () => {
+    seed("help", "clear", "extensions");
     expect(matchingCommands("hp").map((command) => command.name)).toEqual(["help"]);
-  });
-
-  test("includes the extensions command", () => {
     expect(matchingCommands("ext").map((command) => command.name)).toEqual(["extensions"]);
+    setCustomCommands([]);
   });
 
   test("parses a command submission", () => {
@@ -29,10 +35,14 @@ describe("slash commands", () => {
     expect(commandName("help")).toBeNull();
   });
 
-  // One mode, so there is nothing to cycle. A command file is free to claim the
-  // name now, which the builtin table would previously have refused.
-  test("offers no mode command", () => {
-    expect(commands().find((command) => command.name === "mode")).toBeUndefined();
+  // Nothing is reserved, because nothing is built in: an extension or a command
+  // file may register any name, /clear included.
+  test("no name is reserved by the core", () => {
+    setCustomCommands([]);
+    expect(commands()).toEqual([]);
+    seed("clear");
+    expect(commands().map((command) => command.name)).toEqual(["clear"]);
+    setCustomCommands([]);
   });
 });
 

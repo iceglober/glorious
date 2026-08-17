@@ -20,17 +20,6 @@ export const edgeHex = "#4b5563";
 export const dimHex = "#8b929c";
 export const accentHex = tones.accent[0];
 
-// a list sits between a header and a key legend, each with a blank row of its own
-export const listChrome = 4;
-// title row + the row of top padding that separates it from the transcript
-const sheetChrome = 2;
-// A sheet takes over the composer rather than covering the transcript, and it
-// spends no rows on a border, so it can afford more of the viewport than the
-// centered modal it replaced (which took three eighths).
-const sheetShare = 1 / 2;
-
-export const sheetHeight = (contentRows: number): number => contentRows + sheetChrome;
-
 export type Chrome = ReturnType<typeof createChrome>;
 
 export type Host = {
@@ -79,36 +68,6 @@ export const createChrome = (tui: Tui, renderer: Renderer) => {
     columns,
     textNode: (options: TextOptions) => new tui.TextRenderable(renderer, options),
     stack,
-    sheetRows: (): number =>
-      Math.max(3, Math.round(renderer.terminalHeight * sheetShare) - sheetChrome),
-    // A menu rendered where the composer sits. No border and no centering: it is
-    // the input area in a different state, not something laid over the session.
-    sheet: (options: { title: string; height: number }, kids: Renderable[]) => {
-      const title = new tui.TextRenderable(renderer, {
-        content: new tui.StyledText([
-          {
-            __isChunk: true,
-            text: options.title,
-            attributes: tui.TextAttributes.BOLD,
-            fg: tui.RGBA.fromHex(accentHex),
-          },
-        ]),
-        width: "100%",
-        height: 1,
-      });
-      return stack(
-        {
-          flexDirection: "column",
-          width: "100%",
-          minWidth: 0,
-          height: Math.max(3, Math.min(options.height, renderer.terminalHeight - 2)),
-          paddingTop: 1,
-          paddingX: 1,
-          backgroundColor: fillHex,
-        },
-        [title, ...kids],
-      );
-    },
     styled: (lines: readonly Line[]) =>
       new tui.StyledText(
         lines.flatMap((line, at) => {

@@ -82,6 +82,8 @@ spawns another through `bash`.
 ## What is deliberately absent
 
 No plan mode, no subagents, no MCP, no model picker, no permission prompts, no
-session encryption, no animation. Each was removed with a reason recorded in the
+session encryption, no animation — and no built-in slash commands or tools at
+all: `/help`, `/clear`, `/skills`, `/extensions`, `/reload` and `web_fetch` are
+bundled extensions. Each was removed with a reason recorded in the
 commit that removed it; `git log` is the argument. What replaced all of them is
 `docs/extensions.md`.
