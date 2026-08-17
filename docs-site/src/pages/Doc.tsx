@@ -46,7 +46,6 @@ export function Doc({ md, title }: { md: string; title: string }) {
       <article className="doc">
         <Markdown remarkPlugins={[remarkGfm]} components={{
           a: MdLink,
-          h1: ({ children }) => <AnchorHeading level={1} id={headingId(children)}>{children}</AnchorHeading>,
           h2: ({ children }) => <AnchorHeading level={2} id={headingId(children)}>{children}</AnchorHeading>,
           h3: ({ children }) => <AnchorHeading level={3} id={headingId(children)}>{children}</AnchorHeading>,
         }}>{md}</Markdown>

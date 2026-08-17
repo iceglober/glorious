@@ -10,7 +10,7 @@ export function Install() {
 
   return (
     <main className="site-main doc">
-      <AnchorHeading level={1} id="install">Install</AnchorHeading>
+      <h1>Install</h1>
 
       <AnchorHeading level={2} id="recommended">Recommended</AnchorHeading>
 

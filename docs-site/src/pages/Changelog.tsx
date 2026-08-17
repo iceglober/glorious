@@ -38,7 +38,7 @@ export function Changelog() {
 
   return (
     <main className="site-main doc">
-      <AnchorHeading level={1} id="changelog">Changelog</AnchorHeading>
+      <h1>Changelog</h1>
 
       <div className="changelog-content">
         {changelog ? (

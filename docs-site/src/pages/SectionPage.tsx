@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router";
 import { SECTIONS } from "~/components/Layout";
-import { AnchorHeading } from "~/components/AnchorHeading";
 
 const INTRO: Record<string, string> = {
   "/get-started": "Install glorious, configure a provider, and make your first useful turn.",
@@ -18,7 +17,7 @@ export function SectionPage({ path }: { path: string }) {
   return (
     <main className="site-main section-page">
       <p className="eyebrow">glorious / {section.label}</p>
-      <AnchorHeading level={1} id={section.label.replaceAll(" ", "-")}>{section.label}</AnchorHeading>
+      <h1>{section.label}</h1>
       <p className="section-intro">{INTRO[path]}</p>
       <div className="section-links">
         {section.pages.map(([label, to]) => <Link key={to} to={to}><strong>{label}</strong><span>Read the {label.toLowerCase()} documentation →</span></Link>)}
