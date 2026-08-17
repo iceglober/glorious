@@ -5,7 +5,7 @@ import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { expandMentions } from "./mentions";
 import { currentModel, modelMetadata } from "./models";
-import { clean, errorText, flatten } from "./render";
+import { errorText, toolRow } from "./render";
 import { loadSkills } from "./skills";
 import { firstDetail, runShell, setToolGate, type ToolEvent } from "./tools";
 
@@ -193,22 +193,24 @@ export const runPrint = async (
         }
         const since = started.get(event.id);
         started.delete(event.id);
-        // The same three parts the TUI draws, so a piped trail and a watched
-        // session describe a call the same way.
-        const took = since === undefined ? "" : `  ${((Date.now() - since) / 1000).toFixed(1)}s`;
-        const rows = [
-          `${event.ok ? "✓" : "✗"} ${event.name}${took}`,
-          ...(flatten(event.detail) === ""
-            ? []
-            : [`    ${flatten(event.detail).slice(0, TRAIL_CHARS)}`]),
-          ...clean(event.result.replace(/^ERROR:\s*/u, ""))
-            .split("\n")
-            .map((row) => row.trim())
-            .filter((row) => row !== "")
-            .slice(-3)
-            .map((row) => `    ${row.slice(0, TRAIL_CHARS)}`),
-        ];
-        process.stderr.write(`${rows.join("\n")}\n`);
+        // The row the TUI draws, flattened to text. This used to be a second
+        // copy of the same layout written out by hand, so the two could — and
+        // did — drift apart: a piped trail and a watched session are the same
+        // call and have to read the same way.
+        const rows = toolRow(
+          event.name,
+          event.detail,
+          since === undefined ? 0 : Date.now() - since,
+          event.ok,
+          undefined,
+          event.result,
+          TRAIL_CHARS,
+        );
+        const text = rows
+          .map((line) => line.map((span) => span.text).join(""))
+          .join("\n")
+          .trimEnd();
+        process.stderr.write(`${text}\n`);
       },
       // Print mode discarded usage entirely, so an extension running headlessly
       // could see none of it. It reports the same figures the TUI does.

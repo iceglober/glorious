@@ -252,6 +252,7 @@ const main = async (): Promise<void> => {
           tool.name,
           tool.detail,
           safely(() => renderCall(tool.name, tool.input)),
+          screen.columnsNow(),
         ),
       );
     }
@@ -359,6 +360,7 @@ const main = async (): Promise<void> => {
     const { lines, gap } = eventBlock(
       event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
       renderTool,
+      screen.columnsNow(),
     );
     // A streamed answer is already on screen. Seal that block with its final
     // rendering rather than printing the same text a second time; the event is
@@ -613,6 +615,7 @@ const main = async (): Promise<void> => {
     const { lines, gap } = eventBlock(
       event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
       renderTool,
+      screen.columnsNow(),
     );
     if (lines.length > 0) screen.print(lines, gap);
   }
