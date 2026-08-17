@@ -309,10 +309,28 @@ on `g.hasUI` and your extension works in both.
 Appends a line the model sees on every turn. It rides in the per-turn message,
 never the system prompt, which has to stay byte-identical for the prompt cache.
 
-### `g.status(render)` / `g.footer(render)`
+### `g.status(render)` / `g.footer(render)` / `g.activity(render)`
 
 `status` contributes a segment to the status line; return `null` for nothing.
-`footer` draws rows above it; return `[]` for nothing. Both are called on every
+`footer` draws rows above it; return `[]` for nothing.
+
+`activity` replaces the row that says what the turn is doing — the phase, how
+long it has been in it, the queued count and how to interrupt. Return `null` to
+leave glorious's own.
+
+```ts
+g.activity(({ busy, queued, phase, columns }) =>
+  !busy ? null : [[
+    { text: "▸ ", tone: "success" },
+    { text: phase ? `${phase.name} ${(phase.ms / 1000).toFixed(1)}s` : "working" },
+    { text: queued > 0 ? `  (+${queued} waiting)` : "", tone: "warning" },
+  ]],
+);
+```
+
+The first extension to return lines wins, so a project overrides a personal one
+the same way it overrides a command. Keep it to `columns` wide — nothing clips
+it for you. Both are called on every
 paint, so keep them cheap and synchronous — do the work in a hook and render
 from a variable, the way the `git-branch` example above does. One that throws
 loses its contribution for that frame and nothing else.

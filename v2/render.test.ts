@@ -3,6 +3,7 @@ import {
   elapsed,
   eventBlock,
   type Line,
+  queuedRow,
   reasoningBlock,
   reasoningDraft,
   rightClip,
@@ -85,7 +86,7 @@ describe("reasoning in the transcript", () => {
 
 describe("the activity row", () => {
   const text = (columns: number, phase?: { name: string; ms: number } | null) =>
-    statusRow(true, 0, columns, phase)
+    statusRow({ busy: true, queued: 0, columns, phase })
       .flat()
       .map((span) => span.text)
       .join("");
@@ -111,7 +112,12 @@ describe("the activity row", () => {
   });
 
   test("a queued count still reaches the line", () => {
-    const line = statusRow(true, 2, 140, { name: "writing", ms: 400 })
+    const line = statusRow({
+      busy: true,
+      queued: 2,
+      columns: 140,
+      phase: { name: "writing", ms: 400 },
+    })
       .flat()
       .map((s) => s.text)
       .join("");
@@ -126,7 +132,10 @@ describe("the activity row", () => {
   });
 
   test("an idle turn still paints nothing", () => {
-    expect(statusRow(false, 0, 120, { name: "waiting", ms: 100 })[0][0].text).toBe("");
+    expect(
+      statusRow({ busy: false, queued: 0, columns: 120, phase: { name: "waiting", ms: 100 } })[0][0]
+        .text,
+    ).toBe("");
   });
 
   // The block that used to march across every running row, and the sine field
@@ -186,5 +195,50 @@ describe("a failed tool row says why", () => {
 
   test("an empty result adds no row", () => {
     expect(toolRow("bash", "x", 1, false, undefined, "")).toHaveLength(1);
+  });
+});
+
+// The count and the rows it counts should read as one thing. The count was
+// accent like the rest of the line, so it looked like part of the hint rather
+// than a tally of the warning-toned rows sitting above it.
+describe("the queued count matches the queued rows", () => {
+  const spans = (queued: number, columns = 140) =>
+    statusRow({ busy: true, queued, columns, phase: { name: "writing", ms: 400 } })[0];
+
+  test("it carries the same tone a queued row does", () => {
+    const count = spans(2).find((span) => span.text.includes("queued"));
+    expect(count?.tone).toBe("warning");
+    expect(queuedRow("x")[0].tone).toBe("warning");
+  });
+
+  test("the phase and the hint stay accent", () => {
+    expect(spans(2)[0]).toMatchObject({ tone: "accent" });
+    expect(spans(2)[0].text).toContain("writing 0.4s");
+    expect(spans(2)[0].text).toContain("Esc interrupt");
+  });
+
+  test("no count, no extra span", () => {
+    expect(spans(0)).toHaveLength(1);
+  });
+
+  // The count is redundant with the rows above it, so it is what goes when
+  // there is no room — not the live reading or the way to stop the turn.
+  test("a narrow terminal drops the count before the phase", () => {
+    const narrow = spans(3, 22)
+      .map((span) => span.text)
+      .join("");
+    expect(narrow).toContain("writing");
+    expect(narrow).not.toContain("queued");
+    expect(narrow.length).toBeLessThanOrEqual(22);
+  });
+
+  test("no row is ever wider than the terminal", () => {
+    for (const columns of [10, 18, 24, 60, 200])
+      for (const queued of [0, 1, 12])
+        expect(
+          spans(queued, columns)
+            .map((span) => span.text)
+            .join("").length,
+        ).toBeLessThanOrEqual(columns);
   });
 });

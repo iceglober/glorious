@@ -311,15 +311,26 @@ export const elapsed = (ms: number): string => {
 // field carried no information and cost a repaint on every one of eleven frames
 // a second. The phase leads because it is the part that changes, so a narrow
 // terminal clips the fixed hint rather than the live reading.
-export const statusRow = (
-  busy: boolean,
-  queued: number,
-  columns: number,
-  phase?: { name: string; ms: number } | null,
-): Line[] => {
+// What the turn is doing, and how to stop it. The state an extension replacing
+// this row is handed.
+export type Activity = {
+  busy: boolean;
+  queued: number;
+  columns: number;
+  phase?: { name: string; ms: number } | null;
+};
+
+export const statusRow = ({ busy, queued, columns, phase }: Activity): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
   if (!busy || limit === 0) return [[{ text: "" }]];
-  const waiting = queued > 0 ? ` · ${queued} queued` : "";
-  const state = phase ? `${phase.name} ${elapsed(phase.ms)} · ` : "";
-  return [[{ text: clip(`${state}Esc interrupt${waiting}`, limit), tone: "accent" }]];
+  const head = `${phase ? `${phase.name} ${elapsed(phase.ms)} · ` : ""}Esc interrupt`;
+  // The same warning tone the queued rows above carry, so one glance ties the
+  // count to the rows it is counting.
+  const waiting: Line = queued > 0 ? [{ text: ` · ${queued} queued`, tone: "warning" }] : [];
+  // The phase leads: it is the part that changes, so a narrow terminal drops the
+  // count — which the queued rows already show — before it eats the live
+  // reading or the hint for stopping.
+  if (width(head) + width(waiting[0]?.text ?? "") <= limit)
+    return [[{ text: head, tone: "accent" }, ...waiting]];
+  return [[{ text: clip(head, limit), tone: "accent" }]];
 };

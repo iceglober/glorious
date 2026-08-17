@@ -22,6 +22,7 @@ import {
   reasoningDraft,
   runningRow,
   statusLine,
+  statusRow,
   userBlock,
 } from "./render";
 import { loadSequences } from "./sequences";
@@ -221,11 +222,20 @@ const main = async (): Promise<void> => {
     for (const text of chat.queued) progress.push(queuedRow(text));
     screen.setProgress(progress);
     screen.setFooter(registry.footers.flatMap((render) => safely(render) ?? []));
-    screen.setStatusRow(
-      chat.busy,
-      chat.queued.length,
-      phase === null ? null : { name: phase, ms: now - phaseSince },
-    );
+    // An extension gets first refusal on the activity row; the default stands
+    // when none of them wants it. One that throws loses only its own turn at it.
+    const activity = {
+      busy: chat.busy,
+      queued: chat.queued.length,
+      columns: screen.columnsNow(),
+      phase: phase === null ? null : { name: phase, ms: now - phaseSince },
+    };
+    const drawn =
+      registry.activities.reduce<Line[] | null>(
+        (carried, render) => carried ?? safely(() => render(activity)) ?? null,
+        null,
+      ) ?? statusRow(activity);
+    screen.setStatusRow(chat.busy ? drawn : []);
     screen.setStatus(
       statusLine(
         {
