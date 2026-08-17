@@ -14,10 +14,32 @@ const RETRY_NAMES = new Set([
   "SocketError",
 ]);
 
+// Bun reports a dropped connection as a plain Error — `name` is "Error" and the
+// only signal is `code`. Matching on name alone meant "The socket connection was
+// closed unexpectedly" was treated as permanent and killed the turn on the first
+// blip, which is exactly the failure a retry exists for.
+const RETRY_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ECONNABORTED",
+  "EPIPE",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENETDOWN",
+  // transient resolver failure; ENOTFOUND is deliberately absent, being a name
+  // that does not exist rather than one that could not be looked up right now
+  "EAI_AGAIN",
+]);
+
 const CACHE_KEY_CHARS = 32;
 
-const worthRetrying = (failure: unknown): boolean =>
-  failure instanceof TypeError || (failure instanceof Error && RETRY_NAMES.has(failure.name));
+export const worthRetrying = (failure: unknown): boolean => {
+  if (failure instanceof TypeError) return true;
+  if (!(failure instanceof Error)) return false;
+  const code = (failure as Error & { code?: unknown }).code;
+  return RETRY_NAMES.has(failure.name) || (typeof code === "string" && RETRY_CODES.has(code));
+};
 
 const fetchWithDeadline = async (
   target: RequestInfo | URL,

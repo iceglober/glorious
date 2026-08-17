@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { providerOptions, settleQuietly } from "./agent";
+import { providerOptions, settleQuietly, worthRetrying } from "./agent";
+import { errorText } from "./render";
 
 describe("settleQuietly", () => {
   test("passes a resolved value straight through", async () => {
@@ -89,5 +90,57 @@ describe("what we ask the provider for", () => {
   test("effort is sent only when a mode asked for one", () => {
     expect(providerOptions("high", "k")).toMatchObject({ reasoningEffort: "high" });
     expect(providerOptions(undefined, "k")).not.toHaveProperty("reasoningEffort");
+  });
+});
+
+// A dropped connection is reported by Bun as a plain Error whose only signal is
+// `code` — name is "Error". Matching on name alone made "The socket connection
+// was closed unexpectedly" look permanent, so a single blip killed the turn
+// instead of being retried. That is the failure a retry exists for.
+describe("which failures are worth retrying", () => {
+  const withCode = (code: string): Error =>
+    Object.assign(new Error("The socket connection was closed unexpectedly."), { code });
+
+  test("a dropped connection, as Bun actually reports it", () => {
+    const dropped = withCode("ECONNRESET");
+    expect(dropped.name).toBe("Error");
+    expect(worthRetrying(dropped)).toBe(true);
+  });
+
+  test("the rest of the transient transport family", () => {
+    for (const code of ["ECONNREFUSED", "EPIPE", "ETIMEDOUT", "ENETDOWN", "EAI_AGAIN"])
+      expect(worthRetrying(withCode(code))).toBe(true);
+  });
+
+  test("names still match, so the original cases keep working", () => {
+    const timeout = new Error("slow");
+    timeout.name = "TimeoutError";
+    expect(worthRetrying(timeout)).toBe(true);
+    expect(worthRetrying(new TypeError("fetch failed"))).toBe(true);
+  });
+
+  // A hostname that does not exist will not start existing on attempt three.
+  test("a permanent failure is not retried", () => {
+    expect(worthRetrying(withCode("ENOTFOUND"))).toBe(false);
+    expect(worthRetrying(new Error("401 Unauthorized"))).toBe(false);
+    expect(worthRetrying("not an error")).toBe(false);
+  });
+});
+
+describe("what the user is told when the connection drops", () => {
+  test("the Bun message is replaced with one that means something", () => {
+    const said = errorText(
+      new Error(
+        "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
+      ),
+    );
+    expect(said).not.toContain("verbose: true");
+    expect(said).not.toContain("second argument");
+    expect(said).toContain("dropped mid-response");
+    expect(said).toContain("continue");
+  });
+
+  test("an ordinary message is passed through untouched", () => {
+    expect(errorText(new Error("old_string not found"))).toBe("old_string not found");
   });
 });
