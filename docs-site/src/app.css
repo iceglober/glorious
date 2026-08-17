@@ -117,10 +117,12 @@ body {
 }
 
 .side-nav nav a {
+  display: block;
   color: var(--gray);
   text-decoration: none;
   padding: 0.25rem 0;
   font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .side-nav nav a:hover,
