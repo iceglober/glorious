@@ -40,6 +40,7 @@
     "remove-ansi-renderer",
     "remove-completion-grounding",
     "retry-dropped-connections",
+    "skill-namespace",
     "skills-as-commands",
     "skills-standard",
     "slash-command-execution",
