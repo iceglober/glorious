@@ -814,6 +814,7 @@ body { background: var(--white); }
 .home-hero { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(13rem, 0.8fr); gap: 3rem; align-items: end; padding: clamp(4rem, 11vw, 10rem) 0 3rem; border-bottom: 2px solid var(--black); }
 .home h1 { font-size: var(--display); line-height: 0.83; letter-spacing: -0.1em; }
 .home .tagline { max-width: 25ch; font-size: var(--step-1); line-height: 1.25; color: var(--black); margin: 0; }
+.home .npm-versions { margin-top: 1.5rem; }
 .home .install-block { padding: 2rem 0; margin: 0; }
 .home .install-cmd { background: var(--black); color: var(--white); border-color: var(--black); padding: 1rem 1.2rem; }
 .home .install-cmd:hover { background: var(--red); border-color: var(--red); }
