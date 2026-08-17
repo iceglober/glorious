@@ -583,6 +583,7 @@ body {
 }
 
 .doc h2 {
+  scroll-margin-top: 5rem;
   font-size: 1.15rem;
   font-weight: 700;
   margin-top: 3rem;
@@ -591,6 +592,7 @@ body {
 }
 
 .doc h3 {
+  scroll-margin-top: 5rem;
   font-size: 1rem;
   font-weight: 700;
   margin-top: 2rem;

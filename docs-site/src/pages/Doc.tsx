@@ -24,7 +24,15 @@ function MdLink({ href, children }: { href?: string; children?: ReactNode }) {
 
 export function Doc({ md, title }: { md: string; title: string }) {
   const headings = headingsOf(md);
-  useEffect(() => { document.title = `${title} — glrs`; }, [title]);
+  useEffect(() => {
+    document.title = `${title} — glrs`;
+    const hash = window.location.hash.slice(1);
+    if (hash !== "") window.requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView());
+  }, [title]);
+  const jumpTo = (id: string) => {
+    window.history.replaceState(null, "", `#${id}`);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const seen = new Map<string, number>();
   const headingId = (children: ReactNode) => {
     const base = slug(String(children));
@@ -41,7 +49,7 @@ export function Doc({ md, title }: { md: string; title: string }) {
           h3: ({ children }) => <h3 id={headingId(children)}>{children}</h3>,
         }}>{md}</Markdown>
       </article>
-      {headings.length > 0 && <aside className="on-page"><strong>On this page</strong><nav>{headings.map(({ depth, text, id }) => <a className={depth === 3 ? "nested" : ""} key={id} href={`#${id}`}>{text}</a>)}</nav></aside>}
+      {headings.length > 0 && <aside className="on-page"><strong>On this page</strong><nav>{headings.map(({ depth, text, id }) => <a className={depth === 3 ? "nested" : ""} key={id} href={`#${id}`} onClick={(event) => { event.preventDefault(); jumpTo(id); }}>{text}</a>)}</nav></aside>}
     </main>
   );
 }
