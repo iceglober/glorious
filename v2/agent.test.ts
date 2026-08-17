@@ -58,10 +58,20 @@ const countStrays = async (mode: "before" | "after"): Promise<number> => {
       }
     } catch {}
     await new Promise((r) => setTimeout(r, 60));
-    console.log(strays.length);
+    process.stdout.write(String(strays.length));
   `;
-  const run = Bun.spawn(["bun", "-e", program], { stdout: "pipe", stderr: "ignore" });
-  return Number((await new Response(run.stdout).text()).trim());
+  // NO_COLOR, and the ANSI strip below, because this parses the child's stdout
+  // as a number. With FORCE_COLOR set in the parent — which a terminal or a
+  // CI wrapper may well do — Bun wraps even a bare number in colour codes, and
+  // Number("\x1b[33m3\x1b[0m") is NaN. The test then fails for a reason that
+  // has nothing to do with what it is testing.
+  const run = Bun.spawn(["bun", "-e", program], {
+    stdout: "pipe",
+    stderr: "ignore",
+    env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
+  });
+  const said = (await new Response(run.stdout).text()).replace(/\u001b\[[0-9;]*m/gu, "").trim();
+  return Number(said);
 };
 
 describe("a stream that fails part-way", () => {
