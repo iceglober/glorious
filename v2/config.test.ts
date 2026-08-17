@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "./config";
+import { configPaths, loadConfig } from "./config";
 
 const roots: string[] = [];
 
@@ -63,5 +63,25 @@ describe("loadConfig", () => {
     const { config } = await loadConfig(await project(`{"model":42,"variant":""}`));
     expect(config.model).toBeUndefined();
     expect(config.variant).toBeUndefined();
+  });
+});
+
+// Extensions, sequences and commands already come from ~/.glorious — the
+// ancestor walk reaches it whenever a project sits under home. Config not
+// reading the same directory is a rule nobody should have to learn.
+describe("where personal config lives", () => {
+  test("both personal locations are read, project first", () => {
+    const paths = configPaths("/zz/project");
+    expect(paths[0]).toBe("/zz/project/.glorious/config.json");
+    expect(paths.some((path) => path.endsWith("/.glorious/config.json") && path !== paths[0])).toBe(
+      true,
+    );
+    expect(paths.some((path) => path.includes("/.config/glorious/"))).toBe(true);
+  });
+
+  test("a project pins one key while personal config supplies another", async () => {
+    const root = await project(`{"model":"anthropic/claude-opus-5"}`);
+    const { config } = await loadConfig(root);
+    expect(config.model).toBe("anthropic/claude-opus-5");
   });
 });

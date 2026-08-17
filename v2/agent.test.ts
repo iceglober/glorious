@@ -70,7 +70,10 @@ const countStrays = async (mode: "before" | "after"): Promise<number> => {
     stderr: "ignore",
     env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
   });
-  const said = (await new Response(run.stdout).text()).replace(/\u001b\[[0-9;]*m/gu, "").trim();
+  // Built rather than written as a literal: an escape character inside a regex
+  // literal is a lint error, and the point here is to tolerate one in the input.
+  const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "gu");
+  const said = (await new Response(run.stdout).text()).replace(ansi, "").trim();
   return Number(said);
 };
 
