@@ -150,31 +150,94 @@ export const noticeBlock = (text: string, tone: Tone = "muted"): Line[] =>
     .split("\n")
     .map((row): Line => [{ text: row, tone }]);
 
-// A tool row is three parts, each on its own line:
+// A tool row is a call, its output, and how long it took:
 //
-//   ✓ bash  1.2s
-//     git status --short
-//     M v2/render.ts
+//   ✓ bash(git status --short)
+//     ↳ M v2/render.ts
+//     ↳ M v2/index.ts
+//     completed in 1.2s
 //
-// The header carries only what is true at a glance — did it work, what was it,
-// how long did it take — and the duration appears only once there is one. The
-// arguments and the tail of the output sit under it, indented and clamped, so a
-// row stays a row: a 30k result contributes three lines, never thirty.
-const ARG_CHARS = 140;
+// The header reads as the call it was — name and arguments together, the way
+// they were written — and the mark in front says whether it worked. The output
+// hangs off it under arrows, so the tail of a 30k result is three lines that
+// are visibly output rather than three lines that could be anything. The
+// duration closes the row instead of sitting in the header, where it competed
+// with the arguments for the part of the line the eye lands on first.
+const ARG_LINES = 2;
 const OUTPUT_CHARS = 140;
 const OUTPUT_LINES = 3;
 const INDENT = "    ";
+const ARROW = "↳ ";
+// What the header is clamped against when the caller does not say. Every real
+// caller passes the terminal's width; this keeps the function usable without
+// one and matches the width the row was clamped to before it took the argument.
+const DEFAULT_COLUMNS = 140;
 
-const header = (icon: Span, name: string, took?: string): Line => [
-  { text: "  " },
-  icon,
-  { text: ` ${flatten(name)}` },
-  ...(took === undefined ? [] : [{ text: `  ${took}`, tone: "muted" as const }]),
-];
+const took = (elapsedMs: number): string =>
+  elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
 
-const argRow = (detail: string): Line[] => {
+// clip() but without the ellipsis, for measuring how much fits before deciding
+// where to fold.
+const clipRaw = (text: string, limit: number): string => {
+  let room = limit;
+  let kept = "";
+  for (const part of graphemes(text)) {
+    room -= cells(part);
+    if (room < 0) break;
+    kept += part;
+  }
+  return kept;
+};
+
+// The arguments may run onto a second line before they are cut. One line was
+// too little for the calls worth reading — a bash command with a path in it
+// spent its whole budget on the path — and a third line makes the transcript
+// mostly arguments. Wrapped on a space where there is one, because breaking a
+// path mid-segment reads as two paths.
+const foldArgs = (said: string, room: number): string[] => {
+  if (room <= 0 || said === "") return [];
+  const rows: string[] = [];
+  let rest = said;
+  while (rows.length < ARG_LINES - 1 && width(rest) > room) {
+    const head = clipRaw(rest, room);
+    const space = head.lastIndexOf(" ");
+    // Only break on a space that saved a useful amount of the line; otherwise
+    // the row is mostly whitespace and the fold bought nothing.
+    const at = space > room / 2 ? space : head.length;
+    rows.push(rest.slice(0, at).trimEnd());
+    rest = rest.slice(at).trimStart();
+  }
+  return [...rows, clip(rest, room)];
+};
+
+// `✓ bash(git status)`, folded onto a second line when the call is long enough
+// to need it. A tool called with nothing to show carries no empty parentheses.
+const header = (icon: Span, name: string, detail: string, columns: number): Line[] => {
   const said = flatten(detail);
-  return said === "" ? [] : [[{ text: `${INDENT}${clip(said, ARG_CHARS)}`, tone: "muted" }]];
+  const label = flatten(name);
+  if (said === "") return [[{ text: "  " }, icon, { text: " " }, { text: label, bold: true }]];
+  // "  ✓ " ahead of it, and the two parentheses around it.
+  const first = Math.max(8, columns - width(label) - 6);
+  const [lead, ...rest] = foldArgs(said, first);
+  const close = rest.length === 0 ? ")" : "";
+  return [
+    [
+      { text: "  " },
+      icon,
+      { text: " " },
+      { text: label, bold: true },
+      { text: "(" },
+      { text: lead, tone: "muted" },
+      { text: close },
+    ],
+    ...rest.map(
+      (row, at): Line => [
+        { text: INDENT },
+        { text: row, tone: "muted" },
+        { text: at === rest.length - 1 ? ")" : "" },
+      ],
+    ),
+  ];
 };
 
 // The tail, not the head: a command's last lines are the ones that say how it
@@ -188,7 +251,8 @@ const outputRows = (result: string, ok: boolean): Line[] =>
     .slice(-OUTPUT_LINES)
     .map(
       (row): Line => [
-        { text: `${INDENT}${clip(row, OUTPUT_CHARS)}`, tone: ok ? "muted" : "danger" },
+        { text: `${INDENT}${ARROW}`, tone: "muted" },
+        { text: clip(row, OUTPUT_CHARS), tone: ok ? "muted" : "danger" },
       ],
     );
 
@@ -199,15 +263,22 @@ export const toolRow = (
   ok: boolean,
   custom?: Line[],
   result?: string,
+  columns: number = DEFAULT_COLUMNS,
 ): Line[] => {
   const mark: Span = ok ? { text: "✓", tone: "success" } : { text: "✗", tone: "danger" };
-  const took =
-    elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
   const body =
     custom && custom.length > 0
       ? custom.map((line): Line => [{ text: INDENT }, ...line])
-      : [...argRow(detail), ...(result === undefined ? [] : outputRows(result, ok))];
-  return [header(mark, name, took), ...body];
+      : result === undefined
+        ? []
+        : outputRows(result, ok);
+  return [
+    ...header(mark, name, detail, columns),
+    ...body,
+    // Last, not in the header: a duration is what you check after reading what
+    // happened, and it was crowding out the arguments up there.
+    [{ text: `${INDENT}${ok ? "completed" : "failed"} in ${took(elapsedMs)}`, tone: "muted" }],
+  ];
 };
 
 // Reasoning collapses once the answer starts: what matters afterwards is that it
@@ -240,6 +311,7 @@ export type ToolRender = (
 export const eventBlock = (
   event: SessionEvent,
   custom?: ToolRender,
+  columns: number = DEFAULT_COLUMNS,
 ): { lines: Line[]; gap: boolean } => {
   switch (event.type) {
     case "user":
@@ -255,6 +327,7 @@ export const eventBlock = (
           event.ok,
           custom?.(event.name, event.input ?? {}, event.result ?? "", event.ok),
           event.result,
+          columns,
         ),
         gap: false,
       };
@@ -277,13 +350,17 @@ export const transcript = (events: readonly SessionEvent[]): Line[] =>
 // the row did not, eleven times a second.
 // No duration yet — there is nothing to report until it finishes, and a number
 // counting up in place is the animation this deliberately does not have.
-export const runningRow = (name: string, detail: string, custom?: Line[]): Line[] => {
+export const runningRow = (
+  name: string,
+  detail: string,
+  custom?: Line[],
+  columns: number = DEFAULT_COLUMNS,
+): Line[] => {
   const icon: Span = { text: "→", tone: "accent" };
-  const body =
-    custom && custom.length > 0
-      ? custom.map((line): Line => [{ text: INDENT }, ...line])
-      : argRow(detail);
-  return [header(icon, name), ...body];
+  return [
+    ...header(icon, name, detail, columns),
+    ...(custom ?? []).map((line): Line => [{ text: INDENT }, ...line]),
+  ];
 };
 
 export const queuedRow = (text: string): Line => [

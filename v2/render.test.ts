@@ -162,26 +162,38 @@ describe("the activity row", () => {
 // The model always received the reason — it is the tool's return value — but
 // the transcript showed only `✗ edit 2 files`, so a failure the agent then
 // worked around looked, from the outside, like nothing had happened.
-// The row is three parts: what happened on the header, the arguments under it,
-// and the tail of the output under that. A 30k result contributes three lines.
+// The row reads as the call it was: name and arguments together on the header,
+// the tail of the output under arrows, and the duration closing it. A 30k
+// result still contributes three lines.
 describe("the tool row format", () => {
   const text = (lines: Line[]): string =>
     lines.map((line) => line.map((span) => span.text).join("")).join("\n");
 
-  test("header, args, then the last lines of output", () => {
+  test("the call, the last lines of output, then how long it took", () => {
     const rows = toolRow("bash", "git status", 1240, true, undefined, "a\nb\nc\nd\ne");
     expect(text(rows).split("\n")).toEqual([
-      "  ✓ bash  1.2s",
-      "    git status",
-      "    c",
-      "    d",
-      "    e",
+      "  ✓ bash(git status)",
+      "    ↳ c",
+      "    ↳ d",
+      "    ↳ e",
+      "    completed in 1.2s",
     ]);
+  });
+
+  test("the tool name is bold, so the call reads before its arguments do", () => {
+    const name = toolRow("bash", "git status", 1, true)
+      .flat()
+      .find((span) => span.text === "bash");
+    expect(name?.bold).toBe(true);
   });
 
   test("a running row has no duration — there is nothing to report yet", () => {
     const rows = runningRow("bash", "sleep 3");
-    expect(text(rows)).toBe("  → bash\n    sleep 3");
+    expect(text(rows)).toBe("  → bash(sleep 3)");
+  });
+
+  test("a failure says so where the duration goes", () => {
+    expect(text(toolRow("edit", "a.ts", 240, false))).toContain("failed in 240ms");
   });
 
   test("at most three output lines, however much came back", () => {
@@ -191,7 +203,43 @@ describe("the tool row format", () => {
 
   test("blank lines do not count toward the three", () => {
     const rows = toolRow("bash", "x", 1, true, undefined, "a\n\n\n\nb");
-    expect(text(rows).split("\n").slice(2)).toEqual(["    a", "    b"]);
+    expect(text(rows).split("\n").slice(1, -1)).toEqual(["    ↳ a", "    ↳ b"]);
+  });
+
+  // A path eats a one-line budget whole, so the arguments get a second line —
+  // and stop there, or the transcript becomes mostly arguments.
+  test("long arguments fold onto a second line and no further", () => {
+    const rows = toolRow(
+      "bash",
+      `git commit -m "${"word ".repeat(80)}"`,
+      1,
+      true,
+      undefined,
+      "",
+      60,
+    );
+    const header = text(rows).split("\n").slice(0, -1);
+    expect(header).toHaveLength(2);
+    for (const line of header) expect(line.length).toBeLessThanOrEqual(60);
+    expect(header.at(-1)).toMatch(/…\)$/u);
+  });
+
+  test("the fold prefers a space, so a path is not split mid-segment", () => {
+    const rows = toolRow(
+      "bash",
+      `cd ${"/some/path".repeat(4)} && make build test`,
+      1,
+      true,
+      undefined,
+      "",
+      60,
+    );
+    expect(text(rows).split("\n")[1]).not.toMatch(/^\s+\/?[a-z]+\//u);
+  });
+
+  test("a line no wider than the terminal stays on one line", () => {
+    const rows = toolRow("bash", "git status", 1, true, undefined, "", 60);
+    expect(text(rows).split("\n")[0]).toBe("  ✓ bash(git status)");
   });
 
   test("a long line is clamped rather than wrapped across the transcript", () => {
@@ -203,16 +251,16 @@ describe("the tool row format", () => {
     const rows = toolRow("edit", "2 files", 24, false, undefined, "ERROR: old_string not found");
     expect(text(rows)).toContain("old_string not found");
     expect(text(rows)).not.toContain("ERROR:");
-    expect(rows.at(-1)?.[0].tone).toBe("danger");
+    expect(rows.at(-2)?.at(-1)?.tone).toBe("danger");
   });
 
-  test("nothing to say means a single line", () => {
-    expect(toolRow("glob", "", 3, true, undefined, "")).toHaveLength(1);
+  test("a tool with nothing to show carries no empty parentheses", () => {
+    expect(text(toolRow("glob", "", 3, true, undefined, "")).split("\n")[0]).toBe("  ✓ glob");
   });
 
   test("an extension's renderer replaces the body, not the header", () => {
     const rows = toolRow("web_fetch", "x", 3000, true, [[{ text: "fetched 2 pages" }]], "ignored");
-    expect(text(rows)).toBe("  ✓ web_fetch  3.0s\n    fetched 2 pages");
+    expect(text(rows)).toBe("  ✓ web_fetch(x)\n    fetched 2 pages\n    completed in 3.0s");
   });
 });
 

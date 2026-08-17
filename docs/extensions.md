@@ -350,9 +350,24 @@ type Line = Span[];
 Never opentui types. That is deliberate — the renderer can be replaced without
 breaking a single extension.
 
-On a tool row, your renderer owns what the row says; glorious keeps the `✓`/`✗`
-and the elapsed time, so those mean the same thing on every row whoever wrote
-the tool.
+A tool row is the call, its output, and how long it took:
+
+```
+  ✓ bash(git status --short)
+    ↳ M v2/render.ts
+    ↳ M v2/index.ts
+    completed in 1.2s
+```
+
+The header reads as the call that was made — arguments fold onto a second line
+when they need it, then get cut. Under it the last three lines of output hang
+off arrows, so a 30k result still contributes three lines. Print mode writes the
+same row to stderr, so a piped trail and a watched session describe a call the
+same way.
+
+Your renderer owns the lines between the header and the duration; glorious keeps
+the `✓`/`✗`, the call itself and the elapsed time, so those mean the same thing
+on every row whoever wrote the tool.
 
 ## Testing one
 
