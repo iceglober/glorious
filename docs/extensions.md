@@ -354,8 +354,8 @@ A tool row is the call, its output, and how long it took:
 
 ```
   ✓ bash(git status --short)
-    ↳ M v2/render.ts
-    ↳ M v2/index.ts
+        ↳ M v2/render.ts
+        ↳ M v2/index.ts
     completed in 1.2s
 ```
 

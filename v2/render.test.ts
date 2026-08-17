@@ -173,9 +173,9 @@ describe("the tool row format", () => {
     const rows = toolRow("bash", "git status", 1240, true, undefined, "a\nb\nc\nd\ne");
     expect(text(rows).split("\n")).toEqual([
       "  ✓ bash(git status)",
-      "    ↳ c",
-      "    ↳ d",
-      "    ↳ e",
+      "        ↳ c",
+      "        ↳ d",
+      "        ↳ e",
       "    completed in 1.2s",
     ]);
   });
@@ -203,7 +203,7 @@ describe("the tool row format", () => {
 
   test("blank lines do not count toward the three", () => {
     const rows = toolRow("bash", "x", 1, true, undefined, "a\n\n\n\nb");
-    expect(text(rows).split("\n").slice(1, -1)).toEqual(["    ↳ a", "    ↳ b"]);
+    expect(text(rows).split("\n").slice(1, -1)).toEqual(["        ↳ a", "        ↳ b"]);
   });
 
   // A path eats a one-line budget whole, so the arguments get a second line —
@@ -260,7 +260,7 @@ describe("the tool row format", () => {
 
   test("an extension's renderer replaces the body, not the header", () => {
     const rows = toolRow("web_fetch", "x", 3000, true, [[{ text: "fetched 2 pages" }]], "ignored");
-    expect(text(rows)).toBe("  ✓ web_fetch(x)\n    fetched 2 pages\n    completed in 3.0s");
+    expect(text(rows)).toBe("  ✓ web_fetch(x)\n        fetched 2 pages\n    completed in 3.0s");
   });
 });
 

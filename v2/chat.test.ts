@@ -347,11 +347,20 @@ describe("compacting a long conversation", () => {
       { role: "assistant" as const, content: `answered ${at}` },
     ]).flat();
 
-  const harnessWith = (history: ModelMessage[], summary = "the brief") => {
+  const harnessWith = (
+    history: ModelMessage[],
+    summary = "the brief",
+    summarise?: (
+      messages: ModelMessage[],
+      instruction: string,
+      signal?: AbortSignal,
+    ) => Promise<string>,
+  ) => {
     const events: SessionEvent[] = [];
+    const signals: ChatSignal[] = [];
     let sent: ModelMessage[] = [];
     const agent = {
-      summarise: async () => summary,
+      summarise: summarise ?? (async () => summary),
       run: async (_p: string, replayed: ModelMessage[]) => {
         sent = replayed;
         return done("ok");
@@ -359,10 +368,10 @@ describe("compacting a long conversation", () => {
     } as unknown as Agent;
     const chat = createChat(agent, {
       onEvent: (event) => events.push(event),
-      onSignal: () => {},
+      onSignal: (value) => signals.push(value),
       history,
     });
-    return { chat, events, sent: () => sent };
+    return { chat, events, signals, sent: () => sent };
   };
 
   // A tool message whose call was summarised away is an invalid request, and
@@ -422,6 +431,67 @@ describe("compacting a long conversation", () => {
     chat.send("busy");
     expect((await chat.compact("summarise", 2_000)).outcome).toBe("busy");
     await settle(chat);
+  });
+
+  // Reported from a live session: `/compact` on a 900k-token conversation ran
+  // for a minute or two with nothing on screen, so a command that was working
+  // read as one that had died.
+  test("it reports a phase while it runs, so the screen is not still", async () => {
+    const { chat, signals } = harnessWith(conversation(12));
+    await chat.compact("summarise", 2_000);
+    const phases = signals.flatMap((value) => (value.type === "phase" ? [value.name] : []));
+    expect(phases).toEqual(["compacting", null]);
+  });
+
+  test("the phase clears even when the summary fails", async () => {
+    const { chat, signals } = harnessWith(conversation(12), "");
+    await chat.compact("summarise", 2_000);
+    expect(signals.filter((value) => value.type === "phase").at(-1)).toEqual({
+      type: "phase",
+      name: null,
+    });
+  });
+
+  // Two minutes is long enough that being unable to stop it is its own defect.
+  // The stub rejects on abort the way a provider call does.
+  test("Esc stops a compaction, and says that is what happened", async () => {
+    const { chat } = harnessWith(
+      conversation(12),
+      "",
+      (_messages, _instruction, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const running = chat.compact("summarise", 2_000);
+    await Bun.sleep(5);
+    expect(chat.abort()).toBe(true);
+    expect(await running).toEqual({ outcome: "failed", error: "interrupted" });
+  });
+
+  test("a compaction that was stopped leaves the history alone", async () => {
+    const { chat, sent } = harnessWith(
+      conversation(12),
+      "",
+      (_messages, _instruction, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const running = chat.compact("summarise", 2_000);
+    await Bun.sleep(5);
+    chat.abort();
+    await running;
+    chat.send("next");
+    await settle(chat);
+    expect(sent()).toHaveLength(conversation(12).length);
+  });
+
+  test("the summary reaches the transcript, not just the model", async () => {
+    const { chat, events } = harnessWith(conversation(12), "WHAT HAPPENED BEFORE");
+    await chat.compact("summarise", 2_000);
+    const shown = events.find((event) => event.type === "compacted");
+    expect(shown).toMatchObject({ summary: "WHAT HAPPENED BEFORE" });
   });
 });
 

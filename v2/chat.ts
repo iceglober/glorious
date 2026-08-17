@@ -19,7 +19,7 @@ export type ChatSignal =
   | { type: "delta"; kind: "text" | "reasoning"; text: string }
   | { type: "sealed" }
   // which part of the model call is in flight, for the wave's sub-status
-  | { type: "phase"; name: "sending" | "waiting" | "thinking" | "writing" | null }
+  | { type: "phase"; name: "sending" | "waiting" | "thinking" | "writing" | "compacting" | null }
   | { type: "idle" };
 
 const NOTE_CHARS = 160;
@@ -191,17 +191,29 @@ export const createChat = (
     const cut = cutPoint(keep, force);
     if (cut === 0) return { outcome: "too-short" };
     compacting = true;
+    // Summarising a long conversation is a model call that can run for minutes.
+    // It rides the same phase signal a turn does, so the status row counts it
+    // out instead of the screen sitting still — and the same controller, so Esc
+    // stops it like anything else. A turn cannot be running: `busy` above.
+    const stop = new AbortController();
+    live = stop;
+    signal({ type: "phase", name: "compacting" });
     try {
-      const summary = await agent.summarise(history.slice(0, cut), instruction);
+      const summary = await agent.summarise(history.slice(0, cut), instruction, stop.signal);
       if (summary === "") return { outcome: "failed", error: "the summary came back empty" };
       const dropped = cut;
       history = [{ role: "user", content: compactedPrompt(summary) }, ...history.slice(cut)];
       announce({ type: "compacted", summary, dropped });
       return { outcome: "compacted", dropped, kept: history.length - 1 };
     } catch (thrown) {
-      return { outcome: "failed", error: errorText(thrown) };
+      return {
+        outcome: "failed",
+        error: stop.signal.aborted ? "interrupted" : errorText(thrown),
+      };
     } finally {
       compacting = false;
+      live = null;
+      signal({ type: "phase", name: null });
     }
   };
 

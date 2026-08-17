@@ -150,23 +150,42 @@ export const noticeBlock = (text: string, tone: Tone = "muted"): Line[] =>
     .split("\n")
     .map((row): Line => [{ text: row, tone }]);
 
+// What the model keeps after a compaction, shown rather than described. The
+// header says what it cost; the brief itself reads as prose, because that is
+// what it is and skipping it should be as easy as skipping any other answer.
+export const compactedBlock = (summary: string, dropped: number): Line[] => [
+  [
+    {
+      text: `▣ compacted — ${dropped} messages replaced by this brief`,
+      tone: "accent",
+      bold: true,
+    },
+  ],
+  ...clean(summary)
+    .split("\n")
+    .map((row): Line => [{ text: row, tone: "muted" }]),
+];
+
 // A tool row is a call, its output, and how long it took:
 //
 //   ✓ bash(git status --short)
-//     ↳ M v2/render.ts
-//     ↳ M v2/index.ts
+//         ↳ M v2/render.ts
+//         ↳ M v2/index.ts
 //     completed in 1.2s
 //
 // The header reads as the call it was — name and arguments together, the way
 // they were written — and the mark in front says whether it worked. The output
 // hangs off it under arrows, so the tail of a 30k result is three lines that
-// are visibly output rather than three lines that could be anything. The
-// duration closes the row instead of sitting in the header, where it competed
-// with the arguments for the part of the line the eye lands on first.
+// are visibly output rather than three lines that could be anything. Those sit
+// a step further in than everything else: output is the part you scan past, and
+// its own margin makes the call and the duration read as the frame around it.
+// The duration closes the row instead of sitting in the header, where it
+// competed with the arguments for the part of the line the eye lands on first.
 const ARG_LINES = 2;
 const OUTPUT_CHARS = 140;
 const OUTPUT_LINES = 3;
 const INDENT = "    ";
+const OUTPUT_INDENT = `${INDENT}${INDENT}`;
 const ARROW = "↳ ";
 // What the header is clamped against when the caller does not say. Every real
 // caller passes the terminal's width; this keeps the function usable without
@@ -251,7 +270,7 @@ const outputRows = (result: string, ok: boolean): Line[] =>
     .slice(-OUTPUT_LINES)
     .map(
       (row): Line => [
-        { text: `${INDENT}${ARROW}`, tone: "muted" },
+        { text: `${OUTPUT_INDENT}${ARROW}`, tone: "muted" },
         { text: clip(row, OUTPUT_CHARS), tone: ok ? "muted" : "danger" },
       ],
     );
@@ -268,7 +287,7 @@ export const toolRow = (
   const mark: Span = ok ? { text: "✓", tone: "success" } : { text: "✗", tone: "danger" };
   const body =
     custom && custom.length > 0
-      ? custom.map((line): Line => [{ text: INDENT }, ...line])
+      ? custom.map((line): Line => [{ text: OUTPUT_INDENT }, ...line])
       : result === undefined
         ? []
         : outputRows(result, ok);
@@ -333,6 +352,12 @@ export const eventBlock = (
       };
     case "reasoning":
       return { lines: reasoningBlock(event.elapsedMs), gap: true };
+    // The brief is what the model carries forward in place of everything that
+    // was dropped. It was announced and then rendered as nothing, so a
+    // compaction was a line saying a number of messages went away and no way to
+    // see what survived them.
+    case "compacted":
+      return { lines: compactedBlock(event.summary, event.dropped), gap: true };
     case "notice":
       return { lines: noticeBlock(event.text), gap: false };
     case "error":
@@ -359,7 +384,7 @@ export const runningRow = (
   const icon: Span = { text: "→", tone: "accent" };
   return [
     ...header(icon, name, detail, columns),
-    ...(custom ?? []).map((line): Line => [{ text: INDENT }, ...line]),
+    ...(custom ?? []).map((line): Line => [{ text: OUTPUT_INDENT }, ...line]),
   ];
 };
 
