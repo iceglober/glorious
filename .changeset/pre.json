@@ -43,6 +43,7 @@
     "teardown-basic-chat",
     "trim-published-tarball",
     "tui-progress-animations",
+    "usage-events",
     "v2-rewrite",
     "wave-sub-status",
     "web-fetch-fallback",
