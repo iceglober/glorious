@@ -12,6 +12,10 @@ export function Install() {
     <main className="site-main doc">
       <h1>Install</h1>
 
+      <div className="pkg-bar install-switcher">
+        <PkgSwitcher />
+      </div>
+
       <AnchorHeading level={2} id="recommended">Recommended</AnchorHeading>
 
       <CodeBlock copy="curl -fsSL https://glrs.dev/install.sh | bash">
@@ -27,10 +31,6 @@ export function Install() {
       <CodeBlock copy="bun add --global @glrs-dev/glorious@next">
         bun add --global @glrs-dev/glorious@next
       </CodeBlock>
-
-      <div className="pkg-bar">
-        <PkgSwitcher />
-      </div>
 
       <pre>
         <code>
