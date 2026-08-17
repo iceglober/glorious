@@ -142,6 +142,7 @@ export const runPrint = async (
     (event) => toolSink(event),
   );
   for (const failure of loaded.failures) note(`[extension ${failure.origin}] ${failure.message}`);
+  for (const warning of skills.warnings) note(`[skill] ${warning}`);
 
   const onSigint = (): void => stop.abort();
   process.on("SIGINT", onSigint);

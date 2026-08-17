@@ -774,6 +774,10 @@ const main = async (): Promise<void> => {
         userCommands = refreshedCommands;
         sequences = refreshedSequences.sequences;
         skills = refreshedSkills;
+        // /reload is when a skill file was just edited, so it is the moment its
+        // mistakes matter most.
+        for (const warning of refreshedSkills.warnings)
+          render({ type: "notice", text: `(skill) ${warning}` });
         registerCommands();
         agent.setSkills(refreshedSkills);
         screen.setSequences(sequences);
@@ -785,6 +789,10 @@ const main = async (): Promise<void> => {
   registerCommands();
   for (const failure of loaded.failures)
     render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
+  // A skill file that could not be read said nothing and simply was not there,
+  // which looks exactly like a skill nobody wrote. Same bet as extensions: say
+  // what is wrong, keep going with what loaded.
+  for (const warning of skills.warnings) render({ type: "notice", text: `(skill) ${warning}` });
   for (const path of legacySequences)
     render({
       type: "notice",

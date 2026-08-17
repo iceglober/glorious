@@ -83,7 +83,7 @@ session inherits whichever happened.
 | `.glorious/extensions/*.ts` | extensions — tools, commands, hooks, rendering |
 | `.glorious/sequences/*.md` | `$name` shortcuts |
 | `.glorious/commands/*.md` | `/name` prompts |
-| `.agents/skills/*/SKILL.md` | skills, listed to the model and loaded on demand |
+| `.agents/skills/*/SKILL.md` | skills, listed to the model and loaded on demand — see `skills.md` |
 | `.glorious/config.json` | model, variant, provider settings |
 | `~/.glorious/config.json` | the same, for you rather than the project |
 
