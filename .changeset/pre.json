@@ -33,6 +33,7 @@
     "model-switching-and-tui",
     "multi-file-edit-and-subagents",
     "no-builtin-commands",
+    "no-question-primitive",
     "own-directories-only",
     "permissions-acl",
     "picker-provider-catalog",
