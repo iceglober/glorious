@@ -173,9 +173,20 @@ carries on.
 
 ### `g.exec(command, args?)`
 
-Runs a shell command in the project root. Returns `{ output, stdout, ok }`;
+Runs a shell command in the project root. Returns
+`{ output, stdout, stderr, code, ok }`;
 `args` arrive as real positional parameters, so `$1` and `$@` mean what a script
 author expects and nothing needs quoting to stay safe.
+
+`code` and `stderr` are there because `ok` collapsed every failure into one bit:
+exit 1 (the linter found problems) and exit 127 (the linter is not installed)
+are opposite situations and used to be indistinguishable.
+
+```ts
+const { code, stderr } = await g.exec("eslint .");
+if (code === 127) g.print("eslint is not installed", "warning");
+else if (code !== 0) g.print(stderr, "danger");
+```
 
 ### `g.root`
 
@@ -315,16 +326,32 @@ is reported rather than ignored.
 ### Tools and models
 
 ```ts
-g.tools()                       // what the model can call right now
-g.setTools(["read", "grep"])    // restrict it; null lifts the restriction
-g.model()                       // { label, provider, modelId, variant, context }
-await g.models()                // the whole catalogue
+g.tools()                              // what the model can call right now
+const held = g.filterTools((n) => n !== "bash")   // narrow it; held.lift() undoes yours
+g.model()                              // { label, provider, modelId, variant, context }
+await g.models()                       // the whole catalogue
 await g.setModel("anthropic/claude-opus-5", "high")
 ```
 
-`setTools` withholds rather than forbids, so there is nothing to argue with.
-Between these and `tool_call`, both plan mode and the model picker are writable
-as extensions.
+`filterTools` withholds rather than forbids, so there is nothing to argue with —
+a tool that is absent cannot be talked into being used. **Every extension's
+filter has to agree**, so restrictions compose and can only narrow:
+
+```ts
+// two extensions, installed independently, neither aware of the other
+readOnly.filterTools((name) => !["write", "edit"].includes(name));
+noShell.filterTools((name) => name !== "bash");
+// the model is left with read, grep, glob — both restrictions hold
+```
+
+This replaced `setTools(names)`, which set one global list: the second extension
+to call it silently undid the first, and neither could see the other.
+
+`filterTools` and `tool_call` are not the same thing. A filter **removes** the
+tool, so the model never sees it. A `tool_call` handler **refuses** a call and
+tells the model why, which is what you want when the answer depends on the
+arguments. Between them, plan mode and the model picker are both writable as
+extensions.
 
 ### Turn and session
 
@@ -333,9 +360,20 @@ g.idle() · g.pending() · g.abort() · g.usage() · g.systemPrompt() · g.shutd
 g.session()                     // { id, file, title, events }
 g.setSessionName("refactor")
 g.appendEntry("my-data", { … })  // persisted, never sent to the model
+g.entries("my-data")            // …and read back, oldest first, across a --resume
 g.markdown((text) => text)      // transform assistant output, display only
 g.events.emit(name, payload) · g.events.on(name, handler)   // extension to extension
 ```
+
+`appendEntry` had no counterpart, so an extension could write to the session
+file and never read it back — the only way to recover your own data was to open
+`session().file` and parse it yourself. `entries` returns what this session has
+recorded under that type, including what earlier turns wrote before a
+`--resume`.
+
+`g.print(content, tone)` applies `tone` to `Line[]` as well as to strings: spans
+that name their own tone keep it, and the rest take the one you passed. It used
+to be dropped silently for anything but a string.
 
 ### Run mode
 

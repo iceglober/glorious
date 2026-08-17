@@ -66,6 +66,16 @@ const FAILED = /^ERROR:|\[interrupted\]|\[timed out/u;
 
 type Capture = { out: string; err: string; code: number; note: string };
 
+// What a shell command tells you. `output` is everything, interleaved, for a
+// transcript; the rest is for a program deciding what to do next.
+export type ShellResult = {
+  output: string;
+  stdout: string;
+  stderr: string;
+  code: number;
+  ok: boolean;
+};
+
 const capText = (text: string, limit: number): string =>
   text.length > limit
     ? `${text.slice(0, limit)}\n[truncated, ${text.length - limit} chars omitted]`
@@ -134,7 +144,7 @@ export const runShell = async (
   root: string,
   command: string,
   args: readonly string[] = [],
-): Promise<{ output: string; stdout: string; ok: boolean }> => {
+): Promise<ShellResult> => {
   const got = await launch(["bash", "-lc", command, "glorious", ...args], resolve(root), undefined);
   const parts = [got.out.trimEnd(), got.err.trimEnd()].filter((part) => part.length > 0);
   if (got.note) parts.push(got.note);
@@ -142,6 +152,13 @@ export const runShell = async (
   return {
     output: capText(parts.join("\n"), RESULT_LIMIT),
     stdout: capText(got.out.trimEnd(), RESULT_LIMIT),
+    // Kept apart, and kept at all: `ok` collapsed every kind of failure into
+    // one bit, so an extension wrapping a linter could not tell exit 1 (it
+    // found problems) from exit 127 (it is not installed) — which are opposite
+    // situations. An interrupted or timed-out command has no exit code of its
+    // own, so it reports the signal's 128+n the way a shell does.
+    stderr: capText(got.err.trimEnd(), RESULT_LIMIT),
+    code: got.note === "" ? got.code : 130,
     ok: got.note === "" && got.code === 0,
   };
 };

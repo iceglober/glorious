@@ -121,7 +121,7 @@ export const runPrint = async (
       mode: "print" as const,
       setInput: () => note("[extension] setInput() has no meaning in print mode; ignored"),
       tools: () => agent.toolNames(),
-      setTools: (names: readonly string[] | null) => agent.setTools(names),
+      setToolFilters: (filters) => agent.setToolFilters(filters),
       model: () => ({
         label: `${model.provider}/${model.modelId}`,
         provider: model.provider,
@@ -153,6 +153,9 @@ export const runPrint = async (
       session: () => ({ id: "print", file: "", title: "print", events: 0 }),
       setSessionName: () => {},
       appendEntry: () => {},
+      // A one-shot run has no session file, so nothing was ever written and
+      // there is nothing to read.
+      entries: () => [],
     },
     (event) => toolSink(event),
   );

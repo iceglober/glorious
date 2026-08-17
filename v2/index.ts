@@ -691,7 +691,14 @@ const main = async (): Promise<void> => {
         repaint();
       },
       print: (content, tone) => {
-        screen.print(typeof content === "string" ? noticeBlock(content, tone) : content, false);
+        // A tone passed with Line[] used to be dropped on the floor, because it
+        // only ever reached noticeBlock. It is a default now: spans that name
+        // their own tone keep it, and the ones that do not take this.
+        const lines =
+          typeof content === "string"
+            ? noticeBlock(content, tone)
+            : content.map((line) => line.map((span) => ({ tone, ...span })));
+        screen.print(lines, false);
         repaint();
       },
       columns: () => screen.columnsNow(),
@@ -711,7 +718,7 @@ const main = async (): Promise<void> => {
         return outcome;
       },
       tools: () => agent.toolNames(),
-      setTools: (names) => agent.setTools(names),
+      setToolFilters: (filters) => agent.setToolFilters(filters),
       model: () => ({
         label: modelLabel(model),
         provider: model.provider,
@@ -769,6 +776,12 @@ const main = async (): Promise<void> => {
       appendEntry: (type, data) => {
         record({ type: "custom", custom: type, data });
       },
+      // Read back out of the session's own events, so a resumed session sees
+      // what earlier turns wrote without anything having to persist twice.
+      entries: (type) =>
+        session.events.flatMap((event) =>
+          event.type === "custom" && event.custom === type ? [event.data] : [],
+        ),
       compact: (options) => runCompaction(options ?? {}, false),
       reload: async () => {
         const [refreshedCommands, refreshedSequences, refreshedSkills] = await Promise.all([

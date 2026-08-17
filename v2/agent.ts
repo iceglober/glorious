@@ -177,8 +177,16 @@ export const createAgent = (setup: Setup) => {
       return result.text.trim();
     },
     toolNames: (): readonly string[] => Object.keys(toolsFor(() => {})),
-    setTools: (names: readonly string[] | null): void => {
-      allowed = names;
+    // Every filter has to agree. It was one list, last writer wins: a
+    // read-only extension and a no-network extension would each call setTools,
+    // the second would silently undo the first, and neither could see the
+    // other. Intersecting composes — a restriction can only ever narrow — and
+    // nothing has to know what else is installed.
+    setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>): void => {
+      allowed =
+        filters.length === 0
+          ? null
+          : Object.keys(toolsFor(() => {})).filter((name) => filters.every((keep) => keep(name)));
     },
     prompt: (): string => systemPrompt(setup),
     setModel: (next: ModelOption): void => {
