@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type Capture,
+  createApi,
   createRegistry,
   describeContribution,
   type ExtensionHost,
@@ -11,18 +12,25 @@ import {
   type Registry,
 } from "./extension-api";
 import { loadExtensions } from "./extensions";
-import type { ToolEvent } from "./tools";
+import { runShell, type ToolEvent } from "./tools";
 
 let root = "";
 const captured: Capture[] = [];
 const printed: string[] = [];
 const sent: string[] = [];
+const stored: Array<{ type: string; data: unknown }> = [];
 
 const host: ExtensionHost = {
   get root() {
     return root;
   },
-  exec: async (command) => ({ output: `ran ${command}`, stdout: `ran ${command}`, ok: true }),
+  exec: async (command) => ({
+    output: `ran ${command}`,
+    stdout: `ran ${command}`,
+    stderr: "",
+    code: 0,
+    ok: true,
+  }),
   send: (text) => {
     sent.push(text);
   },
@@ -45,7 +53,7 @@ const host: ExtensionHost = {
   setInput: () => {},
   columns: () => 100,
   tools: () => ["read", "write"],
-  setTools: () => {},
+  setToolFilters: () => {},
   model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
   models: async () => [],
   setModel: async () => {},
@@ -57,7 +65,10 @@ const host: ExtensionHost = {
   shutdown: () => {},
   session: () => ({ id: "test", file: "/tmp/test.json", title: "test", events: 0 }),
   setSessionName: () => {},
-  appendEntry: () => {},
+  appendEntry: (type, data) => {
+    stored.push({ type, data });
+  },
+  entries: (type) => stored.filter((one) => one.type === type).map((one) => one.data),
 };
 
 const write = async (name: string, source: string): Promise<void> => {
@@ -230,5 +241,82 @@ describe("firing an event", () => {
     const said = await fire(registry, "turn_start", { text: "x" }, (m) => failures.push(m));
     expect(failures[0]).toContain("nope");
     expect(said).toBe("survived");
+  });
+});
+
+// Four places where an extension author wrote something reasonable and got a
+// wrong answer.
+describe("the API keeps its promises", () => {
+  const api = () => {
+    const registry = createRegistry();
+    return { registry, g: createApi(host, registry, () => {}, "test") };
+  };
+
+  // ok collapsed every failure into one bit: exit 1 (the linter found problems)
+  // and exit 127 (the linter is not installed) are opposite situations.
+  test("exec reports the exit code and stderr, not just a boolean", async () => {
+    const result = await runShell(process.cwd(), "echo out; echo err >&2; exit 3");
+    expect(result).toMatchObject({ code: 3, ok: false });
+    expect(result.stdout.trim()).toBe("out");
+    expect(result.stderr.trim()).toBe("err");
+    expect(result.output).toContain("out");
+    expect(result.output).toContain("err");
+  });
+
+  test("a command that works reports zero", async () => {
+    expect(await runShell(process.cwd(), "true")).toMatchObject({ code: 0, ok: true });
+  });
+
+  // It was one global list, last writer wins: the second extension to restrict
+  // silently undid the first.
+  test("tool filters compose rather than clobber", () => {
+    const { g } = api();
+    const seen: string[][] = [];
+    const recording = {
+      ...host,
+      setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>) => {
+        seen.push(["bash", "read", "write"].filter((name) => filters.every((keep) => keep(name))));
+      },
+    };
+    const one = createApi(recording, createRegistry(), () => {}, "a");
+    // both filters live on one registry, the way two extensions share one
+    const registry = createRegistry();
+    const first = createApi(recording, registry, () => {}, "read-only");
+    const second = createApi(recording, registry, () => {}, "no-write");
+    first.filterTools((name) => name !== "bash");
+    second.filterTools((name) => name !== "write");
+    expect(seen.at(-1)).toEqual(["read"]);
+    expect(one).toBeDefined();
+    expect(g).toBeDefined();
+  });
+
+  test("lifting one filter leaves the others standing", () => {
+    const seen: string[][] = [];
+    const recording = {
+      ...host,
+      setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>) => {
+        seen.push(["bash", "read", "write"].filter((name) => filters.every((keep) => keep(name))));
+      },
+    };
+    const registry = createRegistry();
+    const first = createApi(recording, registry, () => {}, "read-only");
+    const second = createApi(recording, registry, () => {}, "no-write");
+    const held = first.filterTools((name) => name !== "bash");
+    second.filterTools((name) => name !== "write");
+    held.lift();
+    expect(seen.at(-1)).toEqual(["bash", "read"]);
+  });
+
+  // Storage you cannot read is not storage.
+  test("what an extension writes to the session, it can read back", () => {
+    const { g } = api();
+    g.appendEntry("prefs", { style: "terse" });
+    g.appendEntry("prefs", { style: "loud" });
+    g.appendEntry("other", { ignored: true });
+    expect(g.entries("prefs")).toEqual([{ style: "terse" }, { style: "loud" }]);
+  });
+
+  test("a type nothing was written under reads empty, not undefined", () => {
+    expect(api().g.entries("never-written")).toEqual([]);
   });
 });

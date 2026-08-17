@@ -4,7 +4,7 @@ import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import { clip, type Line, type Tone } from "./render";
 import type { SkillSummary } from "./skills";
-import type { ToolEvent } from "./tools";
+import type { ToolEvent, ShellResult as ToolShellResult } from "./tools";
 import { wrapTool } from "./tools";
 
 // The public surface an extension is written against. Everything on it is a
@@ -22,7 +22,10 @@ export type { Activity, Line, Span, Tone } from "./render";
 
 import type { Activity } from "./render";
 
-export type ShellResult = { output: string; stdout: string; ok: boolean };
+// Re-exported from tools.ts rather than declared again: two copies of one
+// shape is two things to remember to change, and the last one had already
+// fallen behind.
+export type ShellResult = ToolShellResult;
 
 export type EventName =
   | "session_start"
@@ -268,11 +271,18 @@ export type Glorious = {
   /** The tools the model can currently call. */
   tools: () => readonly string[];
   /**
-   * Restrict the model to these tools for the next turn onward. Pass null to
-   * lift the restriction. Withholding beats instructing: a tool that is absent
+   * Narrow what the model can call, from the next turn onward. Return false for
+   * a tool to withhold it. Withholding beats instructing: a tool that is absent
    * cannot be talked into being used.
+   *
+   * Every extension's filter has to agree, so restrictions compose and can only
+   * narrow. This replaced a `setTools(names)` that set one global list — a
+   * read-only extension and a no-network extension would each call it, the
+   * second would silently undo the first, and neither could see the other.
+   *
+   * Returns a handle that lifts your own filter and nobody else's.
    */
-  setTools: (names: readonly string[] | null) => void;
+  filterTools: (keep: (name: string) => boolean) => { lift: () => void };
 
   /** The model in force, with its context window and reasoning variants. */
   model: () => ModelInfo;
@@ -300,6 +310,16 @@ export type Glorious = {
   setSessionName: (title: string) => void;
   /** Persist your own data in the session file. Never sent to the model. */
   appendEntry: (type: string, data: unknown) => void;
+  /**
+   * Everything this session has recorded under `type`, oldest first — including
+   * entries written before a `--resume`, since a resumed session replays them.
+   *
+   * appendEntry had no counterpart, so an extension could write to the session
+   * file and never read it back: storage you cannot read is not storage, and
+   * the only way to recover your own data was to open `session().file` and
+   * parse it yourself.
+   */
+  entries: (type: string) => readonly unknown[];
 
   /** Transform assistant markdown before it is rendered. Display only. */
   markdown: (transform: (text: string) => string) => void;
@@ -339,7 +359,7 @@ export type ExtensionHost = {
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
   reload: () => Promise<void>;
   tools: () => readonly string[];
-  setTools: (names: readonly string[] | null) => void;
+  setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>) => void;
   model: () => ModelInfo;
   models: () => Promise<readonly ModelInfo[]>;
   setModel: (label: string, variant?: string) => Promise<void>;
@@ -352,6 +372,7 @@ export type ExtensionHost = {
   session: () => SessionInfo;
   setSessionName: (title: string) => void;
   appendEntry: (type: string, data: unknown) => void;
+  entries: (type: string) => readonly unknown[];
 };
 
 export type ToolRenderer = {
@@ -368,6 +389,8 @@ export type Registry = {
   runners: Map<string, (args: string) => void | Promise<void>>;
   handlers: Map<EventName, Array<Handler<EventName>>>;
   renderers: Map<string, ToolRenderer>;
+  // Every extension's tool filter. All of them must agree for a tool to survive.
+  toolFilters: Array<(name: string) => boolean>;
   statuses: Array<() => string | null>;
   footers: Array<() => Line[]>;
   activities: Array<(state: Activity) => Line[] | null>;
@@ -388,6 +411,7 @@ export const createRegistry = (): Registry => ({
   runners: new Map(),
   handlers: new Map(),
   renderers: new Map(),
+  toolFilters: [],
   statuses: [],
   footers: [],
   activities: [],
@@ -477,7 +501,18 @@ export const createApi = (
       setInput: host.setInput,
     },
     tools: host.tools,
-    setTools: host.setTools,
+    filterTools: (keep) => {
+      registry.toolFilters.push(keep);
+      host.setToolFilters(registry.toolFilters);
+      return {
+        lift: () => {
+          const at = registry.toolFilters.indexOf(keep);
+          if (at < 0) return;
+          registry.toolFilters.splice(at, 1);
+          host.setToolFilters(registry.toolFilters);
+        },
+      };
+    },
     model: host.model,
     models: host.models,
     setModel: host.setModel,
@@ -490,6 +525,7 @@ export const createApi = (
     session: host.session,
     setSessionName: host.setSessionName,
     appendEntry: host.appendEntry,
+    entries: host.entries,
     markdown: (transform) => registry.markdown.push(transform),
     events: {
       emit: (name, payload) => {
