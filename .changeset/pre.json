@@ -31,6 +31,7 @@
     "reasoning-store-false",
     "remove-ansi-renderer",
     "remove-completion-grounding",
+    "retry-dropped-connections",
     "skills-as-commands",
     "slash-command-execution",
     "small-core-extensible",
