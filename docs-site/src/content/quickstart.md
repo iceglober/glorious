@@ -40,41 +40,11 @@ Type, and the agent reads and edits files and runs commands as you chat.
 - `/extensions` — list loaded extensions and what each one registered.
 - `/clear` — drop the conversation the model replays, keeping the transcript.
 
-## Sequences
+## Reusable behavior
 
-A slash command always ends in a turn; `!` never does but has to be typed out
-in full. A sequence is the named form of `!` — a script the project defines
-and glorious runs, reached by typing `$` and completing the name.
-
-Put one in `.glorious/sequences/<name>.md`. The frontmatter is the
-deterministic part; the body is an optional prompt.
-
-```markdown
----
-description: Reset to a clean main
-run: |
-  git checkout main
-  git pull --ff-only
-clear: true
----
-
-The working tree was reset. Anything you knew about the previous branch is
-stale — re-read before acting.
-```
-
-- `run` is the shell, and always executes. Arguments arrive as real positional
-  parameters, so `$fresh main` gives the script `$1`.
-- **With a body**, a turn is sent once the shell succeeds, carrying the
-  script's stdout as evidence. `run: git diff` plus "review this" is a whole
-  workflow in one file.
-- **Without a body, no turn is produced at all.** The model is never called.
-- `clear` drops the conversation, for a script that changes the ground the
-  model was standing on.
-- A non-zero exit shows the output and stops there: nothing is sent, nothing is
-  cleared.
-
-Extensions are yours to invoke, never the model's — it cannot decide to reset
-your working tree. `/skills` reloads them along with everything else.
+Reusable behavior belongs in a TypeScript extension. Extensions are user-invoked,
+never selected by the model, and can register tools, commands, hooks, or UI.
+The `!` prefix remains available for one-off shell commands.
 
 ## Keys
 

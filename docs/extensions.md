@@ -108,7 +108,7 @@ g.command("todo", {
 
 For a command that should instead become a prompt, write a markdown file in
 `.glorious/commands/` — see `commands.md`. For one that runs a shell command and
-then feeds its output to the model, write a sequence — see `sequences.md`.
+then feeds its output to the model, use `g.send` from an extension.
 
 ### `g.on(event, handler)`
 
@@ -180,7 +180,7 @@ author expects and nothing needs quoting to stay safe.
 ### `g.root`
 
 The project root, absolute. Every relative path an extension resolves should
-resolve against this, not `process.cwd()` — a sequence or a tool may have moved
+resolve against this, not `process.cwd()` — an extension or tool may have moved
 the working directory.
 
 ### `g.ui`
@@ -216,7 +216,7 @@ bundled `builtins` extension draws `/help`.
 
 ### `g.inspect()` / `g.clear()` / `g.reload()`
 
-`inspect()` returns what is loaded right now — `{ commands, sequences, skills,
+`inspect()` returns what is loaded right now — `{ commands, skills,
 extensions }`. Every listing glorious ships is a view over it and nothing more,
 which is why none of them are built in:
 
@@ -233,7 +233,7 @@ g.command("skills", {
 alone, and returns `"cleared"`, `"busy"` (a turn is running) or `"empty"`.
 `compact({ instruction?, keep? })` summarises the older part instead of
 discarding it, so a session can outlive its window.
-`reload()` re-reads skills, commands and sequences from disk.
+`reload()` re-reads skills, commands, and extensions from disk.
 
 ### Tokens, cache and cost
 

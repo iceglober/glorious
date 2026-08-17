@@ -86,10 +86,9 @@ export const runPrint = async (
         throw new Error("ask() has no meaning in print mode: there is nobody to answer");
       },
       // Extensions load headlessly too, so anything they inspect has to answer.
-      // A one-shot run has no command table or sequences of its own.
+      // A one-shot run has no command table of its own.
       inspect: () => ({
         commands: [],
-        sequences: [],
         skills: skills.summaries,
         extensions: loaded.extensions.map((entry) => ({
           ...entry,

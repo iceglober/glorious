@@ -124,7 +124,7 @@ export const createAgent = (setup: Setup) => {
   let allowed: readonly string[] | null = null;
 
   // Extensions land last, so one can deliberately replace a built-in — the same
-  // "closest definition wins" rule commands and sequences already follow.
+  // "closest definition wins" rule commands already follow.
   const toolsFor = (onTool: (event: ToolEvent) => void) => {
     const all = {
       ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),

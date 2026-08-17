@@ -66,7 +66,7 @@ describe("loadConfig", () => {
   });
 });
 
-// Extensions, sequences and commands already come from ~/.glorious — the
+// Extensions and commands already come from ~/.glorious — the
 // ancestor walk reaches it whenever a project sits under home. Config not
 // reading the same directory is a rule nobody should have to learn.
 describe("where personal config lives", () => {

@@ -105,15 +105,14 @@ two it was. Completion is a subsequence match, so typing `/graphify` still finds
 `/skills` lists what loaded, where each came from, and which are offered to the
 model — a skill that opted out is tagged `you only`.
 
-## Skills, commands, sequences, extensions
+## Skills, commands, and extensions
 
 - A **skill** is for the model: it decides when the skill applies. Reach for one when the *model* should know how to do something.
 - A **command** (`.glorious/commands/*.md`) is for you: a prompt you send by typing `/name`. See `commands.md`.
-- A **sequence** (`$name`) runs shell first, then optionally sends its output as a prompt. See `sequences.md`.
 - An **extension** is code — a tool, a hook, a widget. See `extensions.md`.
 
 A skill that only ever gets used because you typed it is a command. A command
 the model should reach for on its own is a skill.
 
-Commands and sequences keep the bare `/name` and `$name`; only skills are
+Commands keep the bare `/name`; only skills are
 namespaced, because they are the only ones that arrive from somewhere else.

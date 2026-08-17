@@ -131,7 +131,6 @@ const launch = async (
 };
 
 // `output` is everything, for the transcript. `stdout` is kept apart because an
-// sequence that carries a prompt sends its stdout to the model as data, and
 // diagnostics on stderr would read as part of the request. Arguments are handed
 // to bash as real positional parameters rather than pasted into the command
 // text, so `$1` and `$@` mean what a script author expects and nothing has to

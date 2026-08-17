@@ -29,7 +29,7 @@ export type Config = {
 export type LoadedConfig = { config: Config; diagnostics: string[] };
 
 // Project first, then either personal location. `~/.glorious/` is read because
-// that is where extensions, sequences and commands already come from — the
+// that is where extensions and commands already come from — the
 // ancestor walk reaches it whenever a project sits under home — and having the
 // same directory hold resources but not config is a rule nobody should have to
 // learn. `~/.config/glorious/` stays for anyone following the XDG layout.

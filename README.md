@@ -49,9 +49,15 @@ export default function (g) {
 ```
 
 Tools, slash commands, lifecycle hooks, status widgets and custom row rendering,
-all through the same object. A shell command plus a prompt needs no code at all
-— that is a [sequence](docs/sequences.md). Start at
+all through the same object. For reusable behavior, write an extension. Start at
+[docs/system-design.md](docs/system-design.md), then
 [docs/extensions.md](docs/extensions.md).
+
+## System design
+
+glorious is a simple coding agent with a minimal core and maximum extensibility.
+Read the [system design](docs/system-design.md) and [glossary](docs/glossary.md)
+for its philosophy and language.
 
 ## Decisions
 

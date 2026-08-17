@@ -10,7 +10,7 @@ import { wrapTool } from "./tools";
 // The public surface an extension is written against. Everything on it is a
 // facade over a seam that already exists inside glorious — `tool` lands where
 // MCP tools used to be merged, `on` is the internal signal bus made public,
-// `exec` is the same shell a sequence runs. Nothing here is a second mechanism
+// `exec` is the same shell the `!` command runs. Nothing here is a second mechanism
 // alongside the first.
 //
 // Renderers return Line[], glorious's own span structure, never opentui types.
@@ -122,7 +122,6 @@ export type CommandSpec = {
 // built in any longer.
 export type Loaded = {
   commands: ReadonlyArray<{ name: string; description: string; origin?: string }>;
-  sequences: ReadonlyArray<{ name: string; description: string; origin: string }>;
   // The real type, not a copy of its fields — a second declaration of the same
   // shape is a second thing to remember to update, and this one had already
   // fallen behind.
@@ -218,7 +217,7 @@ export type Glorious = {
   columns: () => number;
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
-  /** What is loaded: commands, sequences, skills, extensions. */
+  /** What is loaded: commands, skills, extensions. */
   inspect: () => Loaded;
   /** Drop the conversation the model replays. The transcript is untouched. */
   clear: () => "cleared" | "busy" | "empty";
@@ -228,7 +227,7 @@ export type Glorious = {
    * tokens of recent turns to leave verbatim.
    */
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
-  /** Re-read skills, commands and sequences from disk. */
+  /** Re-read skills and commands from disk. */
   reload: () => Promise<void>;
 
   /** "tui" when a terminal is attached, "print" for a headless -p run. */

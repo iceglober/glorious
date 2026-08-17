@@ -1,11 +1,5 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
-import {
-  activeSigil,
-  commandInvocation,
-  matchingCommands,
-  matchNames,
-  shortcutInvocation,
-} from "../commands";
+import { activeSigil, commandInvocation, matchingCommands } from "../commands";
 import {
   atFirstLine,
   atLastLine,
@@ -14,7 +8,6 @@ import {
   composerWrapMode,
 } from "../composer";
 import type { Line } from "../render";
-import type { Sequence } from "../sequences";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
 import { createQuestions } from "./questions";
@@ -32,8 +25,6 @@ export const createScreen = async (callbacks: {
   cwd: string;
   onCommand: (name: string, args: string) => void;
   onFileSearch: (query: string) => Promise<readonly string[]>;
-  onShortcut: (name: string, args: string) => void;
-  sequences?: readonly Sequence[];
   onKeyBinding?: (event: KeyEvent) => boolean;
   onEscape: () => void;
   onResize: () => void;
@@ -166,7 +157,6 @@ export const createScreen = async (callbacks: {
     syncAutocomplete();
   };
   let shellMode = false;
-  let sequences: readonly Sequence[] = callbacks.sequences ?? [];
   // index into `log` of the block still being streamed into, if any
   let drafting: number | null = null;
 
@@ -262,18 +252,16 @@ export const createScreen = async (callbacks: {
     autocompleteSigil = activeSigil(
       input.plainText,
       input.cursorOffset,
-      shellMode ? ["/"] : ["/", "$", "@"],
+      shellMode ? ["/"] : ["/", "@"],
     );
     const matches =
       autocompleteSigil === null
         ? []
-        : autocompleteSigil.sigil === "$"
-          ? matchNames(sequences, autocompleteSigil.query)
-          : autocompleteSigil.sigil === "@"
-            ? // Files are found on disk, so the list arrives after the keystroke
-              // that asked for it; whatever the last lookup returned is shown.
-              fileMatches
-            : matchingCommands(autocompleteSigil.query);
+        : autocompleteSigil.sigil === "@"
+          ? // Files are found on disk, so the list arrives after the keystroke
+            // that asked for it; whatever the last lookup returned is shown.
+            fileMatches
+          : matchingCommands(autocompleteSigil.query);
     if (autocompleteSigil?.sigil === "@") void refreshFiles(autocompleteSigil.query);
     const sigil = autocompleteSigil?.sigil ?? "/";
     autocompleteItems = matches;
@@ -364,14 +352,6 @@ export const createScreen = async (callbacks: {
     if (invocation) {
       dismiss();
       callbacks.onCommand(invocation.name, invocation.args);
-      return;
-    }
-    // Only a name that resolves is routed as a sequence; anything else is
-    // prose that happens to start with `$` and belongs in the turn.
-    const shortcut = shellMode ? null : shortcutInvocation(text);
-    if (shortcut && sequences.some((entry) => entry.name === shortcut.name)) {
-      dismiss();
-      callbacks.onShortcut(shortcut.name, shortcut.args);
       return;
     }
     if (shellMode) {
@@ -552,13 +532,6 @@ export const createScreen = async (callbacks: {
       return true;
     },
     isDrafting: () => drafting !== null,
-    // Extensions are discovered from disk like skills and commands, so the
-    // composer has to be told when that list changes or autocomplete keeps
-    // offering something the reload dropped.
-    setSequences: (next: readonly Sequence[]) => {
-      sequences = next;
-      syncAutocomplete();
-    },
     print: printBlock,
     setProgress: painter(progress),
     setFooter: painter(extra),

@@ -7,11 +7,9 @@ import {
   matchingCommands,
   matchNames,
   setCustomCommands,
-  shortcutInvocation,
 } from "./commands";
 
 const slashes = ["/"] as const;
-const both = ["/", "$"] as const;
 
 // The table is empty until something registers into it — the core ships no
 // commands of its own — so these seed what they are matching against rather
@@ -45,33 +43,6 @@ describe("slash commands", () => {
     seed("clear");
     expect(commands().map((command) => command.name)).toEqual(["clear"]);
     setCustomCommands([]);
-  });
-});
-
-describe("sequence shortcuts", () => {
-  test("each sigil completes only its own namespace", () => {
-    expect(activeSigil("$fr", 3, both)).toEqual({ sigil: "$", start: 0, query: "fr" });
-    expect(activeSigil("/he", 3, both)).toEqual({ sigil: "/", start: 0, query: "he" });
-  });
-
-  test("the sigil being typed wins when both are present", () => {
-    expect(activeSigil("/help then $fr", 14, both)).toEqual({
-      sigil: "$",
-      start: 11,
-      query: "fr",
-    });
-  });
-
-  test("a sigil mid-word is prose, not a shortcut", () => {
-    expect(activeSigil("costs US$5", 10, both)).toBeNull();
-    expect(activeSigil("PATH=$HOME", 10, both)).toBeNull();
-  });
-
-  test("parses a shortcut submission with its arguments", () => {
-    expect(shortcutInvocation("$fresh")).toEqual({ name: "fresh", args: "" });
-    expect(shortcutInvocation(" $fresh main ")).toEqual({ name: "fresh", args: "main" });
-    expect(shortcutInvocation("fresh")).toBeNull();
-    expect(shortcutInvocation("/fresh")).toBeNull();
   });
 });
 
