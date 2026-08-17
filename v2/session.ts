@@ -17,6 +17,8 @@ const directory = join(
 );
 const promptFile = "prompts.json";
 
+export const sessionFile = (id: string): string => join(directory, `${id}.json`);
+
 type StoredSession = {
   schema: 2;
   id: string;

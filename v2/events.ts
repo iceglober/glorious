@@ -29,6 +29,9 @@ export type SessionEvent =
   // is kept so a resumed session replays faithfully and an expand affordance can
   // be added later without another schema change.
   | { type: "reasoning"; text: string; elapsedMs: number }
+  // An extension's own data, persisted in the session and never sent to the
+  // model. messagesOf ignores it; eventBlock draws nothing for it.
+  | { type: "custom"; custom: string; data: unknown }
   | { type: "cleared"; reason: string }
   | { type: "turn"; messages: ModelMessage[] };
 

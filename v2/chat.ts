@@ -23,6 +23,9 @@ export const createChat = (
   wiring: {
     onEvent: (event: SessionEvent) => void;
     onSignal: (signal: ChatSignal) => void;
+    // Fires before the model is called. A string is appended to this turn's
+    // message, which is how an extension injects context for one turn only.
+    onBeforeRequest?: (prompt: string, messages: number) => Promise<string | undefined>;
     history?: ModelMessage[];
   },
 ) => {
@@ -82,8 +85,10 @@ export const createChat = (
     } else {
       announce({ type: "notice", text: label });
     }
-    const prompt = note === "" ? text : `${note}\n\n${text}`;
+    let prompt = note === "" ? text : `${note}\n\n${text}`;
     note = "";
+    const added = await wiring.onBeforeRequest?.(prompt, history.length);
+    if (added !== undefined && added !== "") prompt = `${prompt}\n\n${added}`;
     const started = new Map<number, number>();
     const before = history.length;
     let spoken = "";
@@ -169,8 +174,11 @@ export const createChat = (
     // words buries the session under it.
     // Driven by the frame tick so a burst of deltas costs one repaint.
     flush: flushDeltas,
-    send: (text: string, label: string | null = null): void => {
-      queue.push({ text, label });
+    // `steer` lands the message next rather than last: the running turn is
+    // untouched, but everything already waiting yields to it.
+    send: (text: string, label: string | null = null, steer = false): void => {
+      if (steer && queue.length > 1) queue.splice(1, 0, { text, label });
+      else queue.push({ text, label });
       if (queue.length === 1) void drain();
     },
     // Refused mid-turn on purpose: the running request already holds its own

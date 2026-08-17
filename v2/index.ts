@@ -9,7 +9,7 @@ import { messagesOf, type SessionEvent } from "./events";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
-import { currentModel, modelLabel, modelMetadata } from "./models";
+import { currentModel, loadCatalogue, modelLabel, modelMetadata, modelRef } from "./models";
 import { runPrint } from "./print";
 import { shortcutPrompt } from "./prompt";
 import {
@@ -31,9 +31,10 @@ import {
   openSession,
   savePromptHistory,
   saveSession,
+  sessionFile,
 } from "./session";
 import { loadSkills } from "./skills";
-import { runShell, type ToolEvent } from "./tools";
+import { runShell, setToolGate, type ToolEvent } from "./tools";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
 
@@ -99,10 +100,22 @@ const main = async (): Promise<void> => {
   const doctor = args.length > 0 && args[0] === "doctor";
   const doctorJson = doctor && args[1] === "--json";
   if (args.length > 0 && !doctor) {
-    if (args[0] !== "--resume" || args.length > 2) throw new Error(USAGE);
-    resumeId = args[1];
+    if (args[0] === "--resume") resumeId = args[1];
+    else if (!/^--[a-z]/u.test(args[0])) throw new Error(USAGE);
   }
   if (doctor && args.length > 2) throw new Error(USAGE);
+  // An extension registers its flags while loading, which is long after argv is
+  // parsed — so unrecognised `--name value` pairs are carried here and handed
+  // over once the extensions that claim them exist. One glorious does not
+  // recognise is reported rather than ignored.
+  const extraFlags = new Map<string, string>();
+  for (let at = 0; at < args.length; at += 1) {
+    const flag = /^--([a-z][a-z0-9-]*)$/u.exec(args[at]);
+    if (flag && flag[1] !== "resume" && flag[1] !== "version" && flag[1] !== "print") {
+      extraFlags.set(flag[1], args[at + 1] ?? "");
+      at += 1;
+    }
+  }
   const { root, os, branch, worktree, git, label } = probe();
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
@@ -117,10 +130,11 @@ const main = async (): Promise<void> => {
     }
     return;
   }
-  const session =
-    resumeId === undefined && args.length === 0
-      ? await createSession(root)
-      : await openSession(resumeId, pickSession);
+  // Only --resume resumes. This keyed on `args.length === 0`, so once
+  // extensions could add flags, `glorious --anything` silently opened the
+  // session picker instead of starting a session.
+  const resuming = args.includes("--resume");
+  const session = resuming ? await openSession(resumeId, pickSession) : await createSession(root);
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
   const config = resolvedConfig;
@@ -250,6 +264,14 @@ const main = async (): Promise<void> => {
     if (event.type === "usage" || event.type === "turn") void saveSession(session);
   };
 
+  // Display only: the transform never reaches the session or the model, so an
+  // extension that rewrites assistant markdown cannot corrupt the transcript.
+  const shown = (text: string): string =>
+    registry.markdown.reduce(
+      (carried, transform) => safely(() => transform(carried)) ?? carried,
+      text,
+    );
+
   const render = (event: SessionEvent): void => {
     record(event);
     if (event.type === "usage") {
@@ -262,7 +284,10 @@ const main = async (): Promise<void> => {
     }
     if (event.type === "assistant") lastAnswer = event.text;
     if (event.type === "assistant" || event.type === "tool") produced = true;
-    const { lines, gap } = eventBlock(event, renderTool);
+    const { lines, gap } = eventBlock(
+      event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
+      renderTool,
+    );
     // A streamed answer is already on screen. Seal that block with its final
     // rendering rather than printing the same text a second time; the event is
     // recorded either way.
@@ -289,20 +314,10 @@ const main = async (): Promise<void> => {
         }
         const slot = running.findIndex((tool) => tool.id === value.tool.id);
         if (slot >= 0) running.splice(slot, 1);
-        void fire(
-          registry,
-          "tool_end",
-          {
-            name: value.tool.name,
-            input: value.tool.input,
-            ok: value.tool.ok,
-            result: value.tool.result,
-          },
-          onExtensionFailure,
-        );
         break;
       }
       case "delta":
+        void fire(registry, "message", { kind: value.kind, text: value.text }, onExtensionFailure);
         live = value.kind === live.kind ? { ...live, text: live.text + value.text } : value;
         screen.draft(
           live.kind === "reasoning" ? reasoningDraft(live.text) : assistantBlock(live.text),
@@ -327,6 +342,7 @@ const main = async (): Promise<void> => {
         screen.print(noticeBlock(`(dequeued) ${value.text.split("\n")[0].slice(0, 60)}`), false);
         break;
       case "idle":
+        void fire(registry, "idle", {}, onExtensionFailure);
         // anything still buffered belongs to the turn that just ended
         chat.flush();
         screen.sealDraft();
@@ -358,6 +374,7 @@ const main = async (): Promise<void> => {
     },
     onShell: (command) => {
       screen.print(userBlock(`!${command}`), true);
+      void fire(registry, "user_bash", { command }, onExtensionFailure);
       void runShell(root, command).then(({ output, ok }) => {
         if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
         repaint();
@@ -431,6 +448,25 @@ const main = async (): Promise<void> => {
       render({ type: "notice", text: `(unknown command: /${name} — /help lists what exists)` });
       repaint();
     },
+    onKeyBinding: (event) => {
+      const bound = registry.keys.find(
+        (spec) =>
+          spec.key === event.name &&
+          (spec.ctrl ?? false) === (event.ctrl ?? false) &&
+          (spec.shift ?? false) === (event.shift ?? false),
+      );
+      if (!bound) return false;
+      event.stopPropagation();
+      void (async () => {
+        try {
+          await bound.run();
+        } catch (thrown) {
+          onExtensionFailure(`key ${bound.key} failed: ${errorText(thrown)}`);
+        }
+        repaint();
+      })();
+      return true;
+    },
     onEscape: () => interrupt(),
     onResize: () => repaint(),
     onQuit: () => quit(),
@@ -441,9 +477,38 @@ const main = async (): Promise<void> => {
   };
 
   for (const event of session.events) {
-    const { lines, gap } = eventBlock(event, renderTool);
+    const { lines, gap } = eventBlock(
+      event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
+      renderTool,
+    );
     if (lines.length > 0) screen.print(lines, gap);
   }
+
+  // The picker is gone; this is metadata only. Context size and pricing feed
+  // the status line's `ctx 12.3k(6%)` and the cost, and there is no denominator
+  // without it. Silent on failure: offline, the line reads `unknown`.
+  void modelMetadata(model)
+    .then((metadata) => {
+      model = { ...model, ...metadata };
+      agent.setModel(model);
+      repaint();
+    })
+    .catch(() => {});
+
+  const chat = createChat(agent, {
+    onEvent: render,
+    onSignal: react,
+    onBeforeRequest: async (prompt, messages) => {
+      const added = await fire(
+        registry,
+        "before_request",
+        { prompt, messages },
+        onExtensionFailure,
+      );
+      return typeof added === "string" ? added : undefined;
+    },
+    history: messagesOf(session.events),
+  });
 
   // Loaded after the screen exists, so a failure has somewhere to be seen, and
   // before the first turn, so a tool registered on the way up is callable.
@@ -453,8 +518,13 @@ const main = async (): Promise<void> => {
     {
       root,
       exec: (command, args) => runShell(root, command, args),
-      send: (text, label) => {
-        chat.send(text, label);
+      mode: "tui" as const,
+      send: (text, options) => {
+        chat.send(text, options.label ?? null, options.steer === true);
+        repaint();
+      },
+      setInput: (text) => {
+        screen.restoreInput(text);
         repaint();
       },
       print: (content, tone) => {
@@ -475,6 +545,58 @@ const main = async (): Promise<void> => {
         const outcome = chat.clear();
         if (outcome === "cleared") render({ type: "cleared", reason: "user cleared" });
         return outcome;
+      },
+      tools: () => agent.toolNames(),
+      setTools: (names) => agent.setTools(names),
+      model: () => ({
+        label: modelLabel(model),
+        provider: model.provider,
+        modelId: model.modelId,
+        variant: model.variant,
+        variants: model.variants,
+        context: model.context,
+      }),
+      models: async () => {
+        const catalogue = await loadCatalogue();
+        return catalogue.map((option) => ({
+          label: modelLabel(option),
+          provider: option.provider,
+          modelId: option.modelId,
+          variants: option.variants,
+          context: option.context,
+        }));
+      },
+      setModel: async (label, variant) => {
+        const ref = modelRef(label);
+        const next = { ...currentModel(config.config), ...ref, name: label, variant };
+        model = { ...next, ...(await modelMetadata(next).catch(() => ({}))) };
+        agent.setModel(model);
+        await fire(
+          registry,
+          "model_select",
+          { model: modelLabel(model), variant: model.variant },
+          onExtensionFailure,
+        );
+        repaint();
+      },
+      idle: () => !chat.busy,
+      pending: () => chat.queued.length,
+      abort: () => chat.abort(),
+      usage: () => ({ tokens, context: model.context }),
+      systemPrompt: () => agent.prompt(),
+      shutdown: () => quit(),
+      session: () => ({
+        id: session.id,
+        file: sessionFile(session.id),
+        title: session.title,
+        events: session.events.length,
+      }),
+      setSessionName: (title) => {
+        session.title = title;
+        void saveSession(session);
+      },
+      appendEntry: (type, data) => {
+        record({ type: "custom", custom: type, data });
       },
       reload: async () => {
         const [refreshedCommands, refreshedSequences, refreshedSkills] = await Promise.all([
@@ -501,24 +623,39 @@ const main = async (): Promise<void> => {
       type: "notice",
       text: `(${path} is in an extensions/ directory — sequences live in .glorious/sequences/ now; extensions/ is for .ts extensions and this fallback goes away next release)`,
     });
-  await fire(registry, "session_start", { root }, onExtensionFailure);
+  // A tool_call handler returning false refuses the call; the model is told so
+  // by name, which is what lets an extension implement a read-only mode or a
+  // confirmation gate without the core knowing either exists.
+  for (const [name, value] of extraFlags) {
+    const flag = registry.flags.get(name);
+    if (!flag) {
+      render({ type: "notice", text: `(unknown flag: --${name})` });
+      continue;
+    }
+    try {
+      await flag.run(value);
+    } catch (thrown) {
+      onExtensionFailure(`--${name} failed: ${errorText(thrown)}`);
+    }
+  }
 
-  // The picker is gone; this is metadata only. Context size and pricing feed
-  // the status line's `ctx 12.3k(6%)` and the cost, and there is no denominator
-  // without it. Silent on failure: offline, the line reads `unknown`.
-  void modelMetadata(model)
-    .then((metadata) => {
-      model = { ...model, ...metadata };
-      agent.setModel(model);
-      repaint();
-    })
-    .catch(() => {});
-
-  const chat = createChat(agent, {
-    onEvent: render,
-    onSignal: react,
-    history: messagesOf(session.events),
+  setToolGate({
+    before: async (name, input) => {
+      const verdict = await fire(registry, "tool_call", { name, input }, onExtensionFailure);
+      if (verdict === false) return `ERROR: an extension blocked ${name} for this turn.`;
+      return typeof verdict === "string" ? `ERROR: ${verdict}` : undefined;
+    },
+    after: async (name, input, ok, result) => {
+      const replaced = await fire(
+        registry,
+        "tool_end",
+        { name, input, ok, result },
+        onExtensionFailure,
+      );
+      return typeof replaced === "string" ? replaced : undefined;
+    },
   });
+  await fire(registry, "session_start", { root }, onExtensionFailure);
 
   let release = (): void => {};
   const closed = new Promise<void>((resolve) => {
@@ -527,9 +664,12 @@ const main = async (): Promise<void> => {
 
   const interrupt = (): boolean => chat.dequeue() !== null || chat.abort();
 
+  // The teardown waits on session_end, so an extension that writes a file or
+  // posts a result on the way out actually finishes. It cannot usefully print:
+  // the screen stops as soon as this resolves.
   const quit = (): void => {
     chat.abort();
-    release();
+    void fire(registry, "session_end", { root }, onExtensionFailure).finally(release);
   };
 
   const onSigint = (): void => {

@@ -91,12 +91,22 @@ export const createAgent = (setup: Setup) => {
   // Modes are gone, so the effort is whatever the model was configured with.
   const openaiOptions = (scope: string) => providerOptions(setup.model.variant, cacheKey(scope));
 
+  // Withheld, not forbidden: a tool the model cannot see cannot be talked into
+  // being used. null means everything. This is the seam a read-only mode is
+  // written against, now that there is no mode in the core.
+  let allowed: readonly string[] | null = null;
+
   // Extensions land last, so one can deliberately replace a built-in — the same
   // "closest definition wins" rule commands and sequences already follow.
-  const toolsFor = (onTool: (event: ToolEvent) => void) => ({
-    ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
-    ...(setup.extensionTools?.(onTool) ?? {}),
-  });
+  const toolsFor = (onTool: (event: ToolEvent) => void) => {
+    const all = {
+      ...createTools(setup.root, onTool, setup.askQuestions, setup.skillTools),
+      ...(setup.extensionTools?.(onTool) ?? {}),
+    };
+    if (allowed === null) return all;
+    const keep = new Set(allowed);
+    return Object.fromEntries(Object.entries(all).filter(([name]) => keep.has(name)));
+  };
 
   const settings = () => ({
     model,
@@ -107,6 +117,11 @@ export const createAgent = (setup: Setup) => {
   });
 
   return {
+    toolNames: (): readonly string[] => Object.keys(toolsFor(() => {})),
+    setTools: (names: readonly string[] | null): void => {
+      allowed = names;
+    },
+    prompt: (): string => systemPrompt(setup),
     setModel: (next: ModelOption): void => {
       setup.model = next;
       model = createModel(next, fetchWithDeadline as typeof fetch);
