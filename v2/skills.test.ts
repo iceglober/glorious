@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { loadSkills } from "./skills";
 
 const base = await mkdtemp(join(tmpdir(), "glorious-skills-"));
+// Skills are searched for under the home directory as well as the project, so
+// every load here is given an empty scratch home. Without it the suite reads
+// whatever skills are actually installed on the machine running it — green on
+// CI, red on any laptop that has some.
+const noHome = join(base, "home");
 // a space in the path is what catches percent-encoding of the reported directory
 const root = join(base, "with space");
 const skillsDir = join(root, ".glorious", "skills");
@@ -28,7 +33,7 @@ await symlink(external, join(skillsDir, "zz-linked-fixture"));
 
 await symlink(join(root, "nowhere"), join(skillsDir, "zz-broken-fixture"));
 
-const loaded = await loadSkills(root);
+const loaded = await loadSkills(root, noHome);
 const names = loaded.summaries.map((skill) => skill.name);
 
 afterAll(async () => {
@@ -114,19 +119,19 @@ describe("a skill that declares a slash trigger", () => {
   });
 
   test("it becomes a slash command named after the trigger", async () => {
-    const skills = await loadSkills(root);
-    expect(skills.commands.map((command) => command.name)).toContain("trigfixture");
+    const skills = await loadSkills(root, noHome);
+    expect(skills.commands.map((command) => command.name)).toContain("skill:trigfixture");
   });
 
   test("the leading slash is optional, since the frontmatter writes it either way", async () => {
-    const skills = await loadSkills(root);
-    expect(skills.commands.find((command) => command.name === "trigfixture")).toBeDefined();
+    const skills = await loadSkills(root, noHome);
+    expect(skills.commands.find((command) => command.name === "skill:trigfixture")).toBeDefined();
     expect(skills.commands.some((command) => command.name === "/trigfixture")).toBe(false);
   });
 
   test("running it injects the skill body, rather than hoping the model loads it", async () => {
-    const skills = await loadSkills(root);
-    const command = skills.commands.find((entry) => entry.name === "trigfixture");
+    const skills = await loadSkills(root, noHome);
+    const command = skills.commands.find((entry) => entry.name === "skill:trigfixture");
     expect(command?.body).toContain("Run the pipeline.");
     expect(command?.body).toContain("Skill directory:");
   });
@@ -134,15 +139,15 @@ describe("a skill that declares a slash trigger", () => {
   test("a skill without a trigger is still reachable, under its own name", async () => {
     // graphify 0.9.41 dropped its `trigger:` field and lost /graphify entirely;
     // a skill's command cannot depend on an optional field staying put
-    const skills = await loadSkills(root);
-    expect(skills.commands.map((command) => command.name)).toContain("notrigfixture");
+    const skills = await loadSkills(root, noHome);
+    expect(skills.commands.map((command) => command.name)).toContain("skill:notrigfixture");
   });
 
   test("a trigger renames the command rather than granting it", async () => {
-    const skills = await loadSkills(root);
+    const skills = await loadSkills(root, noHome);
     const names = skills.commands.map((command) => command.name);
     // the skill is named renamedfixture but answers to /shortname
-    expect(names).toContain("shortname");
+    expect(names).toContain("skill:shortname");
     expect(names).not.toContain("renamedfixture");
     expect(skills.summaries.map((summary) => summary.name)).toContain("renamedfixture");
   });
@@ -164,16 +169,16 @@ describe("what a triggered skill actually sends", () => {
   });
 
   test("it is framed as an instruction, not handed over as reference material", async () => {
-    const skills = await loadSkills(root);
-    const body = skills.commands.find((entry) => entry.name === "framefixture")?.body ?? "";
+    const skills = await loadSkills(root, noHome);
+    const body = skills.commands.find((entry) => entry.name === "skill:framefixture")?.body ?? "";
     // bare skill_content made the model reply "what would you like me to work on?"
     expect(body.startsWith("<skill_content")).toBe(false);
     expect(body).toMatch(/^Run the framefixture skill now/u);
   });
 
   test("the instructions themselves still arrive intact", async () => {
-    const skills = await loadSkills(root);
-    const body = skills.commands.find((entry) => entry.name === "framefixture")?.body ?? "";
+    const skills = await loadSkills(root, noHome);
+    const body = skills.commands.find((entry) => entry.name === "skill:framefixture")?.body ?? "";
     expect(body).toContain("Step 1. Do it.");
     expect(body).toContain("<skill_content");
   });
@@ -188,7 +193,7 @@ describe("frontmatter", () => {
       join(dir, ".glorious", "skills", name, "SKILL.md"),
       `---\n${frontmatter}\n---\n\nBody.\n`,
     );
-    const result = await loadSkills(dir);
+    const result = await loadSkills(dir, join(dir, "home"));
     await rm(dir, { recursive: true, force: true });
     return result;
   };
@@ -229,7 +234,7 @@ describe("frontmatter", () => {
     // and absent from what activate_skill can reach
     expect(loaded.tool).toBeUndefined();
     // but still yours to type
-    expect(loaded.commands.map((command) => command.name)).toEqual(["zz-fm"]);
+    expect(loaded.commands.map((command) => command.name)).toEqual(["skill:zz-fm"]);
   });
 
   test("without the field a skill is offered to the model", async () => {
@@ -260,7 +265,7 @@ describe("frontmatter", () => {
     const dir = await mkdtemp(join(tmpdir(), "glorious-fm-"));
     await mkdir(join(dir, ".glorious", "skills", "zz-bare"), { recursive: true });
     await writeFile(join(dir, ".glorious", "skills", "zz-bare", "SKILL.md"), "just a body\n");
-    const loaded = await loadSkills(dir);
+    const loaded = await loadSkills(dir, join(dir, "home"));
     expect(loaded.warnings.join("\n")).toContain("no frontmatter");
     await rm(dir, { recursive: true, force: true });
   });
@@ -275,7 +280,7 @@ describe("discovery reaches skills that are organised", () => {
       join(nested, "SKILL.md"),
       "---\nname: zz-nested\ndescription: Buried a few folders down.\n---\n\nBody.\n",
     );
-    const loaded = await loadSkills(dir);
+    const loaded = await loadSkills(dir, join(dir, "home"));
     expect(loaded.summaries.map((skill) => skill.name)).toContain("zz-nested");
     await rm(dir, { recursive: true, force: true });
   });
@@ -292,7 +297,7 @@ describe("discovery reaches skills that are organised", () => {
       join(skill, "references", "SKILL.md"),
       "---\nname: zz-not-a-skill\ndescription: Reference material.\n---\n\nBody.\n",
     );
-    const loaded = await loadSkills(dir);
+    const loaded = await loadSkills(dir, join(dir, "home"));
     const names = loaded.summaries.map((one) => one.name);
     expect(names).toContain("zz-bundle");
     expect(names).not.toContain("zz-not-a-skill");
@@ -311,7 +316,7 @@ describe("discovery reaches skills that are organised", () => {
         `---\nname: zz-dupe\ndescription: From ${where}.\n---\n\nBody.\n`,
       );
     }
-    const loaded = await loadSkills(dir);
+    const loaded = await loadSkills(dir, join(dir, "home"));
     expect(loaded.summaries.filter((one) => one.name === "zz-dupe")).toHaveLength(1);
     expect(loaded.warnings.join("\n")).toContain('two skills are named "zz-dupe"');
     await rm(dir, { recursive: true, force: true });

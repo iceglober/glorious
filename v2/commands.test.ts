@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   activeSigil,
+  commandInvocation,
   commandName,
   commands,
   matchingCommands,
+  matchNames,
   setCustomCommands,
   shortcutInvocation,
 } from "./commands";
@@ -70,5 +72,31 @@ describe("sequence shortcuts", () => {
     expect(shortcutInvocation(" $fresh main ")).toEqual({ name: "fresh", args: "main" });
     expect(shortcutInvocation("fresh")).toBeNull();
     expect(shortcutInvocation("/fresh")).toBeNull();
+  });
+});
+
+// Skills live under a `skill:` prefix, so a colon has to survive the parse. It
+// did not: `/skill:graphify` matched nothing and fell through to "unknown
+// command", which would have made every skill uninvokable.
+describe("a namespaced command", () => {
+  test("the name keeps its colon", () => {
+    expect(commandInvocation("/skill:graphify")).toEqual({ name: "skill:graphify", args: "" });
+  });
+
+  test("arguments still travel with it", () => {
+    expect(commandInvocation("/skill:graphify src/ --deep")).toEqual({
+      name: "skill:graphify",
+      args: "src/ --deep",
+    });
+  });
+
+  test("an ordinary command is unaffected", () => {
+    expect(commandInvocation("/help")).toEqual({ name: "help", args: "" });
+  });
+
+  // The scorer is a subsequence match, so the prefix does not have to be typed.
+  test("typing the bare skill name still finds it", () => {
+    const found = matchNames([{ name: "skill:graphify" }, { name: "help" }], "graphify");
+    expect(found[0]?.name).toBe("skill:graphify");
   });
 });

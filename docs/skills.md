@@ -56,7 +56,7 @@ Nothing reads another agent's directories. Symlink one in if you want it here.
 | `compatibility` | up to 500 characters on what it needs to run |
 | `metadata` | any key/value mapping you like |
 | `allowed-tools` | space-separated tools the skill expects. Parsed and shown; glorious does not yet restrict anything to it |
-| `trigger` | glorious's own: renames the slash command. Without it the command is the skill's name |
+| `trigger` | glorious's own: renames the part after `skill:`. Without it that is the skill's name |
 | `disable-model-invocation` | **not part of the standard** — see below |
 
 The description is the whole of what the model sees until the skill is used, so
@@ -80,7 +80,7 @@ disable-model-invocation: true
 
 The skill is not listed in the system prompt, is not reachable through
 `activate_skill`, and costs nothing per turn. It stays available to you as
-`/name`.
+`/skill:name`.
 
 **This field is not in the Agent Skills specification.** It is a convention that
 several agents arrived at independently, and it is now common enough that a
@@ -92,8 +92,15 @@ strictly ignores it.
 ## Using one
 
 The model picks a skill by its description and loads it with `activate_skill`.
-You invoke the same skill by typing `/name`, with anything after the name
+You invoke the same skill by typing `/skill:name`, with anything after the name
 arriving as its arguments. Both paths run the same body.
+
+The prefix is a namespace, not decoration. Skills used to take the bare
+`/name`, which put them in the same table as every command an extension or a
+markdown file registers — so installing a skill could quietly shadow a command
+you already had, and looking at `/deploy` told you nothing about which of the
+two it was. Completion is a subsequence match, so typing `/graphify` still finds
+`/skill:graphify`; you do not have to type the prefix.
 
 `/skills` lists what loaded, where each came from, and which are offered to the
 model — a skill that opted out is tagged `you only`.
@@ -107,3 +114,6 @@ model — a skill that opted out is tagged `you only`.
 
 A skill that only ever gets used because you typed it is a command. A command
 the model should reach for on its own is a skill.
+
+Commands and sequences keep the bare `/name` and `$name`; only skills are
+namespaced, because they are the only ones that arrive from somewhere else.

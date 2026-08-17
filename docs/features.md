@@ -39,7 +39,7 @@ reason. A tool describes its own result through `renderResult`; see
 
 | | |
 | --- | --- |
-| `/name` | a command — `Tab` completes, `↑↓` move |
+| `/name` | a command — `Tab` completes, `↑↓` move. Skills answer to `/skill:name` |
 | `$name` | a sequence: shell, then optionally a prompt |
 | `@path` | reference a file or directory; a file's contents travel with the message, a directory's listing does. Completion searches the whole tree, respects `.gitignore`, and scrolls |
 | `!command` | run the rest of the line as shell |

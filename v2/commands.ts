@@ -95,7 +95,10 @@ export const sigilInvocation = (
   text: string,
   sigil: string,
 ): { name: string; args: string } | null => {
-  const match = new RegExp(`^\\s*\\${sigil}([a-z0-9-]+)(?:\\s+([\\s\\S]*))?$`, "iu").exec(
+  // `:` is legal in a name so skills can live under their own `skill:` prefix.
+  // Without it `/skill:graphify` parsed as nothing at all and fell through to
+  // "unknown command".
+  const match = new RegExp(`^\\s*\\${sigil}([a-z0-9:-]+)(?:\\s+([\\s\\S]*))?$`, "iu").exec(
     text.trim(),
   );
   if (!match) return null;
