@@ -13,8 +13,25 @@ export type Span = {
 
 export type Line = Span[];
 
-export const errorText = (thrown: unknown): string =>
-  thrown instanceof Error ? thrown.message : String(thrown);
+// Runtime and provider messages that mean something to whoever wrote them and
+// nothing to whoever is using a coding agent. The Bun one tells you to pass
+// `verbose: true` to a fetch you never called; a mid-stream drop is not
+// retryable here (tokens may already be on screen), so the least glorious can
+// do is say what happened.
+const clearer: ReadonlyArray<[RegExp, string]> = [
+  [
+    /socket connection was closed unexpectedly/iu,
+    'the connection to the model dropped mid-response — send "continue" to pick up where it stopped',
+  ],
+  [/^fetch failed$/iu, "could not reach the model — check the network and try again"],
+  [/ECONNREFUSED/u, "the model endpoint refused the connection — check the host and port"],
+  [/EAI_AGAIN|ENOTFOUND/u, "could not resolve the model host — check DNS and the resource name"],
+];
+
+export const errorText = (thrown: unknown): string => {
+  const raw = thrown instanceof Error ? thrown.message : String(thrown);
+  return clearer.find(([pattern]) => pattern.test(raw))?.[1] ?? raw;
+};
 
 const splitter = new Intl.Segmenter("en", { granularity: "grapheme" });
 
