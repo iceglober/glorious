@@ -63,11 +63,13 @@ Grep anchors that hold up:
 
 - `❯` echoed user turn · `●` assistant block · `✓` finished tool row · `Ctrl+C again to exit` quit
   ladder · `Continue with: glorious --resume <id>` the exit line.
-- Finished rows read `✓ <tool>  <detail>  <elapsed>`, e.g. `✓ read  hello.txt  1ms`. Tool names are
-  bash, read, write, edit, grep, glob, ask_user, the conditional activate_skill, and whatever
-  extensions have registered (`web_fetch` ships bundled).
-- Running rows are `→ <tool> <detail>`, live-region only — they never reach the transcript.
-  An extension's `renderCall` replaces the text after the mark, not the mark itself.
+- A tool row is three parts on three lines: `✓ <tool>  <elapsed>`, then the arguments indented,
+  then up to three lines of the tail of its output. `✗` and danger-toned output on failure.
+  Grep the header and the body separately — they are different lines now.
+- Running rows are `→ <tool>` plus the argument line and no duration, live-region only; they never
+  reach the transcript. An extension's `renderCall` replaces the body, not the header.
+- Tool names are bash, read, write, edit, grep, glob, ask_user, the conditional activate_skill, and
+  whatever extensions have registered (`web_fetch` and the `/help` family both ship bundled).
 
 Do not grep for `ctx`. The status line does render `ctx <tokens>`, but interleaved repaints shred it
 mid-string and it matched zero times across runs. The literal `Esc interrupt` is the reliable
