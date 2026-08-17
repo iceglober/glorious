@@ -169,12 +169,12 @@ export default function builtins(g: Glorious): void {
   });
 
   g.command("reload", {
-    description: "Re-read skills, commands and sequences from disk",
+    description: "Re-read extensions, skills, commands and sequences from disk",
     run: async () => {
       await g.reload();
-      const { skills, commands, sequences } = g.inspect();
+      const { skills, commands, sequences, extensions } = g.inspect();
       g.print(
-        `(reloaded — ${skills.length} skills, ${commands.length} commands, ${sequences.length} sequences)`,
+        `(reloaded — ${extensions.length} extensions, ${skills.length} skills, ${commands.length} commands, ${sequences.length} sequences)`,
       );
     },
   });

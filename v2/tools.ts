@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmod, rename, rm, stat } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
 import { z } from "zod";
@@ -348,9 +349,27 @@ export const createTools = (
 
   const within = (target?: string): string => {
     const full = resolve(base, target ?? ".");
-    if (under(full, base)) return full;
+    if (under(full, base) || mine(full)) return full;
     throw new Error(`path escapes root: ${target}`);
   };
+
+  // Where glorious keeps your extensions, skills and commands. The docs tell
+  // the model to write an extension to ~/.config/agents/extensions — and `write`
+  // refused, because the path is outside the project. The model then wrote it
+  // with a python heredoc through `bash`, which is unconfined, so the guard
+  // bought nothing and cost a ✗ row and a clumsier path. Same lesson as the
+  // docs directory below it, learned twice.
+  const agentHomes = (): string[] => {
+    const home = homedir();
+    return [
+      join(home, ".config", "agents"),
+      join(home, ".agents"),
+      join(home, ".glorious"),
+      join(home, ".config", "glorious"),
+    ];
+  };
+
+  const mine = (full: string): boolean => agentHomes().some((dir) => under(full, dir));
 
   // Reading also reaches glorious's own docs. The system prompt hands the model
   // an absolute path to them and tells it to read them; confining reads to the
@@ -359,7 +378,7 @@ export const createTools = (
   // wasted step and a ✗ row about a file that was there all along.
   const readable = (target?: string): string => {
     const full = resolve(base, target ?? ".");
-    if (under(full, base) || under(full, docsPath())) return full;
+    if (under(full, base) || under(full, docsPath()) || mine(full)) return full;
     throw new Error(`path escapes root: ${target}`);
   };
 

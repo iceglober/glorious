@@ -10,6 +10,7 @@ import {
   type ExtensionHost,
   fire,
   type Registry,
+  resetRegistry,
 } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { runShell, type ToolEvent } from "./tools";
@@ -318,5 +319,84 @@ describe("the API keeps its promises", () => {
 
   test("a type nothing was written under reads empty, not undefined", () => {
     expect(api().g.entries("never-written")).toEqual([]);
+  });
+});
+
+// Reported from a live session: glorious wrote an extension for the user, then
+// `/reload` reported "28 skills, 37 commands, 0 sequences" and the extension was
+// nowhere. Extensions were the one thing reload did not touch, and the message
+// said nothing about the omission.
+describe("reloading extensions", () => {
+  const project = async (): Promise<string> => {
+    const dir = await mkdtemp(join(tmpdir(), "glorious-reload-"));
+    await mkdir(join(dir, ".glorious", "extensions"), { recursive: true });
+    return dir;
+  };
+
+  const write = (dir: string, name: string, body: string): Promise<number> =>
+    Bun.write(join(dir, ".glorious", "extensions", `${name}.ts`), body);
+
+  const tool = (name: string) =>
+    `export default function (g) {
+       g.tool({ name: "${name}", description: "d", input: g.z.object({}), execute: async () => "ok" });
+     }`;
+
+  test("an extension installed mid-session appears after a reload", async () => {
+    const dir = await project();
+    const registry = createRegistry();
+    const local = { ...host, root: dir };
+    await loadExtensions(dir, registry, local, () => {});
+    expect(Object.keys(registry.tools)).not.toContain("late_arrival");
+
+    await write(dir, "late", tool("late_arrival"));
+    resetRegistry(registry);
+    await loadExtensions(dir, registry, local, () => {}, "1");
+    expect(Object.keys(registry.tools)).toContain("late_arrival");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  // The registry is held by reference by index.ts and the agent, so a reload
+  // empties it in place rather than replacing it.
+  test("a reload does not register everything twice", async () => {
+    const dir = await project();
+    await write(dir, "one", tool("just_one"));
+    const registry = createRegistry();
+    const local = { ...host, root: dir };
+    await loadExtensions(dir, registry, local, () => {});
+    resetRegistry(registry);
+    await loadExtensions(dir, registry, local, () => {}, "2");
+    expect(registry.commands.filter((command) => command.name === "just_one")).toHaveLength(0);
+    expect(Object.keys(registry.tools).filter((name) => name === "just_one")).toHaveLength(1);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("an edited extension is re-read, not served from the module cache", async () => {
+    const dir = await project();
+    await write(dir, "edited", tool("before_edit"));
+    const registry = createRegistry();
+    const local = { ...host, root: dir };
+    await loadExtensions(dir, registry, local, () => {});
+    expect(Object.keys(registry.tools)).toContain("before_edit");
+
+    await write(dir, "edited", tool("after_edit"));
+    resetRegistry(registry);
+    await loadExtensions(dir, registry, local, () => {}, "3");
+    expect(Object.keys(registry.tools)).toContain("after_edit");
+    expect(Object.keys(registry.tools)).not.toContain("before_edit");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("resetRegistry empties every container it owns", async () => {
+    const dir = await project();
+    await write(dir, "full", tool("some_tool"));
+    const registry = createRegistry();
+    await loadExtensions(dir, registry, { ...host, root: dir }, () => {});
+    resetRegistry(registry);
+    expect(Object.keys(registry.tools)).toEqual([]);
+    expect(registry.commands).toEqual([]);
+    expect(registry.promptLines).toEqual([]);
+    expect(registry.contributions.size).toBe(0);
+    expect(registry.handlers.size).toBe(0);
+    await rm(dir, { recursive: true, force: true });
   });
 });
