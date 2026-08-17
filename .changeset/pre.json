@@ -23,6 +23,7 @@
     "gemini-prompt-addendum",
     "initial-release",
     "layered-provider-mcp-config",
+    "listings-context-mentions",
     "model-switching-and-tui",
     "multi-file-edit-and-subagents",
     "no-builtin-commands",
