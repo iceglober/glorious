@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "./composer";
+import {
+  atFirstLine,
+  atLastLine,
+  completionWindow,
+  composerKeyBindings,
+  composerWrapMode,
+} from "./composer";
 
 describe("prompt composer", () => {
   test("wraps at word boundaries", () => {
@@ -62,5 +68,38 @@ describe("when an arrow reaches for history", () => {
   test("an out-of-range cursor does not throw", () => {
     expect(atFirstLine(draft, -5)).toBe(true);
     expect(atLastLine(draft, 9999)).toBe(true);
+  });
+});
+
+// Reported from a live session: `@` offered a handful of files and there was no
+// way to reach the rest. The search cap was one half of that; a list that
+// painted every match and grew to fit was the other.
+describe("the completion window", () => {
+  test("a short list is shown whole, with nothing off either end", () => {
+    expect(completionWindow(3, 0, 10)).toEqual({ first: 0, count: 3, above: 0, below: 0 });
+  });
+
+  test("a long list starts at the top and says how much is below", () => {
+    expect(completionWindow(60, 0, 10)).toEqual({ first: 0, count: 10, above: 0, below: 50 });
+  });
+
+  test("the window follows the selection down the list", () => {
+    expect(completionWindow(60, 12, 10)).toEqual({ first: 3, count: 10, above: 3, below: 47 });
+  });
+
+  test("the last page is a full page, not a window hanging off the end", () => {
+    expect(completionWindow(60, 59, 10)).toEqual({ first: 50, count: 10, above: 50, below: 0 });
+  });
+
+  test("the selection is always inside the window, wherever it is", () => {
+    for (let index = 0; index < 60; index += 1) {
+      const { first, count } = completionWindow(60, index, 10);
+      expect(index).toBeGreaterThanOrEqual(first);
+      expect(index).toBeLessThan(first + count);
+    }
+  });
+
+  test("an empty list asks for no rows", () => {
+    expect(completionWindow(0, 0, 10)).toEqual({ first: 0, count: 0, above: 0, below: 0 });
   });
 });

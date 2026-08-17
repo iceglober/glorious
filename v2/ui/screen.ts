@@ -6,7 +6,13 @@ import {
   matchNames,
   shortcutInvocation,
 } from "../commands";
-import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
+import {
+  atFirstLine,
+  atLastLine,
+  completionWindow,
+  composerKeyBindings,
+  composerWrapMode,
+} from "../composer";
 import type { Line } from "../render";
 import type { Sequence } from "../sequences";
 import type { Question } from "../tools";
@@ -142,6 +148,9 @@ export const createScreen = async (callbacks: {
   let phase: "new" | "live" | "done" = "new";
   let statusRows: Line[] = [];
   let quitTimer: ReturnType<typeof setTimeout> | null = null;
+  // How many completion rows are on screen at once. Enough to choose from,
+  // short enough that the list does not become the screen.
+  const AUTOCOMPLETE_ROWS = 10;
   let autocompleteSigil: { sigil: string; start: number; query: string } | null = null;
   let autocompleteItems: readonly { name: string; description: string }[] = [];
   let autocompleteIndex = 0;
@@ -269,9 +278,20 @@ export const createScreen = async (callbacks: {
     const sigil = autocompleteSigil?.sigil ?? "/";
     autocompleteItems = matches;
     autocompleteIndex = Math.min(autocompleteIndex, Math.max(0, matches.length - 1));
-    autocompleteLabel.content = styled(
-      matches.map(
-        (item, index): Line => [
+    // The list used to paint every match and size the panel to fit, which was
+    // only ever tolerable because the file search capped itself at 8. It shows
+    // a window now, scrolled to keep the selection inside it, so a query with
+    // sixty matches is sixty matches you can actually reach.
+    const { first, count, above, below } = completionWindow(
+      matches.length,
+      autocompleteIndex,
+      AUTOCOMPLETE_ROWS,
+    );
+    const shown = matches.slice(first, first + count);
+    autocompleteLabel.content = styled([
+      ...shown.map((item, offset): Line => {
+        const index = first + offset;
+        return [
           { text: index === autocompleteIndex ? "› " : "  ", tone: "accent" },
           {
             text: `${sigil}${item.name}`,
@@ -279,11 +299,23 @@ export const createScreen = async (callbacks: {
             bold: true,
           },
           { text: `  ${item.description}`, tone: "muted" },
-        ],
-      ),
-    );
+        ];
+      }),
+      // Without this the list looked complete at whatever it happened to show,
+      // so there was no reason to press down.
+      ...(above > 0 || below > 0
+        ? [
+            [
+              {
+                text: `  ${above > 0 ? `↑ ${above} above` : ""}${above > 0 && below > 0 ? " · " : ""}${below > 0 ? `↓ ${below} more` : ""}`,
+                tone: "muted" as const,
+              },
+            ] as Line,
+          ]
+        : []),
+    ]);
     autocompleteOpen = matches.length > 0;
-    autocomplete.height = Math.max(1, matches.length);
+    autocomplete.height = Math.max(1, count + (above > 0 || below > 0 ? 1 : 0));
     autocomplete.marginTop = autocompleteOpen ? 1 : 0;
     autocomplete.backgroundColor = autocompleteOpen ? panelHex : "transparent";
     if (matches.length === 0) {

@@ -35,7 +35,7 @@ There are no permission prompts. An extension can add them — see
 | --- | --- |
 | `/name` | a command — `Tab` completes, `↑↓` move |
 | `$name` | a sequence: shell, then optionally a prompt |
-| `@path` | reference a file; its contents travel with the message |
+| `@path` | reference a file or directory; a file's contents travel with the message, a directory's listing does. Completion searches the whole tree, respects `.gitignore`, and scrolls |
 | `!command` | run the rest of the line as shell |
 | `Enter` | send, or queue if a turn is running |
 | `Shift+Enter` | newline |
