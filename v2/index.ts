@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
-import { type ChatSignal, createChat } from "./chat";
+import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { loadConfig } from "./config";
 import { messagesOf, type SessionEvent, usageTotals } from "./events";
@@ -205,7 +205,7 @@ const main = async (): Promise<void> => {
   // what the current draft block is showing, so deltas append rather than replace
   let live: { kind: "text" | "reasoning"; text: string } = { kind: "text", text: "" };
   // what the model call is doing, and since when — the wave shows both
-  let phase: "sending" | "waiting" | "thinking" | "writing" | null = null;
+  let phase: ChatPhase = null;
   let phaseSince = Date.now();
   const running: Array<{
     id: number;
@@ -262,7 +262,10 @@ const main = async (): Promise<void> => {
     // An extension gets first refusal on the activity row; the default stands
     // when none of them wants it. One that throws loses only its own turn at it.
     const activity = {
-      busy: chat.busy,
+      // Compaction is a model call with nothing else on screen, so it counts as
+      // busy for the row that says something is happening. Without this the one
+      // operation that can run for minutes was the one that showed nothing.
+      busy: chat.busy || chat.compacting,
       queued: chat.queued.length,
       columns: screen.columnsNow(),
       phase: phase === null ? null : { name: phase, ms: now - phaseSince },
@@ -272,7 +275,7 @@ const main = async (): Promise<void> => {
         (carried, render) => carried ?? safely(() => render(activity)) ?? null,
         null,
       ) ?? statusRow(activity);
-    screen.setStatusRow(chat.busy ? drawn : []);
+    screen.setStatusRow(chat.busy || chat.compacting ? drawn : []);
     screen.setStatus(
       statusLine(
         {
@@ -515,6 +518,7 @@ const main = async (): Promise<void> => {
       // so it is dispatched before the body-is-the-prompt path below.
       const runner = registry.runners.get(name);
       if (runner) {
+        screen.print(userBlock(`/${name}${args === "" ? "" : ` ${args}`}`), true);
         void (async () => {
           try {
             await runner(args);
@@ -573,6 +577,7 @@ const main = async (): Promise<void> => {
     options: { instruction?: string; keep?: number },
     automatic: boolean,
   ) => {
+    const before = tokens;
     const outcome = await chat.compact(
       options.instruction ?? "Summarise the conversation so far.",
       options.keep ?? KEEP_TOKENS,
@@ -584,7 +589,9 @@ const main = async (): Promise<void> => {
       compactedAt = tokens ?? 0;
       render({
         type: "notice",
-        text: `(compacted — ${outcome.dropped} messages summarised, ${outcome.kept} kept)`,
+        text:
+          `(compacted — ${outcome.dropped} messages summarised, ${outcome.kept} kept` +
+          `${before === null ? "" : `, from ${before} tokens`})`,
       });
       await fire(
         registry,

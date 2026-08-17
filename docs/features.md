@@ -55,6 +55,17 @@ window, keeping recent turns verbatim and carrying a brief forward. `/compact
 [instruction]` does it on demand. The cut always lands on a user message, so a
 tool result is never separated from the call it answers.
 
+Summarising a long conversation is a model call that can run for minutes. The
+status row counts it out — `compacting 42.1s · Esc interrupt` — and Esc stops
+it, leaving the conversation exactly as it was. When it lands, the brief itself
+is printed, so what the model is carrying forward is on screen rather than
+described by a message about it.
+
+Automatic compaction needs the model's context size to know what 75% means.
+When the catalogue does not publish it the status line reads `ctx …(unknown)`
+and only `/compact` will run — `/session` shows what glorious thinks the
+window is.
+
 `/clear` drops what the model replays and keeps the transcript. A resumed
 session inherits whichever happened.
 
