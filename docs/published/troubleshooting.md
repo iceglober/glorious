@@ -15,6 +15,24 @@ syntax diagnostics without opening the chat UI.
 Check the provider's required environment variable on the [providers](/providers)
 page. `doctor` reports what is missing without printing secret values.
 
+## The status line shows a model I did not choose
+
+Almost always a config file that is not being read, or one whose `model` is not
+a string. `glorious doctor` names both:
+
+```
+model: azure/gpt-5.6-luna
+.glorious/config.json: "model" should be a string like "azure/gpt-5.6-sol", got object — ignored
+```
+
+- **`model` takes a string**, not an object: `"model": "azure/gpt-5.6-sol"`. A nested `{"selected": "…"}` is ignored.
+- **The filename is `config.json` or `config.local.json`**, inside `.glorious/`. No other name is read.
+- **Providers are not enabled or disabled.** A provider is used when a model names it and its credentials are present; `"enabled": true` does nothing.
+- **`~/.config/glorious/config.json` may be an old one.** Earlier versions used a nested `agent.llm` shape; none of it is read now, and `doctor` says so.
+
+With no configuration at all the model is `azure/gpt-5.6-luna`. Seeing exactly
+that is the sign nothing you wrote is being applied.
+
 ## Wrong model or provider
 
 Use a fully qualified model label:

@@ -8,11 +8,42 @@ provider settings it does not mention.
 
 In order of precedence:
 
-1. `.glorious/config.json` in the project
-2. `~/.glorious/config.json`
-3. `~/.config/glorious/config.json`
+1. `.glorious/config.local.json` in the project — the copy you do not commit
+2. `.glorious/config.json` in the project
+3. `~/.glorious/config.json`
+4. `~/.config/glorious/config.json`
 
 Environment variables and CLI flags override configuration files.
+
+`config.local.json` is for the settings that are yours rather than the
+project's — a different model, a local endpoint. Add it to `.gitignore` and it
+layers over the committed file one key at a time, so it can change the model
+without restating the provider settings.
+
+## When it does not take effect
+
+Every file above is optional, so a config that is never read looks exactly like
+one that was never written. glorious says which is which, at startup and in
+`glorious doctor`:
+
+```
+$ glorious doctor
+model: azure/gpt-5.6-luna
+provider: Azure OpenAI / AI Foundry
+credentials: found
+.glorious/config.json: "model" should be a string like "azure/gpt-5.6-sol", got object — ignored
+~/.config/glorious/config.json: nothing here is a glorious setting (agent, permissions, mcp) — the whole file is ignored
+```
+
+Three things it will tell you about:
+
+- **A key it knows, holding the wrong type.** `"model": {"selected": "…"}` is the common one — the value has to be a string. The key is recognised, so the wrong type used to be dropped exactly as silently as a typo.
+- **A file where it recognised nothing at all.** Usually a config written for something else, or for an older glorious that had a nested `agent.llm` shape.
+- **A file that is not valid JSON.**
+
+Keys it does not recognise, in a file where it recognised something, stay
+ignored and silent. A config that has grown a key glorious no longer knows
+about is not a broken config.
 
 ## Schema
 
