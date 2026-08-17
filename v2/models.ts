@@ -105,6 +105,40 @@ export const currentModel = (config?: Config): ModelOption => {
   };
 };
 
+// Every model the catalogue carries, for the extension API's model picker. The
+// core does not use this — it has no picker — but an extension that restores
+// one needs somewhere to get the list.
+export const loadCatalogue = async (
+  fetcher: typeof fetch = fetch,
+): Promise<readonly ModelOption[]> => {
+  const response = await fetcher(catalogUrl, { signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
+  const catalog = (await response.json()) as Record<
+    string,
+    {
+      models?: Record<
+        string,
+        {
+          id?: string;
+          name?: string;
+          limit?: { context?: number };
+          reasoning_options?: Array<{ type?: string; values?: string[] }>;
+        }
+      >;
+    }
+  >;
+  return Object.entries(catalog).flatMap(([provider, entry]) =>
+    Object.entries(entry.models ?? {}).map(([id, spec]) => ({
+      provider,
+      modelId: spec.id ?? id,
+      name: spec.name ?? spec.id ?? id,
+      env: [],
+      context: spec.limit?.context,
+      variants: spec.reasoning_options?.find((option) => option.type === "effort")?.values,
+    })),
+  );
+};
+
 // Context window and per-token pricing for the model that is already selected.
 // The picker is gone, but the status line still says `ctx 12.3k(6%)` and the
 // percentage needs a denominator — so this is a metadata lookup, not a catalog.

@@ -115,11 +115,35 @@ then feeds its output to the model, write a sequence — see `sequences.md`.
 | Event | Payload | Returning a value |
 | --- | --- | --- |
 | `session_start` | `{ root }` | — |
+| `session_end` | `{ root }` | awaited, so a flush completes before teardown |
 | `input` | `{ text }` | a string replaces what was typed; `false` swallows it |
+| `user_bash` | `{ command }` | — |
+| `before_request` | `{ prompt, messages }` | a string is appended to this turn's message |
 | `turn_start` | `{ text }` | `false` cancels the turn |
-| `turn_end` | `{ text }` | — |
+| `message` | `{ kind, text }` | — (streaming deltas) |
+| `tool_call` | `{ name, input }` | **`false` or a string blocks the call** |
 | `tool_start` | `{ name, input }` | — |
-| `tool_end` | `{ name, input, ok, result }` | — |
+| `tool_end` | `{ name, input, ok, result }` | **a string replaces what the model is told** |
+| `turn_end` | `{ text }` | — |
+| `idle` | — | — |
+| `model_select` | `{ model, variant }` | — |
+
+`tool_call` and `tool_end` are the powerful pair. A read-only mode is the whole
+of this:
+
+```ts
+export default function (g) {
+  const mutating = new Set(["write", "edit", "bash"]);
+  g.on("tool_call", ({ name }) => {
+    if (mutating.has(name)) return `${name} is unavailable: this session is read-only.`;
+  });
+  g.status(() => "🔒 read-only");
+}
+```
+
+The model is told why, by name, so it chooses something else instead of seeing
+an unexplained failure. Withholding beats instructing — a blocked tool cannot be
+talked into running.
 
 Async handlers are awaited. `session_start` completes before the first turn, so
 an extension that fetches or reads on the way up has finished registering by the
@@ -161,6 +185,48 @@ g.command("skills", {
 `clear()` drops the conversation the model replays, leaving the transcript
 alone, and returns `"cleared"`, `"busy"` (a turn is running) or `"empty"`.
 `reload()` re-reads skills, commands and sequences from disk.
+
+### Keys and flags
+
+```ts
+g.key({ key: "b", ctrl: true, description: "Toggle", run: () => g.print("hi") });
+g.flag("greet", { description: "Say hello", run: (value) => g.print(value) });
+```
+
+A binding runs before the composer sees the key. A flag is claimed after
+extensions load, so `glorious --greet world` reaches yours; one nothing claims
+is reported rather than ignored.
+
+### Tools and models
+
+```ts
+g.tools()                       // what the model can call right now
+g.setTools(["read", "grep"])    // restrict it; null lifts the restriction
+g.model()                       // { label, provider, modelId, variant, context }
+await g.models()                // the whole catalogue
+await g.setModel("anthropic/claude-opus-5", "high")
+```
+
+`setTools` withholds rather than forbids, so there is nothing to argue with.
+Between these and `tool_call`, both plan mode and the model picker are writable
+as extensions.
+
+### Turn and session
+
+```ts
+g.idle() · g.pending() · g.abort() · g.usage() · g.systemPrompt() · g.shutdown()
+g.session()                     // { id, file, title, events }
+g.setSessionName("refactor")
+g.appendEntry("my-data", { … })  // persisted, never sent to the model
+g.markdown((text) => text)      // transform assistant output, display only
+g.events.emit(name, payload) · g.events.on(name, handler)   // extension to extension
+```
+
+### Run mode
+
+`g.mode` is `"tui"` or `"print"`, and `g.hasUI` is false headlessly. Anything
+that needs a person — `g.ui.*` — throws in print mode rather than hanging. Guard
+on `g.hasUI` and your extension works in both.
 
 ### `g.prompt(text)`
 

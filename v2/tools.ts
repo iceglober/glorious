@@ -203,6 +203,28 @@ const patch = (
 // stream drives the live row, the same 30k cap keeps one call from eating the
 // context, and the same catch turns a throw into an `ERROR:` the model can read
 // and recover from rather than a dead turn.
+// Set by index.ts/print.ts so an extension's tool_call handler can refuse a
+// call before it runs, and its tool_end handler can rewrite what the model is
+// told came back. Every tool goes through wrapTool, so both apply to built-ins,
+// bundled extensions and third-party tools alike — which is what makes a
+// read-only mode or a confirm-before-destructive guard writable as an
+// extension rather than something the core has to own.
+export type ToolGate = {
+  before: (name: string, input: Record<string, unknown>) => Promise<string | undefined>;
+  after: (
+    name: string,
+    input: Record<string, unknown>,
+    ok: boolean,
+    result: string,
+  ) => Promise<string | undefined>;
+};
+
+let gate: ToolGate | null = null;
+
+export const setToolGate = (next: ToolGate | null): void => {
+  gate = next;
+};
+
 export const wrapTool = <Schema extends z.ZodType>(
   onEvent: (event: ToolEvent) => void,
   name: string,
@@ -221,12 +243,22 @@ export const wrapTool = <Schema extends z.ZodType>(
     execute: async (input: z.infer<Schema>, call: { abortSignal?: AbortSignal }) => {
       const raw = input as Record<string, unknown>;
       const step = { id: nextToolEventId(), name, detail: firstDetail(raw), input: raw };
+      // Refused before it runs, and the model is told why, so it can choose
+      // something else rather than seeing an unexplained failure.
+      const refused = await gate?.before(name, raw);
+      if (refused !== undefined) {
+        announce({ ...step, phase: "start" });
+        announce({ ...step, phase: "end", ok: false, result: refused });
+        return refused;
+      }
       announce({ ...step, phase: "start" });
       const told = await body(input, call.abortSignal, step.id).catch(
         (bad) => `ERROR: ${errorText(bad)}`,
       );
-      const result = capText(told, RESULT_LIMIT);
-      announce({ ...step, phase: "end", ok: !FAILED.test(result), result });
+      const capped = capText(told, RESULT_LIMIT);
+      const ok = !FAILED.test(capped);
+      const result = (await gate?.after(name, raw, ok, capped)) ?? capped;
+      announce({ ...step, phase: "end", ok, result });
       return result;
     },
   });

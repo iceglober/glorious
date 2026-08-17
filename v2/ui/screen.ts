@@ -27,6 +27,7 @@ export const createScreen = async (callbacks: {
   onCommand: (name: string, args: string) => void;
   onShortcut: (name: string, args: string) => void;
   sequences?: readonly Sequence[];
+  onKeyBinding?: (event: KeyEvent) => boolean;
   onEscape: () => void;
   onResize: () => void;
   onQuit: () => void;
@@ -359,6 +360,9 @@ export const createScreen = async (callbacks: {
   const onKey = (event: KeyEvent): void => {
     if (phase !== "live") return;
     if (questions.handleKey(event)) return;
+    // An extension's binding runs before anything the composer would do with
+    // the key, and consuming it stops the composer seeing it at all.
+    if (callbacks.onKeyBinding?.(event)) return;
     if (shellMode && input.plainText === "" && event.name === "backspace") {
       event.stopPropagation();
       shellMode = false;

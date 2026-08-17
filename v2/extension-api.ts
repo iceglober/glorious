@@ -21,21 +21,44 @@ export type ShellResult = { output: string; stdout: string; ok: boolean };
 
 export type EventName =
   | "session_start"
+  | "session_end"
   | "input"
+  | "user_bash"
   | "turn_start"
   | "turn_end"
+  | "idle"
+  | "message"
+  | "before_request"
+  | "tool_call"
   | "tool_start"
-  | "tool_end";
+  | "tool_end"
+  | "model_select";
 
 export type EventPayload = {
   session_start: { root: string };
+  // The session is tearing down. Awaited, so an extension gets to finish.
+  session_end: { root: string };
   // Returning a string replaces what the user typed; returning false swallows
   // it, which is how an extension handles input itself.
   input: { text: string };
+  user_bash: { command: string };
   turn_start: { text: string };
   turn_end: { text: string };
+  // The queue drained and nothing is running.
+  idle: Record<string, never>;
+  // Assistant text and reasoning as they stream.
+  message: { kind: "text" | "reasoning"; text: string };
+  // Fires before the model is called. Returning a string appends to the
+  // per-turn message, which is how an extension injects context for one turn.
+  before_request: { prompt: string; messages: number };
+  // Fires before a tool runs. Returning false blocks the call and hands the
+  // model your reason — this is how a confirm-before-destructive extension, or
+  // a read-only mode, is written without the core knowing about either.
+  tool_call: { name: string; input: Record<string, unknown> };
   tool_start: { name: string; input: Record<string, unknown> };
+  // Returning a string replaces what the model is told the tool returned.
   tool_end: { name: string; input: Record<string, unknown>; ok: boolean; result: string };
+  model_select: { model: string; variant?: string };
 };
 
 // undefined rather than void, so the union is unambiguous: a handler that
@@ -72,6 +95,50 @@ export type Loaded = {
   extensions: ReadonlyArray<{ name: string; origin: string; contributed: string }>;
 };
 
+export type ModelInfo = {
+  label: string;
+  provider: string;
+  modelId: string;
+  variant?: string;
+  variants?: readonly string[];
+  context?: number;
+};
+
+export type SessionInfo = {
+  id: string;
+  file: string;
+  title: string;
+  events: number;
+};
+
+// A keybinding an extension owns. Returning true consumes the key, so the
+// composer never sees it — which is what Tab-cycling and Ctrl+B used to be
+// before they were core, and what they would be again as extensions.
+export type KeySpec = {
+  key: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  description: string;
+  run: () => void | Promise<void>;
+};
+
+export type FlagSpec = {
+  description: string;
+  // Called with everything after the flag on the command line.
+  run: (value: string) => void | Promise<void>;
+};
+
+export type Ui = {
+  /** Pick one of a list. Resolves to null if dismissed. */
+  select: (title: string, options: readonly string[]) => Promise<string | null>;
+  /** Yes/no. Resolves false if dismissed. */
+  confirm: (title: string, message?: string) => Promise<boolean>;
+  /** Free text. Resolves to null if dismissed. */
+  input: (title: string) => Promise<string | null>;
+  /** Put text in the composer, ready to edit. */
+  setInput: (text: string) => void;
+};
+
 export type Glorious = {
   /** The project root every path is resolved against. */
   root: string;
@@ -86,12 +153,19 @@ export type Glorious = {
   tool: <Schema extends z.ZodType>(spec: ToolSpec<Schema>) => void;
   /** Register a slash command the user can type. */
   command: (name: string, spec: CommandSpec) => void;
+  /** Bind a key. Only fires when the composer has focus and no overlay is up. */
+  key: (spec: KeySpec) => void;
+  /** Register a CLI flag: `glorious --name value`. */
+  flag: (name: string, spec: FlagSpec) => void;
   /** Subscribe to a lifecycle event. */
   on: <E extends EventName>(event: E, handler: Handler<E>) => void;
   /** Run a shell command in the project root. */
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
-  /** Start a turn. `label` is what the transcript shows instead of the text. */
-  send: (text: string, label?: string) => void;
+  /**
+   * Start a turn. `label` is what the transcript shows instead of the text.
+   * `steer` jumps the queue so it lands next rather than last.
+   */
+  send: (text: string, options?: { label?: string; steer?: boolean }) => void;
   /** Write into the transcript. Pass Line[] when you want it styled. */
   print: (content: string | Line[], tone?: Tone) => void;
   /** What is loaded: commands, sequences, skills, extensions. */
@@ -100,6 +174,57 @@ export type Glorious = {
   clear: () => "cleared" | "busy" | "empty";
   /** Re-read skills, commands and sequences from disk. */
   reload: () => Promise<void>;
+
+  /** "tui" when a terminal is attached, "print" for a headless -p run. */
+  mode: "tui" | "print";
+  /** False in print mode: nothing can be asked and nothing can be drawn. */
+  hasUI: boolean;
+  /** Prompts, pickers and the composer. Throws in print mode. */
+  ui: Ui;
+
+  /** The tools the model can currently call. */
+  tools: () => readonly string[];
+  /**
+   * Restrict the model to these tools for the next turn onward. Pass null to
+   * lift the restriction. Withholding beats instructing: a tool that is absent
+   * cannot be talked into being used.
+   */
+  setTools: (names: readonly string[] | null) => void;
+
+  /** The model in force, with its context window and reasoning variants. */
+  model: () => ModelInfo;
+  /** Every model the catalogue knows for the providers you have credentials for. */
+  models: () => Promise<readonly ModelInfo[]>;
+  /** Switch model, as "provider/model-id". Takes effect on the next turn. */
+  setModel: (label: string, variant?: string) => Promise<void>;
+
+  /** Is nothing running and nothing queued? */
+  idle: () => boolean;
+  /** How many turns are waiting behind the running one. */
+  pending: () => number;
+  /** Interrupt the running turn. True if there was one. */
+  abort: () => boolean;
+  /** Context tokens in play, and the window they are spending. */
+  usage: () => { tokens: number | null; context?: number };
+  /** The system prompt exactly as the model receives it. */
+  systemPrompt: () => string;
+  /** Quit glorious. */
+  shutdown: () => void;
+
+  /** This session: id, file on disk, title, event count. */
+  session: () => SessionInfo;
+  /** Rename the session, as the resume picker shows it. */
+  setSessionName: (title: string) => void;
+  /** Persist your own data in the session file. Never sent to the model. */
+  appendEntry: (type: string, data: unknown) => void;
+
+  /** Transform assistant markdown before it is rendered. Display only. */
+  markdown: (transform: (text: string) => string) => void;
+  /** A bus for extensions to talk to each other. */
+  events: {
+    emit: (name: string, payload?: unknown) => void;
+    on: (name: string, handler: (payload: unknown) => void) => void;
+  };
   /** Ask the user, using the same widget the ask_user tool uses. */
   ask: (questions: Question[]) => Promise<string>;
   /** Append a line to the per-turn preamble the model reads. */
@@ -114,13 +239,29 @@ export type Glorious = {
 // the facade has no idea whether it is talking to a TUI or a print run.
 export type ExtensionHost = {
   root: string;
+  mode: "tui" | "print";
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
-  send: (text: string, label: string | null) => void;
+  send: (text: string, options: { label?: string; steer?: boolean }) => void;
   print: (content: string | Line[], tone: Tone) => void;
   ask: (questions: Question[]) => Promise<string>;
+  setInput: (text: string) => void;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
   reload: () => Promise<void>;
+  tools: () => readonly string[];
+  setTools: (names: readonly string[] | null) => void;
+  model: () => ModelInfo;
+  models: () => Promise<readonly ModelInfo[]>;
+  setModel: (label: string, variant?: string) => Promise<void>;
+  idle: () => boolean;
+  pending: () => number;
+  abort: () => boolean;
+  usage: () => { tokens: number | null; context?: number };
+  systemPrompt: () => string;
+  shutdown: () => void;
+  session: () => SessionInfo;
+  setSessionName: (title: string) => void;
+  appendEntry: (type: string, data: unknown) => void;
 };
 
 export type ToolRenderer = {
@@ -140,6 +281,10 @@ export type Registry = {
   statuses: Array<() => string | null>;
   footers: Array<() => Line[]>;
   promptLines: string[];
+  keys: KeySpec[];
+  flags: Map<string, FlagSpec>;
+  markdown: Array<(text: string) => string>;
+  bus: Map<string, Array<(payload: unknown) => void>>;
   // What each extension registered, keyed by its file. /extensions reads this,
   // and it is the only account anyone gets of what a loaded extension did —
   // there being no approval prompt to have read it out beforehand.
@@ -155,6 +300,10 @@ export const createRegistry = (): Registry => ({
   statuses: [],
   footers: [],
   promptLines: [],
+  keys: [],
+  flags: new Map(),
+  markdown: [],
+  bus: new Map(),
   contributions: new Map(),
 });
 
@@ -212,14 +361,77 @@ export const createApi = (
       bucket.push(handler as Handler<EventName>);
       registry.handlers.set(event, bucket);
     },
+    key: (spec) => {
+      ledger.ui += 1;
+      registry.keys.push(spec);
+    },
+    flag: (name, spec) => {
+      registry.flags.set(name.replace(/^--/u, ""), spec);
+    },
     exec: host.exec,
-    send: (text, label) => host.send(text, label ?? null),
+    send: (text, options = {}) => host.send(text, options),
     print: (content, tone = "muted") => host.print(content, tone),
     ask: host.ask,
     inspect: host.inspect,
     clear: host.clear,
     reload: host.reload,
     prompt: (text) => registry.promptLines.push(text),
+    mode: host.mode,
+    hasUI: host.mode === "tui",
+    ui: {
+      select: async (title, options) => {
+        const answered = JSON.parse(
+          await host.ask([{ question: title, options: [...options] }]),
+        ) as { cancelled?: boolean; answers?: Array<{ option: string | null }> };
+        if (answered.cancelled) return null;
+        return answered.answers?.[0]?.option ?? null;
+      },
+      confirm: async (title, message) => {
+        const answered = JSON.parse(
+          await host.ask([
+            { question: message ? `${title} — ${message}` : title, options: ["Yes", "No"] },
+          ]),
+        ) as { cancelled?: boolean; answers?: Array<{ option: string | null }> };
+        return !answered.cancelled && answered.answers?.[0]?.option === "Yes";
+      },
+      input: async (title) => {
+        const answered = JSON.parse(
+          await host.ask([{ question: title, options: ["Type your answer as a note"] }]),
+        ) as { cancelled?: boolean; answers?: Array<{ note?: string }> };
+        if (answered.cancelled) return null;
+        return answered.answers?.[0]?.note?.trim() || null;
+      },
+      setInput: host.setInput,
+    },
+    tools: host.tools,
+    setTools: host.setTools,
+    model: host.model,
+    models: host.models,
+    setModel: host.setModel,
+    idle: host.idle,
+    pending: host.pending,
+    abort: host.abort,
+    usage: host.usage,
+    systemPrompt: host.systemPrompt,
+    shutdown: host.shutdown,
+    session: host.session,
+    setSessionName: host.setSessionName,
+    appendEntry: host.appendEntry,
+    markdown: (transform) => registry.markdown.push(transform),
+    events: {
+      emit: (name, payload) => {
+        for (const handler of registry.bus.get(name) ?? []) {
+          try {
+            handler(payload);
+          } catch {}
+        }
+      },
+      on: (name, handler) => {
+        const bucket = registry.bus.get(name) ?? [];
+        bucket.push(handler);
+        registry.bus.set(name, bucket);
+      },
+    },
     status: (render) => {
       ledger.ui += 1;
       registry.statuses.push(render);

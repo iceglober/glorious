@@ -39,6 +39,22 @@ const host: ExtensionHost = {
   inspect: () => ({ commands: [], sequences: [], skills: [], extensions: [] }),
   clear: () => "cleared" as const,
   reload: async () => {},
+  mode: "tui" as const,
+  setInput: () => {},
+  tools: () => ["read", "write"],
+  setTools: () => {},
+  model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
+  models: async () => [],
+  setModel: async () => {},
+  idle: () => true,
+  pending: () => 0,
+  abort: () => false,
+  usage: () => ({ tokens: null }),
+  systemPrompt: () => "prompt",
+  shutdown: () => {},
+  session: () => ({ id: "test", file: "/tmp/test.json", title: "test", events: 0 }),
+  setSessionName: () => {},
+  appendEntry: () => {},
 };
 
 const write = async (name: string, source: string): Promise<void> => {
