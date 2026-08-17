@@ -767,3 +767,83 @@ body {
     padding: 2rem 1rem 4rem;
   }
 }
+
+/* Design DNA: terminal-core with a neo-brutalist editorial rhythm. */
+:root {
+  --red: #c43a32;
+  --black: #171717;
+  --white: #f7f5ef;
+  --gray: #6b6962;
+  --border: #c9c5bb;
+  --bg-code: #ebe9e1;
+  --measure: 68ch;
+  --display: clamp(2.75rem, 7vw, 6.5rem);
+  --step-1: clamp(1.05rem, 1.5vw, 1.3rem);
+}
+
+html { background: var(--white); }
+body { background: var(--white); }
+::selection { color: var(--white); background: var(--red); }
+
+.site-header {
+  background: var(--black);
+  color: var(--white);
+  border-bottom: 0;
+  padding: 0.85rem clamp(1rem, 4vw, 3.5rem);
+  align-items: center;
+}
+.site-header .logo { color: var(--white); letter-spacing: -0.08em; }
+.site-header nav a { color: #aaa79d; }
+.site-header nav a:hover, .site-header nav a.active { color: var(--white); }
+.site-search input { border-color: #5a5852; color: var(--white); background: #292929; }
+.site-search input::placeholder { color: #aaa79d; }
+.search-results { border-color: var(--white); color: var(--black); }
+
+.breadcrumbs { padding-inline: clamp(1rem, 4vw, 3.5rem); background: #ebe9e1; border-bottom-color: var(--border); }
+.page-shell { max-width: 100rem; }
+.side-nav { background: #ebe9e1; border-right-color: var(--border); padding-inline: clamp(1rem, 2.5vw, 2.5rem); }
+.side-title { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; }
+.side-nav nav a { color: var(--gray); }
+.side-nav nav a.active { color: var(--red); font-weight: 700; }
+
+.home { max-width: 100rem; padding: 0 clamp(1rem, 5vw, 5rem) 6rem; }
+.home-hero { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(13rem, 0.8fr); gap: 3rem; align-items: end; padding: clamp(4rem, 11vw, 10rem) 0 3rem; border-bottom: 2px solid var(--black); }
+.home h1 { font-size: var(--display); line-height: 0.83; letter-spacing: -0.1em; }
+.home .tagline { max-width: 25ch; font-size: var(--step-1); line-height: 1.25; color: var(--black); margin: 0; }
+.home .install-block { padding: 2rem 0; margin: 0; }
+.home .install-cmd { background: var(--black); color: var(--white); border-color: var(--black); padding: 1rem 1.2rem; }
+.home .install-cmd:hover { background: var(--red); border-color: var(--red); }
+.doc-map { max-width: 42rem; gap: 0; }
+.doc-map a { padding: 1.1rem 0; font-size: 1.05rem; }
+.doc-map a strong { font-weight: 700; }
+
+.site-main { max-width: 100rem; padding: clamp(2rem, 5vw, 5rem) clamp(1.2rem, 5vw, 5rem) 7rem; }
+.doc-layout { max-width: 100rem; grid-template-columns: minmax(0, var(--measure)) 13rem; gap: clamp(2rem, 7vw, 8rem); }
+.doc h1 { font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1; letter-spacing: -0.07em; margin-bottom: 3rem; }
+.doc h2 { font-size: 1.45rem; line-height: 1.1; letter-spacing: -0.04em; padding-top: 1rem; }
+.doc h3 { letter-spacing: -0.025em; }
+.doc p, .doc li { color: #35342f; }
+.doc pre { border: 0; border-left: 3px solid var(--red); background: var(--bg-code); }
+.doc blockquote { background: #ebe9e1; padding-block: 0.75rem; }
+.on-page { border-left-color: var(--black); }
+.on-page strong { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; }
+.on-page a { color: var(--gray); }
+.on-page a:hover { color: var(--red); }
+
+.section-page { max-width: 60rem; }
+.section-page h1 { font-size: clamp(3rem, 8vw, 6rem); letter-spacing: -0.09em; }
+.section-intro { font-size: 1.35rem; line-height: 1.3; color: var(--black); }
+.section-links { grid-template-columns: repeat(2, minmax(14rem, 1fr)); gap: 0; border-top: 2px solid var(--black); }
+.section-links a { border: 0; border-bottom: 1px solid var(--border); padding: 1.25rem 0; margin-right: 2rem; }
+.section-links a:hover { border-color: var(--red); color: var(--red); }
+
+.site-footer { background: var(--black); color: var(--white); border-top: 0; margin-top: 0; padding-inline: clamp(1rem, 4vw, 3.5rem); }
+.footer-mark { color: #aaa79d; }
+.footer-separator { color: var(--red); }
+
+@media (max-width: 760px) {
+  .home-hero { grid-template-columns: 1fr; gap: 1.5rem; }
+  .home .tagline { max-width: 35ch; }
+  .section-links { grid-template-columns: 1fr; }
+  .section-links a { margin-right: 0; }
+}
