@@ -169,8 +169,12 @@ export const runPrint = async (
         started.delete(event.id);
         const took = since === undefined ? "" : ` ${((Date.now() - since) / 1000).toFixed(1)}s`;
         const detail = flatten(event.detail).slice(0, TRAIL_CHARS);
+        // The reason, on a failed call, for the same reason the TUI shows it:
+        // piping the trail to a log and finding only `✗ edit 2 files` tells you
+        // nothing about what broke.
+        const why = event.ok ? "" : `\n    ${flatten(event.result).slice(0, TRAIL_CHARS * 2)}`;
         process.stderr.write(
-          `${event.ok ? "✓" : "✗"} ${event.name}${detail && ` ${detail}`}${took}\n`,
+          `${event.ok ? "✓" : "✗"} ${event.name}${detail && ` ${detail}`}${took}${why}\n`,
         );
       },
       onStep: () => {},

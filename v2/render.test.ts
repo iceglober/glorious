@@ -2,12 +2,14 @@ import { describe, expect, test } from "bun:test";
 import {
   elapsed,
   eventBlock,
+  type Line,
   reasoningBlock,
   reasoningDraft,
   rightClip,
   runningRow,
   statusLine,
   statusRow,
+  toolRow,
   width,
 } from "./render";
 
@@ -145,5 +147,44 @@ describe("the activity row", () => {
     expect(row).not.toContain("█");
     expect(row).toContain("bash");
     expect(row).toContain("sleep 3");
+  });
+});
+
+// The model always received the reason — it is the tool's return value — but
+// the transcript showed only `✗ edit 2 files`, so a failure the agent then
+// worked around looked, from the outside, like nothing had happened.
+describe("a failed tool row says why", () => {
+  const text = (lines: Line[]): string =>
+    lines.map((line) => line.map((span) => span.text).join("")).join("\n");
+
+  test("the reason lands under the row", () => {
+    const rows = toolRow(
+      "edit",
+      "2 files",
+      24,
+      false,
+      undefined,
+      "ERROR: file 2/2 (b.txt) edit 1/1: old_string not found. Nothing was written.",
+    );
+    expect(rows).toHaveLength(2);
+    expect(text(rows)).toContain("b.txt");
+    expect(text(rows)).toContain("old_string not found");
+  });
+
+  test("the ERROR: prefix is dropped — the ✗ already says that", () => {
+    expect(text(toolRow("read", "x", 1, false, undefined, "ERROR: nope"))).not.toContain("ERROR:");
+  });
+
+  test("a successful row is unchanged", () => {
+    expect(toolRow("read", "a.txt", 1, true, undefined, "file contents")).toHaveLength(1);
+  });
+
+  test("a long result is clipped rather than pasted into the transcript", () => {
+    const rows = toolRow("bash", "x", 1, false, undefined, `ERROR: ${"y".repeat(30_000)}`);
+    expect(text(rows).length).toBeLessThan(400);
+  });
+
+  test("an empty result adds no row", () => {
+    expect(toolRow("bash", "x", 1, false, undefined, "")).toHaveLength(1);
   });
 });

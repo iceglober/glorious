@@ -166,19 +166,34 @@ const decorate = (icon: Span, custom: Line[], trailer: Line): Line[] =>
       : [{ text: "    " }, ...line],
   );
 
+const REASON_CHARS = 160;
+
+// Why a call failed, for the person watching. The model always received this —
+// it is the tool's return value — but the transcript showed only `✗ edit 2
+// files`, so a failure that the agent then worked around looked from the outside
+// like nothing had happened. One line, under the row, clipped: enough to know
+// what broke and which file, without a 30k result landing in the transcript.
+const reasonRow = (result: string): Line[] => {
+  const said = flatten(result.replace(/^ERROR:\s*/u, ""));
+  if (said === "") return [];
+  return [[{ text: `    ${clip(said, REASON_CHARS)}`, tone: "danger" }]];
+};
+
 export const toolRow = (
   name: string,
   detail: string,
   elapsedMs: number,
   ok: boolean,
   custom?: Line[],
+  result?: string,
 ): Line[] => {
   const mark: Span = ok ? { text: "✓", tone: "success" } : { text: "✗", tone: "danger" };
   const took =
     elapsedMs >= 1000 ? `${(elapsedMs / 1000).toFixed(1)}s` : `${Math.round(elapsedMs)}ms`;
   const trailer: Line = [{ text: `  ${took}`, tone: "muted" }];
-  if (custom && custom.length > 0) return decorate(mark, custom, trailer);
-  return [[...activity(mark, name, detail, "  "), ...trailer]];
+  const why = ok || result === undefined ? [] : reasonRow(result);
+  if (custom && custom.length > 0) return [...decorate(mark, custom, trailer), ...why];
+  return [[...activity(mark, name, detail, "  "), ...trailer], ...why];
 };
 
 // Reasoning collapses once the answer starts: what matters afterwards is that it
@@ -225,6 +240,7 @@ export const eventBlock = (
           event.elapsedMs,
           event.ok,
           custom?.(event.name, event.input ?? {}, event.result ?? "", event.ok),
+          event.result,
         ),
         gap: false,
       };
