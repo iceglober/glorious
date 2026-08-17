@@ -19,9 +19,13 @@ In order of precedence:
 `model` is `provider/model-id`; a bare id means azure. `variant` is the
 reasoning effort, when the model advertises one.
 
-Config is read-only — nothing writes it at runtime. There is no model picker:
-edit the file or set the environment variable and restart. `--resume <id>`
-picks the session back up.
+Config is read-only — nothing writes it at runtime. The core has no model
+picker: edit the file or set the environment variable and restart, and
+`--resume <id>` picks the session back up.
+
+An extension can add one. `g.models()` returns the catalogue and
+`g.setModel(label, variant)` switches for the next turn — see
+`extensions.md`.
 
 ## Providers
 
@@ -58,6 +62,14 @@ reads `unknown` and everything else works.
 
 `GLORIOUS_PRICE_MULTIPLIERS=azure=1.1` scales the published rates when your
 provider's pricing differs.
+
+## When a turn dies
+
+A connection lost before the model responds is retried three times and you never
+see it. One lost mid-response cannot be retried — tokens are already on screen
+and replaying would duplicate them — so it reports that the connection dropped
+and stops. Send `continue`: the failed turn leaves a reminder of what it was
+doing on the next one.
 
 ## Diagnostics
 

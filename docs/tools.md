@@ -34,7 +34,13 @@ once unless `replace_all` is set. Add surrounding lines to make it unique.
 
 ## Permissions
 
-There are none. glorious runs in YOLO mode, which is the only mode.
+The core has none. glorious runs in YOLO mode, which is its only mode.
+
+An extension can add them. `tool_call` fires before any tool runs — built-in,
+bundled or third-party, since they all go through the same wrapper — and
+returning a string blocks the call and hands the model that string as the
+reason. A read-only mode is eight lines; so is confirm-before-destructive. See
+`extensions.md`.
 
 As soon as an agent can write code and run code, a confirmation dialog is not a
 security boundary — it is a habit you learn to click through. The real
