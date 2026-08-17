@@ -4,10 +4,11 @@
 
 In order of precedence:
 
-1. `GLORIOUS_MODEL` / `GLORIOUS_VARIANT`
-2. `.glorious/config.json` in the project
-3. `~/.config/glorious/config.json`
-4. the default, `azure/gpt-5.6-luna`
+1. `--model provider/model-id` on the command line
+2. `GLORIOUS_MODEL` / `GLORIOUS_VARIANT`
+3. `.glorious/config.json` in the project
+4. `~/.config/glorious/config.json`
+5. the default, `azure/gpt-5.6-luna`
 
 ```json
 {
@@ -29,14 +30,8 @@ An extension can add one. `g.models()` returns the catalogue and
 
 ## Providers
 
-`amazon-bedrock`, `anthropic`, `azure`, `cerebras`, `cohere`, `deepseek`,
-`google`, `google-vertex`, `groq`, `mistral`, `openai`, `openrouter`,
-`perplexity`, `togetherai`, `xai`, and any OpenAI-compatible endpoint.
-
-Credentials come from the environment. Each provider's SDK reads its own
-standard variable; azure is special-cased because it answers to three
-(`AZURE_FOUNDRY_API_KEY`, `AZURE_API_KEY`, `AZURE_OPENAI_API_KEY`, in that
-order) and also needs `AZURE_RESOURCE_NAME`.
+Fifteen built in, plus any OpenAI-compatible endpoint. Which variable each one
+reads, what else it needs, and how to point at a local server: `providers.md`.
 
 Nothing is stored in a keychain. Nothing prompts for a key.
 
@@ -57,8 +52,11 @@ Per-provider settings, when a provider needs them:
 At startup glorious asks [models.dev](https://models.dev) for one thing: the
 context window and per-token pricing of the model you already selected. That is
 what makes the status line's `ctx 12.3k(1%)` meaningful — a percentage needs a
-denominator. It is one request, and it fails silently: offline, the status line
-reads `unknown` and everything else works.
+denominator.
+
+The answer is cached to `~/.cache/glorious/models.dev.json`, so after the first
+successful fetch it works offline. Before that, or if the cache is gone and the
+network is too, the status line reads `unknown` and everything else works.
 
 `GLORIOUS_PRICE_MULTIPLIERS=azure=1.1` scales the published rates when your
 provider's pricing differs.

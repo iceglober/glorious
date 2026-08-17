@@ -12,6 +12,7 @@ import { loadAgentRules } from "./guidance";
 import { currentModel, loadCatalogue, modelLabel, modelMetadata, modelRef } from "./models";
 import { runPrint } from "./print";
 import { shortcutPrompt } from "./prompt";
+import { missingFor, providerSpec } from "./providers";
 import {
   assistantBlock,
   errorText,
@@ -76,7 +77,8 @@ const probe = () => {
 };
 
 const USAGE =
-  "Usage: glorious [--version | update | doctor [--json] | --resume [session-id] | -p <prompt>]";
+  "Usage: glorious [--version | update | doctor [--json] | --resume [session-id] | " +
+  "--model <provider/model> | -p <prompt>]";
 
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
@@ -88,23 +90,35 @@ const main = async (): Promise<void> => {
     execFileSync("bun", ["add", "-g", `${PACKAGE_NAME}@next`], { stdio: "inherit" });
     return;
   }
+  // Applied before anything reads the model, so it wins the same way the
+  // environment variable does — and so -p and the TUI take it alike.
+  const chosenModel = args[args.indexOf("--model") + 1];
+  if (args.includes("--model") && chosenModel !== undefined)
+    process.env.GLORIOUS_MODEL = chosenModel;
+
   // Headless, and handled before anything opens the terminal: the whole point
   // is that this path never touches the alternate screen.
-  if (args[0] === "-p" || args[0] === "--print") {
-    const prompt = args.slice(1).join(" ").trim();
+  const printAt = args.findIndex((arg) => arg === "-p" || arg === "--print");
+  if (printAt >= 0) {
+    const prompt = args.slice(printAt + 1).join(" ").trim();
     if (prompt === "") throw new Error("Nothing to run: -p needs a prompt.");
     const { root, os, git } = probe();
     process.exitCode = await runPrint(prompt, { root, os, git });
     return;
   }
   let resumeId: string | undefined;
-  const doctor = args.length > 0 && args[0] === "doctor";
-  const doctorJson = doctor && args[1] === "--json";
-  if (args.length > 0 && !doctor) {
-    if (args[0] === "--resume") resumeId = args[1];
-    else if (!/^--[a-z]/u.test(args[0])) throw new Error(USAGE);
-  }
-  if (doctor && args.length > 2) throw new Error(USAGE);
+  // Found wherever it sits: flags may precede it now, and `--model x doctor`
+  // silently opening the TUI instead of reporting was worse than an error.
+  const doctor = args.includes("doctor");
+  const doctorJson = doctor && args.includes("--json");
+  // A bare word is only ever a flag's value. Anything else is a typo, and
+  // saying so beats opening a session that ignores what was asked for.
+  if (!doctor)
+    args.forEach((arg, at) => {
+      if (arg.startsWith("-")) return;
+      if (!args[at - 1]?.startsWith("-")) throw new Error(USAGE);
+    });
+  if (args.includes("--resume")) resumeId = args[args.indexOf("--resume") + 1];
   // An extension registers its flags while loading, which is long after argv is
   // parsed — so unrecognised `--name value` pairs are carried here and handed
   // over once the extensions that claim them exist. One glorious does not
@@ -112,7 +126,7 @@ const main = async (): Promise<void> => {
   const extraFlags = new Map<string, string>();
   for (let at = 0; at < args.length; at += 1) {
     const flag = /^--([a-z][a-z0-9-]*)$/u.exec(args[at]);
-    if (flag && flag[1] !== "resume" && flag[1] !== "version" && flag[1] !== "print") {
+    if (flag && !["resume", "version", "print", "model"].includes(flag[1])) {
       extraFlags.set(flag[1], args[at + 1] ?? "");
       at += 1;
     }
@@ -120,13 +134,23 @@ const main = async (): Promise<void> => {
   const { root, os, branch, worktree, git, label } = probe();
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
+    const chosen = currentModel(resolvedConfig.config);
     const report = {
       diagnostics: resolvedConfig.diagnostics,
-      model: currentModel(resolvedConfig.config),
+      model: chosen,
+      provider: providerSpec(chosen.provider)?.label ?? `${chosen.provider} (OpenAI-compatible)`,
+      missing: missingFor(chosen.provider, resolvedConfig.config.providers?.[chosen.provider]),
     };
     if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else {
-      const lines = [`model: ${modelLabel(report.model)}`, ...report.diagnostics];
+      const lines = [
+        `model: ${modelLabel(report.model)}`,
+        `provider: ${report.provider}`,
+        ...(report.missing.length === 0
+          ? ["credentials: found"]
+          : report.missing.map((gap) => `missing: ${gap}`)),
+        ...report.diagnostics,
+      ];
       process.stdout.write(`${lines.join("\n")}\n`);
     }
     return;
