@@ -41,6 +41,7 @@
     "remove-completion-grounding",
     "retry-dropped-connections",
     "skills-as-commands",
+    "skills-standard",
     "slash-command-execution",
     "small-core-extensible",
     "standard-providers",
