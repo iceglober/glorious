@@ -9,9 +9,10 @@ import { messagesOf, type SessionEvent, usageTotals } from "./events";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
+import { expandMentions, fileCandidates } from "./mentions";
 import { currentModel, loadCatalogue, modelLabel, modelMetadata, modelRef } from "./models";
 import { runPrint } from "./print";
-import { shortcutPrompt } from "./prompt";
+import { fence, shortcutPrompt } from "./prompt";
 import { missingFor, providerSpec } from "./providers";
 import {
   assistantBlock,
@@ -100,8 +101,19 @@ const main = async (): Promise<void> => {
   // is that this path never touches the alternate screen.
   const printAt = args.findIndex((arg) => arg === "-p" || arg === "--print");
   if (printAt >= 0) {
-    const prompt = args.slice(printAt + 1).join(" ").trim();
-    if (prompt === "") throw new Error("Nothing to run: -p needs a prompt.");
+    // Piped input joins the prompt rather than replacing it, so both
+    // `cat log | glorious -p "what failed?"` and a bare `cat log | glorious -p`
+    // work. Fenced, so a diff or a log reads as material rather than as further
+    // instructions — the same treatment a sequence's stdout gets.
+    const piped = process.stdin.isTTY ? "" : (await Bun.stdin.text()).trim();
+    const asked = args
+      .slice(printAt + 1)
+      .join(" ")
+      .trim();
+    const prompt = [asked, piped === "" ? "" : fence("input", piped)]
+      .filter((part) => part !== "")
+      .join("\n\n");
+    if (prompt === "") throw new Error("Nothing to run: -p needs a prompt or piped input.");
     const { root, os, git } = probe();
     process.exitCode = await runPrint(prompt, { root, os, git });
     return;
@@ -399,10 +411,19 @@ const main = async (): Promise<void> => {
         break;
       case "dequeued":
         screen.restoreInput(value.text);
-        screen.print(noticeBlock(`(dequeued) ${value.text.split("\n")[0].slice(0, 60)}`), false);
+        // Loud, and it says where the text went. Muted, this was easy to miss
+        // and the message looked like it had been dropped.
+        screen.print(
+          noticeBlock(
+            `(taken out of the queue and put back in the composer — press Enter to send it)\n  ${value.text.split("\n")[0].slice(0, 72)}`,
+            "warning",
+          ),
+          false,
+        );
         break;
       case "idle":
         void fire(registry, "idle", {}, onExtensionFailure);
+        maybeCompact();
         // anything still buffered belongs to the turn that just ended
         chat.flush();
         screen.sealDraft();
@@ -422,13 +443,20 @@ const main = async (): Promise<void> => {
     },
     // An `input` handler can rewrite what was typed or swallow it entirely, so
     // the send waits on the hooks rather than racing them.
+    onFileSearch: (query) => fileCandidates(root, query),
+    // `@path` keeps its place in what the transcript shows — it is what was
+    // typed — while the file's contents ride along with the message.
     onSubmit: (text) => {
-      void fire(registry, "input", { text }, onExtensionFailure).then((said) => {
+      void fire(registry, "input", { text }, onExtensionFailure).then(async (said) => {
         if (said === false) {
           repaint();
           return;
         }
-        chat.send(said ?? text);
+        const typed = said ?? text;
+        const { prompt, attached, missing } = await expandMentions(root, typed);
+        for (const path of missing)
+          render({ type: "notice", text: `(no such file: @${path} — sent as text)` });
+        chat.send(prompt, attached.length === 0 ? null : typed);
         repaint();
       });
     },
@@ -532,6 +560,51 @@ const main = async (): Promise<void> => {
     onQuit: () => quit(),
   });
 
+  // Compaction is the answer to a full context that is not "throw it away".
+  // Automatic once the provider says the conversation is past COMPACT_AT of the
+  // window, which is early enough that the summarising call still fits.
+  const COMPACT_AT = 0.75;
+  const KEEP_TOKENS = 20_000;
+  let compactedAt = 0;
+
+  const runCompaction = async (
+    options: { instruction?: string; keep?: number },
+    automatic: boolean,
+  ) => {
+    const outcome = await chat.compact(
+      options.instruction ?? "Summarise the conversation so far.",
+      options.keep ?? KEEP_TOKENS,
+      // Asked for by hand, compact whatever there is rather than declining
+      // because the conversation has not yet reached the automatic threshold.
+      !automatic,
+    );
+    if (outcome.outcome === "compacted") {
+      compactedAt = tokens ?? 0;
+      render({
+        type: "notice",
+        text: `(compacted — ${outcome.dropped} messages summarised, ${outcome.kept} kept)`,
+      });
+      await fire(
+        registry,
+        "compact",
+        { dropped: outcome.dropped, kept: outcome.kept, automatic },
+        onExtensionFailure,
+      );
+    } else if (outcome.outcome === "failed")
+      render({ type: "error", text: `(compaction failed: ${outcome.error})` });
+    repaint();
+    return outcome;
+  };
+
+  const maybeCompact = (): void => {
+    if (chat.compacting || model.context === undefined || tokens === null) return;
+    if (tokens < model.context * COMPACT_AT) return;
+    // Only once per growth phase: without this a compaction that frees little
+    // would run again on the very next turn.
+    if (tokens <= compactedAt) return;
+    void runCompaction({}, true);
+  };
+
   const onExtensionFailure = (message: string): void => {
     render({ type: "error", text: `(extension) ${message}` });
   };
@@ -591,6 +664,7 @@ const main = async (): Promise<void> => {
         screen.print(typeof content === "string" ? noticeBlock(content, tone) : content, false);
         repaint();
       },
+      columns: () => screen.columnsNow(),
       ask: (questions) => screen.askQuestions(questions, undefined),
       inspect: () => ({
         commands: commands(),
@@ -665,6 +739,7 @@ const main = async (): Promise<void> => {
       appendEntry: (type, data) => {
         record({ type: "custom", custom: type, data });
       },
+      compact: (options) => runCompaction(options ?? {}, false),
       reload: async () => {
         const [refreshedCommands, refreshedSequences, refreshedSkills] = await Promise.all([
           loadUserCommands(root),
@@ -729,7 +804,11 @@ const main = async (): Promise<void> => {
     release = resolve;
   });
 
-  const interrupt = (): boolean => chat.dequeue() !== null || chat.abort();
+  // Stopping the work comes first. This dequeued first, so pressing Esc during
+  // a turn with anything queued silently pulled the queued message back into
+  // the composer and let the turn run on — the message was never sent, and
+  // nothing about the running turn changed, which reads as Esc doing nothing.
+  const interrupt = (): boolean => chat.abort() || chat.dequeue() !== null;
 
   // The teardown waits on session_end, so an extension that writes a file or
   // posts a result on the way out actually finishes. It cannot usefully print:

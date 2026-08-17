@@ -19,7 +19,7 @@ import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
 import type { Config } from "./config";
-import { providerSpec } from "./providers";
+import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
 
 export type ModelRef = {
   provider: string;
@@ -83,8 +83,11 @@ const catalogue = async (fetcher: typeof fetch): Promise<unknown | null> => {
 export const modelRef = (value: string, provider = "azure"): ModelRef => {
   const slash = value.indexOf("/");
   return slash < 1
-    ? { provider, modelId: value }
-    : { provider: value.slice(0, slash), modelId: value.slice(slash + 1) };
+    ? { provider: canonicalProvider(provider), modelId: value }
+    : {
+        provider: canonicalProvider(value.slice(0, slash)),
+        modelId: value.slice(slash + 1),
+      };
 };
 
 export const modelLabel = (model: ModelRef): string => `${model.provider}/${model.modelId}`;
@@ -277,11 +280,15 @@ export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch):
   // reachable only if models.dev happened to publish the provider, so a local
   // server could not be used at all.
   if (option.npm === "@ai-sdk/openai-compatible" || !factory) {
-    if (!option.api)
+    if (!option.api) {
+      const near = nearestProvider(option.provider);
       throw new Error(
-        `${option.provider} is not a built-in provider. Give it a base URL to use it as an ` +
-          `OpenAI-compatible endpoint: {"providers":{"${option.provider}":{"api":"…"}}}`,
+        near === undefined
+          ? `${option.provider} is not a built-in provider. Give it a base URL to use it as an ` +
+              `OpenAI-compatible endpoint: {"providers":{"${option.provider}":{"api":"…"}}}`
+          : `Unknown provider "${option.provider}" — did you mean "${near}"?`,
       );
+    }
     return createOpenAICompatible({
       name: option.provider,
       apiKey,

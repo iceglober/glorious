@@ -76,3 +76,37 @@ describe("OpenAI-compatible endpoints", () => {
     expect(missingFor("anthropic", undefined, { ANTHROPIC_API_KEY: "k" })).toEqual([]);
   });
 });
+
+// The canonical ids follow the SDK packages — google-vertex, amazon-bedrock —
+// which are fine as identifiers and not what anyone types.
+describe("the names people actually type", () => {
+  test("common shorthands resolve to the built-in provider", () => {
+    for (const [typed, meant] of [
+      ["vertex", "google-vertex"],
+      ["bedrock", "amazon-bedrock"],
+      ["gemini", "google"],
+      ["claude", "anthropic"],
+      ["foundry", "azure"],
+      ["together", "togetherai"],
+      ["grok", "xai"],
+    ])
+      expect(currentModel({ model: `${typed}/some-model` }).provider).toBe(meant);
+  });
+
+  test("an alias keeps the model id intact", () => {
+    expect(currentModel({ model: "vertex/gemini-3.7-flash" }).modelId).toBe("gemini-3.7-flash");
+  });
+
+  test("a near-miss is named rather than sent to configure a base URL", () => {
+    expect(missingFor("vertexai", undefined, {})[0]).toContain("did you mean");
+  });
+
+  test("something genuinely unknown still gets the compatible instructions", () => {
+    expect(missingFor("zzz", undefined, {})[0]).toContain("providers.zzz.api");
+    expect(missingFor("zzz", undefined, {})[0]).not.toContain("did you mean");
+  });
+
+  test("an alias is not mistaken for an OpenAI-compatible endpoint", () => {
+    expect(() => createModel(currentModel({ model: "vertex/x" }))).not.toThrow(/base URL/u);
+  });
+});

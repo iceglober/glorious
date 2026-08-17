@@ -3,6 +3,7 @@ import { createAgent } from "./agent";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
+import { expandMentions } from "./mentions";
 import { currentModel, modelMetadata } from "./models";
 import { clean, errorText, flatten } from "./render";
 import { loadSkills } from "./skills";
@@ -80,6 +81,7 @@ export const runPrint = async (
             ? content
             : content.map((line) => line.map((span) => span.text).join("")).join("\n"),
         ),
+      columns: () => Number(process.env.COLUMNS ?? 100),
       ask: async () => {
         throw new Error("ask() has no meaning in print mode: there is nobody to answer");
       },
@@ -95,6 +97,7 @@ export const runPrint = async (
         })),
       }),
       clear: () => "empty" as const,
+      compact: async () => ({ outcome: "too-short" as const }),
       reload: async () => note("[extension] reload() has no meaning in print mode; ignored"),
       // A one-shot run has no composer, no queue and no session file. These
       // refuse out loud rather than pretending: an extension that guards on
@@ -171,7 +174,9 @@ export const runPrint = async (
     });
     await fire(registry, "session_start", { root: where.root }, note);
     await fire(registry, "turn_start", { text: prompt }, note);
-    const result = await agent.run(prompt, [], {
+    const { prompt: asked, missing } = await expandMentions(where.root, prompt);
+    for (const path of missing) note(`(no such file: @${path} — sent as text)`);
+    const result = await agent.run(asked, [], {
       signal: stop.signal,
       onDelta: ({ kind, text }) => {
         // Reasoning is the model talking to itself; in a pipe it is noise the

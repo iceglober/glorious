@@ -1,7 +1,8 @@
 import type { ToolSet } from "ai";
 import { z } from "zod";
+import type { Compaction } from "./chat";
 import type { Command } from "./commands";
-import type { Line, Tone } from "./render";
+import { clip, type Line, type Tone } from "./render";
 import type { Question, ToolEvent } from "./tools";
 import { wrapTool } from "./tools";
 
@@ -15,6 +16,7 @@ import { wrapTool } from "./tools";
 // That is deliberate: the renderer can be swapped without breaking a single
 // extension.
 
+export type { Compaction } from "./chat";
 export type { Activity, Line, Span, Tone } from "./render";
 
 import type { Activity } from "./render";
@@ -37,7 +39,8 @@ export type EventName =
   | "model_select"
   | "usage"
   | "reasoning"
-  | "error";
+  | "error"
+  | "compact";
 
 export type EventPayload = {
   session_start: { root: string };
@@ -85,6 +88,8 @@ export type EventPayload = {
   reasoning: { text: string; elapsedMs: number };
   // A turn that failed, with the message the transcript shows.
   error: { message: string };
+  // The conversation was summarised to stay inside the context limit.
+  compact: { dropped: number; kept: number; automatic: boolean };
 };
 
 // undefined rather than void, so the union is unambiguous: a handler that
@@ -205,10 +210,20 @@ export type Glorious = {
   send: (text: string, options?: { label?: string; steer?: boolean }) => void;
   /** Write into the transcript. Pass Line[] when you want it styled. */
   print: (content: string | Line[], tone?: Tone) => void;
+  /** Terminal width. Anything wider than this wraps, so measure before drawing. */
+  columns: () => number;
+  /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
+  clip: (text: string, limit: number) => string;
   /** What is loaded: commands, sequences, skills, extensions. */
   inspect: () => Loaded;
   /** Drop the conversation the model replays. The transcript is untouched. */
   clear: () => "cleared" | "busy" | "empty";
+  /**
+   * Summarise the older part of the conversation and carry the brief forward,
+   * so a session can outlive its context window. `keep` is roughly how many
+   * tokens of recent turns to leave verbatim.
+   */
+  compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
   /** Re-read skills, commands and sequences from disk. */
   reload: () => Promise<void>;
 
@@ -287,10 +302,12 @@ export type ExtensionHost = {
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
   send: (text: string, options: { label?: string; steer?: boolean }) => void;
   print: (content: string | Line[], tone: Tone) => void;
+  columns: () => number;
   ask: (questions: Question[]) => Promise<string>;
   setInput: (text: string) => void;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
+  compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
   reload: () => Promise<void>;
   tools: () => readonly string[];
   setTools: (names: readonly string[] | null) => void;
@@ -417,9 +434,12 @@ export const createApi = (
     exec: host.exec,
     send: (text, options = {}) => host.send(text, options),
     print: (content, tone = "muted") => host.print(content, tone),
+    columns: host.columns,
+    clip,
     ask: host.ask,
     inspect: host.inspect,
     clear: host.clear,
+    compact: host.compact,
     reload: host.reload,
     prompt: (text) => registry.promptLines.push(text),
     mode: host.mode,

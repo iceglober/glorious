@@ -127,6 +127,7 @@ then feeds its output to the model, write a sequence — see `sequences.md`.
 | `turn_end` | `{ text }` | — |
 | `idle` | — | — |
 | `model_select` | `{ model, variant }` | — |
+| `compact` | `{ dropped, kept, automatic }` | — |
 | `usage` | `{ input, output, cached, cost, contextTokens }` | — |
 | `reasoning` | `{ text, elapsedMs }` | — |
 | `error` | `{ message }` | — |
@@ -208,7 +209,7 @@ of the text, which matters when the text is a 30k expansion nobody typed.
 `steer: true` puts the message next in the queue rather than last; the running
 turn is never interrupted by it.
 
-`g.print` takes a string, or `Line[]` when you want it styled — that is how the
+`g.columns()` is the terminal width and `g.clip(text, n)` trims to it, counting what the terminal counts. `g.print` takes a string, or `Line[]` when you want it styled — that is how the
 bundled `builtins` extension draws `/help`.
 
 `g.ask` throws in print mode — there is nobody to answer.
@@ -230,6 +231,8 @@ g.command("skills", {
 
 `clear()` drops the conversation the model replays, leaving the transcript
 alone, and returns `"cleared"`, `"busy"` (a turn is running) or `"empty"`.
+`compact({ instruction?, keep? })` summarises the older part instead of
+discarding it, so a session can outlive its window.
 `reload()` re-reads skills, commands and sequences from disk.
 
 ### Tokens, cache and cost
