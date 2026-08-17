@@ -69,6 +69,10 @@ export const loadExtensions = async (
   registry: Registry,
   host: ExtensionHost,
   onToolEvent: (event: ToolEvent) => void,
+  // Appended to the import specifier so a reload re-reads the file. Without it
+  // the module cache hands back the version loaded at startup, and editing an
+  // extension would appear to do nothing.
+  token?: string,
 ): Promise<ExtensionLoad> => {
   const seen = new Set<string>();
   const extensions: LoadedExtension[] = [];
@@ -82,7 +86,8 @@ export const loadExtensions = async (
     if (seen.has(entry.name)) continue;
     seen.add(entry.name);
     try {
-      const module = (await import(resolve(entry.path))) as {
+      const specifier = resolve(entry.path);
+      const module = (await import(token === undefined ? specifier : `${specifier}?${token}`)) as {
         default?: (glorious: ReturnType<typeof createApi>) => void | Promise<void>;
       };
       if (typeof module.default !== "function")

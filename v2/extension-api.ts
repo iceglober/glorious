@@ -405,6 +405,28 @@ export type Registry = {
   contributions: Map<string, { tools: string[]; commands: string[]; hooks: number; ui: number }>;
 };
 
+// Empty every container in place. A reload replaces what extensions
+// contributed without replacing the registry itself — index.ts and the agent
+// both hold this object by reference, and swapping it would leave them looking
+// at the old one.
+export const resetRegistry = (registry: Registry): void => {
+  for (const name of Object.keys(registry.tools)) delete registry.tools[name];
+  registry.commands.length = 0;
+  registry.toolFilters.length = 0;
+  registry.statuses.length = 0;
+  registry.footers.length = 0;
+  registry.activities.length = 0;
+  registry.promptLines.length = 0;
+  registry.keys.length = 0;
+  registry.markdown.length = 0;
+  registry.runners.clear();
+  registry.handlers.clear();
+  registry.renderers.clear();
+  registry.flags.clear();
+  registry.bus.clear();
+  registry.contributions.clear();
+};
+
 export const createRegistry = (): Registry => ({
   tools: {},
   commands: [],
