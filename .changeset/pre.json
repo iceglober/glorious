@@ -42,6 +42,7 @@
     "stream-model-output",
     "surface-intermediate-text",
     "teardown-basic-chat",
+    "tool-row-format",
     "trim-published-tarball",
     "tui-progress-animations",
     "usage-events",
