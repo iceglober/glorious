@@ -15,7 +15,9 @@ import { wrapTool } from "./tools";
 // That is deliberate: the renderer can be swapped without breaking a single
 // extension.
 
-export type { Line, Span, Tone } from "./render";
+export type { Activity, Line, Span, Tone } from "./render";
+
+import type { Activity } from "./render";
 
 export type ShellResult = { output: string; stdout: string; ok: boolean };
 
@@ -268,6 +270,13 @@ export type Glorious = {
   status: (render: () => string | null) => void;
   /** Draw extra rows above the status line. Return [] to show nothing. */
   footer: (render: () => Line[]) => void;
+  /**
+   * Replace the activity row — what the turn is doing, how long it has been
+   * doing it, and how to stop it. Return null to leave glorious's own. The
+   * first extension to return lines wins, so a project can override a personal
+   * one the same way it overrides a command.
+   */
+  activity: (render: (state: Activity) => Line[] | null) => void;
 };
 
 // What index.ts hands the API so it can reach the running session. Split out so
@@ -315,6 +324,7 @@ export type Registry = {
   renderers: Map<string, ToolRenderer>;
   statuses: Array<() => string | null>;
   footers: Array<() => Line[]>;
+  activities: Array<(state: Activity) => Line[] | null>;
   promptLines: string[];
   keys: KeySpec[];
   flags: Map<string, FlagSpec>;
@@ -334,6 +344,7 @@ export const createRegistry = (): Registry => ({
   renderers: new Map(),
   statuses: [],
   footers: [],
+  activities: [],
   promptLines: [],
   keys: [],
   flags: new Map(),
@@ -474,6 +485,10 @@ export const createApi = (
     footer: (render) => {
       ledger.ui += 1;
       registry.footers.push(render);
+    },
+    activity: (render) => {
+      ledger.ui += 1;
+      registry.activities.push(render);
     },
   };
 };

@@ -7,7 +7,7 @@ import {
   shortcutInvocation,
 } from "../commands";
 import { atFirstLine, atLastLine, composerKeyBindings, composerWrapMode } from "../composer";
-import { type Line, statusRow } from "../render";
+import type { Line } from "../render";
 import type { Sequence } from "../sequences";
 import type { Question } from "../tools";
 import { createChrome, fillHex, panelHex } from "./chrome";
@@ -516,8 +516,10 @@ export const createScreen = async (callbacks: {
     setFooter: painter(extra),
     // Through the same painter dedupe as everything else: nothing animates now,
     // so a tick where no number moved must cost no render at all.
-    setStatusRow: (busy: boolean, queued: number, phase?: { name: string; ms: number } | null) =>
-      paintActivity(busy ? statusRow(busy, queued, columns(), phase) : []),
+    // The lines are decided by index.ts, which gives an extension the first
+    // refusal; this only paints what it is handed.
+    setStatusRow: (lines: Line[]) => paintActivity(lines),
+    columnsNow: columns,
     setStatus: (lines: Line[]) => {
       statusRows = lines;
       showStatus();
