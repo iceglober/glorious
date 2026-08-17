@@ -1,3 +1,6 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createAzure } from "@ai-sdk/azure";
@@ -16,6 +19,7 @@ import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
 import type { Config } from "./config";
+import { providerSpec } from "./providers";
 
 export type ModelRef = {
   provider: string;
@@ -39,7 +43,43 @@ export type ModelOption = ModelRef & {
 };
 
 const catalogUrl = "https://models.dev/api.json";
-const azureEnv = ["AZURE_FOUNDRY_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY"];
+
+// The catalogue is cached to disk after a successful fetch, so context windows
+// and prices survive being offline. Without it the status line falls back to
+// `unknown` on the first flight without a network, which is the moment you are
+// least able to fix it. Refreshed whenever the fetch succeeds; never trusted
+// over a live answer.
+const cachePath = (): string =>
+  join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "glorious", "models.dev.json");
+
+const cached = async (): Promise<unknown | null> => {
+  try {
+    return JSON.parse(await readFile(cachePath(), "utf8"));
+  } catch {
+    return null;
+  }
+};
+
+const remember = async (catalog: unknown): Promise<void> => {
+  try {
+    await mkdir(dirname(cachePath()), { recursive: true });
+    await writeFile(cachePath(), JSON.stringify(catalog), "utf8");
+  } catch {}
+};
+
+// One request, then the cache. A catalogue that cannot be reached is not an
+// error — it costs pricing and context size, not the session.
+const catalogue = async (fetcher: typeof fetch): Promise<unknown | null> => {
+  try {
+    const response = await fetcher(catalogUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
+    const parsed = await response.json();
+    await remember(parsed);
+    return parsed;
+  } catch {
+    return cached();
+  }
+};
 export const modelRef = (value: string, provider = "azure"): ModelRef => {
   const slash = value.indexOf("/");
   return slash < 1
@@ -98,9 +138,10 @@ export const currentModel = (config?: Config): ModelOption => {
     ...providerSettings(ref.provider, config),
     name: model,
     variant: process.env.GLORIOUS_VARIANT ?? config?.variant,
-    // Azure answers to three names; every other provider's SDK finds its own
-    // single env var without help.
-    env: ref.provider === "azure" ? azureEnv : [],
+    // From the provider table, so every provider declares its own names rather
+    // than azure being special-cased and the rest falling through to whatever
+    // their SDK happens to read.
+    env: providerSpec(ref.provider)?.env ?? [],
     npm: ref.provider === "azure" ? "@ai-sdk/azure" : undefined,
   };
 };
@@ -111,9 +152,7 @@ export const currentModel = (config?: Config): ModelOption => {
 export const loadCatalogue = async (
   fetcher: typeof fetch = fetch,
 ): Promise<readonly ModelOption[]> => {
-  const response = await fetcher(catalogUrl, { signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
-  const catalog = (await response.json()) as Record<
+  const catalog = ((await catalogue(fetcher)) ?? {}) as Record<
     string,
     {
       models?: Record<
@@ -148,9 +187,7 @@ export const modelMetadata = async (
   model: ModelOption,
   fetcher: typeof fetch = fetch,
 ): Promise<Partial<ModelOption>> => {
-  const response = await fetcher(catalogUrl, { signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
-  const catalog = (await response.json()) as Record<
+  const catalog = ((await catalogue(fetcher)) ?? {}) as Record<
     string,
     {
       api?: string;
@@ -233,8 +270,18 @@ export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch):
       location: option.location,
       fetch: fetcher as typeof fetch,
     })(option.modelId);
-  if (option.npm === "@ai-sdk/openai-compatible") {
-    if (!option.api) throw new Error(`No API endpoint is published for ${option.provider}.`);
+  const factory = factories[option.provider];
+  // Anything without a factory of its own is an OpenAI-compatible endpoint —
+  // Ollama, LM Studio, vLLM, a gateway, a company proxy. It only needs a base
+  // URL, which is the one thing that cannot be guessed. Previously this was
+  // reachable only if models.dev happened to publish the provider, so a local
+  // server could not be used at all.
+  if (option.npm === "@ai-sdk/openai-compatible" || !factory) {
+    if (!option.api)
+      throw new Error(
+        `${option.provider} is not a built-in provider. Give it a base URL to use it as an ` +
+          `OpenAI-compatible endpoint: {"providers":{"${option.provider}":{"api":"…"}}}`,
+      );
     return createOpenAICompatible({
       name: option.provider,
       apiKey,
@@ -242,7 +289,5 @@ export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch):
       fetch: fetcher as typeof fetch,
     })(option.modelId);
   }
-  const factory = factories[option.provider];
-  if (!factory) throw new Error(`Provider ${option.provider} is not supported.`);
   return factory({ apiKey, baseURL: option.api, fetch: fetcher as typeof fetch })(option.modelId);
 };
