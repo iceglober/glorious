@@ -50,6 +50,7 @@
     "teardown-basic-chat",
     "tool-row-call",
     "tool-row-format",
+    "tool-row-oneline",
     "trim-published-tarball",
     "tui-progress-animations",
     "usage-events",
