@@ -37,6 +37,7 @@
     "multi-file-edit-and-subagents",
     "no-builtin-commands",
     "no-question-primitive",
+    "object-object",
     "own-directories-only",
     "permissions-acl",
     "picker-provider-catalog",
