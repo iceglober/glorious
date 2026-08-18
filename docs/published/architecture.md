@@ -1,3 +1,7 @@
+---
+title: Architecture
+---
+
 # Architecture
 
 The coding-agent implementation is TypeScript in `packages/glorious-coding-agent/src/`,

@@ -16,7 +16,24 @@
   "name": "glrs",
   "includeVersion": false,
   "readme": "none",
-  "projectDocuments": ["../docs/published/index.md"],
+  "projectDocuments": [
+    "../docs/published/quickstart.md",
+    "../docs/published/install.md",
+    "../docs/published/architecture.md",
+    "../docs/published/features.md",
+    "../docs/published/extensions.md",
+    "../docs/published/lifecycle.md",
+    "../docs/published/skills.md",
+    "../docs/published/commands.md",
+    "../docs/published/tools.md",
+    "../docs/published/providers.md",
+    "../docs/published/models.md",
+    "../docs/published/configuration.md",
+    "../docs/published/cli.md",
+    "../docs/published/troubleshooting.md",
+    "../docs/published/philosophy.md",
+    "../docs/published/glossary.md"
+  ],
   "sortEntryPoints": false,
   "searchInComments": true,
   "searchInDocuments": true,
@@ -48,7 +65,8 @@
   "locales": {
     "en": {
       "kind_module": "API",
-      "kind_plural_module": "API"
+      "kind_plural_module": "API",
+      "kind_type_alias": " "
     }
   }
 }

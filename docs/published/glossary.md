@@ -1,3 +1,7 @@
+---
+title: Glossary
+---
+
 # Glossary
 
 - **Agent** — the model plus tools, context, and turn loop that can inspect or change a repository.

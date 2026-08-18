@@ -10,6 +10,7 @@
   --light-color-text-aside: #6b6962;
   --light-color-link: #c43a32;
   --light-color-focus-outline: #c43a32;
+  --light-code-background: #ebe9e1;
   --dark-color-background: #f7f5ef;
   --dark-color-background-secondary: #ebe9e1;
   --dark-color-background-active: #dedbd1;
@@ -18,6 +19,7 @@
   --dark-color-text-aside: #6b6962;
   --dark-color-link: #c43a32;
   --dark-color-focus-outline: #c43a32;
+  --dark-code-background: #ebe9e1;
   --color-accent: #c43a32;
   --font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
   --code-font: var(--font-family);

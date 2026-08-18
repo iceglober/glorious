@@ -1,3 +1,7 @@
+---
+title: Using Glorious
+---
+
 # Using Glorious
 
 The built-in feature set, in one place. Kept current: if something here is

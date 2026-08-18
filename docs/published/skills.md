@@ -1,3 +1,7 @@
+---
+title: Skills
+---
+
 # Skills
 
 A skill is a directory with a `SKILL.md` in it. The frontmatter says what it is

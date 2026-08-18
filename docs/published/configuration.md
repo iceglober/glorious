@@ -1,3 +1,7 @@
+---
+title: Configuration
+---
+
 # Configuration
 
 Configuration is read-only JSON. The nearest value wins, one key at a time.
