@@ -11,6 +11,7 @@
     "api-smells",
     "arrows-and-subagent-drilldown",
     "assistant-response-marker",
+    "autocomplete-scroll-esc",
     "azure-env-credentials",
     "cli-version-update",
     "cloud-auth-connect",
