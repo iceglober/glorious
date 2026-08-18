@@ -30,6 +30,21 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun publish --dry-run --access public --tag next
+      # Before the action, deliberately. The action runs `changeset version` in
+      # this workspace, so after it package.json holds the *next* version — the
+      # one whose PR has not been merged. Publishing that would make version PRs
+      # decoration and release code nobody merged. Here, the workspace is still
+      # exactly main.
+      #
+      # This runs unconditionally because the action publishes nothing when it
+      # sees an unconsumed changeset: it opens a version PR instead. A version
+      # PR whose branch predates the newest changeset therefore merges, bumps
+      # main, and publishes nothing, stranding that version forever — which
+      # happened three times in one day. Now every push converges on "npm has
+      # what main has committed", and a skipped version is repaired by the next
+      # push instead of being rolled over and lost.
+      - name: Publish main's version if npm does not have it
+        run: bash scripts/release-publish.sh
       - uses: changesets/action@v1
         with:
           version: bunx changeset version
@@ -38,15 +53,6 @@ jobs:
           publish: bash scripts/release-publish.sh
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-      # Whatever main says its version is, npm should have it. The action only
-      # publishes when it sees no unconsumed changeset — so a version PR whose
-      # branch predates the newest changeset merges, bumps main, and publishes
-      # nothing, stranding that version forever. Running the same idempotent
-      # guard unconditionally means every push converges on "npm has what main
-      # says", and a skipped version is repaired by the next push rather than
-      # rolled over and lost.
-      - name: Publish main's version if npm does not have it
-        run: bash scripts/release-publish.sh
       # While in pre-release mode we only publish under `next`, so npm `latest`
       # goes stale and `npm i` / `bun update -g` (which follow `latest`) fetch an
       # old build. Keep `latest` pointed at the version this commit ships.
