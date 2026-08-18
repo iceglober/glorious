@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AnchorHeading } from "~/components/AnchorHeading";
 import { CodeBlock } from "~/components/CodeBlock";
-import { EditableText, useEditMode } from "~/components/EditMode";
+import { useEditMode } from "~/components/EditMode";
 import { Cmd, PkgSwitcher } from "~/components/PkgManager";
 
 export function Install() {
@@ -12,30 +12,28 @@ export function Install() {
   const pageIndex = content.navigation[sectionIndex]?.pages.findIndex(
     (page) => page.kind === "install",
   );
-  const titlePath = `navigation.${sectionIndex}.pages.${pageIndex}.label`;
+  const title = content.navigation[sectionIndex]?.pages[pageIndex ?? -1]?.label ?? "Install";
   useEffect(() => {
     document.title = "Install — glrs";
   }, []);
 
   return (
     <main className="site-main doc">
-      <h1>
-        <EditableText path={titlePath} />
-      </h1>
+      <h1>{title}</h1>
       <div className="pkg-bar install-switcher">
         <PkgSwitcher />
       </div>
       <AnchorHeading level={2} id="recommended">
-        <EditableText path="install.recommended" />
+        {content.install.recommended}
       </AnchorHeading>
       <CodeBlock copy="curl -fsSL https://glrs.dev/install.sh | bash">
         curl -fsSL https://glrs.dev/install.sh | bash
       </CodeBlock>
       <AnchorHeading level={2} id="manual">
-        <EditableText path="install.manual" />
+        {content.install.manual}
       </AnchorHeading>
       <p>
-        <EditableText path="install.requirements" />
+        {content.install.requirements}
       </p>
       <CodeBlock copy="bun add --global @glrs-dev/glorious@next">
         bun add --global @glrs-dev/glorious@next
@@ -46,7 +44,7 @@ export function Install() {
         </code>
       </pre>
       <AnchorHeading level={2} id="first-run">
-        <EditableText path="install.firstRun" />
+        {content.install.firstRun}
       </AnchorHeading>
       <pre>
         <code>
@@ -57,11 +55,11 @@ export function Install() {
       </pre>
       <p>
         <a href="/quickstart">
-          <EditableText path="install.quickstart" />
+          {content.install.quickstart}
         </a>
       </p>
       <AnchorHeading level={2} id="update">
-        <EditableText path="install.update" />
+        {content.install.update}
       </AnchorHeading>
       <pre>
         <code>
@@ -69,7 +67,7 @@ export function Install() {
         </code>
       </pre>
       <AnchorHeading level={2} id="uninstall">
-        <EditableText path="install.uninstall" />
+        {content.install.uninstall}
       </AnchorHeading>
       <pre>
         <code>

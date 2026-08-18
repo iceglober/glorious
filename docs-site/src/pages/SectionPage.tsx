@@ -1,11 +1,10 @@
 import { useEffect } from "react";
 import { Link } from "react-router";
-import { EditableText, useEditMode } from "~/components/EditMode";
+import { useEditMode } from "~/components/EditMode";
 
 export function SectionPage({ sectionKey }: { sectionKey: string }) {
   const { content } = useEditMode();
-  const sectionIndex = content.navigation.findIndex((entry) => entry.key === sectionKey);
-  const section = content.navigation[sectionIndex];
+  const section = content.navigation.find((entry) => entry.key === sectionKey);
   useEffect(() => {
     if (section) document.title = `${section.label} — glrs`;
   }, [section]);
@@ -13,20 +12,14 @@ export function SectionPage({ sectionKey }: { sectionKey: string }) {
   return (
     <main className="site-main section-page">
       <p className="eyebrow">
-        <EditableText path="brand.name" /> / <EditableText path={`navigation.${sectionIndex}.label`} />
+        {content.brand.name} / {section.label}
       </p>
-      <h1>
-        <EditableText path={`navigation.${sectionIndex}.label`} />
-      </h1>
-      <p className="section-intro">
-        <EditableText path={`navigation.${sectionIndex}.intro`} />
-      </p>
+      <h1>{section.label}</h1>
+      <p className="section-intro">{section.intro}</p>
       <div className="section-links">
-        {section.pages.map((page, pageIndex) => (
+        {section.pages.map((page) => (
           <Link key={page.slug} to={`/${page.slug}`}>
-            <strong>
-              <EditableText path={`navigation.${sectionIndex}.pages.${pageIndex}.label`} />
-            </strong>
+            <strong>{page.label}</strong>
             <span>Read the {page.label.toLowerCase()} documentation →</span>
           </Link>
         ))}

@@ -52,9 +52,9 @@ const writePath = (value: Content, path: string, text: string): Content => {
 };
 
 export function EditModeProvider({ children }: { children: ReactNode }) {
-  const editing = __GLORIOUS_EDIT__ && new URLSearchParams(window.location.search).has("edit");
+  const editing = __GLORIOUS_EDIT__;
   const [content, setContent] = useState<Content>(initial);
-  const [status, setStatus] = useState("editor ready · double-click content");
+  const [status, setStatus] = useState("editor ready · Markdown saves explicitly");
 
   const saveFiles = async (files: Array<{ file: string; content: string }>) => {
     setStatus("saving…");
@@ -135,39 +135,4 @@ export function useEditMode(): EditContextValue {
   const value = useContext(EditContext);
   if (!value) throw new Error("useEditMode must be used inside EditModeProvider");
   return value;
-}
-
-export function EditableText({ path, className }: { path: string; className?: string }) {
-  const { editing, text, change } = useEditMode();
-  const value = text(path);
-  const [active, setActive] = useState(false);
-  if (!editing) return <>{value}</>;
-  return (
-    <span
-      className={`editable-text${active ? " editing" : ""}${className ? ` ${className}` : ""}`}
-      contentEditable={active}
-      suppressContentEditableWarning
-      tabIndex={0}
-      onClick={(event) => {
-        if (active) event.stopPropagation();
-      }}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setActive(true);
-        queueMicrotask(() => event.currentTarget.focus());
-      }}
-      onBlur={(event) => {
-        if (!active) return;
-        setActive(false);
-        const next = event.currentTarget.textContent ?? "";
-        if (next !== value) change(path, next);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") event.currentTarget.blur();
-      }}
-    >
-      {value}
-    </span>
-  );
 }

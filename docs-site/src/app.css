@@ -787,6 +787,16 @@ h3:hover .heading-anchor,
     grid-template-columns: 1fr;
   }
 
+  .markdown-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .markdown-preview {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 2rem 0 0;
+  }
+
   .home {
     padding: 2rem 1rem;
   }
@@ -812,22 +822,111 @@ h3:hover .heading-anchor,
   font-size: 0.72rem;
 }
 
-.editable-text,
-.editable-document :where(h1, h2, h3, p, li, blockquote, pre, td, th) {
-  cursor: text;
+.markdown-editor {
+  display: grid;
+  grid-template-columns: minmax(20rem, 1fr) minmax(20rem, 1fr);
+  gap: clamp(1rem, 3vw, 3rem);
+  max-width: 100rem;
 }
 
-.editable-text:hover,
-.editable-document :where(h1, h2, h3, p, li, blockquote, pre, td, th):hover {
-  outline: 1px dashed color-mix(in srgb, var(--red) 55%, transparent);
-  outline-offset: 3px;
+.markdown-source {
+  min-width: 0;
 }
 
-.editable-text.editing,
-.editing-block {
-  outline: 2px solid var(--red) !important;
-  outline-offset: 3px;
-  background: color-mix(in srgb, var(--red) 5%, transparent);
+.markdown-source header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+  border-bottom: 2px solid var(--black);
+  font-size: 0.75rem;
+}
+
+.markdown-source header span {
+  overflow: hidden;
+  color: var(--gray);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markdown-source header button {
+  border: 1px solid var(--black);
+  padding: 0.3rem 0.65rem;
+  background: var(--black);
+  color: var(--white);
+  font: inherit;
+  cursor: pointer;
+}
+
+.markdown-source header button:disabled {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--gray);
+  cursor: default;
+}
+
+.markdown-source textarea {
+  width: 100%;
+  min-height: calc(100vh - 12rem);
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-top: 0;
+  padding: 1rem;
+  background: #ebe9e1;
+  color: var(--black);
+  font: 0.85rem/1.55 var(--mono);
+  tab-size: 2;
+}
+
+.markdown-preview {
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  padding-left: clamp(1rem, 3vw, 3rem);
+}
+
+.site-settings {
+  max-height: 55vh;
+  overflow: auto;
+  margin: 0.75rem 0 1.5rem;
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+  background: var(--white);
+  font-size: 0.7rem;
+}
+
+.site-settings fieldset {
+  margin-top: 1rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.site-settings legend {
+  padding-right: 0.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.site-settings label {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 0.55rem;
+  color: var(--gray);
+}
+
+.site-settings input,
+.site-settings textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  padding: 0.3rem;
+  background: var(--white);
+  color: var(--black);
+  font: inherit;
+}
+
+.settings-action {
+  margin: 0 0 1rem;
 }
 
 .editor-action {
@@ -870,16 +969,6 @@ h3:hover .heading-anchor,
 
 .add-section {
   margin-top: 1.5rem;
-}
-
-.add-paragraph {
-  grid-column: 1;
-  width: 1.65rem;
-}
-
-.add-paragraph:hover,
-.add-paragraph:focus {
-  width: 8.5rem;
 }
 
 /* Design DNA: terminal-core with a neo-brutalist editorial rhythm. */
