@@ -10,7 +10,7 @@ const isCurrentSection = (
 ) => pathname === `/${key}` || pages.some((page) => pathname === `/${page.slug}`);
 
 function SiteSettings() {
-  const { content, change } = useEditMode();
+  const { content, change, moveSection, movePage, removeSection, removePage } = useEditMode();
   return (
     <div className="site-settings">
       <label>
@@ -70,6 +70,19 @@ function SiteSettings() {
       {content.navigation.map((section, sectionIndex) => (
         <fieldset key={section.key}>
           <legend>{section.label}</legend>
+          <div className="settings-controls">
+            <button type="button" disabled={sectionIndex === 0} onClick={() => moveSection(sectionIndex, -1)}>↑</button>
+            <button
+              type="button"
+              disabled={sectionIndex === content.navigation.length - 1}
+              onClick={() => moveSection(sectionIndex, 1)}
+            >
+              ↓
+            </button>
+            <button className="danger" type="button" onClick={() => removeSection(sectionIndex)}>
+              Delete section
+            </button>
+          </div>
           <label>
             Section label
             <input
@@ -89,18 +102,33 @@ function SiteSettings() {
             />
           </label>
           {section.pages.map((page, pageIndex) => (
-            <label key={page.slug}>
-              /{page.slug}
-              <input
-                defaultValue={page.label}
-                onBlur={(event) =>
-                  change(
-                    `navigation.${sectionIndex}.pages.${pageIndex}.label`,
-                    event.currentTarget.value,
-                  )
-                }
-              />
-            </label>
+            <div className="settings-page" key={page.slug}>
+              <label>
+                /{page.slug}
+                <input
+                  defaultValue={page.label}
+                  onBlur={(event) =>
+                    change(
+                      `navigation.${sectionIndex}.pages.${pageIndex}.label`,
+                      event.currentTarget.value,
+                    )
+                  }
+                />
+              </label>
+              <div className="settings-controls">
+                <button type="button" disabled={pageIndex === 0} onClick={() => movePage(sectionIndex, pageIndex, -1)}>↑</button>
+                <button
+                  type="button"
+                  disabled={pageIndex === section.pages.length - 1}
+                  onClick={() => movePage(sectionIndex, pageIndex, 1)}
+                >
+                  ↓
+                </button>
+                <button className="danger" type="button" onClick={() => removePage(sectionIndex, pageIndex)}>
+                  Delete
+                </button>
+              </div>
+            </div>
           ))}
         </fieldset>
       ))}

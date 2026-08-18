@@ -6,7 +6,14 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 type Heading = { depth: 2 | 3; text: string; id: string; line: number };
-type TemplateOption = { value: string; label: string; description: string };
+type TemplateOption = {
+  value: string;
+  label: string;
+  description: string;
+  kind: "generated" | "asset";
+};
+type Point = { top: number; left: number };
+
 const slug = (text: string) =>
   text.toLowerCase().replace(/[`*_]/gu, "").replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "");
 const headingsOf = (md: string): Heading[] => {
@@ -27,6 +34,38 @@ const headingsOf = (md: string): Heading[] => {
       },
     ];
   });
+};
+
+const caretPoint = (input: HTMLTextAreaElement, position: number): Point => {
+  const style = getComputedStyle(input);
+  const mirror = document.createElement("div");
+  const marker = document.createElement("span");
+  const rect = input.getBoundingClientRect();
+  Object.assign(mirror.style, {
+    position: "fixed",
+    visibility: "hidden",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "break-word",
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${input.clientWidth}px`,
+    padding: style.padding,
+    border: style.border,
+    font: style.font,
+    lineHeight: style.lineHeight,
+    letterSpacing: style.letterSpacing,
+    tabSize: style.tabSize,
+  });
+  mirror.textContent = input.value.slice(0, position);
+  marker.textContent = "\u200b";
+  mirror.append(marker);
+  document.body.append(mirror);
+  const markerRect = marker.getBoundingClientRect();
+  mirror.remove();
+  return {
+    top: markerRect.bottom - rect.top - input.scrollTop,
+    left: markerRect.left - rect.left - input.scrollLeft,
+  };
 };
 
 function MdLink({ href, children }: { href?: string; children?: ReactNode }) {
@@ -60,14 +99,17 @@ function MarkdownBody({ markdown }: { markdown: string }) {
 }
 
 export function Doc({ md, title, source }: { md: string; title: string; source?: string }) {
-  const { editing, saveFile } = useEditMode();
+  const { editing, saveFile, uploadAsset } = useEditMode();
   const [draft, setDraft] = useState(md);
   const [dirty, setDirty] = useState(false);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [suggestions, setSuggestions] = useState<TemplateOption[]>([]);
   const [selected, setSelected] = useState(0);
   const [templateStart, setTemplateStart] = useState<number | null>(null);
+  const [suggestionPoint, setSuggestionPoint] = useState<Point>({ top: 0, left: 0 });
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const assetInput = useRef<HTMLInputElement>(null);
+  const base = useRef(md);
   const shown = editing && source ? draft : md;
   const headings = headingsOf(shown);
 
@@ -75,7 +117,10 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
     document.title = `${title} — glrs`;
   }, [title]);
   useEffect(() => {
-    if (!dirty) setDraft(md);
+    if (!dirty) {
+      setDraft(md);
+      base.current = md;
+    }
   }, [md, dirty]);
   useEffect(() => {
     if (!editing || !source) return;
@@ -83,7 +128,77 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
       .then((response) => response.json() as Promise<TemplateOption[]>)
       .then(setTemplates);
   }, [editing, source]);
+  useEffect(() => {
+    if (!dirty) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const followLink = (event: MouseEvent) => {
+      const link = (event.target as HTMLElement).closest("a");
+      if (link && !window.confirm("Discard unsaved Markdown changes?")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    const historyChange = () => {
+      if (!window.confirm("Discard unsaved Markdown changes?")) window.history.forward();
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("popstate", historyChange, true);
+    document.addEventListener("click", followLink, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("popstate", historyChange, true);
+      document.removeEventListener("click", followLink, true);
+    };
+  }, [dirty]);
 
+  const replaceSelection = (before: string, after = before, placeholder = "text") => {
+    const input = textarea.current;
+    if (!input) return;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const selectedText = draft.slice(start, end) || placeholder;
+    const inserted = `${before}${selectedText}${after}`;
+    const next = `${draft.slice(0, start)}${inserted}${draft.slice(end)}`;
+    setDraft(next);
+    setDirty(true);
+    const selectionStart = start + before.length;
+    queueMicrotask(() => {
+      input.focus();
+      input.setSelectionRange(selectionStart, selectionStart + selectedText.length);
+    });
+  };
+  const prefixLines = (prefix: string) => {
+    const input = textarea.current;
+    if (!input) return;
+    const start = draft.lastIndexOf("\n", input.selectionStart - 1) + 1;
+    const endAt = draft.indexOf("\n", input.selectionEnd);
+    const end = endAt < 0 ? draft.length : endAt;
+    const replacement = draft
+      .slice(start, end)
+      .split("\n")
+      .map((line) => `${prefix}${line}`)
+      .join("\n");
+    setDraft(`${draft.slice(0, start)}${replacement}${draft.slice(end)}`);
+    setDirty(true);
+    queueMicrotask(() => input.focus());
+  };
+  const insertText = (text: string) => {
+    const input = textarea.current;
+    if (!input) return;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const next = `${draft.slice(0, start)}${text}${draft.slice(end)}`;
+    const cursor = start + text.length;
+    setDraft(next);
+    setDirty(true);
+    queueMicrotask(() => {
+      input.focus();
+      input.setSelectionRange(cursor, cursor);
+    });
+  };
   const complete = (option: TemplateOption) => {
     const input = textarea.current;
     if (!input || templateStart === null) return;
@@ -97,8 +212,9 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
     queueMicrotask(() => input.setSelectionRange(nextCursor, nextCursor));
   };
   const refreshSuggestions = (value: string, cursor: number) => {
+    const input = textarea.current;
     const match = /\{\{([^}\n]*)$/u.exec(value.slice(0, cursor));
-    if (!match) {
+    if (!match || !input) {
       setSuggestions([]);
       setTemplateStart(null);
       return;
@@ -107,13 +223,18 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
     const found = templates.filter((option) => option.label.toLowerCase().includes(query));
     setTemplateStart(cursor - match[0].length);
     setSuggestions(found);
+    setSuggestionPoint(caretPoint(input, cursor));
     setSelected(0);
   };
-
   const save = async () => {
     if (!source) return;
-    await saveFile(source, `${draft.trimEnd()}\n`);
-    setDirty(false);
+    const body = `${draft.trimEnd()}\n`;
+    const outcome = await saveFile(source, body, base.current);
+    if (outcome === "saved") {
+      base.current = body;
+      setDraft(body);
+      setDirty(false);
+    }
   };
 
   if (editing && source)
@@ -127,6 +248,32 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
               {dirty ? "Save" : "Saved"}
             </button>
           </header>
+          <div className="markdown-toolbar" aria-label="Markdown formatting">
+            <button type="button" title="Heading 2" onClick={() => prefixLines("## ")}>H2</button>
+            <button type="button" title="Heading 3" onClick={() => prefixLines("### ")}>H3</button>
+            <button type="button" title="Bold (Cmd/Ctrl+B)" onClick={() => replaceSelection("**")}>B</button>
+            <button type="button" title="Italic (Cmd/Ctrl+I)" onClick={() => replaceSelection("_")}>I</button>
+            <button type="button" title="Inline code" onClick={() => replaceSelection("`")}>{"<>"}</button>
+            <button type="button" title="Link (Cmd/Ctrl+K)" onClick={() => replaceSelection("[", "](https://)")}>Link</button>
+            <button type="button" title="Bulleted list" onClick={() => prefixLines("- ")}>List</button>
+            <button type="button" title="Quote" onClick={() => prefixLines("> ")}>Quote</button>
+            <button type="button" title="Template" onClick={() => insertText("{{")}>{"{{"}</button>
+            <button type="button" title="Upload asset" onClick={() => assetInput.current?.click()}>Asset</button>
+            <input
+              ref={assetInput}
+              hidden
+              type="file"
+              onChange={(event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                if (!file) return;
+                void uploadAsset(file).then((directive) => {
+                  if (directive) insertText(directive);
+                  input.value = "";
+                });
+              }}
+            />
+          </div>
           <div className="markdown-input">
             <textarea
               ref={textarea}
@@ -141,6 +288,21 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
                 refreshSuggestions(event.currentTarget.value, event.currentTarget.selectionStart)
               }
               onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+                  event.preventDefault();
+                  replaceSelection("**");
+                  return;
+                }
+                if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "i") {
+                  event.preventDefault();
+                  replaceSelection("_");
+                  return;
+                }
+                if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+                  event.preventDefault();
+                  replaceSelection("[", "](https://)");
+                  return;
+                }
                 if (suggestions.length > 0) {
                   if (event.key === "ArrowDown") {
                     event.preventDefault();
@@ -170,7 +332,10 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
               }}
             />
             {suggestions.length > 0 && (
-              <div className="template-suggestions">
+              <div
+                className="template-suggestions"
+                style={{ top: suggestionPoint.top, left: suggestionPoint.left }}
+              >
                 {suggestions.map((option, index) => (
                   <button
                     className={index === selected ? "selected" : ""}

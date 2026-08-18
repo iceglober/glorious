@@ -859,6 +859,29 @@ h3:hover .heading-anchor,
   cursor: pointer;
 }
 
+.markdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.45rem 0;
+}
+
+.markdown-toolbar button {
+  min-width: 2rem;
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.45rem;
+  background: transparent;
+  color: var(--black);
+  font: 0.72rem var(--mono);
+  cursor: pointer;
+}
+
+.markdown-toolbar button:hover,
+.markdown-toolbar button:focus {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 .markdown-source header button:disabled {
   border-color: var(--border);
   background: transparent;
@@ -886,9 +909,8 @@ h3:hover .heading-anchor,
 .template-suggestions {
   position: absolute;
   z-index: 30;
-  top: 3rem;
-  right: 1rem;
-  left: 1rem;
+  right: auto;
+  width: min(32rem, calc(100% - 2rem));
   max-height: 16rem;
   overflow: auto;
   border: 1px solid var(--black);
@@ -968,6 +990,37 @@ h3:hover .heading-anchor,
   color: var(--gray);
 }
 
+.settings-page {
+  margin-top: 0.65rem;
+  border-left: 2px solid var(--border);
+  padding-left: 0.5rem;
+}
+
+.settings-controls {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.settings-controls button {
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.35rem;
+  background: transparent;
+  color: var(--gray);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-controls button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.settings-controls button.danger:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 .site-settings input,
 .site-settings textarea {
   width: 100%;
@@ -980,6 +1033,11 @@ h3:hover .heading-anchor,
 
 .settings-action {
   margin: 0 0 1rem;
+}
+
+.settings-action:hover,
+.settings-action:focus {
+  width: 8.5rem;
 }
 
 .editor-action {
