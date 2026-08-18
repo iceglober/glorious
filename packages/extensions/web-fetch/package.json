@@ -1,0 +1,17 @@
+{
+  "name": "@glrs-dev/glorious-web-fetch",
+  "version": "1.0.0-next.38",
+  "description": "Browser-backed web_fetch extension for glorious products.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "@glrs-dev/glorious-core": "workspace:*"
+  }
+}

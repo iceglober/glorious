@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { systemPrompt } from "../../v2/prompt";
+import { systemPrompt } from "../../packages/glorious-coding-agent/src/prompt";
 
 // Does a long context make this model worse at the same job?
 //

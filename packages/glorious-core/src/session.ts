@@ -126,6 +126,35 @@ export const saveSession = async (session: StoredSession): Promise<void> => {
   );
 };
 
+export const appendSessionEvents = async (
+  id: string,
+  events: readonly SessionEvent[],
+): Promise<void> => {
+  const session = (await listSessions()).find((entry) => entry.id === id);
+  if (!session) throw new Error(`Session not found: ${id}`);
+  session.events.push(...events);
+  session.updatedAt = new Date().toISOString();
+  await saveSession(session);
+};
+
+export const forkSession = async (id: string, atEvent?: number): Promise<Session> => {
+  const source = (await listSessions()).find((entry) => entry.id === id);
+  if (!source) throw new Error(`Session not found: ${id}`);
+  const now = new Date().toISOString();
+  const events = source.events.slice(0, atEvent ?? source.events.length);
+  const forked: StoredSession = {
+    schema: 2,
+    id: randomUUID().slice(0, 8),
+    createdAt: now,
+    updatedAt: now,
+    cwd: source.cwd,
+    events,
+    contextTokens: contextTokensOf(events),
+  };
+  await saveSession(forked);
+  return { ...forked, title: titleOf(events) };
+};
+
 export const loadPromptHistory = async (): Promise<string[]> => {
   try {
     const parsed = JSON.parse(await readFile(join(directory, promptFile), "utf8")) as unknown;
@@ -133,6 +162,24 @@ export const loadPromptHistory = async (): Promise<string[]> => {
   } catch {
     return [];
   }
+};
+
+export type SessionRepository = {
+  create: (cwd: string) => Promise<Session>;
+  load: (id: string) => Promise<Session | null>;
+  list: () => Promise<Session[]>;
+  append: (id: string, events: readonly SessionEvent[]) => Promise<void>;
+  fork: (id: string, atEvent?: number) => Promise<Session>;
+  save: (session: Session) => Promise<void>;
+};
+
+export const jsonSessionRepository: SessionRepository = {
+  create: createSession,
+  load: async (id) => (await listSessions()).find((session) => session.id === id) ?? null,
+  list: listSessions,
+  append: appendSessionEvents,
+  fork: forkSession,
+  save: saveSession,
 };
 
 export const savePromptHistory = async (prompts: string[]): Promise<void> => {

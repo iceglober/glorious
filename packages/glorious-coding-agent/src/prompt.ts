@@ -1,3 +1,6 @@
+export { PREAMBLE_TAGS } from "@glrs-dev/glorious-core/events";
+
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 export const fence = (tag: string, body: string): string =>
@@ -7,19 +10,20 @@ export const fence = (tag: string, body: string): string =>
 // a checkout or from the installed global package — `docs` ships in the npm
 // tarball, which is what makes the block below true rather than aspirational.
 //
-// Docs only. The agent is deliberately not pointed at v2/: the documented API is
+// Docs only. The agent is deliberately not pointed at implementation source: the documented API is
 // the contract it writes extensions against, and handing it the implementation
 // invites it to reach past that contract and couple to internals that are free
 // to change. tools.ts lets the read-only tools reach this directory and no
 // further.
 const here = import.meta.dir;
-export const docsPath = (): string => join(here, "..", "docs", "published");
+export const docsPath = (): string => {
+  const packaged = join(here, "..", "docs");
+  return existsSync(packaged) ? packaged : join(here, "..", "..", "..", "docs", "published");
+};
 
 // Every block the agent prepends to a user turn. events.ts strips these when
 // replaying a transcript, so a new preamble block must be named here or it will
 // show up in the session log as if the user typed it.
-export const PREAMBLE_TAGS = ["where-you-are", "skills", "extensions"] as const;
-
 export const REMINDER_OPEN = "[system-reminder]";
 export const REMINDER_CLOSE = "[/system-reminder]";
 

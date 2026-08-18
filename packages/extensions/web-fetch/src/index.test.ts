@@ -6,7 +6,7 @@ import {
   fetchPage,
   fetchPages,
   MAX_PAGES,
-} from "./web-fetch";
+} from "./index";
 
 const serve = (
   handler: (request: Request) => Response | Promise<Response>,

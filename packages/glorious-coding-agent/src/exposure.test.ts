@@ -13,6 +13,8 @@ import { join } from "node:path";
 // a structural type test would pass while the payload silently lacked it.
 
 const read = (name: string): string => readFileSync(join(import.meta.dir, name), "utf8");
+const readCore = (name: string): string =>
+  readFileSync(join(import.meta.dir, "..", "..", "glorious-core", "src", name), "utf8");
 
 const blockOf = (source: string, start: string, end = "\n    }"): string => {
   const at = source.indexOf(start);
@@ -20,7 +22,7 @@ const blockOf = (source: string, start: string, end = "\n    }"): string => {
   return source.slice(at, source.indexOf(end, at));
 };
 
-const events = read("events.ts");
+const events = readCore("events.ts");
 const api = read("extension-api.ts");
 
 describe("what the session records is what an extension can see", () => {

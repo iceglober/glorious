@@ -1,7 +1,15 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-const source = join(import.meta.dir, "..", "..", "v2", "extension-api.ts");
+const source = join(
+  import.meta.dir,
+  "..",
+  "..",
+  "packages",
+  "glorious-coding-agent",
+  "src",
+  "extension-api.ts",
+);
 const output = join(import.meta.dir, "..", "src", "generated", "extension-api.md");
 const text = await readFile(source, "utf8");
 const lines = text.split("\n");
@@ -17,7 +25,7 @@ for (let i = 0; i < lines.length; i += 1) {
 
 const markdown = `# Extension API
 
-This page is generated from [v2/extension-api.ts](https://github.com/iceglober/glorious/blob/main/v2/extension-api.ts) at docs-site build time. The exported surface is the public contract for extensions.
+This page is generated from the coding agent's extension API at docs-site build time. The exported surface is the public contract for extensions.
 
 Start with [the extension guide](/extensions), then use this page for the complete typed reference.
 

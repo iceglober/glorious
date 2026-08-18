@@ -3,7 +3,8 @@
   "version": "1.0.0-next.38",
   "private": false,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/extensions/*"
   ],
   "description": "glorious monorepo: a provider-neutral agent core and the glorious coding-agent product.",
   "license": "MIT",
@@ -15,8 +16,9 @@
   "homepage": "https://glrs.dev",
   "files": [
     "bin",
-    "v2",
-    "!v2/**/*.test.ts",
+    "packages/glorious-coding-agent/package.json",
+    "packages/glorious-coding-agent/src",
+    "!packages/glorious-coding-agent/src/**/*.test.ts",
     "docs",
     "README.md",
     "LICENSE"
@@ -31,15 +33,15 @@
   },
   "packageManager": "bun@1.3.14",
   "scripts": {
-    "dev": "bun v2/index.ts",
-    "glorious": "bun v2/index.ts",
+    "dev": "bun packages/glorious-coding-agent/src/index.ts",
+    "glorious": "bun packages/glorious-coding-agent/src/index.ts",
     "test": "bun test --timeout 60000",
     "typecheck": "tsc --noEmit",
     "typecheck:packages": "tsc --noEmit -p packages/tsconfig.json",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "check": "biome check .",
+    "check": "biome check . && bun scripts/check-boundaries.ts",
     "changeset": "changeset",
     "version:packages": "changeset version",
     "release:next": "bun publish --access public --tag next"
@@ -52,6 +54,11 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@glrs-dev/glorious-core": "1.0.0-next.38",
+    "@glrs-dev/glorious-coding-agent": "1.0.0-next.38",
+    "@glrs-dev/provider-registry": "1.0.0-next.38",
+    "@glrs-dev/glorious-builtins": "1.0.0-next.38",
+    "@glrs-dev/glorious-web-fetch": "1.0.0-next.38",
     "@ai-sdk/amazon-bedrock": "^5.0.50",
     "@ai-sdk/anthropic": "^4.0.36",
     "@ai-sdk/azure": "^4.0.11",

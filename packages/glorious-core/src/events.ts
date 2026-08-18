@@ -1,5 +1,6 @@
 import type { ModelMessage } from "ai";
-import { PREAMBLE_TAGS } from "./prompt";
+
+export const PREAMBLE_TAGS = ["where-you-are", "skills", "extensions"] as const;
 
 export type SessionEvent =
   | { type: "user"; text: string }

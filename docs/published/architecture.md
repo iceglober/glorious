@@ -1,6 +1,7 @@
 # Architecture
 
-Roughly 5,300 lines of TypeScript in `v2/`, run by Bun with no build step. The
+The coding-agent implementation is TypeScript in `packages/glorious-coding-agent/src/`,
+run by Bun with no build step. The
 public extension API is documented separately from implementation details.
 
 ## The turn loop

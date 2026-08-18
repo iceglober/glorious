@@ -1,5 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import builtins from "@glrs-dev/glorious-builtins";
+import askUser from "@glrs-dev/glorious-builtins/ask-user";
+import webFetch from "@glrs-dev/glorious-web-fetch";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import type { ToolEvent } from "./tools";
 import { agentDirectories } from "./usercommands";
@@ -57,9 +60,11 @@ const failureText = (thrown: unknown): string => {
   return /Cannot find module/u.test(thrown.message) ? "no index.ts" : thrown.message;
 };
 
-// Extensions that ship with glorious. Resolved against this file so the path is
-// right whether running from source or from the installed global package.
-export const bundledRoot = (): string => join(import.meta.dir, "bundled");
+const bundled = [
+  { name: "ask-user", origin: "@glrs-dev/glorious-builtins/ask-user", load: askUser },
+  { name: "builtins", origin: "@glrs-dev/glorious-builtins", load: builtins },
+  { name: "web-fetch", origin: "@glrs-dev/glorious-web-fetch", load: webFetch },
+];
 
 // Each extension is loaded and invoked on its own, so one that throws on import
 // or in its factory costs only itself. Bundled ones come first, and a project
@@ -74,9 +79,7 @@ export const loadExtensions = async (
   const extensions: LoadedExtension[] = [];
   const failures: ExtensionLoad["failures"] = [];
 
-  const found = (
-    await Promise.all([...extensionRoots(root), bundledRoot()].map(entryPoints))
-  ).flat();
+  const found = (await Promise.all(extensionRoots(root).map(entryPoints))).flat();
 
   for (const entry of found) {
     if (seen.has(entry.name)) continue;
@@ -93,6 +96,16 @@ export const loadExtensions = async (
       extensions.push({ name: entry.name, origin: entry.path });
     } catch (thrown) {
       failures.push({ origin: entry.path, message: failureText(thrown) });
+    }
+  }
+  for (const entry of bundled) {
+    if (seen.has(entry.name)) continue;
+    seen.add(entry.name);
+    try {
+      await entry.load(createApi(host, registry, onToolEvent, entry.origin) as never);
+      extensions.push({ name: entry.name, origin: entry.origin });
+    } catch (thrown) {
+      failures.push({ origin: entry.origin, message: failureText(thrown) });
     }
   }
   return { extensions, failures };

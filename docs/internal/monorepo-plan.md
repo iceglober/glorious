@@ -65,6 +65,16 @@ Built-in extensions are independently testable packages that depend on core:
 A built-in extension may be bundled by the coding agent, but it must remain
 usable through the same extension API as a user extension.
 
+## Implementation status
+
+- Workspace and publishable package manifests are in place.
+- The coding-agent source and tests live in `packages/glorious-coding-agent`.
+- Provider configuration, adapters, metadata, and tests live in `packages/provider-registry`.
+- Canonical events and JSON session persistence live in `packages/glorious-core`.
+- Built-in commands, `ask_user`, and `web_fetch` are independent extension packages.
+- The root package remains a compatibility distribution for the `glorious` executable.
+- Boundary checks and synchronized Changesets versioning are enforced.
+
 ## Migration phases
 
 1. **Domain artifact and contracts** — land `docs/internal/domain-model.md`,
@@ -86,11 +96,11 @@ usable through the same extension API as a user extension.
 7. **Enforce boundaries** — add dependency checks and package-level API tests so
    core cannot import product code and extensions cannot reach private modules.
 
-## Decisions to make before phase 2
+## Decisions
 
-- workspace manager and package layout (`bun` workspaces versus another tool)
-- provider registry API and the provider-neutral model port
-- session repository API, event schema ownership, and branch/fork semantics
-- the neutral UI capability interface and whether `Line[]` remains its core render primitive
-- synchronized versioning policy for core, coding agent, provider registry, and first-party extensions
-- compatibility package strategy for `@glrs-dev/glorious`
+- Bun workspaces manage the monorepo.
+- Core owns provider-neutral model ports; provider implementations live in the registry.
+- Core owns event schemas and the JSON session adapter, including fork support.
+- Core exposes neutral UI and `Line[]` contracts; hosts may omit interactive capabilities.
+- Core, coding agent, provider registry, and first-party extensions use synchronized versions.
+- `@glrs-dev/glorious` remains the compatibility distribution during the transition.

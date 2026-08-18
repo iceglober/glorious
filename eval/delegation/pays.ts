@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, stepCountIs, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { systemPrompt } from "../../v2/prompt";
+import { systemPrompt } from "../../packages/glorious-coding-agent/src/prompt";
 
 // The subagent instructions as of adbd6fa, the commit whose numbers the README
-// reports. They used to be v2/prompt.ts's craftRules export; run_subagent and
+// reports. They used to be the coding agent prompt's craftRules export; run_subagent and
 // that export were removed *because* of what this eval measured, so the text is
 // pinned here rather than imported — an arm that reads today's prompt would not
 // be re-running the same experiment.

@@ -5,10 +5,16 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./events": "./src/events.ts",
+    "./session": "./src/session.ts"
   },
   "files": [
     "src",
     "README.md"
-  ]
+  ],
+  "dependencies": {
+    "ai": "^7.0.22",
+    "zod": "^4.4.3"
+  }
 }

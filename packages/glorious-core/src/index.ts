@@ -1,8 +1,15 @@
-/** The provider-facing conversational item. Providers may refine this shape. */
-export type ModelMessage = {
-  role: "system" | "user" | "assistant" | "tool";
-  content: unknown;
-};
+import type { ModelMessage } from "ai";
+import type { z } from "zod";
+import type { SessionEvent } from "./events";
+import type { Session } from "./session";
+
+export type { ModelMessage } from "ai";
+export * from "./events";
+export * from "./session";
+
+export type Tone = "muted" | "accent" | "highlight" | "warning" | "danger";
+export type Span = { text: string; tone?: Tone; bold?: boolean; fill?: boolean };
+export type Line = Span[];
 
 export type ToolCall = {
   id: string | number;
@@ -16,15 +23,6 @@ export type ModelStep = {
   toolCalls: readonly ToolCall[];
 };
 
-export type SessionEvent =
-  | { type: "user"; text: string }
-  | { type: "assistant"; text: string }
-  | { type: "reasoning"; text: string; elapsedMs: number }
-  | { type: "tool"; call: ToolCall; phase: "start" | "end"; result?: string; ok?: boolean }
-  | { type: "usage"; input: number; output: number; cached: number; cost?: number }
-  | { type: "turn"; messages: readonly ModelMessage[] }
-  | { type: "compacted"; dropped: number; kept: number };
-
 export type Turn = {
   id: string;
   input: string;
@@ -33,27 +31,19 @@ export type Turn = {
   status: "running" | "settled" | "failed" | "aborted";
 };
 
-export type Session = {
-  id: string;
-  title: string;
-  events: readonly SessionEvent[];
-  parentId?: string;
-};
-
-export type SessionRepository = {
-  create: (title?: string) => Promise<Session>;
-  load: (id: string) => Promise<Session | null>;
-  append: (id: string, events: readonly SessionEvent[]) => Promise<void>;
-  fork: (id: string, atEvent?: number) => Promise<Session>;
-};
-
-export type ToolSpec<Input = unknown, Result = unknown> = {
+export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   name: string;
   description: string;
-  inputSchema: unknown;
-  execute?: (input: Input, signal?: AbortSignal) => Result | Promise<Result>;
-  renderCall?: (input: Input) => unknown;
-  renderResult?: (result: Result, ok: boolean) => unknown;
+  input: Schema;
+  execute: (input: z.infer<Schema>, signal: AbortSignal | undefined) => string | Promise<string>;
+  renderCall?: (input: z.infer<Schema>) => Line[];
+  renderResult?: (result: string, ok: boolean) => Line[];
+};
+
+export type Key = { key: string; ctrl: boolean; shift: boolean; text: string };
+export type Capture = {
+  render: (columns: number) => Line[];
+  onKey: (key: Key) => void;
 };
 
 export type CommandSpec = {
@@ -64,22 +54,63 @@ export type CommandSpec = {
 export type UiHost = {
   print?: (content: unknown) => void;
   ask?: (questions: readonly unknown[]) => Promise<string>;
-  capture?: (spec: unknown) => { close: () => void };
+  capture: (spec: Capture) => { close: () => void; repaint: () => void };
   status?: (render: () => string | null) => void;
   footer?: (render: () => unknown) => void;
   activity?: (render: (state: unknown) => unknown) => void;
 };
 
-export type ExtensionContext = {
-  root: string;
-  mode: "interactive" | "headless";
-  ui?: UiHost;
-  tool: (spec: ToolSpec) => void;
-  command: (name: string, spec: CommandSpec) => void;
-  on: (event: string, handler: (payload: unknown) => unknown) => void;
+export type SkillSummary = {
+  name: string;
+  command: string;
+  description: string;
+  location: string;
+  modelInvocable: boolean;
 };
 
-export type Extension = (context: ExtensionContext) => void | Promise<void>;
+export type LoadedExtension = { name: string; origin: string; contributed: string };
+export type Compaction =
+  | { outcome: "compacted"; dropped: number; kept: number }
+  | { outcome: "too-short" | "busy" }
+  | { outcome: "failed"; error: string };
+export type Usage = {
+  tokens: number | null;
+  context?: number;
+  total: { input: number; output: number; cached: number; cost: number; steps: number };
+};
+
+export type ExtensionContext = {
+  root: string;
+  mode: "tui" | "print";
+  hasUI: boolean;
+  z: typeof z;
+  ui: UiHost;
+  tool: <Schema extends z.ZodType>(spec: ToolSpec<Schema>) => void;
+  command: (name: string, spec: CommandSpec) => void;
+  on: (event: string, handler: (payload: unknown) => unknown) => void;
+  exec: (
+    command: string,
+    args?: readonly string[],
+  ) => Promise<{ output: string; stdout: string; ok: boolean }>;
+  send: (text: string, options?: { label?: string; steer?: boolean }) => void;
+  print: (content: string | Line[], tone?: Tone) => void;
+  columns: () => number;
+  clip: (text: string, limit: number) => string;
+  inspect: () => {
+    commands: readonly { name: string; description: string }[];
+    skills: readonly SkillSummary[];
+    extensions: readonly LoadedExtension[];
+  };
+  clear: () => "cleared" | "busy" | "empty";
+  compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
+  reload: () => Promise<void>;
+  usage: () => Usage;
+  session: () => { id: string; file: string; title: string; events: number };
+  prompt: (text: string) => void;
+};
+
+export type Glorious = ExtensionContext;
+export type Extension = (context: Glorious) => void | Promise<void>;
 
 export type ModelProvider = {
   id: string;
@@ -91,5 +122,13 @@ export type AgentCore = {
   runTurn: (input: string) => Promise<Turn>;
   reloadExtensions: () => Promise<void>;
 };
+
+export type AgentCoreOptions = AgentCore;
+
+export const createAgentCore = (options: AgentCoreOptions): AgentCore => ({
+  session: options.session,
+  runTurn: options.runTurn,
+  reloadExtensions: options.reloadExtensions,
+});
 
 export type { Extension as ExtensionFactory };

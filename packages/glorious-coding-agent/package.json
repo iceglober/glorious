@@ -4,11 +4,28 @@
   "description": "Terminal coding-agent product built on glorious-core.",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "glorious": "bin/glorious"
+  },
+  "exports": {
+    ".": "./src/sdk.ts"
+  },
+  "scripts": {
+    "prepack": "bun scripts/sync-docs.ts"
+  },
   "dependencies": {
     "@glrs-dev/glorious-core": "workspace:*",
-    "@glrs-dev/provider-registry": "workspace:*"
+    "@glrs-dev/provider-registry": "workspace:*",
+    "@glrs-dev/glorious-builtins": "workspace:*",
+    "@glrs-dev/glorious-web-fetch": "workspace:*",
+    "@opentui/core": "0.4.5",
+    "@vscode/ripgrep": "^1.18.0",
+    "ai": "^7.0.22",
+    "zod": "^4.4.3"
   },
   "files": [
+    "bin",
+    "docs",
     "src",
     "README.md"
   ]

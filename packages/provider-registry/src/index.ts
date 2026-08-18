@@ -1,5 +1,9 @@
 import type { ModelProvider } from "@glrs-dev/glorious-core";
 
+export * from "./config";
+export * from "./models";
+export * from "./providers";
+
 export type CredentialSpec = {
   provider: string;
   environment: readonly string[];

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { SessionEvent } from "@glrs-dev/glorious-core/events";
 import type { ModelMessage } from "ai";
 import type { Agent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
-import type { SessionEvent } from "./events";
 import { REMINDER_CLOSE, REMINDER_OPEN } from "./prompt";
 import type { ToolEvent } from "./tools";
 

@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { currentModel, loadConfig, modelMetadata } from "@glrs-dev/provider-registry";
 import { createAgent } from "./agent";
-import { loadConfig } from "./config";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { expandMentions } from "./mentions";
-import { currentModel, modelMetadata } from "./models";
 import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
 import { loadSkills } from "./skills";
 import { firstDetail, resultSummary, runShell, setToolGate, type ToolEvent } from "./tools";

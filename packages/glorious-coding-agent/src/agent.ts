@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
+import { createModel, type ModelOption, modelCost } from "@glrs-dev/provider-registry";
 import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
-import { createModel, type ModelOption, modelCost } from "./models";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { createTools, type ToolEvent } from "./tools";
 

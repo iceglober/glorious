@@ -1,4 +1,4 @@
-import type { Glorious, Key, Line } from "../extension-api";
+import type { Glorious, Key, Line } from "@glrs-dev/glorious-core";
 
 export default function askUser(g: Glorious): void {
   if (!g.hasUI) return;

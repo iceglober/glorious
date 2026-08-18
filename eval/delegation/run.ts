@@ -116,7 +116,7 @@ const run = async (arm: string, instructions: string): Promise<Run> => {
 };
 
 const before = await Bun.file(join(here, "before.txt")).text();
-const { systemPrompt } = await import("../../v2/prompt");
+const { systemPrompt } = await import("../../packages/glorious-coding-agent/src/prompt");
 const after = systemPrompt({ rules: "" });
 
 const rows: Run[] = [];
