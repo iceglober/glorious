@@ -1,5 +1,47 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.44
+
+### Minor Changes
+
+- acb18c5: Every extension API member is tested, and every lifecycle event fires in both hosts.
+
+  Nineteen of the API's forty members had never been named in a test. That is how
+  `before_request` came to fire in the TUI and silently do nothing under `-p` — an
+  extension injecting per-turn context worked interactively and was inert
+  headlessly, which is the mode the agent uses to check its own work, so the gap
+  concealed itself.
+
+  **Five events now fire in print mode that did not:** `before_request`,
+  `message`, `reasoning`, `error` and `session_end`. `input`, `user_bash`,
+  `model_select` and `compact` remain TUI-only, and a test names each one with the
+  reason.
+
+  **Two guards keep it that way.** A Proxy records every member the tests touch,
+  so adding an API member without testing it fails the build rather than shipping
+  untested. A parity test asserts every event fires in both hosts unless it is on
+  the exceptions list, and that the list contains no stale names. Both were
+  verified to fail against the code they were written to catch.
+
+- 2639f73: A dropped stream is re-sent instead of killing the turn.
+
+  `the connection to the model dropped mid-response` ended the turn and discarded
+  everything in it — in one observed case, eleven completed tool calls. The retry
+  that already existed could not help: `fetchWithDeadline` retries while the
+  request is being _made_, and a mid-response drop happens long after `fetch()`
+  resolved, while the body is being read. Nothing was watching that.
+
+  The stream is now re-sent, up to three attempts with a widening pause, **exactly
+  while the attempt is unobservable** — no text written, nothing thought aloud, no
+  tool run. Then re-sending is invisible and safe. Once anything has been
+  produced, a re-send would duplicate it or run a tool twice, so the failure
+  surfaces as before and the reminder tells the model it was interrupted.
+
+  The decision is one predicate, `shouldResend`, tested for each way it can go:
+  nothing produced, something produced, Esc pressed, attempts exhausted, and a
+  failure that is a refusal rather than a drop. A retry announces itself in both
+  the TUI and `-p` rather than looking like a stall.
+
 ## 1.0.0-next.43
 
 ### Minor Changes
