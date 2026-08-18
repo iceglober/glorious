@@ -41,6 +41,7 @@
     "plan-build-and-models",
     "quiet-status-footer",
     "reasoning-store-false",
+    "reload-extensions",
     "remove-ansi-renderer",
     "remove-completion-grounding",
     "retry-dropped-connections",
