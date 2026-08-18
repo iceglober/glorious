@@ -7,7 +7,7 @@
   "scripts": {
     "generate": "bun scripts/generate-api.ts",
     "dev": "bun run generate && vite",
-    "edit": "bun install && bun run generate && GLORIOUS_EDIT=1 vite --host 127.0.0.1 --open '/?edit=1'",
+    "edit": "bun install && bun run generate && bun scripts/edit.ts",
     "build": "bun run generate && vite build",
     "preview": "vite preview",
     "pretypecheck": "bun run generate",

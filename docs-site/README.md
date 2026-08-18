@@ -9,7 +9,7 @@ pnpm --filter docs-site edit
 ```
 
 This installs the docs-site dependencies, starts the local site, and opens edit
-mode in the browser. Published documentation and site chrome are editable in
+mode in the browser at `http://127.0.0.1:4174/?edit=1`. Published documentation and site chrome are editable in
 place. Leaving an edited region saves its source file directly into the working
 tree so the result can be reviewed with `git diff` and committed normally.
 
