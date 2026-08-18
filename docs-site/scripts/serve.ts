@@ -15,8 +15,11 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     const requested = normalize(url.pathname).replace(/^\/+/, "");
-    const path = join(root, requested === "" ? "index.html" : requested);
-    const file = Bun.file(path);
+    const direct = join(root, requested === "" ? "index.html" : requested);
+    const nested = join(direct, "index.html");
+    const path = requested === "" || !url.pathname.endsWith("/") ? direct : nested;
+    let file = Bun.file(path);
+    if (!(await file.exists()) && !url.pathname.includes(".")) file = Bun.file(nested);
     if (!(await file.exists())) return new Response("Not found", { status: 404 });
     const extension = path.slice(path.lastIndexOf("."));
     return new Response(file, { headers: { "Content-Type": types[extension] ?? file.type } });

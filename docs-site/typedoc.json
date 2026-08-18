@@ -11,7 +11,7 @@
   "out": "./dist",
   "plugin": ["./theme/index.ts"],
   "theme": "glrs",
-  "router": "structure",
+  "router": "structure-dir",
   "customCss": "./theme/glrs.css",
   "name": "glrs",
   "includeVersion": false,
