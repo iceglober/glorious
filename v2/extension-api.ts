@@ -1,4 +1,4 @@
-import type { ToolSet } from "ai";
+import type { ModelMessage, ToolSet } from "ai";
 import { z } from "zod";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
@@ -44,7 +44,10 @@ export type EventName =
   | "usage"
   | "reasoning"
   | "error"
-  | "compact";
+  | "compact"
+  | "context"
+  | "before_provider_request"
+  | "after_provider_response";
 
 export type EventPayload = {
   session_start: { root: string };
@@ -94,15 +97,52 @@ export type EventPayload = {
   error: { message: string };
   // The conversation was summarised to stay inside the context limit.
   compact: { dropped: number; kept: number; automatic: boolean };
+  // Every message about to be sent, before each model call. Returning an array
+  // replaces what is sent for that call only — the stored conversation is
+  // untouched, so filtering or reordering here never rewrites history.
+  //
+  // `before_request` appends a string to the turn's message; this replaces the
+  // whole list, which is what redaction, windowing and message-level rewriting
+  // need and appending cannot do.
+  context: { messages: readonly ModelMessage[]; step: number };
+  // The HTTP request to the provider, before it is sent. Returning headers
+  // merges them; returning a body replaces it outright. A gateway, a signing
+  // proxy, per-request auth and request logging all live here.
+  before_provider_request: {
+    url: string;
+    headers: Readonly<Record<string, string>>;
+    body: unknown;
+  };
+  // The provider's response, before its body is read. Observational: status and
+  // headers are what rate-limit budgets and request ids arrive in.
+  after_provider_response: {
+    url: string;
+    status: number;
+    headers: Readonly<Record<string, string>>;
+  };
 };
 
 // undefined rather than void, so the union is unambiguous: a handler that
 // returns nothing leaves the payload alone.
-export type HandlerVerdict = undefined | string | false;
+// What a handler may return, per event. Most return nothing; the ones that can
+// change what happens say so in their own type rather than every handler
+// sharing one loose `string | false`.
+export type Verdict = {
+  input: string | false;
+  tool_call: string | false;
+  tool_end: string;
+  before_request: string;
+  context: readonly ModelMessage[];
+  before_provider_request: { headers?: Record<string, string>; body?: unknown };
+};
+
+export type HandlerVerdict<E extends EventName = EventName> =
+  | undefined
+  | (E extends keyof Verdict ? Verdict[E] : never);
 
 export type Handler<E extends EventName> = (
   payload: EventPayload[E],
-) => HandlerVerdict | Promise<HandlerVerdict>;
+) => HandlerVerdict<E> | Promise<HandlerVerdict<E>>;
 
 export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   name: string;
@@ -496,7 +536,9 @@ export const createApi = (
     on: (event, handler) => {
       ledger.hooks += 1;
       const bucket = registry.handlers.get(event) ?? [];
-      bucket.push(handler as Handler<EventName>);
+      // The registry stores handlers for every event together; each one is
+      // typed to its own event, which no single element type can express.
+      bucket.push(handler as unknown as Handler<EventName>);
       registry.handlers.set(event, bucket);
     },
     key: (spec) => {
@@ -586,13 +628,15 @@ export const fire = async <E extends EventName>(
   event: E,
   payload: EventPayload[E],
   onFailure: (message: string) => void,
-): Promise<string | false | undefined> => {
-  let replaced: string | undefined;
+): Promise<HandlerVerdict<E>> => {
+  let replaced: HandlerVerdict<E>;
   for (const handler of registry.handlers.get(event) ?? []) {
     try {
-      const said = await handler(payload);
-      if (said === false) return false;
-      if (typeof said === "string") replaced = said;
+      const said = await (handler as unknown as Handler<E>)(payload);
+      // `false` is a refusal and ends the matter — no later handler can undo
+      // another's block.
+      if (said === false) return said as HandlerVerdict<E>;
+      if (said !== undefined) replaced = said as HandlerVerdict<E>;
     } catch (thrown) {
       onFailure(`${event} handler failed: ${thrown instanceof Error ? thrown.message : thrown}`);
     }

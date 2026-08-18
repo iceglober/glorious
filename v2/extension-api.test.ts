@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createApi, createRegistry, type ExtensionHost, type Glorious } from "./extension-api";
+import {
+  createApi,
+  createRegistry,
+  type ExtensionHost,
+  fire,
+  type Glorious,
+} from "./extension-api";
 
 // The extension API is glorious's product surface: the core registers no tools
 // and no commands of its own, so every capability anyone has runs through here.
@@ -303,5 +309,113 @@ describe("every event fires in both hosts", () => {
 
   test("the exceptions are real event names, not stale ones", () => {
     expect(Object.keys(TUI_ONLY).filter((event) => !names().includes(event))).toEqual([]);
+  });
+});
+
+// `before_request` appends a string to the turn's message. That is the whole of
+// what it can do, so redaction, windowing and message-level rewriting were out
+// of reach — and nothing could see the HTTP request at all, which is the layer
+// a gateway, a signing proxy or a request log needs.
+describe("the request pipeline is interceptable", () => {
+  const say = <E extends "context" | "before_provider_request" | "after_provider_response">(
+    event: E,
+    handler: Parameters<Glorious["on"]>[1],
+  ) => {
+    const { g, registry } = harness();
+    g.on(event as never, handler as never);
+    return registry;
+  };
+
+  test("context replaces what is sent, and is given the step", async () => {
+    const seen: number[] = [];
+    const registry = say("context", (payload) => {
+      seen.push((payload as { step: number }).step);
+      return [{ role: "user", content: "instead" }] as never;
+    });
+    const said = await fire(
+      registry,
+      "context",
+      { messages: [{ role: "user", content: "original" }], step: 2 },
+      () => {},
+    );
+    expect(said).toEqual([{ role: "user", content: "instead" }]);
+    expect(seen).toEqual([2]);
+  });
+
+  test("a context handler that returns nothing leaves the messages alone", async () => {
+    const registry = say("context", () => undefined);
+    expect(await fire(registry, "context", { messages: [], step: 1 }, () => {})).toBeUndefined();
+  });
+
+  test("a request handler can add headers and replace the body", async () => {
+    const registry = say("before_provider_request", () => ({
+      headers: { authorization: "Bearer x" },
+      body: { replaced: true },
+    }));
+    expect(
+      await fire(
+        registry,
+        "before_provider_request",
+        { url: "https://p/x", headers: {}, body: { original: true } },
+        () => {},
+      ),
+    ).toEqual({ headers: { authorization: "Bearer x" }, body: { replaced: true } });
+  });
+
+  test("a response handler sees the status and headers", async () => {
+    const seen: number[] = [];
+    const registry = say("after_provider_response", (payload) => {
+      seen.push((payload as { status: number }).status);
+      return undefined;
+    });
+    await fire(
+      registry,
+      "after_provider_response",
+      { url: "https://p/x", status: 429, headers: { "retry-after": "3" } },
+      () => {},
+    );
+    expect(seen).toEqual([429]);
+  });
+
+  // A handler that throws must not take the request with it.
+  test("a failing handler is reported and the request still goes", async () => {
+    const failures: string[] = [];
+    const registry = say("before_provider_request", () => {
+      throw new Error("nope");
+    });
+    const said = await fire(
+      registry,
+      "before_provider_request",
+      { url: "https://p/x", headers: {}, body: {} },
+      (message) => failures.push(message),
+    );
+    expect(said).toBeUndefined();
+    expect(failures[0]).toContain("nope");
+  });
+});
+
+// docs/published/lifecycle.md is the page the model is pointed at to learn what
+// it can hook. A page that lists an event glorious does not have, or omits one
+// it does, is worse than no page.
+describe("the lifecycle page matches the code", () => {
+  const page = (): string =>
+    readFileSync(join(here, "..", "docs", "published", "lifecycle.md"), "utf8");
+
+  const eventNames = (): string[] => {
+    const source = readFileSync(join(here, "extension-api.ts"), "utf8");
+    const block = source.slice(source.indexOf("export type EventName ="));
+    return [...block.slice(0, block.indexOf(";")).matchAll(/"([a-z_]+)"/gu)].map((m) => m[1]);
+  };
+
+  test("every event is on the page", () => {
+    const text = page();
+    expect(eventNames().filter((event) => !text.includes(event))).toEqual([]);
+  });
+
+  test("the page invents no events", () => {
+    const known = new Set(eventNames());
+    const listed = [...page().matchAll(/^\| `([a-z_]+)` \|/gmu)].map((m) => m[1]);
+    expect(listed.filter((event) => !known.has(event))).toEqual([]);
+    expect(listed.length).toBe(known.size);
   });
 });

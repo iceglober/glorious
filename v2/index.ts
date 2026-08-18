@@ -324,6 +324,17 @@ const main = async (): Promise<void> => {
       return registry.tools;
     },
     extensionPrompt: () => registry.promptLines,
+    onContext: async (messages, step) => {
+      const said = await fire(registry, "context", { messages, step }, onExtensionFailure);
+      return Array.isArray(said) ? said : undefined;
+    },
+    onRequest: async (request) => {
+      const said = await fire(registry, "before_provider_request", request, onExtensionFailure);
+      return said && typeof said === "object" && !Array.isArray(said) ? said : undefined;
+    },
+    onResponse: (response) => {
+      void fire(registry, "after_provider_response", response, onExtensionFailure);
+    },
   });
 
   const record = (event: SessionEvent): void => {
