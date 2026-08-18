@@ -1,5 +1,23 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.50
+
+### Minor Changes
+
+- c89147e: Bundle the new internal monorepo package boundaries into the existing `@glrs-dev/glorious` distribution.
+- 034891b: Remove the sequence workflow, `$name` shortcuts, sequence discovery, and sequence references from the runtime and documentation. Reusable behavior belongs in commands or extensions.
+
+### Patch Changes
+
+- 3a57e0f: Refine the docs site around a terminal-core design system with stronger hierarchy, composition, navigation, and readable documentation outlines.
+- fb3bb30: Improve docs navigation with section landing pages, side navigation, on-page outlines, stronger visual hierarchy, and a separated footer.
+- 6f9a58c: Fix documentation outline navigation by deriving stable heading IDs from Markdown source positions.
+- 39fc19e: Standardize documentation page titles and add visible anchor links to headings across the docs site.
+- 39dcea3: Keep heading anchors on section headings only, with consistent whitespace and framework-level rendering.
+- 2475b5c: Fix documentation page outlines so selecting a heading reliably updates the URL and scrolls to the section.
+- 3a5a521: Keep installation details on the Install page, add the package-manager switcher directly beneath its heading, and document the planned core/coding-agent monorepo split.
+- a22eaab: Move all documentation navigation into the persistent sidebar and remove the top navigation links.
+
 ## 1.0.0-next.49
 
 ### Minor Changes
