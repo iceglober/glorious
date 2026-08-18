@@ -1,7 +1,7 @@
 # Lifecycle
 
-Every event an extension can subscribe to, in the order it fires. Names in
-**bold** can change what happens next; the rest are notifications.
+Every event an extension can subscribe to, in the order it fires. A `◆` marks an
+event that can change what happens next; the rest are notifications.
 
 Both hosts fire everything here except four events that have no meaning without
 a composer — `input`, `user_bash`, `model_select` and `compact`. A test enforces
@@ -21,17 +21,17 @@ sequenceDiagram
     G->>X: session_start { root }
 
     You->>G: type a prompt
-    G->>X: **input** { text }
+    G->>X: ◆ input { text }
     Note right of X: a string replaces it · false swallows it
-    G->>X: **turn_start** { text }
+    G->>X: ◆ turn_start { text }
     Note right of X: false cancels the turn
-    G->>X: **before_request** { prompt, messages }
+    G->>X: ◆ before_request { prompt, messages }
     Note right of X: a string is appended to this turn's message
 
     loop one pass per model call
-        G->>X: **context** { messages, step }
+        G->>X: ◆ context { messages, step }
         Note right of X: an array replaces what is sent — history is untouched
-        G->>X: **before_provider_request** { url, headers, body }
+        G->>X: ◆ before_provider_request { url, headers, body }
         Note right of X: headers merge · a body replaces
         G->>M: HTTP request
         M-->>G: status + headers
@@ -41,10 +41,10 @@ sequenceDiagram
         G->>X: reasoning { text, elapsedMs }
 
         opt the model calls a tool
-            G->>X: **tool_call** { name, input }
+            G->>X: ◆ tool_call { name, input }
             Note right of X: false or a string blocks it, and the model is told why
             G->>X: tool_start { name, input }
-            G->>X: **tool_end** { name, input, ok, result, … }
+            G->>X: ◆ tool_end { name, input, ok, result, … }
             Note right of X: a string replaces what the model is told
         end
 
