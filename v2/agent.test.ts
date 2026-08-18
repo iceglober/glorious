@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { providerOptions, settleQuietly, worthRetrying } from "./agent";
+import { providerOptions, settleQuietly, shouldResend, worthRetrying } from "./agent";
 import { errorText } from "./render";
 
 describe("settleQuietly", () => {
@@ -155,5 +155,80 @@ describe("what the user is told when the connection drops", () => {
 
   test("an ordinary message is passed through untouched", () => {
     expect(errorText(new Error("old_string not found"))).toBe("old_string not found");
+  });
+});
+
+// Reported from a live session, twice in a row: a long turn died with "the
+// connection to the model dropped mid-response" after eleven tool calls, and
+// every one of them was thrown away. The existing retry could not see it —
+// fetchWithDeadline retries while the request is being made, and a mid-response
+// drop happens long after fetch() resolved, while the body is being read.
+describe("a dropped stream", () => {
+  const dropped = (): Error => {
+    const failure = new Error("The socket connection was closed unexpectedly");
+    (failure as Error & { code?: string }).code = "ECONNRESET";
+    return failure;
+  };
+
+  test("a drop before anything is produced is worth re-sending", () => {
+    expect(worthRetrying(dropped())).toBe(true);
+  });
+
+  test("a refusal is not", () => {
+    expect(worthRetrying(new Error("401 Unauthorized"))).toBe(false);
+  });
+
+  test("a name that does not resolve is not retried; a lookup that failed is", () => {
+    const gone = new Error("getaddrinfo ENOTFOUND");
+    (gone as Error & { code?: string }).code = "ENOTFOUND";
+    expect(worthRetrying(gone)).toBe(false);
+    const flaky = new Error("getaddrinfo EAI_AGAIN");
+    (flaky as Error & { code?: string }).code = "EAI_AGAIN";
+    expect(worthRetrying(flaky)).toBe(true);
+  });
+
+  // The rule the retry turns on: re-sending is safe exactly while the attempt
+  // is unobservable. A tool call has side effects, so once one has run the turn
+  // cannot start over.
+  test("the message names what the user should do when it cannot be re-sent", () => {
+    expect(errorText(dropped())).toContain("continue");
+  });
+});
+
+describe("when a dropped stream may be sent again", () => {
+  const dropped = () => {
+    const failure = new Error("The socket connection was closed unexpectedly");
+    (failure as Error & { code?: string }).code = "ECONNRESET";
+    return failure;
+  };
+  const state = (over: Partial<Parameters<typeof shouldResend>[0]> = {}) => ({
+    produced: false,
+    aborted: false,
+    attempt: 1,
+    attempts: 3,
+    failure: dropped(),
+    ...over,
+  });
+
+  test("nothing was shown yet, so it can simply happen again", () => {
+    expect(shouldResend(state())).toBe(true);
+  });
+
+  // A tool call has side effects. Re-sending would run it twice.
+  test("once anything has been produced, the turn cannot start over", () => {
+    expect(shouldResend(state({ produced: true }))).toBe(false);
+  });
+
+  test("Esc means stop, not try harder", () => {
+    expect(shouldResend(state({ aborted: true }))).toBe(false);
+  });
+
+  test("it gives up rather than retrying forever", () => {
+    expect(shouldResend(state({ attempt: 3 }))).toBe(true);
+    expect(shouldResend(state({ attempt: 4 }))).toBe(false);
+  });
+
+  test("a refusal is not a dropped connection", () => {
+    expect(shouldResend(state({ failure: new Error("401 Unauthorized") }))).toBe(false);
   });
 });

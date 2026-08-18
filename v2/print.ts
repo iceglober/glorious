@@ -282,6 +282,7 @@ export const runPrint = async (
         void fire(registry, "reasoning", { text, elapsedMs }, note);
       },
       onPhase: () => {},
+      onRetry: (attempt, why) => note(`[retry ${attempt + 1}] connection dropped: ${why}`),
     });
     // A turn that ends on a tool call still closes its run, or the last thing
     // the agent did would be the one thing with no receipt.

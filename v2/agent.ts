@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "./models";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
+import { errorText } from "./render";
 import { createTools, type ToolEvent } from "./tools";
 
 const STEP_LIMIT = 100;
@@ -34,10 +35,29 @@ const RETRY_CODES = new Set([
 
 const CACHE_KEY_CHARS = 32;
 
+// How many times a dropped stream is re-sent before the turn gives up.
+const STREAM_ATTEMPTS = 3;
+
 // The parts of a model call worth naming while it is in flight. One list:
 // index.ts and chat.ts each carried their own copy, and adding a phase to
 // one of them was a type error in the other.
 export type TurnPhase = "sending" | "waiting" | "thinking" | "writing";
+
+// Whether a dropped stream can be sent again. Re-sending is safe exactly while
+// the attempt is unobservable: nothing written, nothing thought aloud, no tool
+// run. A tool call has side effects, so once one has happened the turn cannot
+// start over and the failure has to surface.
+export const shouldResend = (state: {
+  produced: boolean;
+  aborted: boolean;
+  attempt: number;
+  attempts: number;
+  failure: unknown;
+}): boolean =>
+  !state.produced &&
+  !state.aborted &&
+  state.attempt <= state.attempts &&
+  worthRetrying(state.failure);
 
 export const worthRetrying = (failure: unknown): boolean => {
   if (failure instanceof TypeError) return true;
@@ -217,6 +237,10 @@ export const createAgent = (setup: Setup) => {
         onReasoningEnd: (reasoning: { text: string; elapsedMs: number }) => void;
         // which part of the model call is in flight, so the wave can say so
         onPhase: (name: TurnPhase | null) => void;
+        // a dropped stream is being re-sent. Announced rather than silent: a
+        // turn that pauses for several seconds and then starts over should say
+        // why it did.
+        onRetry?: (attempt: number, why: string) => void;
       },
     ) => {
       // What extensions contribute rides in the per-turn message, not the
@@ -239,80 +263,120 @@ export const createAgent = (setup: Setup) => {
             .join("\n\n"),
         },
       ];
-      // streamText returns synchronously; its promises settle once the stream
-      // below is drained.
-      turn.onPhase("sending");
-      const result = streamText({
-        ...settings(),
-        tools: toolsFor(turn.onTool),
-        messages: sent,
-        abortSignal: turn.signal,
-        // The SDK's default is console.error, which writes a raw stack over the
-        // alternate screen. The failure still travels: it arrives as an error
-        // part and the loop below throws it.
-        onError: () => {},
-        // the request is away; nothing has come back yet
-        onLanguageModelCallStart: () => turn.onPhase("waiting"),
-        onLanguageModelCallEnd: ({ content, usage }) => {
-          observed = usage?.inputTokens ?? observed;
-          turn.onStep({
-            text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
-            contextTokens: observed,
-            cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
-            outputTokens: usage?.outputTokens ?? 0,
-            cost: modelCost(setup.model, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
+      // A dropped stream is not the same failure as a refused request, and the
+      // retry above cannot see it: fetchWithDeadline retries while the request
+      // is being made, and a mid-response drop happens long after fetch()
+      // resolved, while the body is being read. So a connection that died four
+      // tool calls into a long turn threw away the whole turn.
+      //
+      // Re-sending is safe exactly when nothing has reached the user yet: no
+      // text, no reasoning, no tool call. Then the attempt is unobservable and
+      // can simply happen again. Once anything has been produced, re-sending
+      // would duplicate it — that case still surfaces, and the reminder tells
+      // the model it was interrupted.
+      let attempt = 0;
+      while (true) {
+        attempt += 1;
+        let produced = false;
+        try {
+          return await once(() => {
+            produced = true;
           });
-        },
-      });
-      // A stream error makes the loop below throw, and these three would then be
-      // left rejected with nobody listening — Bun prints each stack straight to
-      // stderr, on top of the alternate screen. Subscribe before iterating; the
-      // throw is what reports the failure.
-      const settled = {
-        text: settleQuietly(result.text, ""),
-        messages: settleQuietly(result.responseMessages, []),
-        steps: settleQuietly(result.steps, []),
-      };
-      let reasoning = "";
-      let reasoningSince = 0;
-      for await (const part of result.fullStream) {
-        // streamText forwards failures into the stream instead of throwing, so
-        // without this a failed turn would look like an empty one.
-        if (part.type === "error") throw part.error;
-        if (part.type === "text-delta") {
-          turn.onPhase("writing");
-          turn.onDelta({ kind: "text", text: part.text });
-          continue;
-        }
-        if (part.type === "reasoning-start") {
-          reasoning = "";
-          reasoningSince = Date.now();
-          continue;
-        }
-        if (part.type === "reasoning-delta") {
-          turn.onPhase("thinking");
-          reasoning += part.text;
-          turn.onDelta({ kind: "reasoning", text: part.text });
-          continue;
-        }
-        // between steps the model call is done and tools may run; their own rows
-        // report that, so the phase stands down rather than restating it
-        if (part.type === "finish-step") turn.onPhase(null);
-        if (part.type === "reasoning-end" && reasoning.trim() !== "") {
-          turn.onReasoningEnd({ text: reasoning, elapsedMs: Date.now() - reasoningSince });
-          reasoning = "";
+        } catch (failure) {
+          const resend = shouldResend({
+            produced,
+            aborted: turn.signal.aborted,
+            attempt,
+            attempts: STREAM_ATTEMPTS,
+            failure,
+          });
+          if (!resend) throw failure;
+          turn.onRetry?.(attempt, errorText(failure));
+          await Bun.sleep(BREATH_MS * attempt);
         }
       }
-      const [text, responseMessages, steps] = await Promise.all([
-        settled.text,
-        settled.messages,
-        settled.steps,
-      ]);
-      return {
-        text,
-        messages: [...sent, ...responseMessages],
-        stoppedAtStepLimit: !text.trim() && steps.length >= STEP_LIMIT,
-      };
+
+      async function once(mark: () => void) {
+        // streamText returns synchronously; its promises settle once the stream
+        // below is drained.
+        turn.onPhase("sending");
+        const result = streamText({
+          ...settings(),
+          tools: toolsFor(turn.onTool),
+          messages: sent,
+          abortSignal: turn.signal,
+          // The SDK's default is console.error, which writes a raw stack over the
+          // alternate screen. The failure still travels: it arrives as an error
+          // part and the loop below throws it.
+          onError: () => {},
+          // the request is away; nothing has come back yet
+          onLanguageModelCallStart: () => turn.onPhase("waiting"),
+          onLanguageModelCallEnd: ({ content, usage }) => {
+            observed = usage?.inputTokens ?? observed;
+            turn.onStep({
+              text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
+              contextTokens: observed,
+              cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
+              outputTokens: usage?.outputTokens ?? 0,
+              cost: modelCost(setup.model, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
+            });
+          },
+        });
+        // A stream error makes the loop below throw, and these three would then be
+        // left rejected with nobody listening — Bun prints each stack straight to
+        // stderr, on top of the alternate screen. Subscribe before iterating; the
+        // throw is what reports the failure.
+        const settled = {
+          text: settleQuietly(result.text, ""),
+          messages: settleQuietly(result.responseMessages, []),
+          steps: settleQuietly(result.steps, []),
+        };
+        let reasoning = "";
+        let reasoningSince = 0;
+        for await (const part of result.fullStream) {
+          // streamText forwards failures into the stream instead of throwing, so
+          // without this a failed turn would look like an empty one.
+          if (part.type === "error") throw part.error;
+          // A tool call has side effects, so once one has run the attempt is no
+          // longer unobservable and must not be re-sent.
+          if (part.type === "tool-call") mark();
+          if (part.type === "text-delta") {
+            mark();
+            turn.onPhase("writing");
+            turn.onDelta({ kind: "text", text: part.text });
+            continue;
+          }
+          if (part.type === "reasoning-start") {
+            reasoning = "";
+            reasoningSince = Date.now();
+            continue;
+          }
+          if (part.type === "reasoning-delta") {
+            mark();
+            turn.onPhase("thinking");
+            reasoning += part.text;
+            turn.onDelta({ kind: "reasoning", text: part.text });
+            continue;
+          }
+          // between steps the model call is done and tools may run; their own rows
+          // report that, so the phase stands down rather than restating it
+          if (part.type === "finish-step") turn.onPhase(null);
+          if (part.type === "reasoning-end" && reasoning.trim() !== "") {
+            turn.onReasoningEnd({ text: reasoning, elapsedMs: Date.now() - reasoningSince });
+            reasoning = "";
+          }
+        }
+        const [text, responseMessages, steps] = await Promise.all([
+          settled.text,
+          settled.messages,
+          settled.steps,
+        ]);
+        return {
+          text,
+          messages: [...sent, ...responseMessages],
+          stoppedAtStepLimit: !text.trim() && steps.length >= STEP_LIMIT,
+        };
+      }
     },
   };
 };
