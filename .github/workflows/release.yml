@@ -33,13 +33,20 @@ jobs:
       - uses: changesets/action@v1
         with:
           version: bunx changeset version
-          # Idempotent publish — the action runs this on every push (to catch
-          # unpublished versions) and passes it to exec as command+args, not a
-          # shell, so the guard lives in a script. Skips an already-published
-          # version instead of 403ing; publishes new versions under `next`.
+          # The action publishes when it decides there is nothing left to
+          # version; the guard below covers when it decides otherwise.
           publish: bash scripts/release-publish.sh
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+      # Whatever main says its version is, npm should have it. The action only
+      # publishes when it sees no unconsumed changeset — so a version PR whose
+      # branch predates the newest changeset merges, bumps main, and publishes
+      # nothing, stranding that version forever. Running the same idempotent
+      # guard unconditionally means every push converges on "npm has what main
+      # says", and a skipped version is repaired by the next push rather than
+      # rolled over and lost.
+      - name: Publish main's version if npm does not have it
+        run: bash scripts/release-publish.sh
       # While in pre-release mode we only publish under `next`, so npm `latest`
       # goes stale and `npm i` / `bun update -g` (which follow `latest`) fetch an
       # old build. Keep `latest` pointed at the version this commit ships.
