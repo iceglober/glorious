@@ -18,13 +18,17 @@ create `docs/published/<slug>.md` and update `docs-site/src/content/site.json`.
 Site chrome, navigation labels, section descriptions, and Install-page copy are
 managed through the Site Settings panel.
 
-The Markdown toolbar inserts headings, emphasis, links, code, lists, quotes,
-templates, and uploaded assets. Cmd/Ctrl+B, I, K, and S are supported. Typing
+The editor uses a lightweight highlighted source overlay: headings are bold,
+MDX components and templates are colored, and code has its own tone. The toolbar
+inserts headings, emphasis, links, code, lists, quotes, templates, and uploaded
+assets. Cmd/Ctrl+B, I, K, and S are supported. Typing
 `{{` opens cursor-positioned autocomplete for generated templates and assets
 discovered from the repository, including `{{generated:extension-api}}` and
 `{{asset:/path}}`.
 
-Site Settings can rename, reorder, and remove sections and pages. Unsaved page
+The homepage and Install page are standard MDX files in `src/content/`, using
+existing MDX component syntax for interactive widgets. Site Settings can rename,
+reorder, and remove sections and pages. Unsaved page
 changes are protected during navigation, and saves are rejected when the source
 changed on disk after editing began. Uploaded assets are written under
 `docs-site/public/assets/`.

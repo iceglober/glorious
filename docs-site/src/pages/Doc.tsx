@@ -68,6 +68,34 @@ const caretPoint = (input: HTMLTextAreaElement, position: number): Point => {
   };
 };
 
+const highlighted = (source: string): ReactNode[] =>
+  source.split("\n").flatMap((line, lineIndex) => {
+    const parts = line.split(/(<\/?[A-Z][^>]*>|\{\{[^}]*\}\}|\*\*[^*]+\*\*|`[^`]+`)/gu);
+    const content = parts.map((part, index) => {
+      const className =
+        /^<\/?[A-Z]/u.test(part) || /^\{\{/u.test(part)
+          ? "md-template"
+          : /^\*\*/u.test(part)
+            ? "md-strong"
+            : /^`/u.test(part)
+              ? "md-code"
+              : undefined;
+      return className ? (
+        <span className={className} key={`${lineIndex}-${index}`}>
+          {part}
+        </span>
+      ) : (
+        part
+      );
+    });
+    return [
+      <span className={/^#{1,6}\s/u.test(line) ? "md-heading" : undefined} key={lineIndex}>
+        {content}
+        {"\n"}
+      </span>,
+    ];
+  });
+
 function MdLink({ href, children }: { href?: string; children?: ReactNode }) {
   return href?.startsWith("/") ? <Link to={href}>{children}</Link> : <a href={href}>{children}</a>;
 }
@@ -98,7 +126,17 @@ function MarkdownBody({ markdown }: { markdown: string }) {
   );
 }
 
-export function Doc({ md, title, source }: { md: string; title: string; source?: string }) {
+export function Doc({
+  md,
+  title,
+  source,
+  renderPreview,
+}: {
+  md: string;
+  title: string;
+  source?: string;
+  renderPreview?: (source: string) => ReactNode;
+}) {
   const { editing, saveFile, uploadAsset } = useEditMode();
   const [draft, setDraft] = useState(md);
   const [dirty, setDirty] = useState(false);
@@ -108,6 +146,7 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
   const [templateStart, setTemplateStart] = useState<number | null>(null);
   const [suggestionPoint, setSuggestionPoint] = useState<Point>({ top: 0, left: 0 });
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const highlight = useRef<HTMLPreElement>(null);
   const assetInput = useRef<HTMLInputElement>(null);
   const base = useRef(md);
   const shown = editing && source ? draft : md;
@@ -197,6 +236,7 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
     queueMicrotask(() => {
       input.focus();
       input.setSelectionRange(cursor, cursor);
+      if (text.endsWith("{{")) refreshSuggestions(next, cursor);
     });
   };
   const complete = (option: TemplateOption) => {
@@ -275,6 +315,9 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
             />
           </div>
           <div className="markdown-input">
+            <pre ref={highlight} className="markdown-highlight" aria-hidden="true">
+              {highlighted(draft)}
+            </pre>
             <textarea
               ref={textarea}
               aria-label={`Edit ${title} Markdown`}
@@ -287,6 +330,12 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
               onClick={(event) =>
                 refreshSuggestions(event.currentTarget.value, event.currentTarget.selectionStart)
               }
+              onScroll={(event) => {
+                if (!highlight.current) return;
+                highlight.current.scrollTop = event.currentTarget.scrollTop;
+                highlight.current.scrollLeft = event.currentTarget.scrollLeft;
+              }}
+              spellCheck={false}
               onKeyDown={(event) => {
                 if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
                   event.preventDefault();
@@ -355,7 +404,7 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
           </div>
         </section>
         <article className="doc markdown-preview">
-          <MarkdownBody markdown={draft} />
+          {renderPreview ? renderPreview(draft) : <MarkdownBody markdown={draft} />}
         </article>
       </main>
     );
@@ -367,7 +416,7 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
   return (
     <main className="site-main doc-layout">
       <article className="doc">
-        <MarkdownBody markdown={md} />
+        {renderPreview ? renderPreview(md) : <MarkdownBody markdown={md} />}
       </article>
       {headings.length > 0 && (
         <aside className="on-page">

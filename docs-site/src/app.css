@@ -893,17 +893,60 @@ h3:hover .heading-anchor,
   position: relative;
 }
 
-.markdown-source textarea {
+.markdown-source textarea,
+.markdown-highlight {
   width: 100%;
   min-height: calc(100vh - 12rem);
-  resize: vertical;
+  margin: 0;
   border: 1px solid var(--border);
   border-top: 0;
   padding: 1rem;
-  background: #ebe9e1;
-  color: var(--black);
   font: 0.85rem/1.55 var(--mono);
   tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.markdown-source textarea {
+  position: relative;
+  z-index: 2;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--black);
+  -webkit-text-fill-color: transparent;
+}
+
+.markdown-source textarea::selection {
+  background: color-mix(in srgb, var(--red) 28%, transparent);
+}
+
+.markdown-highlight {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  background: #ebe9e1;
+  color: var(--black);
+  pointer-events: none;
+}
+
+.md-heading {
+  color: var(--red);
+  font-weight: 800;
+}
+
+.md-template {
+  color: #7b3fc6;
+  font-weight: 700;
+}
+
+.md-strong {
+  font-weight: 800;
+}
+
+.md-code {
+  color: #087a68;
 }
 
 .template-suggestions {

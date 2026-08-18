@@ -65,14 +65,5 @@
         { "key": "changelog", "label": "Changelog", "slug": "changelog", "kind": "changelog" }
       ]
     }
-  ],
-  "install": {
-    "recommended": "Recommended",
-    "manual": "Manual",
-    "requirements": "Requires Bun ≥ 1.2 and git.",
-    "firstRun": "First run",
-    "quickstart": "Continue with the quickstart.",
-    "update": "Update",
-    "uninstall": "Uninstall"
-  }
+  ]
 }

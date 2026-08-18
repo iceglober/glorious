@@ -55,18 +55,6 @@ function SiteSettings() {
           onBlur={(event) => change("home.packageAlternative", event.currentTarget.value)}
         />
       </label>
-      <fieldset>
-        <legend>Install page</legend>
-        {Object.entries(content.install).map(([key, value]) => (
-          <label key={key}>
-            {key}
-            <input
-              defaultValue={value}
-              onBlur={(event) => change(`install.${key}`, event.currentTarget.value)}
-            />
-          </label>
-        ))}
-      </fieldset>
       {content.navigation.map((section, sectionIndex) => (
         <fieldset key={section.key}>
           <legend>{section.label}</legend>

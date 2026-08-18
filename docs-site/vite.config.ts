@@ -5,7 +5,8 @@ import { defineConfig, type Plugin } from "vite";
 
 const root = resolve(__dirname, "..");
 const published = resolve(root, "docs", "published");
-const siteContent = resolve(__dirname, "src", "content", "site.json");
+const contentRoot = resolve(__dirname, "src", "content");
+const siteContent = resolve(contentRoot, "site.json");
 const changelog = resolve(root, "CHANGELOG.md");
 const editMode = process.env.GLORIOUS_EDIT === "1";
 const generated = resolve(__dirname, "src", "generated");
@@ -23,7 +24,10 @@ const filesUnder = async (directory: string): Promise<string[]> => {
 };
 
 const editable = (target: string): boolean =>
-  target === siteContent || target === changelog || target.startsWith(`${published}${sep}`);
+  target === siteContent ||
+  target === changelog ||
+  target.startsWith(`${published}${sep}`) ||
+  (target.startsWith(`${contentRoot}${sep}`) && extname(target) === ".mdx");
 
 const bodyOf = async (request: import("node:http").IncomingMessage): Promise<string> => {
   let body = "";

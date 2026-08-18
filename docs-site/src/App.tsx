@@ -8,6 +8,8 @@ import { Home } from "./pages/Home";
 import { Install } from "./pages/Install";
 import { SectionPage } from "./pages/SectionPage";
 import apiMd from "./generated/extension-api.md?raw";
+import homeMdx from "./content/home.mdx?raw";
+import installMdx from "./content/install.mdx?raw";
 
 const documents = import.meta.glob("../../docs/published/*.md", {
   eager: true,
@@ -19,7 +21,7 @@ const markdown = (slug: string): string =>
   documents[`../../docs/published/${slug}.md`] ?? `# Missing page\n\nNo Markdown file exists for \`${slug}\`.`;
 
 const pageElement = (page: NavigationPage, editing: boolean) => {
-  if (page.kind === "install") return <Install />;
+  if (page.kind === "install") return <Install source={installMdx} />;
   if (page.kind === "changelog") return <Changelog />;
   if (page.kind === "generated") return <Doc md={apiMd} title={page.label} />;
   const source = markdown(page.slug);
@@ -46,7 +48,7 @@ function SiteRoutes() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Home />} />
+        <Route index element={<Home source={homeMdx} />} />
         {content.navigation.map((section) => (
           <Route
             key={section.key}
