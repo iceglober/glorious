@@ -87,9 +87,6 @@ body { letter-spacing: -0.01em; }
   margin: 0;
   line-height: 20px;
 }
-.tsd-typography table { border-collapse: collapse; }
-.tsd-typography th { border-bottom: 2px solid currentColor; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; }
-.tsd-typography td { border-bottom: 1px solid #c9c5bb; }
 
 footer {
   margin-top: 4rem;
