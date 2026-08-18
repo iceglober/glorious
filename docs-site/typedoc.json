@@ -9,7 +9,10 @@
   "alwaysCreateEntryPointModule": true,
   "tsconfig": "./tsconfig.json",
   "out": "./dist",
-  "plugin": ["./theme/index.ts"],
+  "plugin": [
+    "./theme/index.ts",
+    "@boneskull/typedoc-plugin-mermaid"
+  ],
   "theme": "glrs",
   "router": "structure-dir",
   "customCss": "./theme/glrs.css",
@@ -58,6 +61,7 @@
     "yaml"
   ],
   "ignoredHighlightLanguages": ["mermaid"],
+  "mermaidSource": "local",
   "headings": {
     "readme": true,
     "document": false
