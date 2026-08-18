@@ -78,6 +78,7 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   - sequences.md    \`$name\` markdown shortcuts: shell, then optionally a prompt
   - commands.md     \`/name\` markdown commands, skills, and AGENTS.md
   - skills.md       SKILL.md frontmatter, where skills are found, how they load
+  - lifecycle.md    every event an extension can hook, in the order it fires
   - tools.md        the built-in tools, their limits, and why nothing prompts
   - models.md       choosing a model, providers, credentials, configuration
   - architecture.md how a turn runs, and where the seams are

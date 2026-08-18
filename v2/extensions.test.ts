@@ -107,7 +107,7 @@ beforeAll(async () => {
     execute: () => { throw new Error("detonated"); },
   });
   g.command("wave", { description: "Wave", run: (args) => g.print("wave " + args) });
-  g.on("turn_start", ({ text }) => { if (text === "swallow me") return false; });
+  g.on("input", ({ text }) => (text === "swallow me" ? false : undefined));
   g.on("input", ({ text }) => (text === "rewrite me" ? "rewritten" : undefined));
   g.status(() => "greeting");
   g.prompt("A greet tool is available.");
@@ -215,7 +215,7 @@ describe("what an extension can register", () => {
 describe("firing an event", () => {
   test("false from a handler swallows the input", async () => {
     const { registry } = await load();
-    expect(await fire(registry, "turn_start", { text: "swallow me" }, () => {})).toBe(false);
+    expect(await fire(registry, "input", { text: "swallow me" }, () => {})).toBe(false);
   });
 
   test("a string from a handler replaces the text", async () => {
@@ -232,14 +232,14 @@ describe("firing an event", () => {
   // turn continues; the alternative is one bad extension bricking the session.
   test("a handler that throws is reported and does not stop the turn", async () => {
     const registry = createRegistry();
-    registry.handlers.set("turn_start", [
+    registry.handlers.set("input", [
       () => {
         throw new Error("nope");
       },
       () => "survived",
     ]);
     const failures: string[] = [];
-    const said = await fire(registry, "turn_start", { text: "x" }, (m) => failures.push(m));
+    const said = await fire(registry, "input", { text: "x" }, (m) => failures.push(m));
     expect(failures[0]).toContain("nope");
     expect(said).toBe("survived");
   });

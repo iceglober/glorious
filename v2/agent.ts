@@ -99,6 +99,26 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     // their rows reach the turn that is actually running.
     extensionTools?: (onTool: (event: ToolEvent) => void) => import("ai").ToolSet;
     extensionPrompt?: () => readonly string[];
+    // Every message about to be sent, per model call. Returning an array
+    // replaces what is sent for that call only; the stored conversation is
+    // untouched, so filtering here never rewrites history.
+    onContext?: (
+      messages: readonly ModelMessage[],
+      step: number,
+    ) => Promise<readonly ModelMessage[] | undefined>;
+    // The HTTP request to the provider, and its response. This is the layer a
+    // gateway, a signing proxy or a request log needs, and it is the one place
+    // that sees the payload as the provider will.
+    onRequest?: (request: {
+      url: string;
+      headers: Record<string, string>;
+      body: unknown;
+    }) => Promise<{ headers?: Record<string, string>; body?: unknown } | undefined>;
+    onResponse?: (response: {
+      url: string;
+      status: number;
+      headers: Record<string, string>;
+    }) => void;
   };
 
 // Subscribe now so a later throw cannot leave this rejected with nobody
@@ -124,7 +144,41 @@ export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T>
   Promise.resolve(value).catch(() => fallback);
 
 export const createAgent = (setup: Setup) => {
-  let model = createModel(setup.model, fetchWithDeadline as typeof fetch);
+  // Wrapped around the deadline-retrying fetch rather than replacing it, so an
+  // extension sees exactly the request that goes out — after retries are set up
+  // and before the body is read.
+  const providerFetch = async (
+    target: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = typeof target === "string" ? target : String((target as Request).url ?? target);
+    let sending = init;
+    if (setup.onRequest) {
+      const headers = Object.fromEntries(new Headers(init?.headers).entries());
+      const raw = typeof init?.body === "string" ? init.body : undefined;
+      let body: unknown = raw;
+      try {
+        body = raw === undefined ? undefined : JSON.parse(raw);
+      } catch {}
+      const changed = await setup.onRequest({ url, headers, body });
+      if (changed) {
+        sending = {
+          ...init,
+          headers: { ...headers, ...(changed.headers ?? {}) },
+          body: changed.body === undefined ? init?.body : JSON.stringify(changed.body),
+        };
+      }
+    }
+    const response = await fetchWithDeadline(target, sending);
+    setup.onResponse?.({
+      url,
+      status: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+    });
+    return response;
+  };
+
+  let model = createModel(setup.model, providerFetch as typeof fetch);
   const environment = environmentPrompt(setup);
   // the last context size the provider reported, handed back to the model on the
   // next turn so it can see the budget it is spending
@@ -211,7 +265,7 @@ export const createAgent = (setup: Setup) => {
     prompt: (): string => systemPrompt(setup),
     setModel: (next: ModelOption): void => {
       setup.model = next;
-      model = createModel(next, fetchWithDeadline as typeof fetch);
+      model = createModel(next, providerFetch as typeof fetch);
     },
     setSkills: (skills: Setup["skillTools"]): void => {
       setup.skillTools = skills;
@@ -300,10 +354,14 @@ export const createAgent = (setup: Setup) => {
         // streamText returns synchronously; its promises settle once the stream
         // below is drained.
         turn.onPhase("sending");
+        // What an extension says to send, which may be a filtered, reordered or
+        // redacted view. `sent` — the real conversation — is what gets stored,
+        // so this changes the call and never the history.
+        const shown = (await setup.onContext?.(sent, attempt)) ?? sent;
         const result = streamText({
           ...settings(),
           tools: toolsFor(turn.onTool),
-          messages: sent,
+          messages: [...shown],
           abortSignal: turn.signal,
           // The SDK's default is console.error, which writes a raw stack over the
           // alternate screen. The failure still travels: it arrives as an error

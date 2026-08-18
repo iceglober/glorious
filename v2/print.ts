@@ -71,6 +71,17 @@ export const runPrint = async (
       return registry.tools;
     },
     extensionPrompt: () => registry.promptLines,
+    onContext: async (messages, step) => {
+      const said = await fire(registry, "context", { messages, step }, note);
+      return Array.isArray(said) ? said : undefined;
+    },
+    onRequest: async (request) => {
+      const said = await fire(registry, "before_provider_request", request, note);
+      return said && typeof said === "object" && !Array.isArray(said) ? said : undefined;
+    },
+    onResponse: (response) => {
+      void fire(registry, "after_provider_response", response, note);
+    },
   });
 
   // Extensions load here too. They have to: a tool the agent writes for itself
