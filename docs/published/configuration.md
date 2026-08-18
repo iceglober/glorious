@@ -81,6 +81,6 @@ ignored rather than preventing startup.
 - `NO_COLOR` — disable color when set.
 - `TERM=dumb` — also disables color.
 
-Provider credential and region variables are listed on the [providers](/providers)
+Provider credential and region variables are listed on the [Providers](./providers.md)
 page. Use `glorious doctor --json` to inspect model, provider, credentials, and
 configuration diagnostics.

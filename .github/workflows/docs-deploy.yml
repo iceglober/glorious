@@ -63,8 +63,8 @@ jobs:
         run: |
           gsutil -m rsync -d -r docs-site/dist/ gs://${{ vars.GCP_DOCS_BUCKET }}/
 
-      # SPA routing: bucket 404 page must be index.html so React Router
-      # handles all paths. This is a one-time bucket setting — run manually:
+      # The bucket serves TypeDoc's generated static HTML. Keep index.html as
+      # the bucket's main/error page for unknown paths — a one-time setting:
       #   gsutil web set -m index.html -e index.html gs://<bucket>
       # The deploy SA doesn't have storage.buckets.update permission.
 

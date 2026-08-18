@@ -12,7 +12,7 @@ syntax diagnostics without opening the chat UI.
 
 ## Credentials
 
-Check the provider's required environment variable on the [providers](/providers)
+Check the provider's required environment variable on the [Providers](./providers.md)
 page. `doctor` reports what is missing without printing secret values.
 
 ## The status line shows a model I did not choose

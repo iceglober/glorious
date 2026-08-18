@@ -2,30 +2,17 @@
   "name": "@glrs-dev/docs-site",
   "version": "0.0.0",
   "private": true,
-  "description": "Docs site for the @glrs-dev ecosystem. Published to https://glrs.dev.",
+  "description": "TypeDoc-powered documentation for glorious.",
   "type": "module",
   "scripts": {
-    "generate": "bun scripts/generate-api.ts",
-    "dev": "bun run generate && vite",
-    "build": "bun run generate && vite build",
-    "preview": "vite preview",
-    "pretypecheck": "bun run generate",
+    "build": "bun scripts/build.ts",
+    "dev": "bun scripts/build.ts && bun scripts/serve.ts",
     "typecheck": "tsc --noEmit",
     "test": "echo 'no tests yet'",
     "lint": "echo 'no linter configured yet'"
   },
-  "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router": "^7.6.1",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
-  },
   "devDependencies": {
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^4.5.2",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "typedoc": "^0.28.20",
+    "typescript": "^5.9.3"
   }
 }
