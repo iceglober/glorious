@@ -45,6 +45,7 @@
     "reload-extensions",
     "remove-ansi-renderer",
     "remove-completion-grounding",
+    "request-pipeline-hooks",
     "retry-dropped-connections",
     "searchable-source",
     "skill-namespace",
