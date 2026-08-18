@@ -13,7 +13,12 @@
 # version PR whose branch predates the newest changeset therefore merges, bumps
 # main, and never publishes — main sat at 1.0.0-next.46 while npm served .45,
 # three times in one day. Running the guard unconditionally makes the next push
-# repair it, and makes every push converge on "npm has what main says".
+# repair it, and makes every push converge on "npm has what main has committed".
+#
+# It must run *before* changesets/action, which bumps package.json in this same
+# workspace: after it, the version here is the next one, whose PR nobody has
+# merged. Publishing that would release unmerged code and reduce version PRs to
+# decoration.
 set -euo pipefail
 
 pkg="$(node -p 'require("./package.json").name')"
