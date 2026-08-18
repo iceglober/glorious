@@ -570,7 +570,14 @@ h3:hover .heading-anchor,
   max-width: 88rem;
 }
 
+.doc-layout > article {
+  grid-column: 1;
+  grid-row: 1;
+}
+
 .on-page {
+  grid-column: 2;
+  grid-row: 1;
   position: sticky;
   top: 5rem;
   align-self: start;
@@ -806,16 +813,73 @@ h3:hover .heading-anchor,
 }
 
 .editable-text,
-.editable-document {
-  outline: 1px dashed color-mix(in srgb, var(--red) 55%, transparent);
-  outline-offset: 3px;
+.editable-document :where(h1, h2, h3, p, li, blockquote, pre, td, th) {
   cursor: text;
 }
 
-.editable-text:focus,
-.editable-document:focus {
-  outline: 2px solid var(--red);
+.editable-text:hover,
+.editable-document :where(h1, h2, h3, p, li, blockquote, pre, td, th):hover {
+  outline: 1px dashed color-mix(in srgb, var(--red) 55%, transparent);
+  outline-offset: 3px;
+}
+
+.editable-text.editing,
+.editing-block {
+  outline: 2px solid var(--red) !important;
+  outline-offset: 3px;
   background: color-mix(in srgb, var(--red) 5%, transparent);
+}
+
+.editor-action {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 1.65rem;
+  height: 1.65rem;
+  overflow: hidden;
+  margin-top: 0.6rem;
+  padding: 0 0.45rem;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--gray);
+  font: inherit;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: width 0.15s, gap 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.editor-action strong {
+  opacity: 0;
+  font-weight: 400;
+  transition: opacity 0.15s;
+}
+
+.editor-action:hover,
+.editor-action:focus {
+  width: 7rem;
+  gap: 0.4rem;
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.editor-action:hover strong,
+.editor-action:focus strong {
+  opacity: 1;
+}
+
+.add-section {
+  margin-top: 1.5rem;
+}
+
+.add-paragraph {
+  grid-column: 1;
+  width: 1.65rem;
+}
+
+.add-paragraph:hover,
+.add-paragraph:focus {
+  width: 8.5rem;
 }
 
 /* Design DNA: terminal-core with a neo-brutalist editorial rhythm. */

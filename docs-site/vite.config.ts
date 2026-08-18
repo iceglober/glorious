@@ -22,16 +22,23 @@ const localEditor = (): Plugin => ({
       let body = "";
       for await (const chunk of request) body += chunk;
       try {
-        const payload = JSON.parse(body) as { file?: unknown; content?: unknown };
-        if (typeof payload.file !== "string" || typeof payload.content !== "string")
-          throw new Error("file and content are required");
-        const target = resolve(root, payload.file);
-        const allowed =
-          target === siteContent || target === changelog || target.startsWith(`${published}${sep}`);
-        if (!allowed) throw new Error("file is outside editable content");
-        await writeFile(target, payload.content, "utf8");
+        const payload = JSON.parse(body) as {
+          files?: Array<{ file?: unknown; content?: unknown }>;
+        };
+        if (!Array.isArray(payload.files) || payload.files.length === 0)
+          throw new Error("files are required");
+        const files = payload.files.map((entry) => {
+          if (typeof entry.file !== "string" || typeof entry.content !== "string")
+            throw new Error("each file needs a path and content");
+          const target = resolve(root, entry.file);
+          const allowed =
+            target === siteContent || target === changelog || target.startsWith(`${published}${sep}`);
+          if (!allowed) throw new Error("file is outside editable content");
+          return { ...entry, target } as { file: string; content: string; target: string };
+        });
+        await Promise.all(files.map((entry) => writeFile(entry.target, entry.content, "utf8")));
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ saved: payload.file }));
+        response.end(JSON.stringify({ saved: files.map((entry) => entry.file) }));
       } catch (error) {
         response.statusCode = 400;
         response.end(error instanceof Error ? error.message : String(error));

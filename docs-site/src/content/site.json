@@ -12,47 +12,60 @@
     "packageAlternative": "or via package manager:",
     "browse": "Browse documentation →"
   },
-  "sections": {
-    "get-started": {
+  "navigation": [
+    {
+      "key": "get-started",
       "label": "get started",
-      "intro": "Install glorious, configure a provider, and make your first useful turn."
+      "intro": "Install glorious, configure a provider, and make your first useful turn.",
+      "pages": [
+        { "key": "install", "label": "Install", "slug": "install", "kind": "install" },
+        { "key": "quickstart", "label": "Quickstart", "slug": "quickstart", "kind": "markdown" }
+      ]
     },
-    "concepts": {
+    {
+      "key": "concepts",
       "label": "concepts",
-      "intro": "The language and design commitments behind glorious."
+      "intro": "The language and design commitments behind glorious.",
+      "pages": [
+        { "key": "features", "label": "Features", "slug": "features", "kind": "markdown" },
+        { "key": "philosophy", "label": "Philosophy", "slug": "philosophy", "kind": "markdown" },
+        { "key": "glossary", "label": "Glossary", "slug": "glossary", "kind": "markdown" },
+        { "key": "architecture", "label": "Architecture", "slug": "architecture", "kind": "markdown" }
+      ]
     },
-    "extend": {
+    {
+      "key": "extend",
       "label": "extend",
-      "intro": "Add tools, commands, skills, and behavior without forking the core."
+      "intro": "Add tools, commands, skills, and behavior without forking the core.",
+      "pages": [
+        { "key": "extensions", "label": "Extensions", "slug": "extensions", "kind": "markdown" },
+        { "key": "skills", "label": "Skills", "slug": "skills", "kind": "markdown" },
+        { "key": "commands", "label": "Commands", "slug": "commands", "kind": "markdown" }
+      ]
     },
-    "reference": {
+    {
+      "key": "reference",
       "label": "reference",
-      "intro": "The complete reference for daily use and extension authors."
+      "intro": "The complete reference for daily use and extension authors.",
+      "pages": [
+        { "key": "tools", "label": "Tools", "slug": "tools", "kind": "markdown" },
+        { "key": "providers", "label": "Providers", "slug": "providers", "kind": "markdown" },
+        { "key": "models", "label": "Models", "slug": "models", "kind": "markdown" },
+        { "key": "configuration", "label": "Configuration", "slug": "configuration", "kind": "markdown" },
+        { "key": "cli", "label": "CLI", "slug": "cli", "kind": "markdown" },
+        { "key": "api", "label": "Extension API", "slug": "api", "kind": "generated" }
+      ]
     },
-    "help": {
+    {
+      "key": "help",
       "label": "help",
-      "intro": "Diagnose setup problems and follow what changed."
+      "intro": "Diagnose setup problems and follow what changed.",
+      "pages": [
+        { "key": "troubleshooting", "label": "Troubleshooting", "slug": "troubleshooting", "kind": "markdown" },
+        { "key": "changelog", "label": "Changelog", "slug": "changelog", "kind": "changelog" }
+      ]
     }
-  },
-  "pages": {
-    "install": "Install",
-    "quickstart": "Quickstart",
-    "features": "Features",
-    "philosophy": "Philosophy",
-    "glossary": "Glossary",
-    "architecture": "Architecture",
-    "extensions": "Extensions",
-    "skills": "Skills",
-    "commands": "Commands",
-    "tools": "Tools",
-    "providers": "Providers",
-    "models": "Models",
-    "configuration": "Configuration",
-    "cli": "CLI",
-    "api": "Extension API",
-    "troubleshooting": "Troubleshooting",
-    "changelog": "Changelog"
-  },
+  ],
   "install": {
     "recommended": "Recommended",
     "manual": "Manual",

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link } from "react-router";
 import { EditableText } from "~/components/EditMode";
-import { SECTIONS } from "~/navigation";
+import { useEditMode } from "~/components/EditMode";
 import { PkgSwitcher, Cmd } from "~/components/PkgManager";
 import { NpmVersions } from "~/components/NpmVersions";
 
@@ -9,6 +9,7 @@ export function Home() {
   useEffect(() => {
     document.title = "glorious — glrs";
   }, []);
+  const { content } = useEditMode();
   const copyBash = () => navigator.clipboard.writeText("curl -fsSL https://glrs.dev/install.sh | bash");
   return (
     <main className="home">
@@ -37,10 +38,10 @@ export function Home() {
       </div>
       <hr />
       <div className="doc-map">
-        {SECTIONS.map((section) => (
-          <Link key={section.to} to={section.to}>
+        {content.navigation.map((section, index) => (
+          <Link key={section.key} to={`/${section.key}`}>
             <strong>
-              <EditableText path={`sections.${section.key}.label`} />
+              <EditableText path={`navigation.${index}.label`} />
             </strong>
             <span>
               <EditableText path="home.browse" />

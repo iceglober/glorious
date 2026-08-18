@@ -1,10 +1,18 @@
 import { useEffect } from "react";
 import { AnchorHeading } from "~/components/AnchorHeading";
 import { CodeBlock } from "~/components/CodeBlock";
-import { EditableText } from "~/components/EditMode";
+import { EditableText, useEditMode } from "~/components/EditMode";
 import { Cmd, PkgSwitcher } from "~/components/PkgManager";
 
 export function Install() {
+  const { content } = useEditMode();
+  const sectionIndex = content.navigation.findIndex((section) =>
+    section.pages.some((page) => page.kind === "install"),
+  );
+  const pageIndex = content.navigation[sectionIndex]?.pages.findIndex(
+    (page) => page.kind === "install",
+  );
+  const titlePath = `navigation.${sectionIndex}.pages.${pageIndex}.label`;
   useEffect(() => {
     document.title = "Install — glrs";
   }, []);
@@ -12,7 +20,7 @@ export function Install() {
   return (
     <main className="site-main doc">
       <h1>
-        <EditableText path="pages.install" />
+        <EditableText path={titlePath} />
       </h1>
       <div className="pkg-bar install-switcher">
         <PkgSwitcher />

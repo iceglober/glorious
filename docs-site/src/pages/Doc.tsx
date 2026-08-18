@@ -38,6 +38,13 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
     window.history.replaceState(null, "", `#${id}`);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  const activateBlock = (block: HTMLElement) => {
+    if (!editing || !source) return;
+    beforeEdit.current = article.current?.innerHTML ?? "";
+    block.contentEditable = "true";
+    block.classList.add("editing-block");
+    block.focus();
+  };
   const save = async () => {
     if (!editing || !source || !article.current) return;
     if (article.current.innerHTML === beforeEdit.current) return;
@@ -58,15 +65,26 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
       <article
         ref={article}
         className={`doc${editing && source ? " editable-document" : ""}`}
-        contentEditable={editing && source !== undefined}
-        suppressContentEditableWarning
-        onFocus={() => {
-          beforeEdit.current = article.current?.innerHTML ?? "";
-        }}
         onClick={(event) => {
           if (editing && (event.target as HTMLElement).closest("a")) event.preventDefault();
         }}
-        onBlur={() => void save()}
+        onDoubleClick={(event) => {
+          const block = (event.target as HTMLElement).closest<HTMLElement>(
+            "h1,h2,h3,p,li,blockquote,pre,td,th",
+          );
+          if (block) activateBlock(block);
+        }}
+        onBlur={(event) => {
+          const block = event.target as HTMLElement;
+          if (!block.classList.contains("editing-block")) return;
+          block.contentEditable = "false";
+          block.classList.remove("editing-block");
+          void save();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && (event.target as HTMLElement).classList.contains("editing-block"))
+            (event.target as HTMLElement).blur();
+        }}
       >
         <Markdown
           remarkPlugins={[remarkGfm]}
@@ -87,6 +105,23 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
           {md}
         </Markdown>
       </article>
+      {editing && source && (
+        <button
+          className="editor-action add-paragraph"
+          type="button"
+          onClick={() => {
+            const before = article.current?.innerHTML ?? "";
+            const paragraph = document.createElement("p");
+            paragraph.textContent = "New paragraph.";
+            article.current?.append(paragraph);
+            activateBlock(paragraph);
+            beforeEdit.current = before;
+          }}
+        >
+          <span>+</span>
+          <strong>Add Paragraph</strong>
+        </button>
+      )}
       {headings.length > 0 && (
         <aside className="on-page" contentEditable={false}>
           <strong>On this page</strong>

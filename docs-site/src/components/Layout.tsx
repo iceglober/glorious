@@ -1,29 +1,51 @@
 import { NavLink, Outlet, useLocation, Link } from "react-router";
-import { SECTIONS } from "~/navigation";
-import { EditableText } from "./EditMode";
+import { EditableText, useEditMode } from "./EditMode";
 import { Search } from "./Search";
 
-const isCurrentSection = (pathname: string, to: string, pages: readonly { to: string }[]) =>
-  pathname === to || pages.some((page) => pathname === page.to);
+const isCurrentSection = (
+  pathname: string,
+  key: string,
+  pages: readonly { slug: string }[],
+) => pathname === `/${key}` || pages.some((page) => pathname === `/${page.slug}`);
 
 function Sidebar() {
   const { pathname } = useLocation();
+  const { content, editing, addPage, addSection } = useEditMode();
   return (
     <aside className="side-nav">
-      {SECTIONS.map((section) => (
-        <section className="side-group" key={section.to}>
-          <Link className={isCurrentSection(pathname, section.to, section.pages) ? "side-title active" : "side-title"} to={section.to}>
-            <EditableText path={`sections.${section.key}.label`} />
+      {content.navigation.map((section, sectionIndex) => (
+        <section className="side-group" key={section.key}>
+          <Link
+            className={
+              isCurrentSection(pathname, section.key, section.pages)
+                ? "side-title active"
+                : "side-title"
+            }
+            to={`/${section.key}`}
+          >
+            <EditableText path={`navigation.${sectionIndex}.label`} />
           </Link>
           <nav>
-            {section.pages.map((page) => (
-              <NavLink key={page.to} to={page.to}>
-                <EditableText path={`pages.${page.key}`} />
+            {section.pages.map((page, pageIndex) => (
+              <NavLink key={page.slug} to={`/${page.slug}`}>
+                <EditableText path={`navigation.${sectionIndex}.pages.${pageIndex}.label`} />
               </NavLink>
             ))}
           </nav>
+          {editing && (
+            <button className="editor-action" type="button" onClick={() => addPage(sectionIndex)}>
+              <span>+</span>
+              <strong>Add Page</strong>
+            </button>
+          )}
         </section>
       ))}
+      {editing && (
+        <button className="editor-action add-section" type="button" onClick={addSection}>
+          <span>+</span>
+          <strong>Add Section</strong>
+        </button>
+      )}
     </aside>
   );
 }
@@ -40,7 +62,9 @@ function Breadcrumbs() {
       {segments.map((segment, index) => (
         <span key={segment}>
           {" / "}
-          <Link to={`/${segments.slice(0, index + 1).join("/")}`}>{segment.replaceAll("-", " ")}</Link>
+          <Link to={`/${segments.slice(0, index + 1).join("/")}`}>
+            {segment.replaceAll("-", " ")}
+          </Link>
         </span>
       ))}
     </nav>
