@@ -11,7 +11,7 @@
   "customJs": "./theme/glrs.js",
   "name": "glorious",
   "includeVersion": false,
-  "readme": "../docs/published/features.md",
+  "readme": "none",
   "projectDocuments": ["../docs/published/index.md"],
   "searchInComments": true,
   "searchInDocuments": true,
