@@ -1,5 +1,5 @@
 {
-  "name": "@glrs-dev/docs-site",
+  "name": "docs-site",
   "version": "0.0.0",
   "private": true,
   "description": "Docs site for the @glrs-dev ecosystem. Published to https://glrs.dev.",
@@ -7,6 +7,7 @@
   "scripts": {
     "generate": "bun scripts/generate-api.ts",
     "dev": "bun run generate && vite",
+    "edit": "bun install && bun run generate && GLORIOUS_EDIT=1 vite --host 127.0.0.1 --open '/?edit=1'",
     "build": "bun run generate && vite build",
     "preview": "vite preview",
     "pretypecheck": "bun run generate",
@@ -19,11 +20,14 @@
     "react-dom": "^19.1.0",
     "react-router": "^7.6.1",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@types/turndown": "^5.0.5",
     "@vitejs/plugin-react": "^4.5.2",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"

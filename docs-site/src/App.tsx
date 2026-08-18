@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router";
 import { PkgManagerProvider } from "./components/PkgManager";
+import { EditModeProvider } from "./components/EditMode";
 import { Layout } from "./components/Layout";
 import { Home } from "./pages/Home";
 import { Install } from "./pages/Install";
@@ -26,7 +27,8 @@ import apiMd from "./generated/extension-api.md?raw";
 export function App() {
   return (
     <PkgManagerProvider>
-      <BrowserRouter>
+      <EditModeProvider>
+        <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Home />} />
@@ -36,25 +38,26 @@ export function App() {
             <Route path="reference" element={<SectionPage path="/reference" />} />
             <Route path="help" element={<SectionPage path="/help" />} />
             <Route path="install" element={<Install />} />
-            <Route path="quickstart" element={<Doc md={quickstartMd} title="Quickstart" />} />
-            <Route path="features" element={<Doc md={featuresMd} title="Features" />} />
-            <Route path="philosophy" element={<Doc md={philosophyMd} title="Philosophy" />} />
-            <Route path="glossary" element={<Doc md={glossaryMd} title="Glossary" />} />
-            <Route path="tools" element={<Doc md={toolsMd} title="Tools" />} />
-            <Route path="cli" element={<Doc md={cliMd} title="CLI" />} />
-            <Route path="commands" element={<Doc md={commandsMd} title="Commands" />} />
-            <Route path="providers" element={<Doc md={providersMd} title="Providers" />} />
-            <Route path="models" element={<Doc md={modelsMd} title="Models" />} />
-            <Route path="configuration" element={<Doc md={configurationMd} title="Configuration" />} />
-            <Route path="extensions" element={<Doc md={extensionsMd} title="Extensions" />} />
-            <Route path="skills" element={<Doc md={skillsMd} title="Skills" />} />
-            <Route path="architecture" element={<Doc md={architectureMd} title="Architecture" />} />
-            <Route path="troubleshooting" element={<Doc md={troubleshootingMd} title="Troubleshooting" />} />
+            <Route path="quickstart" element={<Doc md={quickstartMd} title="Quickstart" source="docs/published/quickstart.md" />} />
+            <Route path="features" element={<Doc md={featuresMd} title="Features" source="docs/published/features.md" />} />
+            <Route path="philosophy" element={<Doc md={philosophyMd} title="Philosophy" source="docs/published/philosophy.md" />} />
+            <Route path="glossary" element={<Doc md={glossaryMd} title="Glossary" source="docs/published/glossary.md" />} />
+            <Route path="tools" element={<Doc md={toolsMd} title="Tools" source="docs/published/tools.md" />} />
+            <Route path="cli" element={<Doc md={cliMd} title="CLI" source="docs/published/cli.md" />} />
+            <Route path="commands" element={<Doc md={commandsMd} title="Commands" source="docs/published/commands.md" />} />
+            <Route path="providers" element={<Doc md={providersMd} title="Providers" source="docs/published/providers.md" />} />
+            <Route path="models" element={<Doc md={modelsMd} title="Models" source="docs/published/models.md" />} />
+            <Route path="configuration" element={<Doc md={configurationMd} title="Configuration" source="docs/published/configuration.md" />} />
+            <Route path="extensions" element={<Doc md={extensionsMd} title="Extensions" source="docs/published/extensions.md" />} />
+            <Route path="skills" element={<Doc md={skillsMd} title="Skills" source="docs/published/skills.md" />} />
+            <Route path="architecture" element={<Doc md={architectureMd} title="Architecture" source="docs/published/architecture.md" />} />
+            <Route path="troubleshooting" element={<Doc md={troubleshootingMd} title="Troubleshooting" source="docs/published/troubleshooting.md" />} />
             <Route path="api" element={<Doc md={apiMd} title="Extension API" />} />
             <Route path="changelog" element={<Changelog />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+        </BrowserRouter>
+      </EditModeProvider>
     </PkgManagerProvider>
   );
 }

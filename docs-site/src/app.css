@@ -793,6 +793,31 @@ h3:hover .heading-anchor,
   }
 }
 
+.edit-mode-status {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 100;
+  padding: 0.5rem 0.75rem;
+  background: var(--black);
+  color: var(--white);
+  border-left: 3px solid var(--red);
+  font-size: 0.72rem;
+}
+
+.editable-text,
+.editable-document {
+  outline: 1px dashed color-mix(in srgb, var(--red) 55%, transparent);
+  outline-offset: 3px;
+  cursor: text;
+}
+
+.editable-text:focus,
+.editable-document:focus {
+  outline: 2px solid var(--red);
+  background: color-mix(in srgb, var(--red) 5%, transparent);
+}
+
 /* Design DNA: terminal-core with a neo-brutalist editorial rhythm. */
 :root {
   --red: #c43a32;

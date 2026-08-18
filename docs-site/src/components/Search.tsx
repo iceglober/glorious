@@ -1,21 +1,37 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { useEditMode } from "./EditMode";
+import { SECTIONS } from "~/navigation";
 
-const PAGES = [
-  ["install", "/install"], ["quickstart", "/quickstart"], ["features", "/features"], ["philosophy", "/philosophy"],
-  ["glossary", "/glossary"], ["extensions", "/extensions"], ["commands", "/commands"], ["skills", "/skills"],
-  ["tools", "/tools"], ["providers", "/providers"], ["models", "/models"],
-  ["configuration", "/configuration"], ["architecture", "/architecture"], ["troubleshooting", "/troubleshooting"],
-  ["extension API", "/api"], ["changelog", "/changelog"],
-] as const;
+const PAGES: Array<{ key: string; to: string }> = [
+  ...SECTIONS.flatMap((section) => [...section.pages]),
+  { key: "features", to: "/features" },
+];
 
 export function Search() {
   const [query, setQuery] = useState("");
-  const results = query.trim() === "" ? [] : PAGES.filter(([label]) => label.includes(query.toLowerCase()));
+  const { text } = useEditMode();
+  const results =
+    query.trim() === ""
+      ? []
+      : PAGES.filter((page) => text(`pages.${page.key}`).toLowerCase().includes(query.toLowerCase()));
   return (
     <div className="site-search">
-      <input aria-label="Search documentation" placeholder="search docs" value={query} onChange={(event) => setQuery(event.target.value)} />
-      {results.length > 0 && <div className="search-results">{results.map(([label, to]) => <Link key={to} to={to} onClick={() => setQuery("")}>{label}</Link>)}</div>}
+      <input
+        aria-label="Search documentation"
+        placeholder={text("search.placeholder")}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {results.length > 0 && (
+        <div className="search-results">
+          {results.map((page) => (
+            <Link key={page.to} to={page.to} onClick={() => setQuery("")}>
+              {text(`pages.${page.key}`)}
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

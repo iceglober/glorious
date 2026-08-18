@@ -1,0 +1,48 @@
+{
+  "brand": {
+    "short": "glrs",
+    "name": "glorious",
+    "channel": "next",
+    "tagline": "a simple coding agent · minimal core · maximum extensibility"
+  },
+  "search": { "placeholder": "search docs" },
+  "home": {
+    "packageAlternative": "or via package manager:",
+    "browse": "Browse documentation →"
+  },
+  "sections": {
+    "get-started": { "label": "get started", "intro": "Install glorious, configure a provider, and make your first useful turn." },
+    "concepts": { "label": "concepts", "intro": "The language and design commitments behind glorious." },
+    "extend": { "label": "extend", "intro": "Add tools, commands, skills, and behavior without forking the core." },
+    "reference": { "label": "reference", "intro": "The complete reference for daily use and extension authors." },
+    "help": { "label": "help", "intro": "Diagnose setup problems and follow what changed." }
+  },
+  "pages": {
+    "install": "Install",
+    "quickstart": "Quickstart",
+    "features": "Features",
+    "philosophy": "Philosophy",
+    "glossary": "Glossary",
+    "architecture": "Architecture",
+    "extensions": "Extensions",
+    "skills": "Skills",
+    "commands": "Commands",
+    "tools": "Tools",
+    "providers": "Providers",
+    "models": "Models",
+    "configuration": "Configuration",
+    "cli": "CLI",
+    "api": "Extension API",
+    "troubleshooting": "Troubleshooting",
+    "changelog": "Changelog"
+  },
+  "install": {
+    "recommended": "Recommended",
+    "manual": "Manual",
+    "requirements": "Requires Bun ≥ 1.2 and git.",
+    "firstRun": "First run",
+    "quickstart": "Continue with the quickstart.",
+    "update": "Update",
+    "uninstall": "Uninstall"
+  }
+}

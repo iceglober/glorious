@@ -1,26 +1,36 @@
 import { useEffect } from "react";
 import { Link } from "react-router";
-import { SECTIONS } from "~/components/Layout";
-
-const INTRO: Record<string, string> = {
-  "/get-started": "Install glorious, configure a provider, and make your first useful turn.",
-  "/concepts": "The language and design commitments behind glorious.",
-  "/extend": "Add tools, commands, skills, and behavior without forking the core.",
-  "/reference": "The complete reference for daily use and extension authors.",
-  "/help": "Diagnose setup problems and follow what changed.",
-};
+import { EditableText, useEditMode } from "~/components/EditMode";
+import { SECTIONS } from "~/navigation";
 
 export function SectionPage({ path }: { path: string }) {
   const section = SECTIONS.find(({ to }) => to === path);
-  useEffect(() => { if (section) document.title = `${section.label} — glrs`; }, [section]);
+  const { text } = useEditMode();
+  const label = section ? text(`sections.${section.key}.label`) : "";
+  useEffect(() => {
+    if (section) document.title = `${label} — glrs`;
+  }, [section, label]);
   if (!section) return null;
   return (
     <main className="site-main section-page">
-      <p className="eyebrow">glorious / {section.label}</p>
-      <h1>{section.label}</h1>
-      <p className="section-intro">{INTRO[path]}</p>
+      <p className="eyebrow">
+        <EditableText path="brand.name" /> / <EditableText path={`sections.${section.key}.label`} />
+      </p>
+      <h1>
+        <EditableText path={`sections.${section.key}.label`} />
+      </h1>
+      <p className="section-intro">
+        <EditableText path={`sections.${section.key}.intro`} />
+      </p>
       <div className="section-links">
-        {section.pages.map(([label, to]) => <Link key={to} to={to}><strong>{label}</strong><span>Read the {label.toLowerCase()} documentation →</span></Link>)}
+        {section.pages.map((page) => (
+          <Link key={page.to} to={page.to}>
+            <strong>
+              <EditableText path={`pages.${page.key}`} />
+            </strong>
+            <span>Read the {text(`pages.${page.key}`).toLowerCase()} documentation →</span>
+          </Link>
+        ))}
       </div>
     </main>
   );
