@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["bun"]
   },
-  "include": ["api.ts", "scripts/**/*.ts", "theme/**/*.ts"]
+  "include": ["api/**/*.ts", "scripts/**/*.ts", "theme/**/*.ts"]
 }

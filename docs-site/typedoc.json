@@ -1,18 +1,23 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": ["./api.ts"],
+  "entryPoints": [
+    "./api/core.ts",
+    "./api/coding-agent.ts",
+    "./api/providers.ts"
+  ],
   "entryPointStrategy": "resolve",
-  "alwaysCreateEntryPointModule": false,
+  "alwaysCreateEntryPointModule": true,
   "tsconfig": "./tsconfig.json",
   "out": "./dist",
   "plugin": ["./theme/index.ts"],
   "theme": "glrs",
+  "router": "structure",
   "customCss": "./theme/glrs.css",
-  "customJs": "./theme/glrs.js",
-  "name": "glorious",
+  "name": "glrs",
   "includeVersion": false,
   "readme": "none",
   "projectDocuments": ["../docs/published/index.md"],
+  "sortEntryPoints": false,
   "searchInComments": true,
   "searchInDocuments": true,
   "excludePrivate": true,
@@ -39,5 +44,11 @@
   "headings": {
     "readme": true,
     "document": false
+  },
+  "locales": {
+    "en": {
+      "kind_module": "API",
+      "kind_plural_module": "API"
+    }
   }
 }

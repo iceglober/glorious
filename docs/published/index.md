@@ -1,13 +1,14 @@
 ---
-title: Documentation
+title: Guides
 group: Guides
 children:
-  - ./install.md
   - ./quickstart.md
+  - ./install.md
+  - ./architecture.md
+  - ./features.md
+  - ./extensions.md
   - ./philosophy.md
   - ./glossary.md
-  - ./architecture.md
-  - ./extensions.md
   - ./lifecycle.md
   - ./skills.md
   - ./commands.md
@@ -20,7 +21,7 @@ children:
   - ../../CHANGELOG.md
 ---
 
-# Documentation
+# Guides
 
 Guides and reference material for installing, using, extending, and contributing
 to glorious. API declarations are generated from the monorepo packages and live

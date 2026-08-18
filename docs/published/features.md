@@ -1,4 +1,4 @@
-# Features
+# Using Glorious
 
 The built-in feature set, in one place. Kept current: if something here is
 wrong, that is a bug.
