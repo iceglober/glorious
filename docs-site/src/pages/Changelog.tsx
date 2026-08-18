@@ -1,34 +1,58 @@
-import { useEffect, useState } from "react";
-import { useEditMode } from "~/components/EditMode";
-import { Doc } from "./Doc";
+import { useState, useEffect } from "react";
+import { Link } from "react-router";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { AnchorHeading } from "~/components/AnchorHeading";
+
+const slug = (text: string) => text.toLowerCase().replace(/[`*_]/gu, "").replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "");
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function MdLink({ href, children }: { href?: string; children?: any }) {
+  if (href && href.startsWith("/")) {
+    return <Link to={href}>{children}</Link>;
+  }
+  return <a href={href}>{children}</a>;
+}
 
 function cleanChangelog(raw: string): string {
   return raw
+    // Strip the h1 title line (e.g. "# @glrs-dev/glorious")
     .replace(/^#\s+@glrs-dev\/.*\n+/, "")
+    // Remove empty version sections (just "## X.Y.Z" with no content before next heading)
     .replace(/^(## \d+\.\d+\.\d+)\n+(## )/gm, "$2");
 }
 
 export function Changelog() {
-  const { editing } = useEditMode();
   const [changelog, setChangelog] = useState<string | null>(null);
 
   useEffect(() => {
-    if (editing) {
-      void import("../../../CHANGELOG.md?raw").then(({ default: local }) => setChangelog(local));
-      return;
-    }
-    fetch("https://raw.githubusercontent.com/iceglober/glorious/main/CHANGELOG.md")
-      .then((response) => response.text())
-      .then((text) => setChangelog(`# Changelog\n\n${cleanChangelog(text).trim() || "No releases yet."}`))
-      .catch(() => setChangelog("# Changelog\n\nFailed to load changelog."));
-  }, [editing]);
+    document.title = "Changelog — glrs";
+  }, []);
 
-  return changelog ? (
-    <Doc md={changelog} title="Changelog" source={editing ? "CHANGELOG.md" : undefined} />
-  ) : (
+  useEffect(() => {
+    fetch("https://raw.githubusercontent.com/iceglober/glorious/main/CHANGELOG.md")
+      .then((r) => r.text())
+      .then((text) => setChangelog(cleanChangelog(text).trim() || "No releases yet."))
+      .catch(() => setChangelog("Failed to load changelog."));
+  }, []);
+
+  return (
     <main className="site-main doc">
       <h1>Changelog</h1>
-      <p>Loading…</p>
+
+      <div className="changelog-content">
+        {changelog ? (
+          <Markdown remarkPlugins={[remarkGfm]} components={{
+            a: MdLink,
+            h2: ({ children }) => <AnchorHeading level={2} id={slug(String(children))}>{children}</AnchorHeading>,
+            h3: ({ children }) => <AnchorHeading level={3} id={slug(String(children))}>{children}</AnchorHeading>,
+          }}>
+            {changelog}
+          </Markdown>
+        ) : (
+          <p>Loading...</p>
+        )}
+      </div>
     </main>
   );
 }

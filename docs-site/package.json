@@ -1,5 +1,5 @@
 {
-  "name": "docs-site",
+  "name": "@glrs-dev/docs-site",
   "version": "0.0.0",
   "private": true,
   "description": "Docs site for the @glrs-dev ecosystem. Published to https://glrs.dev.",
@@ -7,7 +7,6 @@
   "scripts": {
     "generate": "bun scripts/generate-api.ts",
     "dev": "bun run generate && vite",
-    "edit": "bun install && bun run generate && bun scripts/edit.ts",
     "build": "bun run generate && vite build",
     "preview": "vite preview",
     "pretypecheck": "bun run generate",
@@ -16,7 +15,6 @@
     "lint": "echo 'no linter configured yet'"
   },
   "dependencies": {
-    "@mdx-js/mdx": "^3.1.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router": "^7.6.1",

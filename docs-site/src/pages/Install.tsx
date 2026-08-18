@@ -1,51 +1,72 @@
 import { useEffect } from "react";
-import { MdxPreview } from "~/components/MdxPreview";
-import { useEditMode } from "~/components/EditMode";
 import { Cmd, PkgSwitcher } from "~/components/PkgManager";
-import { Doc } from "./Doc";
+import { CodeBlock } from "~/components/CodeBlock";
+import { AnchorHeading } from "~/components/AnchorHeading";
 
-export function Install({ source }: { source: string }) {
+export function Install() {
   useEffect(() => {
     document.title = "Install — glrs";
   }, []);
-  const { editing } = useEditMode();
-  const components = {
-    PackageSwitcher: () => (
+
+  return (
+    <main className="site-main doc">
+      <h1>Install</h1>
+
       <div className="pkg-bar install-switcher">
         <PkgSwitcher />
       </div>
-    ),
-    PackageInstall: () => (
+
+      <AnchorHeading level={2} id="recommended">Recommended</AnchorHeading>
+
+      <CodeBlock copy="curl -fsSL https://glrs.dev/install.sh | bash">
+        curl -fsSL https://glrs.dev/install.sh | bash
+      </CodeBlock>
+
+      <AnchorHeading level={2} id="manual">Manual</AnchorHeading>
+
+      <p>
+        Requires <a href="https://bun.sh">Bun</a> ≥ 1.2 and git.
+      </p>
+
+      <CodeBlock copy="bun add --global @glrs-dev/glorious@next">
+        bun add --global @glrs-dev/glorious@next
+      </CodeBlock>
+
       <pre>
         <code>
           <Cmd action="install" pkg="@glrs-dev/glorious@next" />
         </code>
       </pre>
-    ),
-    PackageUpdate: () => (
+
+      <AnchorHeading level={2} id="first-run">First run</AnchorHeading>
+
       <pre>
         <code>
-          <Cmd action="update" pkg="@glrs-dev/glorious@next" />
+          export AZURE_OPENAI_API_KEY=…{"\n"}
+          export AZURE_RESOURCE_NAME=…{"\n"}
+          glorious
         </code>
       </pre>
-    ),
-    PackageRemove: () => (
+
+      <p>
+        See the <a href="/quickstart">quickstart</a>.
+      </p>
+
+      <AnchorHeading level={2} id="update">Update</AnchorHeading>
+
+      <pre>
+        <code>
+          <Cmd action="install" pkg="@glrs-dev/glorious@next" />
+        </code>
+      </pre>
+
+      <AnchorHeading level={2} id="uninstall">Uninstall</AnchorHeading>
+
       <pre>
         <code>
           <Cmd action="remove" pkg="@glrs-dev/glorious" />
         </code>
       </pre>
-    ),
-  };
-  const preview = (mdx: string) => <MdxPreview source={mdx} components={components} />;
-  return editing ? (
-    <Doc
-      md={source}
-      title="Install"
-      source="docs-site/src/content/install.mdx"
-      renderPreview={preview}
-    />
-  ) : (
-    <main className="site-main doc">{preview(source)}</main>
+    </main>
   );
 }

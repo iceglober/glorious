@@ -34,9 +34,7 @@
   "bin": {
     "glorious": "bin/glorious"
   },
-  "engines": {
-    "bun": "1.3.14"
-  },
+  "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "bun packages/glorious-coding-agent/src/index.ts",
     "glorious": "bun packages/glorious-coding-agent/src/index.ts",
