@@ -27,7 +27,11 @@ const pageElement = (page: NavigationPage, editing: boolean) => {
     ? source
     : source
         .replaceAll("{{generated:extension-api}}", apiMd)
-        .replace(/\{\{asset:([^}]+)\}\}/gu, "![$1]($1)");
+        .replace(/\{\{asset:([^}]+)\}\}/gu, (_directive, path: string) =>
+          /\.(?:avif|gif|jpe?g|png|svg|webp)$/iu.test(path)
+            ? `![${path}](${path})`
+            : `[${path}](${path})`,
+        );
   return (
     <Doc
       md={rendered}

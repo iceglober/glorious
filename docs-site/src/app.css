@@ -866,6 +866,10 @@ h3:hover .heading-anchor,
   cursor: default;
 }
 
+.markdown-input {
+  position: relative;
+}
+
 .markdown-source textarea {
   width: 100%;
   min-height: calc(100vh - 12rem);
@@ -877,6 +881,55 @@ h3:hover .heading-anchor,
   color: var(--black);
   font: 0.85rem/1.55 var(--mono);
   tab-size: 2;
+}
+
+.template-suggestions {
+  position: absolute;
+  z-index: 30;
+  top: 3rem;
+  right: 1rem;
+  left: 1rem;
+  max-height: 16rem;
+  overflow: auto;
+  border: 1px solid var(--black);
+  background: var(--white);
+}
+
+.template-suggestions button {
+  display: grid;
+  grid-template-columns: minmax(12rem, auto) 1fr;
+  gap: 1rem;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  color: var(--black);
+  text-align: left;
+  font: 0.72rem/1.4 var(--mono);
+  cursor: pointer;
+}
+
+.template-suggestions button:last-child {
+  border-bottom: 0;
+}
+
+.template-suggestions button.selected,
+.template-suggestions button:hover {
+  background: var(--black);
+  color: var(--white);
+}
+
+.template-suggestions span {
+  overflow: hidden;
+  color: var(--gray);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-suggestions button.selected span,
+.template-suggestions button:hover span {
+  color: #aaa79d;
 }
 
 .markdown-preview {

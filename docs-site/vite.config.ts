@@ -1,5 +1,5 @@
-import { writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { readdir, writeFile } from "node:fs/promises";
+import { basename, extname, relative, resolve, sep } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
@@ -8,11 +8,45 @@ const published = resolve(root, "docs", "published");
 const siteContent = resolve(__dirname, "src", "content", "site.json");
 const changelog = resolve(root, "CHANGELOG.md");
 const editMode = process.env.GLORIOUS_EDIT === "1";
+const generated = resolve(__dirname, "src", "generated");
+const publicAssets = resolve(__dirname, "public");
+
+const filesUnder = async (directory: string): Promise<string[]> => {
+  const found: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) found.push(...(await filesUnder(path)));
+    else if (entry.isFile()) found.push(path);
+  }
+  return found;
+};
 
 const localEditor = (): Plugin => ({
   name: "glorious-local-editor",
   configureServer(server) {
     if (!editMode) return;
+    server.middlewares.use("/__glorious_templates", async (_request, response) => {
+      const generatedTemplates = (await filesUnder(generated))
+        .filter((file) => extname(file) === ".md")
+        .map((file) => {
+          const name = basename(file, ".md");
+          return {
+            value: `{{generated:${name}}}`,
+            label: `generated:${name}`,
+            description: relative(root, file),
+          };
+        });
+      const assets = (await filesUnder(publicAssets)).map((file) => {
+        const path = `/${relative(publicAssets, file).split(sep).join("/")}`;
+        return {
+          value: `{{asset:${path}}}`,
+          label: `asset:${path}`,
+          description: relative(root, file),
+        };
+      });
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify([...generatedTemplates, ...assets]));
+    });
     server.middlewares.use("/__glorious_edit", async (request, response) => {
       if (request.method !== "POST") {
         response.statusCode = 405;

@@ -18,7 +18,8 @@ create `docs/published/<slug>.md` and update `docs-site/src/content/site.json`.
 Site chrome, navigation labels, section descriptions, and Install-page copy are
 managed through the Site Settings panel.
 
-Markdown pages may include `{{generated:extension-api}}` and `{{asset:path}}`
-directives. Generated content is expanded outside edit mode. The generated
+Typing `{{` in the Markdown editor opens autocomplete for generated templates
+and assets discovered from the repository, including `{{generated:extension-api}}`
+and `{{asset:/path}}`. Generated content is expanded outside edit mode. The generated
 Extension API reference itself is read-only because its source of truth is
 `packages/glorious-coding-agent/src/extension-api.ts`.
