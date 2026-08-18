@@ -28,6 +28,8 @@
     "extension-shortcuts",
     "failed-tool-reason",
     "gemini-prompt-addendum",
+    "idempotent-release-order",
+    "idempotent-release",
     "initial-release",
     "layered-provider-mcp-config",
     "lifecycle-diagram-render",
