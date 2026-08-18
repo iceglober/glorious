@@ -1,6 +1,6 @@
 {
   "name": "@glrs-dev/glorious",
-  "version": "1.0.0-next.38",
+  "version": "1.0.0-next.49",
   "private": false,
   "description": "glorious monorepo: a provider-neutral agent core and the glorious coding-agent product.",
   "license": "MIT",

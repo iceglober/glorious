@@ -70,6 +70,17 @@ export const runPrint = async (
       return registry.tools;
     },
     extensionPrompt: () => registry.promptLines,
+    onContext: async (messages, step) => {
+      const said = await fire(registry, "context", { messages, step }, note);
+      return Array.isArray(said) ? said : undefined;
+    },
+    onRequest: async (request) => {
+      const said = await fire(registry, "before_provider_request", request, note);
+      return said && typeof said === "object" && !Array.isArray(said) ? said : undefined;
+    },
+    onResponse: (response) => {
+      void fire(registry, "after_provider_response", response, note);
+    },
   });
 
   // Extensions load here too. They have to: a tool the agent writes for itself
@@ -119,7 +130,7 @@ export const runPrint = async (
       mode: "print" as const,
       setInput: () => note("[extension] setInput() has no meaning in print mode; ignored"),
       tools: () => agent.toolNames(),
-      setTools: (names: readonly string[] | null) => agent.setTools(names),
+      setToolFilters: (filters) => agent.setToolFilters(filters),
       model: () => ({
         label: `${model.provider}/${model.modelId}`,
         provider: model.provider,
@@ -151,6 +162,9 @@ export const runPrint = async (
       session: () => ({ id: "print", file: "", title: "print", events: 0 }),
       setSessionName: () => {},
       appendEntry: () => {},
+      // A one-shot run has no session file, so nothing was ever written and
+      // there is nothing to read.
+      entries: () => [],
     },
     (event) => toolSink(event),
   );
@@ -197,11 +211,18 @@ export const runPrint = async (
     await fire(registry, "turn_start", { text: prompt }, note);
     const { prompt: asked, missing } = await expandMentions(where.root, prompt);
     for (const path of missing) note(`(no such file: @${path} — sent as text)`);
-    const result = await agent.run(asked, [], {
+    // The same hook the TUI fires before a request. It was wired through
+    // createChat, which print mode does not use, so every context-injecting
+    // extension worked interactively and silently did nothing here — including
+    // in the runs the agent uses to check its own work.
+    const added = await fire(registry, "before_request", { prompt: asked, messages: 0 }, note);
+    const sent = typeof added === "string" && added !== "" ? `${asked}\n\n${added}` : asked;
+    const result = await agent.run(sent, [], {
       signal: stop.signal,
       onDelta: ({ kind, text }) => {
         // Reasoning is the model talking to itself; in a pipe it is noise the
         // caller did not ask for.
+        void fire(registry, "message", { kind, text }, note);
         if (kind !== "text") return;
         // The model speaking closes the run of calls before it, exactly as it
         // does on screen — same rule, same function, so `2>&1` and a watched
@@ -264,8 +285,13 @@ export const runPrint = async (
         totals.steps += 1;
         void fire(registry, "usage", { ...lastUsage, contextTokens: step.contextTokens }, note);
       },
-      onReasoningEnd: () => {},
+      onReasoningEnd: ({ text, elapsedMs }) => {
+        // Not printed — reasoning is noise in a pipe — but announced, so an
+        // extension that records or measures it works headlessly too.
+        void fire(registry, "reasoning", { text, elapsedMs }, note);
+      },
       onPhase: () => {},
+      onRetry: (attempt, why) => note(`[retry ${attempt + 1}] connection dropped: ${why}`),
     });
     // A turn that ends on a tool call still closes its run, or the last thing
     // the agent did would be the one thing with no receipt.
@@ -283,9 +309,17 @@ export const runPrint = async (
     }
     return 0;
   } catch (thrown) {
-    process.stderr.write(`${stop.signal.aborted ? "[interrupted]" : errorText(thrown)}\n`);
+    const message = stop.signal.aborted ? "[interrupted]" : errorText(thrown);
+    // Announced, not just printed. An extension that reports failures — to a
+    // log, a webhook, an exit code of its own — worked interactively and saw
+    // nothing here.
+    await fire(registry, "error", { message }, note);
+    process.stderr.write(`${message}\n`);
     return 1;
   } finally {
+    // A one-shot run ends too, and an extension with something to flush has to
+    // be told. session_start fired without a matching session_end.
+    await fire(registry, "session_end", { root: where.root }, note);
     process.off("SIGINT", onSigint);
   }
 };

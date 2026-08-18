@@ -29,8 +29,47 @@ const clearer: ReadonlyArray<[RegExp, string]> = [
   [/EAI_AGAIN|ENOTFOUND/u, "could not resolve the model host — check DNS and the resource name"],
 ];
 
+// What was actually thrown, in words. `String(thrown)` was fine for an Error and
+// produced "[object Object]" for everything else — and a provider SDK throws
+// plain objects routinely, so a failed turn could report literally nothing.
+// The shapes below are the ones that turn up: a nested `error`, a response body,
+// an AggregateError's first cause. Anything unrecognised is serialised, because
+// a wall of JSON is worth more than "[object Object]".
+const DESCRIBE_LIMIT = 400;
+
+export const describeThrown = (thrown: unknown): string => {
+  if (typeof thrown === "string") return thrown;
+  if (thrown instanceof Error) {
+    if (thrown.message !== "") return thrown.message;
+    // Some SDK errors carry an empty message and a populated cause.
+    if (thrown.cause !== undefined) return describeThrown(thrown.cause);
+    return thrown.name;
+  }
+  if (thrown === null || thrown === undefined) return "an unknown failure";
+  if (typeof thrown !== "object") return String(thrown);
+  const shape = thrown as Record<string, unknown>;
+  for (const key of ["message", "error_description", "detail", "statusText"]) {
+    const value = shape[key];
+    if (typeof value === "string" && value !== "") return value;
+  }
+  for (const key of ["error", "cause", "data", "body", "responseBody"]) {
+    const value = shape[key];
+    if (value !== undefined && value !== thrown) {
+      const said = describeThrown(value);
+      if (said !== "" && !said.startsWith("{")) return said;
+    }
+  }
+  if (Array.isArray(shape.errors) && shape.errors.length > 0)
+    return describeThrown(shape.errors[0]);
+  try {
+    return clip(JSON.stringify(thrown), DESCRIBE_LIMIT);
+  } catch {
+    return "an unknown failure";
+  }
+};
+
 export const errorText = (thrown: unknown): string => {
-  const raw = thrown instanceof Error ? thrown.message : String(thrown);
+  const raw = describeThrown(thrown);
   return clearer.find(([pattern]) => pattern.test(raw))?.[1] ?? raw;
 };
 

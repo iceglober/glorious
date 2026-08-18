@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmod, rename, rm, stat } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { type ToolSet, tool } from "ai";
 import { z } from "zod";
@@ -38,19 +39,9 @@ export type ToolEvent =
       elapsedMs: number;
     };
 
-export type Question = {
-  question: string;
-  options: string[];
-};
-
-export type AskQuestions = (
-  questions: Question[],
-  signal: AbortSignal | undefined,
-) => Promise<string>;
-
 // The six that touch the machine, plus the one that opens a skill. `ask_user`
-// was here and is a bundled extension now: it needs a person rather than the
-// filesystem, and the core is the part that cannot be written against the
+// was here and is a bundled extension now: it needs a person rather than a
+// filesystem, and the core is only the part that cannot be written against the
 // extension API.
 export const BUILT_IN_TOOL_NAMES = [
   "bash",
@@ -75,6 +66,16 @@ const expired = (timeoutMs: number): string => `[timed out after ${timeoutMs / 1
 const FAILED = /^ERROR:|\[interrupted\]|\[timed out/u;
 
 type Capture = { out: string; err: string; code: number; note: string };
+
+// What a shell command tells you. `output` is everything, interleaved, for a
+// transcript; the rest is for a program deciding what to do next.
+export type ShellResult = {
+  output: string;
+  stdout: string;
+  stderr: string;
+  code: number;
+  ok: boolean;
+};
 
 const capText = (text: string, limit: number): string =>
   text.length > limit
@@ -143,7 +144,7 @@ export const runShell = async (
   root: string,
   command: string,
   args: readonly string[] = [],
-): Promise<{ output: string; stdout: string; ok: boolean }> => {
+): Promise<ShellResult> => {
   const got = await launch(["bash", "-lc", command, "glorious", ...args], resolve(root), undefined);
   const parts = [got.out.trimEnd(), got.err.trimEnd()].filter((part) => part.length > 0);
   if (got.note) parts.push(got.note);
@@ -151,6 +152,13 @@ export const runShell = async (
   return {
     output: capText(parts.join("\n"), RESULT_LIMIT),
     stdout: capText(got.out.trimEnd(), RESULT_LIMIT),
+    // Kept apart, and kept at all: `ok` collapsed every kind of failure into
+    // one bit, so an extension wrapping a linter could not tell exit 1 (it
+    // found problems) from exit 127 (it is not installed) — which are opposite
+    // situations. An interrupted or timed-out command has no exit code of its
+    // own, so it reports the signal's 128+n the way a shell does.
+    stderr: capText(got.err.trimEnd(), RESULT_LIMIT),
+    code: got.note === "" ? got.code : 130,
     ok: got.note === "" && got.code === 0,
   };
 };
@@ -340,9 +348,27 @@ export const createTools = (
 
   const within = (target?: string): string => {
     const full = resolve(base, target ?? ".");
-    if (under(full, base)) return full;
+    if (under(full, base) || mine(full)) return full;
     throw new Error(`path escapes root: ${target}`);
   };
+
+  // Where glorious keeps your extensions, skills and commands. The docs tell
+  // the model to write an extension to ~/.config/agents/extensions — and `write`
+  // refused, because the path is outside the project. The model then wrote it
+  // with a python heredoc through `bash`, which is unconfined, so the guard
+  // bought nothing and cost a ✗ row and a clumsier path. Same lesson as the
+  // docs directory below it, learned twice.
+  const agentHomes = (): string[] => {
+    const home = homedir();
+    return [
+      join(home, ".config", "agents"),
+      join(home, ".agents"),
+      join(home, ".glorious"),
+      join(home, ".config", "glorious"),
+    ];
+  };
+
+  const mine = (full: string): boolean => agentHomes().some((dir) => under(full, dir));
 
   // Reading also reaches glorious's own docs. The system prompt hands the model
   // an absolute path to them and tells it to read them; confining reads to the
@@ -351,7 +377,7 @@ export const createTools = (
   // wasted step and a ✗ row about a file that was there all along.
   const readable = (target?: string): string => {
     const full = resolve(base, target ?? ".");
-    if (under(full, base) || under(full, docsPath())) return full;
+    if (under(full, base) || under(full, docsPath()) || mine(full)) return full;
     throw new Error(`path escapes root: ${target}`);
   };
 

@@ -1,10 +1,10 @@
-import type { ToolSet } from "ai";
+import type { ModelMessage, ToolSet } from "ai";
 import { z } from "zod";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import { clip, type Line, type Tone } from "./render";
 import type { SkillSummary } from "./skills";
-import type { ToolEvent } from "./tools";
+import type { ToolEvent, ShellResult as ToolShellResult } from "./tools";
 import { wrapTool } from "./tools";
 
 // The public surface an extension is written against. Everything on it is a
@@ -22,7 +22,10 @@ export type { Activity, Line, Span, Tone } from "./render";
 
 import type { Activity } from "./render";
 
-export type ShellResult = { output: string; stdout: string; ok: boolean };
+// Re-exported from tools.ts rather than declared again: two copies of one
+// shape is two things to remember to change, and the last one had already
+// fallen behind.
+export type ShellResult = ToolShellResult;
 
 export type EventName =
   | "session_start"
@@ -41,7 +44,10 @@ export type EventName =
   | "usage"
   | "reasoning"
   | "error"
-  | "compact";
+  | "compact"
+  | "context"
+  | "before_provider_request"
+  | "after_provider_response";
 
 export type EventPayload = {
   session_start: { root: string };
@@ -91,15 +97,52 @@ export type EventPayload = {
   error: { message: string };
   // The conversation was summarised to stay inside the context limit.
   compact: { dropped: number; kept: number; automatic: boolean };
+  // Every message about to be sent, before each model call. Returning an array
+  // replaces what is sent for that call only — the stored conversation is
+  // untouched, so filtering or reordering here never rewrites history.
+  //
+  // `before_request` appends a string to the turn's message; this replaces the
+  // whole list, which is what redaction, windowing and message-level rewriting
+  // need and appending cannot do.
+  context: { messages: readonly ModelMessage[]; step: number };
+  // The HTTP request to the provider, before it is sent. Returning headers
+  // merges them; returning a body replaces it outright. A gateway, a signing
+  // proxy, per-request auth and request logging all live here.
+  before_provider_request: {
+    url: string;
+    headers: Readonly<Record<string, string>>;
+    body: unknown;
+  };
+  // The provider's response, before its body is read. Observational: status and
+  // headers are what rate-limit budgets and request ids arrive in.
+  after_provider_response: {
+    url: string;
+    status: number;
+    headers: Readonly<Record<string, string>>;
+  };
 };
 
 // undefined rather than void, so the union is unambiguous: a handler that
 // returns nothing leaves the payload alone.
-export type HandlerVerdict = undefined | string | false;
+// What a handler may return, per event. Most return nothing; the ones that can
+// change what happens say so in their own type rather than every handler
+// sharing one loose `string | false`.
+export type Verdict = {
+  input: string | false;
+  tool_call: string | false;
+  tool_end: string;
+  before_request: string;
+  context: readonly ModelMessage[];
+  before_provider_request: { headers?: Record<string, string>; body?: unknown };
+};
+
+export type HandlerVerdict<E extends EventName = EventName> =
+  | undefined
+  | (E extends keyof Verdict ? Verdict[E] : never);
 
 export type Handler<E extends EventName> = (
   payload: EventPayload[E],
-) => HandlerVerdict | Promise<HandlerVerdict>;
+) => HandlerVerdict<E> | Promise<HandlerVerdict<E>>;
 
 export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   name: string;
@@ -179,12 +222,12 @@ export type Key = {
   key: string;
   ctrl: boolean;
   shift: boolean;
-  /** The printable characters this key produced, empty for control keys. */
+  /** The printable text this key produced. Empty for control keys. */
   text: string;
 };
 
 export type Capture = {
-  /** Draw the composer area. Called on every key and every repaint. */
+  /** Draw the composer area. Called on every key, and on resize. */
   render: (columns: number) => Line[];
   /** Every keypress, until you close. Nothing else sees them. */
   onKey: (key: Key) => void;
@@ -192,15 +235,19 @@ export type Capture = {
 
 export type Ui = {
   /**
-   * Take over the composer area: draw your own lines there, receive every key,
-   * until you call close().
+   * Take over the composer area: draw your own lines there and receive every
+   * key, until you call close().
    *
-   * This is the whole of glorious's input primitive. There is deliberately no
-   * `ask`, no `select`, no `confirm` — a core that knows what a question looks
-   * like has already decided what asking is, and asking is not something a
-   * coding agent's core has to have an opinion about. The bundled `ask-user`
-   * extension is a question widget written entirely against this; anything you
-   * want instead is the same amount of work and none of it is privileged.
+   * This is the whole of glorious's input primitive, and it is deliberately the
+   * only one. There was an `ask`, a `select`, a `confirm` and an `input` here,
+   * which meant the core had an opinion about what a question looks like — a
+   * 234-line widget lived in the renderer for the sake of one tool, and the
+   * "generic" helpers around it were parsing the JSON that tool returned to the
+   * model. A coding agent's core does not need to know what asking is.
+   *
+   * The bundled `ask-user` extension is a question widget written against
+   * nothing but this. A picker, a form, a diff viewer are the same amount of
+   * work, and none of them is privileged over yours.
    */
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
   /** Put text in the composer, ready to edit. */
@@ -250,7 +297,7 @@ export type Glorious = {
    * tokens of recent turns to leave verbatim.
    */
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
-  /** Re-read skills and commands from disk. */
+  /** Re-read skills, commands, and extensions from disk. */
   reload: () => Promise<void>;
 
   /** "tui" when a terminal is attached, "print" for a headless -p run. */
@@ -263,11 +310,18 @@ export type Glorious = {
   /** The tools the model can currently call. */
   tools: () => readonly string[];
   /**
-   * Restrict the model to these tools for the next turn onward. Pass null to
-   * lift the restriction. Withholding beats instructing: a tool that is absent
+   * Narrow what the model can call, from the next turn onward. Return false for
+   * a tool to withhold it. Withholding beats instructing: a tool that is absent
    * cannot be talked into being used.
+   *
+   * Every extension's filter has to agree, so restrictions compose and can only
+   * narrow. This replaced a `setTools(names)` that set one global list — a
+   * read-only extension and a no-network extension would each call it, the
+   * second would silently undo the first, and neither could see the other.
+   *
+   * Returns a handle that lifts your own filter and nobody else's.
    */
-  setTools: (names: readonly string[] | null) => void;
+  filterTools: (keep: (name: string) => boolean) => { lift: () => void };
 
   /** The model in force, with its context window and reasoning variants. */
   model: () => ModelInfo;
@@ -295,6 +349,16 @@ export type Glorious = {
   setSessionName: (title: string) => void;
   /** Persist your own data in the session file. Never sent to the model. */
   appendEntry: (type: string, data: unknown) => void;
+  /**
+   * Everything this session has recorded under `type`, oldest first — including
+   * entries written before a `--resume`, since a resumed session replays them.
+   *
+   * appendEntry had no counterpart, so an extension could write to the session
+   * file and never read it back: storage you cannot read is not storage, and
+   * the only way to recover your own data was to open `session().file` and
+   * parse it yourself.
+   */
+  entries: (type: string) => readonly unknown[];
 
   /** Transform assistant markdown before it is rendered. Display only. */
   markdown: (transform: (text: string) => string) => void;
@@ -334,7 +398,7 @@ export type ExtensionHost = {
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
   reload: () => Promise<void>;
   tools: () => readonly string[];
-  setTools: (names: readonly string[] | null) => void;
+  setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>) => void;
   model: () => ModelInfo;
   models: () => Promise<readonly ModelInfo[]>;
   setModel: (label: string, variant?: string) => Promise<void>;
@@ -347,6 +411,7 @@ export type ExtensionHost = {
   session: () => SessionInfo;
   setSessionName: (title: string) => void;
   appendEntry: (type: string, data: unknown) => void;
+  entries: (type: string) => readonly unknown[];
 };
 
 export type ToolRenderer = {
@@ -363,6 +428,8 @@ export type Registry = {
   runners: Map<string, (args: string) => void | Promise<void>>;
   handlers: Map<EventName, Array<Handler<EventName>>>;
   renderers: Map<string, ToolRenderer>;
+  // Every extension's tool filter. All of them must agree for a tool to survive.
+  toolFilters: Array<(name: string) => boolean>;
   statuses: Array<() => string | null>;
   footers: Array<() => Line[]>;
   activities: Array<(state: Activity) => Line[] | null>;
@@ -377,12 +444,35 @@ export type Registry = {
   contributions: Map<string, { tools: string[]; commands: string[]; hooks: number; ui: number }>;
 };
 
+// Empty every container in place. A reload replaces what extensions
+// contributed without replacing the registry itself — index.ts and the agent
+// both hold this object by reference, and swapping it would leave them looking
+// at the old one.
+export const resetRegistry = (registry: Registry): void => {
+  for (const name of Object.keys(registry.tools)) delete registry.tools[name];
+  registry.commands.length = 0;
+  registry.toolFilters.length = 0;
+  registry.statuses.length = 0;
+  registry.footers.length = 0;
+  registry.activities.length = 0;
+  registry.promptLines.length = 0;
+  registry.keys.length = 0;
+  registry.markdown.length = 0;
+  registry.runners.clear();
+  registry.handlers.clear();
+  registry.renderers.clear();
+  registry.flags.clear();
+  registry.bus.clear();
+  registry.contributions.clear();
+};
+
 export const createRegistry = (): Registry => ({
   tools: {},
   commands: [],
   runners: new Map(),
   handlers: new Map(),
   renderers: new Map(),
+  toolFilters: [],
   statuses: [],
   footers: [],
   activities: [],
@@ -445,7 +535,9 @@ export const createApi = (
     on: (event, handler) => {
       ledger.hooks += 1;
       const bucket = registry.handlers.get(event) ?? [];
-      bucket.push(handler as Handler<EventName>);
+      // The registry stores handlers for every event together; each one is
+      // typed to its own event, which no single element type can express.
+      bucket.push(handler as unknown as Handler<EventName>);
       registry.handlers.set(event, bucket);
     },
     key: (spec) => {
@@ -472,7 +564,18 @@ export const createApi = (
       setInput: host.setInput,
     },
     tools: host.tools,
-    setTools: host.setTools,
+    filterTools: (keep) => {
+      registry.toolFilters.push(keep);
+      host.setToolFilters(registry.toolFilters);
+      return {
+        lift: () => {
+          const at = registry.toolFilters.indexOf(keep);
+          if (at < 0) return;
+          registry.toolFilters.splice(at, 1);
+          host.setToolFilters(registry.toolFilters);
+        },
+      };
+    },
     model: host.model,
     models: host.models,
     setModel: host.setModel,
@@ -485,6 +588,7 @@ export const createApi = (
     session: host.session,
     setSessionName: host.setSessionName,
     appendEntry: host.appendEntry,
+    entries: host.entries,
     markdown: (transform) => registry.markdown.push(transform),
     events: {
       emit: (name, payload) => {
@@ -523,13 +627,15 @@ export const fire = async <E extends EventName>(
   event: E,
   payload: EventPayload[E],
   onFailure: (message: string) => void,
-): Promise<string | false | undefined> => {
-  let replaced: string | undefined;
+): Promise<HandlerVerdict<E>> => {
+  let replaced: HandlerVerdict<E>;
   for (const handler of registry.handlers.get(event) ?? []) {
     try {
-      const said = await handler(payload);
-      if (said === false) return false;
-      if (typeof said === "string") replaced = said;
+      const said = await (handler as unknown as Handler<E>)(payload);
+      // `false` is a refusal and ends the matter — no later handler can undo
+      // another's block.
+      if (said === false) return said as HandlerVerdict<E>;
+      if (said !== undefined) replaced = said as HandlerVerdict<E>;
     } catch (thrown) {
       onFailure(`${event} handler failed: ${thrown instanceof Error ? thrown.message : thrown}`);
     }

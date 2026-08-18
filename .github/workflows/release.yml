@@ -32,13 +32,26 @@ jobs:
       - run: bun run check
       - run: bun run test
       - run: bun publish --dry-run --access public --tag next
+      # Before the action, deliberately. The action runs `changeset version` in
+      # this workspace, so after it package.json holds the *next* version — the
+      # one whose PR has not been merged. Publishing that would make version PRs
+      # decoration and release code nobody merged. Here, the workspace is still
+      # exactly main.
+      #
+      # This runs unconditionally because the action publishes nothing when it
+      # sees an unconsumed changeset: it opens a version PR instead. A version
+      # PR whose branch predates the newest changeset therefore merges, bumps
+      # main, and publishes nothing, stranding that version forever — which
+      # happened three times in one day. Now every push converges on "npm has
+      # what main has committed", and a skipped version is repaired by the next
+      # push instead of being rolled over and lost.
+      - name: Publish main's version if npm does not have it
+        run: bash scripts/release-publish.sh
       - uses: changesets/action@v1
         with:
           version: bunx changeset version
-          # Idempotent publish — the action runs this on every push (to catch
-          # unpublished versions) and passes it to exec as command+args, not a
-          # shell, so the guard lives in a script. Skips an already-published
-          # version instead of 403ing; publishes new versions under `next`.
+          # The action publishes when it decides there is nothing left to
+          # version; the guard below covers when it decides otherwise.
           publish: bash scripts/release-publish.sh
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}

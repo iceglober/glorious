@@ -149,7 +149,7 @@ The model is told why, by name, so it chooses something else instead of seeing
 an unexplained failure. Withholding beats instructing — a blocked tool cannot be
 talked into running.
 
-**Be careful blocking a tool headlessly.** `g.ui.*` needs a person, so a gate
+**Be careful blocking a tool headlessly.** `g.ui.capture` needs a person, so a gate
 that asks for confirmation has to decide what to do when `g.hasUI` is false.
 Refusing every `bash` in print mode makes `glorious -p` unusable — including the
 run the agent uses to verify its own work, which will then retry until something
@@ -162,7 +162,7 @@ g.on("tool_call", async ({ name, input }) => {
   const command = String(input.command ?? "");
   if (!/rm -rf|force-push|drop table/iu.test(command)) return;   // narrow
   if (!g.hasUI) return `refused headlessly: ${command}`;         // and explicit
-  if (!(await g.ui.confirm("Run this?", command))) return "you declined";
+  if (!(await confirm(g, "Run this?", command))) return "you declined";   // your own, on g.ui.capture
 });
 ```
 
@@ -173,9 +173,20 @@ carries on.
 
 ### `g.exec(command, args?)`
 
-Runs a shell command in the project root. Returns `{ output, stdout, ok }`;
+Runs a shell command in the project root. Returns
+`{ output, stdout, stderr, code, ok }`;
 `args` arrive as real positional parameters, so `$1` and `$@` mean what a script
 author expects and nothing needs quoting to stay safe.
+
+`code` and `stderr` are there because `ok` collapsed every failure into one bit:
+exit 1 (the linter found problems) and exit 127 (the linter is not installed)
+are opposite situations and used to be indistinguishable.
+
+```ts
+const { code, stderr } = await g.exec("eslint .");
+if (code === 127) g.print("eslint is not installed", "warning");
+else if (code !== 0) g.print(stderr, "danger");
+```
 
 ### `g.root`
 
@@ -183,26 +194,62 @@ The project root, absolute. Every relative path an extension resolves should
 resolve against this, not `process.cwd()` — an extension or tool may have moved
 the working directory.
 
-### `g.ui`
+### `g.ui.capture(spec)`
 
-Prompts, in the composer rather than over the transcript. All of them throw in
-print mode, so guard on `g.hasUI` if the extension should also work headlessly.
+Take over the composer area: draw your own lines there and receive every key,
+until you close.
 
 ```ts
-const choice = await g.ui.select("Which branch?", ["main", "next"]);  // string | null
-const sure   = await g.ui.confirm("Delete it?", "This cannot be undone");  // boolean
-const name   = await g.ui.input("New session name");  // string | null
-g.ui.setInput("git status");   // put text in the composer, ready to edit
+g.command("branch", {
+  description: "Switch branch",
+  run: async () => {
+    const names = (await g.exec("git branch --format=%(refname:short)")).stdout.trim().split("\n");
+    let at = 0;
+    const held = g.ui.capture({
+      render: () => names.map((name, index): Line => [
+        { text: index === at ? "› " : "  ", tone: "accent" },
+        { text: name, bold: index === at },
+      ]),
+      onKey: (key) => {
+        if (key.key === "up") at = (at + names.length - 1) % names.length;
+        if (key.key === "down") at = (at + 1) % names.length;
+        if (key.key === "escape") held.close();
+        if (key.key === "return") {
+          held.close();
+          void g.exec(`git switch ${names[at]}`);
+        }
+      },
+    });
+  },
+});
 ```
 
-`select` and `input` resolve to `null` when dismissed; `confirm` resolves
-`false`. Dismissal is never mistaken for agreement.
+`render` is called on every key and on resize; `onKey` sees every keypress and
+nothing else does. `close()` gives the composer back, and is safe to call twice.
+A `Key` is `{ key, ctrl, shift, text }` — `key` is a name like `"return"` or
+`"escape"`, `text` is what the key would type and is empty for control keys.
 
-### `g.send(text, options?)` / `g.print(content, tone?)` / `g.ask(questions)`
+**This is the only input primitive, deliberately.** There used to be `g.ask`,
+`g.ui.select`, `g.ui.confirm` and `g.ui.input`, which meant the core had an
+opinion about what a question looks like — a 234-line question widget lived in
+the renderer for the sake of one tool, and the "generic" helpers around it
+worked by parsing the JSON that tool returned to the model. A coding agent's
+core does not need to know what asking is.
 
-Start a turn, write into the transcript, or ask the user with the same widget
-the `ask_user` tool uses. Tones: `accent`, `highlight`, `muted`, `prompt`,
-`success`, `warning`, `danger`.
+The bundled `ask-user` extension is a full question widget — options, a cursor,
+free-text notes, several questions in a row — written against nothing but
+`g.ui.capture`. Read `v2/bundled/ask-user.ts`; yours starts the same way and is
+not competing with anything privileged.
+
+`g.ui.capture` throws in print mode, where there is no composer. Guard on
+`g.hasUI`.
+
+`g.ui.setInput("git status")` puts text in the composer, ready to edit.
+
+### `g.send(text, options?)` / `g.print(content, tone?)`
+
+Start a turn, or write into the transcript. Tones: `accent`, `highlight`,
+`muted`, `prompt`, `success`, `warning`, `danger`.
 
 `g.send(text, { label, steer })` — `label` is what the transcript shows instead
 of the text, which matters when the text is a 30k expansion nobody typed.
@@ -279,16 +326,32 @@ is reported rather than ignored.
 ### Tools and models
 
 ```ts
-g.tools()                       // what the model can call right now
-g.setTools(["read", "grep"])    // restrict it; null lifts the restriction
-g.model()                       // { label, provider, modelId, variant, context }
-await g.models()                // the whole catalogue
+g.tools()                              // what the model can call right now
+const held = g.filterTools((n) => n !== "bash")   // narrow it; held.lift() undoes yours
+g.model()                              // { label, provider, modelId, variant, context }
+await g.models()                       // the whole catalogue
 await g.setModel("anthropic/claude-opus-5", "high")
 ```
 
-`setTools` withholds rather than forbids, so there is nothing to argue with.
-Between these and `tool_call`, both plan mode and the model picker are writable
-as extensions.
+`filterTools` withholds rather than forbids, so there is nothing to argue with —
+a tool that is absent cannot be talked into being used. **Every extension's
+filter has to agree**, so restrictions compose and can only narrow:
+
+```ts
+// two extensions, installed independently, neither aware of the other
+readOnly.filterTools((name) => !["write", "edit"].includes(name));
+noShell.filterTools((name) => name !== "bash");
+// the model is left with read, grep, glob — both restrictions hold
+```
+
+This replaced `setTools(names)`, which set one global list: the second extension
+to call it silently undid the first, and neither could see the other.
+
+`filterTools` and `tool_call` are not the same thing. A filter **removes** the
+tool, so the model never sees it. A `tool_call` handler **refuses** a call and
+tells the model why, which is what you want when the answer depends on the
+arguments. Between them, plan mode and the model picker are both writable as
+extensions.
 
 ### Turn and session
 
@@ -297,14 +360,25 @@ g.idle() · g.pending() · g.abort() · g.usage() · g.systemPrompt() · g.shutd
 g.session()                     // { id, file, title, events }
 g.setSessionName("refactor")
 g.appendEntry("my-data", { … })  // persisted, never sent to the model
+g.entries("my-data")            // …and read back, oldest first, across a --resume
 g.markdown((text) => text)      // transform assistant output, display only
 g.events.emit(name, payload) · g.events.on(name, handler)   // extension to extension
 ```
 
+`appendEntry` had no counterpart, so an extension could write to the session
+file and never read it back — the only way to recover your own data was to open
+`session().file` and parse it yourself. `entries` returns what this session has
+recorded under that type, including what earlier turns wrote before a
+`--resume`.
+
+`g.print(content, tone)` applies `tone` to `Line[]` as well as to strings: spans
+that name their own tone keep it, and the rest take the one you passed. It used
+to be dropped silently for anything but a string.
+
 ### Run mode
 
 `g.mode` is `"tui"` or `"print"`, and `g.hasUI` is false headlessly. Anything
-that needs a person — `g.ui.*` — throws in print mode rather than hanging. Guard
+that needs a person — `g.ui.capture` — throws in print mode rather than hanging. Guard
 on `g.hasUI` and your extension works in both.
 
 ### `g.prompt(text)`

@@ -55,13 +55,22 @@ const score = (query: string, candidate: string): number | null => {
   return total - candidate.length / 100;
 };
 
-// Generic over the list so the composer can complete commands with one ranking.
+// Every match, ranked. Generic over the list so the composer completes
+// commands and files with one ranking rather than two that drift.
+//
+// It used to cut to six here. The composer draws a scrolling window over
+// whatever it is given, so cutting first meant the other thirty-one commands
+// did not exist: scrolling could not reach them, and the "n more" line — which
+// counts what the window is not showing — had nothing to count. Ranking says
+// what is likeliest; how much fits on screen is the composer's business.
+const MATCH_LIMIT = 200;
+
 export const matchNames = <T extends { name: string }>(items: readonly T[], query: string): T[] =>
   items
     .map((item, index) => ({ item, index, score: score(query, item.name) }))
     .filter((entry): entry is { item: T; index: number; score: number } => entry.score !== null)
     .sort((a, b) => b.score - a.score || a.index - b.index)
-    .slice(0, 6)
+    .slice(0, MATCH_LIMIT)
     .map((entry) => entry.item);
 
 export const matchingCommands = (query: string): Command[] => matchNames(commands(), query);

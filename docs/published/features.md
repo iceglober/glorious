@@ -17,9 +17,9 @@ wrong, that is a bug.
 
 ## Tools the model can call
 
-`bash` · `read` · `write` · `edit` · `grep` · `glob` · `ask_user` ·
+`bash` · `read` · `write` · `edit` · `grep` · `glob` ·
 `activate_skill`, plus `web_fetch` from a bundled extension and anything an
-extension registers.
+extension registers — including `ask_user`, which is a bundled extension rather than a built-in.
 
 `edit` changes many files in one call and resolves every replacement before
 writing, so a failure leaves the tree untouched. Output is capped at 30,000

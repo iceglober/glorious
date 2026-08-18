@@ -4,6 +4,7 @@ import builtins from "../../extensions/builtins/src";
 import askUser from "../../extensions/builtins/src/ask-user";
 import webFetch from "../../extensions/web-fetch/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
+import { describeThrown } from "./render";
 import type { ToolEvent } from "./tools";
 import { agentDirectories } from "./usercommands";
 
@@ -53,7 +54,7 @@ const entryPoints = async (directory: string): Promise<Array<{ name: string; pat
 };
 
 const failureText = (thrown: unknown): string => {
-  if (!(thrown instanceof Error)) return String(thrown);
+  if (!(thrown instanceof Error)) return describeThrown(thrown);
   // A missing index.ts is what a directory with no entry point looks like, and
   // saying "Cannot find module" about a path the user never typed is worse than
   // saying nothing happened.
@@ -74,6 +75,10 @@ export const loadExtensions = async (
   registry: Registry,
   host: ExtensionHost,
   onToolEvent: (event: ToolEvent) => void,
+  // Appended to the import specifier so a reload re-reads the file. Without it
+  // the module cache hands back the version loaded at startup, and editing an
+  // extension would appear to do nothing.
+  token?: string,
 ): Promise<ExtensionLoad> => {
   const seen = new Set<string>();
   const extensions: LoadedExtension[] = [];
@@ -85,7 +90,8 @@ export const loadExtensions = async (
     if (seen.has(entry.name)) continue;
     seen.add(entry.name);
     try {
-      const module = (await import(resolve(entry.path))) as {
+      const specifier = resolve(entry.path);
+      const module = (await import(token === undefined ? specifier : `${specifier}?${token}`)) as {
         default?: (glorious: ReturnType<typeof createApi>) => void | Promise<void>;
       };
       if (typeof module.default !== "function")

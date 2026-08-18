@@ -7,7 +7,8 @@ import {
   composerKeyBindings,
   composerWrapMode,
 } from "../composer";
-import type { Key, Line } from "../extension-api";
+import type { Capture } from "../extension-api";
+import type { Line } from "../render";
 import { createChrome, fillHex, panelHex } from "./chrome";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;
@@ -137,13 +138,21 @@ export const createScreen = async (callbacks: {
   let phase: "new" | "live" | "done" = "new";
   let statusRows: Line[] = [];
   let quitTimer: ReturnType<typeof setTimeout> | null = null;
-  // How many completion rows are on screen at once. Enough to choose from,
-  // short enough that the list does not become the screen.
-  const AUTOCOMPLETE_ROWS = 10;
+  // How many completion rows are on screen at once — at most this, and never
+  // more than the terminal can actually show. It was a flat 10: on a short
+  // terminal the window was larger than the space for it, so the last rows were
+  // clipped and moving the selection into them looked like a list that refused
+  // to scroll. The reserve is the composer, the status line and a little air.
+  const AUTOCOMPLETE_MAX = 10;
+  const AUTOCOMPLETE_RESERVE = 8;
+  const autocompleteRows = (): number =>
+    Math.max(1, Math.min(AUTOCOMPLETE_MAX, chrome.rows() - AUTOCOMPLETE_RESERVE));
   let autocompleteSigil: { sigil: string; start: number; query: string } | null = null;
   let autocompleteItems: readonly { name: string; description: string }[] = [];
   let autocompleteIndex = 0;
   let autocompleteOpen = false;
+  // the composer text Esc was pressed on, so the menu stays shut until it changes
+  let dismissedAt: string | null = null;
   let fileMatches: readonly { name: string; description: string }[] = [];
   let fileQuery: string | null = null;
   const refreshFiles = async (query: string): Promise<void> => {
@@ -193,11 +202,11 @@ export const createScreen = async (callbacks: {
     },
   };
   // Taking over the composer area is the whole of glorious's input primitive.
-  // A question widget used to live in the core — 234 lines of it, for one tool
-  // — which meant the core had opinions about what asking looks like. It draws
-  // whatever lines it is given and hands over every key until it closes; a
-  // picker, a form, a confirmation are all things somebody else writes.
-  let captured: { render: (columns: number) => Line[]; onKey: (key: Key) => void } | null = null;
+  // A question widget used to live here — 234 lines of renderer code, for the
+  // sake of one tool — which meant the core had an opinion about what asking
+  // looks like. This draws whatever lines it is handed and gives away every key
+  // until it closes; a picker, a form, a confirmation are all somebody else's.
+  let captured: Capture | null = null;
   const captureNode = textNode({ content: "", width: "100%", wrapMode: "word" });
 
   const paintCapture = (): void => {
@@ -206,12 +215,15 @@ export const createScreen = async (callbacks: {
     draw();
   };
 
-  const capture = (spec: { render: (columns: number) => Line[]; onKey: (key: Key) => void }) => {
+  const capture = (spec: Capture): { close: () => void; repaint: () => void } => {
     captured = spec;
     host.useComposerSlot(captureNode);
     input.blur();
     paintCapture();
     return {
+      // Idempotent, and only the holder can close: a second call, or a call
+      // from something that has since been replaced, must not steal the
+      // composer back from whoever holds it now.
       close: (): void => {
         if (captured !== spec) return;
         captured = null;
@@ -274,6 +286,10 @@ export const createScreen = async (callbacks: {
   };
 
   const syncAutocomplete = (): void => {
+    if (dismissedAt !== null) {
+      if (input.plainText === dismissedAt) return;
+      dismissedAt = null;
+    }
     // `$` is withheld in shell mode: there every `$VAR` is a real variable, and
     // offering to complete it would fight what is being typed.
     autocompleteSigil = activeSigil(
@@ -300,7 +316,7 @@ export const createScreen = async (callbacks: {
     const { first, count, above, below } = completionWindow(
       matches.length,
       autocompleteIndex,
-      AUTOCOMPLETE_ROWS,
+      autocompleteRows(),
     );
     const shown = matches.slice(first, first + count);
     autocompleteLabel.content = styled([
@@ -414,15 +430,17 @@ export const createScreen = async (callbacks: {
 
   const onKey = (event: KeyEvent): void => {
     if (phase !== "live") return;
-    // Whoever holds the composer area sees every key first, and sees it as
-    // glorious's own shape rather than the renderer's.
+    // Whoever holds the composer area sees every key first, in glorious's own
+    // shape rather than the renderer's — the same vocabulary g.key() uses, so
+    // an extension never meets an opentui type.
     if (captured) {
       event.stopPropagation();
       captured.onKey({
         key: event.name ?? "",
         ctrl: event.ctrl ?? false,
         shift: event.shift ?? false,
-        text: typeof event.sequence === "string" && !event.ctrl ? event.sequence : "",
+        text:
+          !event.ctrl && !event.meta && typeof event.sequence === "string" ? event.sequence : "",
       });
       paintCapture();
       return;
@@ -455,14 +473,24 @@ export const createScreen = async (callbacks: {
         completeCommand();
         return;
       }
-      if (event.name === "escape") {
-        event.stopPropagation();
-        autocompleteOpen = false;
-        autocompleteItems = [];
-        autocompleteSigil = null;
-        draw();
-        return;
-      }
+    }
+    // Esc closes the completion and leaves what you typed alone — you were
+    // dismissing a menu, not abandoning the line. It does not interrupt: the
+    // turn is not what you were pointing at.
+    //
+    // The dismissal is remembered against the text it happened on, so the menu
+    // stays shut while you look at it and reopens the moment you type again.
+    // Without that, Esc closed the menu and the very next keystroke reopened
+    // it; with it but no reset, a second Esc could never reach the interrupt.
+    if (event.name === "escape" && autocompleteOpen) {
+      event.stopPropagation();
+      dismissedAt = input.plainText;
+      autocompleteOpen = false;
+      autocompleteItems = [];
+      autocompleteSigil = null;
+      autocompleteIndex = 0;
+      draw();
+      return;
     }
     // Arrow keys move within what you are typing and only reach for history at
     // the edges, the way a shell does. Ctrl+P/Ctrl+N stay unconditional history,

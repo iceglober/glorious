@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   advanceToolRun,
   elapsed,
+  errorText,
   eventBlock,
   type Line,
   NO_TOOL_RUN,
@@ -358,5 +359,67 @@ describe("the queued count matches the queued rows", () => {
             .map((span) => span.text)
             .join("").length,
         ).toBeLessThanOrEqual(columns);
+  });
+});
+
+// Reported from a live session: a turn ended and the transcript said
+// "[object Object]". `String(thrown)` is fine for an Error and useless for
+// everything else — and a provider SDK throws plain objects routinely, so a
+// failed turn could report literally nothing about why.
+describe("what a failure says", () => {
+  test("an Error says its message", () => {
+    expect(errorText(new Error("no such model"))).toBe("no such model");
+  });
+
+  test("a thrown string is the message", () => {
+    expect(errorText("rate limited")).toBe("rate limited");
+  });
+
+  test("a plain object gives up its message rather than its type", () => {
+    expect(errorText({ message: "quota exceeded" })).toBe("quota exceeded");
+    expect(errorText({ message: "quota exceeded" })).not.toContain("[object");
+  });
+
+  // The shape most providers actually throw.
+  test("a nested provider error is unwrapped", () => {
+    expect(errorText({ error: { message: "content filter triggered" } })).toBe(
+      "content filter triggered",
+    );
+    expect(errorText({ status: 429, body: { error: { message: "too many requests" } } })).toBe(
+      "too many requests",
+    );
+  });
+
+  test("an empty Error falls through to its cause", () => {
+    const outer = new Error("");
+    outer.cause = new Error("socket hang up");
+    expect(errorText(outer)).toBe("socket hang up");
+  });
+
+  test("the first of several is reported", () => {
+    expect(errorText({ errors: [{ message: "first" }, { message: "second" }] })).toBe("first");
+  });
+
+  // A wall of JSON is worth more than "[object Object]".
+  test("something unrecognisable is serialised, never coerced", () => {
+    const said = errorText({ code: 17, retryable: false });
+    expect(said).toContain("17");
+    expect(said).not.toContain("[object");
+  });
+
+  test("nothing at all still says something", () => {
+    expect(errorText(null)).toBe("an unknown failure");
+    expect(errorText(undefined)).toBe("an unknown failure");
+  });
+
+  test("a known failure still gets its plainer wording", () => {
+    expect(errorText({ message: "The socket connection was closed unexpectedly" })).toContain(
+      "continue",
+    );
+  });
+
+  test("nothing anywhere renders as [object Object]", () => {
+    for (const thrown of [{}, { a: {} }, [], new Error(""), { error: {} }])
+      expect(errorText(thrown)).not.toContain("[object Object]");
   });
 });

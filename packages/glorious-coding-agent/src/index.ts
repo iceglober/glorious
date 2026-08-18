@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
+import packageJson from "../../../package.json";
 import { messagesOf, type SessionEvent, usageTotals } from "../../glorious-core/src/events";
 import {
   createSession,
@@ -19,11 +20,16 @@ import {
   modelRef,
   providerSpec,
 } from "../../provider-registry/src";
-import packageJson from "../package.json";
 import { createAgent } from "./agent";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
-import { createRegistry, describeContribution, fire } from "./extension-api";
+import {
+  createRegistry,
+  describeContribution,
+  type ExtensionHost,
+  fire,
+  resetRegistry,
+} from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { loadAgentRules } from "./guidance";
 import { expandMentions, fileCandidates } from "./mentions";
@@ -320,6 +326,17 @@ const main = async (): Promise<void> => {
       return registry.tools;
     },
     extensionPrompt: () => registry.promptLines,
+    onContext: async (messages, step) => {
+      const said = await fire(registry, "context", { messages, step }, onExtensionFailure);
+      return Array.isArray(said) ? said : undefined;
+    },
+    onRequest: async (request) => {
+      const said = await fire(registry, "before_provider_request", request, onExtensionFailure);
+      return said && typeof said === "object" && !Array.isArray(said) ? said : undefined;
+    },
+    onResponse: (response) => {
+      void fire(registry, "after_provider_response", response, onExtensionFailure);
+    },
   });
 
   const record = (event: SessionEvent): void => {
@@ -638,118 +655,142 @@ const main = async (): Promise<void> => {
 
   // Loaded after the screen exists, so a failure has somewhere to be seen, and
   // before the first turn, so a tool registered on the way up is callable.
-  const loaded = await loadExtensions(
+  // Hoisted so /reload can hand the same host to a second load. It was an
+  // inline literal, which is part of why extensions could only ever load once.
+  const extensionHost: ExtensionHost = {
     root,
-    registry,
-    {
-      root,
-      exec: (command, args) => runShell(root, command, args),
-      mode: "tui" as const,
-      send: (text, options) => {
-        chat.send(text, options.label ?? null, options.steer === true);
-        repaint();
-      },
-      setInput: (text) => {
-        screen.restoreInput(text);
-        repaint();
-      },
-      print: (content, tone) => {
-        screen.print(typeof content === "string" ? noticeBlock(content, tone) : content, false);
-        repaint();
-      },
-      columns: () => screen.columnsNow(),
-      capture: (spec) => screen.capture(spec),
-      inspect: () => ({
-        commands: commands(),
-        skills: skills.summaries,
-        extensions: loaded.extensions.map((entry) => ({
-          ...entry,
-          contributed: describeContribution(registry, entry.origin),
-        })),
-      }),
-      clear: () => {
-        const outcome = chat.clear();
-        if (outcome === "cleared") render({ type: "cleared", reason: "user cleared" });
-        return outcome;
-      },
-      tools: () => agent.toolNames(),
-      setTools: (names) => agent.setTools(names),
-      model: () => ({
-        label: modelLabel(model),
-        provider: model.provider,
-        modelId: model.modelId,
-        variant: model.variant,
-        variants: model.variants,
-        context: model.context,
-      }),
-      models: async () => {
-        const catalogue = await loadCatalogue();
-        return catalogue.map((option) => ({
-          label: modelLabel(option),
-          provider: option.provider,
-          modelId: option.modelId,
-          variants: option.variants,
-          context: option.context,
-        }));
-      },
-      setModel: async (label, variant) => {
-        const ref = modelRef(label);
-        const next = { ...currentModel(config.config), ...ref, name: label, variant };
-        model = { ...next, ...(await modelMetadata(next).catch(() => ({}))) };
-        agent.setModel(model);
-        await fire(
-          registry,
-          "model_select",
-          { model: modelLabel(model), variant: model.variant },
-          onExtensionFailure,
-        );
-        repaint();
-      },
-      idle: () => !chat.busy,
-      pending: () => chat.queued.length,
-      abort: () => chat.abort(),
-      usage: () => ({
-        tokens,
-        context: model.context,
-        last: lastUsage,
-        // From the session's own events, so a resumed run reports what the
-        // whole session cost rather than what it cost since reopening.
-        total: usageTotals(session.events),
-      }),
-      systemPrompt: () => agent.prompt(),
-      shutdown: () => quit(),
-      session: () => ({
-        id: session.id,
-        file: sessionFile(session.id),
-        title: session.title,
-        events: session.events.length,
-      }),
-      setSessionName: (title) => {
-        session.title = title;
-        void saveSession(session);
-      },
-      appendEntry: (type, data) => {
-        record({ type: "custom", custom: type, data });
-      },
-      compact: (options) => runCompaction(options ?? {}, false),
-      reload: async () => {
-        const [refreshedCommands, refreshedSkills] = await Promise.all([
-          loadUserCommands(root),
-          loadSkills(root),
-        ]);
-        userCommands = refreshedCommands;
-        skills = refreshedSkills;
-        // /reload is when a skill file was just edited, so it is the moment its
-        // mistakes matter most.
-        for (const warning of refreshedSkills.warnings)
-          render({ type: "notice", text: `(skill) ${warning}` });
-        registerCommands();
-        agent.setSkills(refreshedSkills);
-        repaint();
-      },
+    exec: (command, args) => runShell(root, command, args),
+    mode: "tui" as const,
+    send: (text, options) => {
+      chat.send(text, options.label ?? null, options.steer === true);
+      repaint();
     },
-    (event) => toolSink(event),
-  );
+    setInput: (text) => {
+      screen.restoreInput(text);
+      repaint();
+    },
+    print: (content, tone) => {
+      // A tone passed with Line[] used to be dropped on the floor, because it
+      // only ever reached noticeBlock. It is a default now: spans that name
+      // their own tone keep it, and the ones that do not take this.
+      const lines =
+        typeof content === "string"
+          ? noticeBlock(content, tone)
+          : content.map((line) => line.map((span) => ({ tone, ...span })));
+      screen.print(lines, false);
+      repaint();
+    },
+    columns: () => screen.columnsNow(),
+    capture: (spec) => screen.capture(spec),
+    inspect: () => ({
+      commands: commands(),
+      skills: skills.summaries,
+      extensions: loaded.extensions.map((entry) => ({
+        ...entry,
+        contributed: describeContribution(registry, entry.origin),
+      })),
+    }),
+    clear: () => {
+      const outcome = chat.clear();
+      if (outcome === "cleared") render({ type: "cleared", reason: "user cleared" });
+      return outcome;
+    },
+    tools: () => agent.toolNames(),
+    setToolFilters: (filters) => agent.setToolFilters(filters),
+    model: () => ({
+      label: modelLabel(model),
+      provider: model.provider,
+      modelId: model.modelId,
+      variant: model.variant,
+      variants: model.variants,
+      context: model.context,
+    }),
+    models: async () => {
+      const catalogue = await loadCatalogue();
+      return catalogue.map((option) => ({
+        label: modelLabel(option),
+        provider: option.provider,
+        modelId: option.modelId,
+        variants: option.variants,
+        context: option.context,
+      }));
+    },
+    setModel: async (label, variant) => {
+      const ref = modelRef(label);
+      const next = { ...currentModel(config.config), ...ref, name: label, variant };
+      model = { ...next, ...(await modelMetadata(next).catch(() => ({}))) };
+      agent.setModel(model);
+      await fire(
+        registry,
+        "model_select",
+        { model: modelLabel(model), variant: model.variant },
+        onExtensionFailure,
+      );
+      repaint();
+    },
+    idle: () => !chat.busy,
+    pending: () => chat.queued.length,
+    abort: () => chat.abort(),
+    usage: () => ({
+      tokens,
+      context: model.context,
+      last: lastUsage,
+      // From the session's own events, so a resumed run reports what the
+      // whole session cost rather than what it cost since reopening.
+      total: usageTotals(session.events),
+    }),
+    systemPrompt: () => agent.prompt(),
+    shutdown: () => quit(),
+    session: () => ({
+      id: session.id,
+      file: sessionFile(session.id),
+      title: session.title,
+      events: session.events.length,
+    }),
+    setSessionName: (title) => {
+      session.title = title;
+      void saveSession(session);
+    },
+    appendEntry: (type, data) => {
+      record({ type: "custom", custom: type, data });
+    },
+    // Read back out of the session's own events, so a resumed session sees
+    // what earlier turns wrote without anything having to persist twice.
+    entries: (type) =>
+      session.events.flatMap((event) =>
+        event.type === "custom" && event.custom === type ? [event.data] : [],
+      ),
+    compact: (options) => runCompaction(options ?? {}, false),
+    reload: async () => {
+      const [refreshedCommands, refreshedSkills] = await Promise.all([
+        loadUserCommands(root),
+        loadSkills(root),
+      ]);
+      userCommands = refreshedCommands;
+      skills = refreshedSkills;
+      // /reload is when a skill file was just edited, so it is the moment its
+      // mistakes matter most.
+      for (const warning of refreshedSkills.warnings)
+        render({ type: "notice", text: `(skill) ${warning}` });
+      // Extensions too. They were the one thing reload did not touch, so
+      // installing one — which is what glorious does when it extends itself for
+      // you — meant restarting to see it, while the reload message reported a
+      // success that said nothing about the omission.
+      resetRegistry(registry);
+      agent.setToolFilters([]);
+      loaded = await loadAllExtensions(String(Date.now()));
+      for (const failure of loaded.failures)
+        render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
+      registerCommands();
+      agent.setSkills(refreshedSkills);
+      repaint();
+    },
+  };
+
+  const loadAllExtensions = (token?: string) =>
+    loadExtensions(root, registry, extensionHost, (event) => toolSink(event), token);
+
+  let loaded = await loadAllExtensions();
   registerCommands();
   for (const failure of loaded.failures)
     render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });

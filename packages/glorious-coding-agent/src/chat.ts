@@ -115,6 +115,11 @@ export const createChat = (
           pending = { kind, text: pending.text + text };
         },
         onPhase: (name) => signal({ type: "phase", name }),
+        onRetry: (attempt, why) =>
+          announce({
+            type: "notice",
+            text: `(connection dropped — re-sending, attempt ${attempt + 1}: ${why})`,
+          }),
         onReasoningEnd: ({ text, elapsedMs }) => {
           flushDeltas();
           signal({ type: "sealed" });

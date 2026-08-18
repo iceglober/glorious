@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { docsPath } from "./prompt";
@@ -212,5 +214,42 @@ describe("what a call says about its result", () => {
 
   test("an empty result says nothing rather than guessing", () => {
     expect(resultSummary("bash", "", true)).toBe("");
+  });
+});
+
+// Reported from a live session: asked to install a global extension, glorious
+// wrote it with a python heredoc through `bash` because `write` refused the
+// path — while the docs it had just read told it to write exactly there.
+describe("glorious's own directories are reachable", () => {
+  const call = async (tool: string, input: Record<string, unknown>): Promise<string> => {
+    const skills = await loadSkills(process.cwd());
+    const tools = createTools("/tmp", () => {}, skills);
+    const execute = tools[tool].execute as (i: unknown, c: unknown) => Promise<string>;
+    return execute(input, {});
+  };
+
+  test("an extension can be written to the personal extensions directory", async () => {
+    const target = join(homedir(), ".config", "agents", "extensions", "zz-write-probe.ts");
+    const said = await call("write", { path: target, content: "// probe\n" });
+    expect(said).not.toContain("path escapes root");
+    expect(await Bun.file(target).text()).toBe("// probe\n");
+    await rm(target, { force: true });
+  });
+
+  test("and read back, which it also could not do", async () => {
+    const target = join(homedir(), ".agents", "zz-read-probe.txt");
+    await Bun.write(target, "probe");
+    expect(await call("read", { path: target })).toContain("probe");
+    await rm(target, { force: true });
+  });
+
+  // The widening is exactly those directories and nothing else.
+  test("somewhere else under home is still refused", async () => {
+    const said = await call("read", { path: join(homedir(), ".ssh", "id_rsa") });
+    expect(said).toContain("path escapes root");
+  });
+
+  test("and outside home too", async () => {
+    expect(await call("read", { path: "/etc/passwd" })).toContain("path escapes root");
   });
 });

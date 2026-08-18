@@ -1,5 +1,305 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.49
+
+### Minor Changes
+
+- d9c331c: The completion list scrolls with the selection, and Esc dismisses it without interrupting.
+
+  **The list was cut to six before the composer ever saw it.** `matchNames`
+  sliced to six matches, and the composer draws a scrolling window over whatever
+  it is given — so with 37 commands the other 31 did not exist. Scrolling could
+  not reach them, and the `↓ n more` line, which counts what the window is not
+  showing, had nothing to count. Ranking now says what is likeliest and the
+  composer decides how much fits.
+
+  **The window is bounded by the terminal, not by a constant.** It was a flat ten
+  rows and never asked how tall the terminal was, so on a short one the last rows
+  were clipped and moving the selection into them looked like a list refusing to
+  scroll.
+
+  **Esc closes the menu and leaves what you typed alone**, without interrupting
+  the turn — you were dismissing a menu, not abandoning the line or stopping the
+  model. The dismissal is remembered against the text it happened on, so the menu
+  stays shut while you look at it and reopens as soon as you type again; a second
+  Esc reaches the interrupt as before.
+
+## 1.0.0-next.48
+
+### Patch Changes
+
+- 3d71695: The unconditional publish guard runs before the version bump, not after.
+
+  Placed after `changesets/action`, it read a `package.json` the action had
+  already bumped in the same workspace — so it published the _next_ version, whose
+  PR nobody had merged. That released unmerged code and made version PRs
+  decoration.
+
+  It runs before the action now, where the workspace is still exactly main, so it
+  publishes only what main has committed.
+
+- ba36c55: The release workflow publishes whatever version main is at.
+
+  Three versions were bumped on main today and never reached npm — `next.25`,
+  `next.36`, `next.46` — each rolled over by the following release and lost.
+
+  The publish guard was already idempotent, but it only ran when
+  `changesets/action` chose to call it, and the action publishes nothing when it
+  sees an unconsumed changeset: it opens a version PR instead. So a version PR
+  whose branch predated the newest changeset would merge, bump `package.json` on
+  main, and publish nothing — stranding that version permanently.
+
+  The same guard now also runs as its own unconditional step. Every push to main
+  converges on "npm has what main says", so a skipped version is repaired by the
+  next push instead of being rolled over. The guard also confirms the registry
+  actually serves what it just published, rather than assuming, because the
+  dist-tag step after it would otherwise point `latest` at something nobody can
+  install.
+
+## 1.0.0-next.47
+
+### Patch Changes
+
+- 75cb1ff: A failed turn no longer reports `[object Object]`.
+
+  `errorText` used `String(thrown)` for anything that was not an `Error` — and
+  provider SDKs throw plain objects routinely, so a turn could fail and the
+  transcript would say nothing at all about why.
+
+  It now digs the message out: a nested `error`, a response `body`, an empty
+  `Error` with a populated `cause`, the first of an `errors` array. Anything
+  genuinely unrecognisable is serialised, because a wall of JSON is worth more
+  than `[object Object]`. Extension load failures go through the same path.
+
+  Observed shape, before and after:
+
+  ```
+  { status: 400, error: { message: "This model's maximum context length is 272000 tokens." } }
+  before: [object Object]
+  after:  This model's maximum context length is 272000 tokens.
+  ```
+
+## 1.0.0-next.46
+
+### Patch Changes
+
+- cf4624c: The lifecycle diagram showed literal asterisks.
+
+  Mermaid does not render markdown inside sequence-diagram labels, so the `**` used
+  to mark hooks that can change what happens next appeared as asterisks rather than
+  bold. A `◆` marks them now, with the legend saying so.
+
+## 1.0.0-next.45
+
+### Minor Changes
+
+- 548c5c3: The request pipeline is interceptable, and the lifecycle is documented.
+
+  Three new events close the two biggest gaps in the extension API.
+
+  **`context`** fires before _each_ model call — a turn running three tools fires
+  it four times — and hands over every message. Returning an array replaces what
+  is sent for that call only, so filtering, windowing and redaction are possible
+  and stored history is never rewritten. `before_request` could only append a
+  string to the turn's message.
+
+  **`before_provider_request`** sees the HTTP request as the provider will:
+  returning `{ headers }` merges them, returning `{ body }` replaces it. Gateways,
+  signing proxies, per-request auth and request logging live here.
+  **`after_provider_response`** sees the status and headers before the body is
+  read, which is where rate-limit budgets and request ids arrive.
+
+  Handler return types are now per-event. `HandlerVerdict` was one loose
+  `string | false` shared by every event, so a handler could return a value to an
+  event that ignores it and nothing said so — the compiler now rejects it.
+
+  New `docs/published/lifecycle.md`: a sequence diagram of a turn from prompt to
+  answer, plus a table of every event and what returning something does. Two tests
+  keep it honest — every event must appear on the page, and the page may not
+  invent one.
+
+## 1.0.0-next.44
+
+### Minor Changes
+
+- acb18c5: Every extension API member is tested, and every lifecycle event fires in both hosts.
+
+  Nineteen of the API's forty members had never been named in a test. That is how
+  `before_request` came to fire in the TUI and silently do nothing under `-p` — an
+  extension injecting per-turn context worked interactively and was inert
+  headlessly, which is the mode the agent uses to check its own work, so the gap
+  concealed itself.
+
+  **Five events now fire in print mode that did not:** `before_request`,
+  `message`, `reasoning`, `error` and `session_end`. `input`, `user_bash`,
+  `model_select` and `compact` remain TUI-only, and a test names each one with the
+  reason.
+
+  **Two guards keep it that way.** A Proxy records every member the tests touch,
+  so adding an API member without testing it fails the build rather than shipping
+  untested. A parity test asserts every event fires in both hosts unless it is on
+  the exceptions list, and that the list contains no stale names. Both were
+  verified to fail against the code they were written to catch.
+
+- 2639f73: A dropped stream is re-sent instead of killing the turn.
+
+  `the connection to the model dropped mid-response` ended the turn and discarded
+  everything in it — in one observed case, eleven completed tool calls. The retry
+  that already existed could not help: `fetchWithDeadline` retries while the
+  request is being _made_, and a mid-response drop happens long after `fetch()`
+  resolved, while the body is being read. Nothing was watching that.
+
+  The stream is now re-sent, up to three attempts with a widening pause, **exactly
+  while the attempt is unobservable** — no text written, nothing thought aloud, no
+  tool run. Then re-sending is invisible and safe. Once anything has been
+  produced, a re-send would duplicate it or run a tool twice, so the failure
+  surfaces as before and the reminder tells the model it was interrupted.
+
+  The decision is one predicate, `shouldResend`, tested for each way it can go:
+  nothing produced, something produced, Esc pressed, attempts exhausted, and a
+  failure that is a refusal rather than a drop. A retry announces itself in both
+  the TUI and `-p` rather than looking like a stall.
+
+## 1.0.0-next.43
+
+### Minor Changes
+
+- 9c3f4de: `/reload` reloads extensions, and `write` can reach the directory the docs point at.
+
+  Two defects from one live session, where glorious was asked to give itself a new
+  capability and then could not use it.
+
+  **`/reload` did not reload extensions.** It re-read skills, commands and
+  sequences, reported `(reloaded — 28 skills, 37 commands, 0 sequences)`, and said
+  nothing about the one thing it had skipped. Installing an extension — which is
+  what glorious does when it extends itself for you — required a restart to see.
+  It now resets the registry and re-imports every extension with a cache-busting
+  token, so an edited extension is re-read rather than served from the module
+  cache. Load failures are reported the same way they are at startup, and the
+  message counts extensions.
+
+  **`write` refused `~/.config/agents/extensions/`.** The docs tell the model to
+  put a personal extension exactly there; `write` and `read` refused the path for
+  being outside the project, so the model installed it with a `python3` heredoc
+  through `bash` — which is unconfined, so the guard bought nothing and cost a ✗
+  row and a clumsier path. `read` and `write` now reach glorious's own directories
+  (`~/.config/agents`, `~/.agents`, `~/.glorious`, `~/.config/glorious`) and
+  nothing else under home. This is the same lesson as the earlier fix for the docs
+  directory, learned a second time.
+
+## 1.0.0-next.42
+
+### Patch Changes
+
+- 55d949a: A NUL byte made a bundled extension unsearchable.
+
+  `v2/bundled/builtins.ts` used `process.env.HOME ?? "\0"` as a sentinel — chosen
+  because no path starts with a NUL. It was harmless at runtime and invisible on
+  screen, and it made the entire file **binary to ripgrep**, so every search of it
+  silently returned nothing. That is glorious's own `grep` tool as much as
+  anyone's: a file the agent cannot search is a file the agent cannot maintain.
+
+  The sentinel is gone; the check says what it means. A test now walks every `.ts`
+  file and fails on any C0 control character other than tab, newline and carriage
+  return.
+
+## 1.0.0-next.41
+
+### Minor Changes
+
+- 34b6db0: Four places in the extension API where a reasonable extension got a wrong answer.
+
+  **`g.exec` reports the exit code and stderr.** It returned `{output, stdout, ok}`,
+  and `ok` collapsed every failure into one bit — exit 1 (the linter found
+  problems) and exit 127 (the linter is not installed) are opposite situations and
+  were indistinguishable. Now `{output, stdout, stderr, code, ok}`.
+
+  **`g.setTools` is replaced by `g.filterTools`.** It set one global list, so the
+  second extension to restrict tools silently undid the first and neither could
+  see the other. A filter is a predicate, every extension's filter has to agree,
+  and the handle it returns lifts yours and nobody else's. Restrictions now
+  compose and can only narrow.
+
+  **`g.entries(type)` reads back what `g.appendEntry` wrote.** There was no read
+  path at all: an extension could persist data into the session file and never
+  recover it except by opening `session().file` and parsing it itself. Entries
+  survive `--resume`, since a resumed session replays them.
+
+  **`g.print(content, tone)` honours `tone` for `Line[]`.** It only ever reached
+  `noticeBlock`, so a tone passed with spans was silently dropped. Spans that name
+  their own tone keep it; the rest take the one you passed.
+
+## 1.0.0-next.40
+
+### Minor Changes
+
+- 1ac1a27: The core no longer knows what a question is.
+
+  `ask_user` was a built-in tool, and 234 lines of question widget lived in the
+  renderer to serve it. Both are gone. `ask_user` is a bundled extension now,
+  written against the extension API like anything else — delete it and the model
+  loses the ability to ask; write your own and it is not competing with anything
+  privileged.
+
+  `g.ask`, `g.ui.select`, `g.ui.confirm` and `g.ui.input` are replaced by one
+  primitive:
+
+  ```ts
+  const held = g.ui.capture({
+    render: (columns) => Line[],     // draw the composer area
+    onKey: (key) => void,            // every keypress, until you close
+  });
+  ```
+
+  Those helpers looked generic and were not. `g.ask` returned a **JSON string** —
+  because that is what a tool must return to a model — and `select`/`confirm`/
+  `input` worked by `JSON.parse`-ing it back out. `g.ui.input` faked free text by
+  offering a single option labelled "Type your answer as a note". The shape of a
+  model's tool result had leaked into the extension API and become its input
+  abstraction.
+
+  Now the host owns "you have the composer and the keys" and nothing else. The
+  bundled `ask-user` extension is a complete question widget — a cursor, several
+  questions in sequence, free-text notes, dismissal — built on `capture` alone,
+  and its answers reach the model as prose rather than JSON, because formatting
+  for a model is the tool's job.
+
+  Also: the guidance telling the model to use `ask_user` moved out of the core
+  system prompt into the extension. Removing the tool used to leave the model
+  instructed to use something that no longer existed.
+
+## 1.0.0-next.39
+
+### Minor Changes
+
+- 9c82575: A config that does nothing now says why.
+
+  `{"model": {"selected": "azure/gpt-5.6-sol"}}` in a project file ran for a week
+  as the default model. The key was recognised and the value was the wrong type,
+  so it was dropped exactly as silently as a typo — and the comment above that
+  code said "a config that silently does nothing is the hardest kind to debug".
+
+  - **A recognised key holding the wrong type is reported.** `"model" should be a string like "azure/gpt-5.6-sol", got object — ignored`.
+  - **A file where nothing at all is recognised is reported**, naming the keys it found. That catches a config written for another agent, or for an older glorious with a nested `agent.llm` shape.
+  - **Diagnostics appear at startup**, not only under `glorious doctor`. Doctor is a command you run once you already suspect something, and a silent config gives you nothing to suspect.
+
+  Keys glorious does not know, in a file where it knew something, stay ignored and
+  silent. A config that has grown a key is not a broken config.
+
+  `.glorious/config.local.json` is read as the nearest layer — the conventional
+  name for the copy you do not commit, and the first thing anyone reaches for. It
+  was silently not a file glorious opened.
+
+  Print mode built its model with `currentModel()` and no arguments, so a model
+  set in `.glorious/config.json` worked in the TUI and was ignored by every
+  headless run — including the ones the agent uses to verify its own work.
+
+  `loadConfig` takes the home directory as a parameter, for the same reason
+  `loadSkills` does: the tests read whatever config was installed on the machine
+  running them, which is green on CI and red on a laptop that has one.
+
+- 39469a9: Expand the published documentation with shared user-facing references, configuration guidance, troubleshooting, and a generated extension API reference. Add configurable built-in tool timeouts through `tool_timeout_ms` and `GLORIOUS_TOOL_TIMEOUT_MS`.
+
 ## 1.0.0-next.38
 
 ### Minor Changes
