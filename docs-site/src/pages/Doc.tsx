@@ -28,6 +28,7 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
   const headings = headingsOf(md);
   const article = useRef<HTMLElement>(null);
   const beforeEdit = useRef("");
+  const changed = useRef(false);
   const { editing, saveFile } = useEditMode();
   useEffect(() => {
     document.title = `${title} — glrs`;
@@ -41,6 +42,7 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
   const activateBlock = (block: HTMLElement) => {
     if (!editing || !source) return;
     beforeEdit.current = article.current?.innerHTML ?? "";
+    changed.current = false;
     block.contentEditable = "true";
     block.classList.add("editing-block");
     block.focus();
@@ -74,12 +76,17 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
           );
           if (block) activateBlock(block);
         }}
+        onInput={(event) => {
+          if ((event.target as HTMLElement).classList.contains("editing-block"))
+            changed.current = true;
+        }}
         onBlur={(event) => {
           const block = event.target as HTMLElement;
           if (!block.classList.contains("editing-block")) return;
           block.contentEditable = "false";
           block.classList.remove("editing-block");
-          void save();
+          if (changed.current) void save();
+          changed.current = false;
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape" && (event.target as HTMLElement).classList.contains("editing-block"))
@@ -116,6 +123,7 @@ export function Doc({ md, title, source }: { md: string; title: string; source?:
             article.current?.append(paragraph);
             activateBlock(paragraph);
             beforeEdit.current = before;
+            changed.current = true;
           }}
         >
           <span>+</span>
