@@ -100,3 +100,31 @@ describe("a namespaced command", () => {
     expect(found[0]?.name).toBe("skill:graphify");
   });
 });
+
+// Reported from a live session: the completion list would not scroll past what
+// was on screen. It was not the scrolling — the list was cut to six before the
+// composer's window ever saw it, so there was nothing further to scroll to and
+// the "n more" line had nothing to count.
+describe("how many matches the composer is given", () => {
+  const many = Array.from({ length: 37 }, (_, at) => ({ name: `command-${at}` }));
+
+  test("every match is returned, not the first six", () => {
+    expect(matchNames(many, "command").length).toBe(37);
+  });
+
+  test("an empty query still offers everything", () => {
+    expect(matchNames(many, "").length).toBe(37);
+  });
+
+  // Same score, so the shorter name wins: fewer characters between what you
+  // typed and what you meant.
+  test("ranking still puts the best first", () => {
+    const found = matchNames([{ name: "dependencies" }, { name: "deploy" }], "dep");
+    expect(found[0].name).toBe("deploy");
+    expect(found).toHaveLength(2);
+  });
+
+  test("something that matches nothing returns nothing", () => {
+    expect(matchNames(many, "zzzz")).toEqual([]);
+  });
+});

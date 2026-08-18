@@ -35,6 +35,10 @@ export type Host = {
 export const createChrome = (tui: Tui, renderer: Renderer) => {
   const colored = process.env.NO_COLOR === undefined && process.env.TERM !== "dumb";
   const columns = (): number => Math.max(1, renderer.terminalWidth - 1);
+  // The terminal's height, for anything that has to decide how many rows it may
+  // take. A panel sized without asking simply gets clipped, and the rows it
+  // thinks it drew are rows nobody can see.
+  const rows = (): number => Math.max(1, renderer.terminalHeight);
 
   const spread = (line: Line): Span[] => {
     const shown = line.filter((span) => span.text !== "");
@@ -66,6 +70,7 @@ export const createChrome = (tui: Tui, renderer: Renderer) => {
     tui,
     renderer,
     columns,
+    rows,
     textNode: (options: TextOptions) => new tui.TextRenderable(renderer, options),
     stack,
     styled: (lines: readonly Line[]) =>

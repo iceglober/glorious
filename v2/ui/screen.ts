@@ -147,13 +147,21 @@ export const createScreen = async (callbacks: {
   let phase: "new" | "live" | "done" = "new";
   let statusRows: Line[] = [];
   let quitTimer: ReturnType<typeof setTimeout> | null = null;
-  // How many completion rows are on screen at once. Enough to choose from,
-  // short enough that the list does not become the screen.
-  const AUTOCOMPLETE_ROWS = 10;
+  // How many completion rows are on screen at once — at most this, and never
+  // more than the terminal can actually show. It was a flat 10: on a short
+  // terminal the window was larger than the space for it, so the last rows were
+  // clipped and moving the selection into them looked like a list that refused
+  // to scroll. The reserve is the composer, the status line and a little air.
+  const AUTOCOMPLETE_MAX = 10;
+  const AUTOCOMPLETE_RESERVE = 8;
+  const autocompleteRows = (): number =>
+    Math.max(1, Math.min(AUTOCOMPLETE_MAX, chrome.rows() - AUTOCOMPLETE_RESERVE));
   let autocompleteSigil: { sigil: string; start: number; query: string } | null = null;
   let autocompleteItems: readonly { name: string; description: string }[] = [];
   let autocompleteIndex = 0;
   let autocompleteOpen = false;
+  // the composer text Esc was pressed on, so the menu stays shut until it changes
+  let dismissedAt: string | null = null;
   let fileMatches: readonly { name: string; description: string }[] = [];
   let fileQuery: string | null = null;
   const refreshFiles = async (query: string): Promise<void> => {
@@ -288,6 +296,10 @@ export const createScreen = async (callbacks: {
   };
 
   const syncAutocomplete = (): void => {
+    if (dismissedAt !== null) {
+      if (input.plainText === dismissedAt) return;
+      dismissedAt = null;
+    }
     // `$` is withheld in shell mode: there every `$VAR` is a real variable, and
     // offering to complete it would fight what is being typed.
     autocompleteSigil = activeSigil(
@@ -316,7 +328,7 @@ export const createScreen = async (callbacks: {
     const { first, count, above, below } = completionWindow(
       matches.length,
       autocompleteIndex,
-      AUTOCOMPLETE_ROWS,
+      autocompleteRows(),
     );
     const shown = matches.slice(first, first + count);
     autocompleteLabel.content = styled([
@@ -481,14 +493,24 @@ export const createScreen = async (callbacks: {
         completeCommand();
         return;
       }
-      if (event.name === "escape") {
-        event.stopPropagation();
-        autocompleteOpen = false;
-        autocompleteItems = [];
-        autocompleteSigil = null;
-        draw();
-        return;
-      }
+    }
+    // Esc closes the completion and leaves what you typed alone — you were
+    // dismissing a menu, not abandoning the line. It does not interrupt: the
+    // turn is not what you were pointing at.
+    //
+    // The dismissal is remembered against the text it happened on, so the menu
+    // stays shut while you look at it and reopens the moment you type again.
+    // Without that, Esc closed the menu and the very next keystroke reopened
+    // it; with it but no reset, a second Esc could never reach the interrupt.
+    if (event.name === "escape" && autocompleteOpen) {
+      event.stopPropagation();
+      dismissedAt = input.plainText;
+      autocompleteOpen = false;
+      autocompleteItems = [];
+      autocompleteSigil = null;
+      autocompleteIndex = 0;
+      draw();
+      return;
     }
     // Arrow keys move within what you are typing and only reach for history at
     // the edges, the way a shell does. Ctrl+P/Ctrl+N stay unconditional history,

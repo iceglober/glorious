@@ -103,3 +103,23 @@ describe("the completion window", () => {
     expect(completionWindow(0, 0, 10)).toEqual({ first: 0, count: 0, above: 0, below: 0 });
   });
 });
+
+// The window was a flat ten rows and never asked how tall the terminal was, so
+// on a short one the last rows were clipped and moving the selection into them
+// looked like a list that refused to scroll.
+describe("the completion window on a short terminal", () => {
+  test("it shows only what fits, and still follows the selection", () => {
+    const { first, count } = completionWindow(50, 20, 3);
+    expect(count).toBe(3);
+    expect(20).toBeGreaterThanOrEqual(first);
+    expect(20).toBeLessThan(first + count);
+  });
+
+  test("one row is still a working window", () => {
+    for (let index = 0; index < 10; index += 1) {
+      const { first, count } = completionWindow(10, index, 1);
+      expect(count).toBe(1);
+      expect(first).toBe(index);
+    }
+  });
+});
