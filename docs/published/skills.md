@@ -52,7 +52,7 @@ Nothing reads another agent's directories. Symlink one in if you want it here.
 
 ## Frontmatter
 
-| Field | |
+| Field | Meaning |
 | --- | --- |
 | `name` | **required.** 1–64 characters, lowercase letters, numbers, single inner hyphens |
 | `description` | **required.** Up to 1024 characters: what it does *and when to use it* |

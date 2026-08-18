@@ -9,7 +9,7 @@ wrong, that is a bug.
 
 ## Running it
 
-| | |
+| Command | Behavior |
 | --- | --- |
 | `glorious` | the chat TUI, in any git repo |
 | `glorious -p "<prompt>"` | one turn, headless — answer on stdout, tool trail on stderr |
@@ -17,7 +17,7 @@ wrong, that is a bug.
 | `glorious --resume [id]` | reopen a session; no id opens the picker |
 | `glorious --model provider/model` | for this run |
 | `glorious doctor [--json]` | model, provider, credentials, config diagnostics |
-| `glorious --version` · `glorious update` | |
+| `glorious --version` · `glorious update` | print the installed version or update to the newest `next` release |
 
 ## Tools the model can call
 
@@ -41,7 +41,7 @@ reason. A tool describes its own result through `renderResult`; see
 
 ## Typing
 
-| | |
+| Input | Behavior |
 | --- | --- |
 | `/name` | a command — `Tab` completes, `↑↓` move. Skills answer to `/skill:name` |
 | `@path` | reference a file or directory; a file's contents travel with the message, a directory's listing does. Completion searches the whole tree, respects `.gitignore`, and scrolls |
@@ -80,7 +80,7 @@ session inherits whichever happened.
 
 ## What it reads from disk
 
-| Path | |
+| Path | Purpose |
 | --- | --- |
 | `AGENTS.md` / `AGENT.md` / `CLAUDE.md` | project rules, from the root down |
 | `.glorious/extensions/*.ts` | extensions — tools, commands, hooks, rendering |
