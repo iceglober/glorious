@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -11,5 +12,5 @@
     "noEmit": true,
     "types": ["bun"]
   },
-  "include": ["scripts/**/*.ts", "theme/**/*.ts"]
+  "include": ["api.ts", "scripts/**/*.ts", "theme/**/*.ts"]
 }

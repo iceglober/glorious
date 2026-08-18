@@ -71,7 +71,6 @@ li { line-height: 1.7; }
 a { text-underline-offset: 0.18em; }
 
 pre,
-.tsd-signature,
 .tsd-comment pre {
   border: 0;
   border-left: 3px solid #c43a32;
@@ -82,11 +81,12 @@ code { font-family: var(--font-family); }
 :not(pre) > code { background: #ebe9e1; padding: 0.12em 0.28em; }
 blockquote { margin-inline: 0; border-left: 3px solid #c43a32; background: #ebe9e1; padding: 0.8rem 1rem; color: #6b6962; }
 
-.tsd-panel,
-.tsd-member,
-.tsd-signature { box-shadow: none; }
-.tsd-index-panel { border-top: 2px solid currentColor; }
-.tsd-accordion-summary { border-bottom: 1px solid #c9c5bb; }
+.tsd-navigation.settings { display: none; }
+.tsd-page-navigation > .tsd-accordion-summary { align-items: center; }
+.tsd-page-navigation > .tsd-accordion-summary h3 {
+  margin: 0;
+  line-height: 20px;
+}
 table { border-collapse: collapse; }
 th { border-bottom: 2px solid currentColor; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; }
 td { border-bottom: 1px solid #c9c5bb; }

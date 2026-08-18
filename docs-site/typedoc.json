@@ -1,19 +1,16 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": [
-    "../packages/glorious-core/src/index.ts",
-    "../packages/glorious-coding-agent/src/sdk.ts",
-    "../packages/provider-registry/src/index.ts"
-  ],
+  "entryPoints": ["./api.ts"],
   "entryPointStrategy": "resolve",
-  "tsconfig": "../packages/tsconfig.json",
+  "alwaysCreateEntryPointModule": false,
+  "tsconfig": "./tsconfig.json",
   "out": "./dist",
   "plugin": ["./theme/index.ts"],
   "theme": "glrs",
   "customCss": "./theme/glrs.css",
   "customJs": "./theme/glrs.js",
   "name": "glorious",
-  "includeVersion": true,
+  "includeVersion": false,
   "readme": "../docs/published/features.md",
   "projectDocuments": ["../docs/published/index.md"],
   "searchInComments": true,
@@ -48,6 +45,6 @@
   },
   "headings": {
     "readme": true,
-    "document": true
+    "document": false
   }
 }
