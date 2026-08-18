@@ -3,8 +3,8 @@ import type {
   ExtensionContext,
   ModelProvider,
   SessionRepository,
-} from "@glrs-dev/glorious-core";
-import type { ProviderRegistry } from "@glrs-dev/provider-registry";
+} from "../../glorious-core/src";
+import type { ProviderRegistry } from "../../provider-registry/src";
 
 export type CodingAgentDependencies = {
   runtime: AgentCore;

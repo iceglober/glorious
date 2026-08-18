@@ -1,4 +1,4 @@
-import type { Glorious } from "@glrs-dev/glorious-core";
+import type { Glorious } from "../../../glorious-core/src";
 
 // Bundled, enabled by default, and written the way any extension is: it reaches
 // for nothing but Bun globals and the API object. That is the point — this is

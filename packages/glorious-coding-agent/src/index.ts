@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { messagesOf, type SessionEvent, usageTotals } from "@glrs-dev/glorious-core/events";
+import { messagesOf, type SessionEvent, usageTotals } from "../../glorious-core/src/events";
 import {
   createSession,
   loadPromptHistory,
@@ -8,7 +8,7 @@ import {
   savePromptHistory,
   saveSession,
   sessionFile,
-} from "@glrs-dev/glorious-core/session";
+} from "../../glorious-core/src/session";
 import {
   currentModel,
   loadCatalogue,
@@ -18,7 +18,7 @@ import {
   modelMetadata,
   modelRef,
   providerSpec,
-} from "@glrs-dev/provider-registry";
+} from "../../provider-registry/src";
 import packageJson from "../package.json";
 import { createAgent } from "./agent";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";

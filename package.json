@@ -2,10 +2,6 @@
   "name": "@glrs-dev/glorious",
   "version": "1.0.0-next.38",
   "private": false,
-  "workspaces": [
-    "packages/*",
-    "packages/extensions/*"
-  ],
   "description": "glorious monorepo: a provider-neutral agent core and the glorious coding-agent product.",
   "license": "MIT",
   "repository": {
@@ -19,6 +15,13 @@
     "packages/glorious-coding-agent/package.json",
     "packages/glorious-coding-agent/src",
     "!packages/glorious-coding-agent/src/**/*.test.ts",
+    "packages/glorious-core/src",
+    "!packages/glorious-core/src/**/*.test.ts",
+    "packages/provider-registry/src",
+    "!packages/provider-registry/src/**/*.test.ts",
+    "packages/extensions/builtins/src",
+    "packages/extensions/web-fetch/src",
+    "!packages/extensions/**/*.test.ts",
     "docs",
     "README.md",
     "LICENSE"
@@ -54,11 +57,6 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@glrs-dev/glorious-core": "1.0.0-next.38",
-    "@glrs-dev/glorious-coding-agent": "1.0.0-next.38",
-    "@glrs-dev/provider-registry": "1.0.0-next.38",
-    "@glrs-dev/glorious-builtins": "1.0.0-next.38",
-    "@glrs-dev/glorious-web-fetch": "1.0.0-next.38",
     "@ai-sdk/amazon-bedrock": "^5.0.50",
     "@ai-sdk/anthropic": "^4.0.36",
     "@ai-sdk/azure": "^4.0.11",

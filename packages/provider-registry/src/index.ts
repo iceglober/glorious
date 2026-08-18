@@ -1,4 +1,4 @@
-import type { ModelProvider } from "@glrs-dev/glorious-core";
+import type { ModelProvider } from "../../glorious-core/src";
 
 export * from "./config";
 export * from "./models";

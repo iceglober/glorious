@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import type { ModelMessage } from "ai";
 import {
   eventsFromMessages,
   messagesOf,
   type SessionEvent,
   typedText,
   usageTotals,
-} from "@glrs-dev/glorious-core/events";
-import type { ModelMessage } from "ai";
+} from "../../glorious-core/src/events";
 import { transcript } from "./render";
 
 const text = (lines: ReturnType<typeof transcript>): string =>

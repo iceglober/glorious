@@ -1,8 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import builtins from "@glrs-dev/glorious-builtins";
-import askUser from "@glrs-dev/glorious-builtins/ask-user";
-import webFetch from "@glrs-dev/glorious-web-fetch";
+import builtins from "../../extensions/builtins/src";
+import askUser from "../../extensions/builtins/src/ask-user";
+import webFetch from "../../extensions/web-fetch/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import type { ToolEvent } from "./tools";
 import { agentDirectories } from "./usercommands";

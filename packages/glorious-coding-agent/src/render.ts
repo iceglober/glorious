@@ -1,4 +1,4 @@
-import type { SessionEvent } from "@glrs-dev/glorious-core/events";
+import type { SessionEvent } from "../../glorious-core/src/events";
 import { resultSummary } from "./tools";
 
 export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";

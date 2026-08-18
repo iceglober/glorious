@@ -1,4 +1,4 @@
-export { PREAMBLE_TAGS } from "@glrs-dev/glorious-core/events";
+export { PREAMBLE_TAGS } from "../../glorious-core/src/events";
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";

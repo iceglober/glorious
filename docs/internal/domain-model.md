@@ -131,8 +131,9 @@ capability.
 
 `glorious-core` exports the full domain model, stable ports, and extension API
 from explicit package entrypoints. Deep implementation imports are not public.
-The core, coding agent, provider registry, and first-party extension packages
-use one synchronized version during the initial monorepo period.
+The internal packages remain private implementation boundaries. The root
+`@glrs-dev/glorious` distribution is the only package versioned and published
+until the SDK contracts stabilize.
 
 The extraction begins after this artifact and public API tests are established.
 Package-boundary tests must enforce that core cannot import the coding agent or

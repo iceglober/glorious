@@ -1,6 +1,7 @@
 {
   "name": "@glrs-dev/glorious-coding-agent",
   "version": "1.0.0-next.38",
+  "private": true,
   "description": "Terminal coding-agent product built on glorious-core.",
   "license": "MIT",
   "type": "module",
@@ -14,10 +15,6 @@
     "prepack": "bun scripts/sync-docs.ts"
   },
   "dependencies": {
-    "@glrs-dev/glorious-core": "workspace:*",
-    "@glrs-dev/provider-registry": "workspace:*",
-    "@glrs-dev/glorious-builtins": "workspace:*",
-    "@glrs-dev/glorious-web-fetch": "workspace:*",
     "@opentui/core": "0.4.5",
     "@vscode/ripgrep": "^1.18.0",
     "ai": "^7.0.22",

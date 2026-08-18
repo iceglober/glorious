@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { typedText } from "@glrs-dev/glorious-core/events";
+import { typedText } from "../../glorious-core/src/events";
 import {
   environmentPrompt,
   fence,

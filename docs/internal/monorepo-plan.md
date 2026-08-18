@@ -15,10 +15,10 @@ packages/
     web-fetch/            # browser-backed web_fetch extension
 ```
 
-The package names are `glorious-core` and `glorious-coding-agent`. The current
-`@glrs-dev/glorious` package becomes the coding-agent distribution during the
-transition and eventually becomes a compatibility package or an alias, subject
-to a separate release decision.
+The internal package names are `glorious-core` and `glorious-coding-agent`.
+`@glrs-dev/glorious` remains the only published distribution and bundles the
+internal package sources. Independent package publishing is deferred until the
+SDK contracts stabilize.
 
 ## Boundaries
 
@@ -72,8 +72,8 @@ usable through the same extension API as a user extension.
 - Provider configuration, adapters, metadata, and tests live in `packages/provider-registry`.
 - Canonical events and JSON session persistence live in `packages/glorious-core`.
 - Built-in commands, `ask_user`, and `web_fetch` are independent extension packages.
-- The root package remains a compatibility distribution for the `glorious` executable.
-- Boundary checks and synchronized Changesets versioning are enforced.
+- The root package remains the public distribution for the `glorious` executable.
+- Boundary checks are enforced; Changesets versions and publishes only the root package.
 
 ## Migration phases
 
@@ -81,8 +81,9 @@ usable through the same extension API as a user extension.
    classify every current module as core, coding-agent, provider, or extension,
    coding-agent, or extension; freeze the public core API and identify imports
    that cross the intended boundary.
-2. **Workspace skeleton** — add the package manager workspace, package manifests,
-   shared TypeScript/Biome configuration, and package-level test commands.
+2. **Package skeleton** — add internal package manifests, shared
+   TypeScript/Biome configuration, and package-level test commands while the
+   root package remains the only install and release unit.
 3. **Extract core** — move `extension-api`, events, sessions, model plumbing,
    extension loading, and shared render types into `glorious-core`; preserve
    behavior through moved tests before changing APIs.
@@ -90,17 +91,18 @@ usable through the same extension API as a user extension.
    mentions, and skills integration into `glorious-coding-agent`.
 5. **Extract built-ins** — move bundled commands and web fetch into extension
    packages; load them from the coding agent without privileged code paths.
-6. **Release transition** — publish `glorious-core` first, then publish the
-   coding agent with an explicit dependency range. Keep the existing executable
-   and configuration paths working through at least one transition release.
+6. **Release transition** — publish the root `@glrs-dev/glorious` distribution
+   with all internal package sources bundled. Keep the existing executable and
+   configuration paths unchanged. Independent package releases are deferred.
 7. **Enforce boundaries** — add dependency checks and package-level API tests so
    core cannot import product code and extensions cannot reach private modules.
 
 ## Decisions
 
-- Bun workspaces manage the monorepo.
+- Bun manages dependencies at the repository root; internal package directories
+  remain private source boundaries until independent publishing is enabled.
 - Core owns provider-neutral model ports; provider implementations live in the registry.
 - Core owns event schemas and the JSON session adapter, including fork support.
 - Core exposes neutral UI and `Line[]` contracts; hosts may omit interactive capabilities.
-- Core, coding agent, provider registry, and first-party extensions use synchronized versions.
-- `@glrs-dev/glorious` remains the compatibility distribution during the transition.
+- Internal workspace packages are private and are not versioned or published independently.
+- `@glrs-dev/glorious` remains the sole public distribution during the transition.

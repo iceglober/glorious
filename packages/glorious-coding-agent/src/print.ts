@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { currentModel, loadConfig, modelMetadata } from "@glrs-dev/provider-registry";
+import { currentModel, loadConfig, modelMetadata } from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";

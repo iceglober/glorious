@@ -1,5 +1,5 @@
-import { compactedPrompt, type SessionEvent } from "@glrs-dev/glorious-core/events";
 import type { ModelMessage } from "ai";
+import { compactedPrompt, type SessionEvent } from "../../glorious-core/src/events";
 import type { Agent, TurnPhase } from "./agent";
 import { reminder } from "./prompt";
 import { errorText } from "./render";

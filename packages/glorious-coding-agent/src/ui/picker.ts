@@ -1,5 +1,5 @@
-import type { Session } from "@glrs-dev/glorious-core/session";
 import type { KeyEvent } from "@opentui/core";
+import type { Session } from "../../../glorious-core/src/session";
 
 export const pickSession = async (sessions: Session[]): Promise<Session> => {
   const tui = await import("@opentui/core");
