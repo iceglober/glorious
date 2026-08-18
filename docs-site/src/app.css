@@ -826,7 +826,8 @@ h3:hover .heading-anchor,
   display: grid;
   grid-template-columns: minmax(20rem, 1fr) minmax(20rem, 1fr);
   gap: clamp(1rem, 3vw, 3rem);
-  max-width: 100rem;
+  width: 100%;
+  max-width: none;
 }
 
 .markdown-source {
@@ -1157,7 +1158,7 @@ body { background: var(--white); }
 .search-results { border-color: var(--white); color: var(--black); }
 
 .breadcrumbs { padding-inline: clamp(1rem, 4vw, 3.5rem); background: #ebe9e1; border-bottom-color: var(--border); }
-.page-shell { max-width: 100rem; }
+.page-shell { width: 100%; max-width: none; }
 .side-nav { background: #ebe9e1; border-right-color: var(--border); padding-inline: clamp(1rem, 2.5vw, 2.5rem); }
 .side-group + .side-group { margin-top: 1.5rem; }
 .side-title { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; }
