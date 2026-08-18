@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
+import { describeThrown } from "./render";
 import type { ToolEvent } from "./tools";
 import { agentDirectories } from "./usercommands";
 
@@ -50,7 +51,7 @@ const entryPoints = async (directory: string): Promise<Array<{ name: string; pat
 };
 
 const failureText = (thrown: unknown): string => {
-  if (!(thrown instanceof Error)) return String(thrown);
+  if (!(thrown instanceof Error)) return describeThrown(thrown);
   // A missing index.ts is what a directory with no entry point looks like, and
   // saying "Cannot find module" about a path the user never typed is worse than
   // saying nothing happened.
