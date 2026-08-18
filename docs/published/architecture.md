@@ -1,10 +1,8 @@
-# How glorious is put together
+# Architecture
 
-Roughly 5,300 lines of TypeScript in `v2/`, run by Bun with no build step.
-
-This file is for a person changing glorious. The agent is pointed at `docs/`,
-not at `v2/` — the documented API is the contract it writes extensions against,
-and handing it the implementation invites it to reach past that contract.
+The coding-agent implementation is TypeScript in `packages/glorious-coding-agent/src/`,
+run by Bun with no build step. The
+public extension API is documented separately from implementation details.
 
 ## The turn loop
 
@@ -94,4 +92,4 @@ session encryption, no animation — and no built-in slash commands or tools at
 all: `/help`, `/clear`, `/skills`, `/extensions`, `/reload` and `web_fetch` are
 bundled extensions. Each was removed with a reason recorded in the
 commit that removed it; `git log` is the argument. What replaced all of them is
-`docs/extensions.md`.
+`docs/published/extensions.md`.

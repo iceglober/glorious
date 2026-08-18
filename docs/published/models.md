@@ -1,4 +1,4 @@
-# Models and configuration
+# Models
 
 ## Choosing a model
 
@@ -23,7 +23,7 @@ reasoning effort, when the model advertises one.
 
 Merged nearest-first, one key at a time: a project may pin the model while your
 personal config supplies the provider settings it does not mention. `~/.glorious/`
-is read because that is already where your extensions, sequences and commands
+is read because that is already where your extensions and commands
 live; `~/.config/glorious/` works too, for the XDG layout.
 
 Config is read-only — nothing writes it at runtime. The core has no model

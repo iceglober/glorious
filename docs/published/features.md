@@ -1,4 +1,4 @@
-# What glorious does
+# Features
 
 The built-in feature set, in one place. Kept current: if something here is
 wrong, that is a bug.
@@ -40,7 +40,6 @@ reason. A tool describes its own result through `renderResult`; see
 | | |
 | --- | --- |
 | `/name` | a command — `Tab` completes, `↑↓` move. Skills answer to `/skill:name` |
-| `$name` | a sequence: shell, then optionally a prompt |
 | `@path` | reference a file or directory; a file's contents travel with the message, a directory's listing does. Completion searches the whole tree, respects `.gitignore`, and scrolls |
 | `!command` | run the rest of the line as shell |
 | `Enter` | send, or queue if a turn is running |
@@ -81,7 +80,6 @@ session inherits whichever happened.
 | --- | --- |
 | `AGENTS.md` / `AGENT.md` / `CLAUDE.md` | project rules, from the root down |
 | `.glorious/extensions/*.ts` | extensions — tools, commands, hooks, rendering |
-| `.glorious/sequences/*.md` | `$name` shortcuts |
 | `.glorious/commands/*.md` | `/name` prompts |
 | `.agents/skills/*/SKILL.md` | skills, listed to the model and loaded on demand — see `skills.md` |
 | `.glorious/config.json` | model, variant, provider settings |

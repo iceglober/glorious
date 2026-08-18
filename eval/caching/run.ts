@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { environmentPrompt, systemPrompt } from "../../v2/prompt";
+import { environmentPrompt, systemPrompt } from "../../packages/glorious-coding-agent/src/prompt";
 
 // Does putting volatile content in the system prompt cost the cache?
 //

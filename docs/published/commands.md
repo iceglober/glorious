@@ -1,4 +1,4 @@
-# Commands and skills
+# Commands
 
 ## Slash commands from markdown
 
@@ -54,7 +54,7 @@ every one of their descriptions in the per-turn preamble. Symlink one into
 
 Skills answer under a `skill:` prefix — `/skill:changelog` — so installing one
 cannot shadow a command you already had, and `/deploy` is never ambiguous about
-where it came from. Completion is a subsequence match, so typing `/changelog`
+where it came from. Completion is a fuzzy match, so typing `/changelog`
 still finds it. A skill may declare `trigger: /name` to rename the part after
 the colon; without one it is the skill's own name. See `skills.md`.
 

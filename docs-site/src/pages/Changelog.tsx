@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AnchorHeading } from "~/components/AnchorHeading";
+
+const slug = (text: string) => text.toLowerCase().replace(/[`*_]/gu, "").replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function MdLink({ href, children }: { href?: string; children?: any }) {
@@ -23,7 +26,7 @@ export function Changelog() {
   const [changelog, setChangelog] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = "changelog — glrs";
+    document.title = "Changelog — glrs";
   }, []);
 
   useEffect(() => {
@@ -39,7 +42,11 @@ export function Changelog() {
 
       <div className="changelog-content">
         {changelog ? (
-          <Markdown remarkPlugins={[remarkGfm]} components={{ a: MdLink }}>
+          <Markdown remarkPlugins={[remarkGfm]} components={{
+            a: MdLink,
+            h2: ({ children }) => <AnchorHeading level={2} id={slug(String(children))}>{children}</AnchorHeading>,
+            h3: ({ children }) => <AnchorHeading level={3} id={slug(String(children))}>{children}</AnchorHeading>,
+          }}>
             {changelog}
           </Markdown>
         ) : (

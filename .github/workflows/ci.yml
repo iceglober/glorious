@@ -23,7 +23,9 @@ jobs:
       - name: install
         run: bun install --frozen-lockfile
       - name: typecheck
-        run: bun run typecheck
+        run: |
+          bun run typecheck
+          bun run typecheck:packages
       - name: biome
         run: bun run check
       - name: test

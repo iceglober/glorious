@@ -312,10 +312,9 @@
   about which of the two it was. The prefix says where a command comes from.
   `trigger:` now renames the part after the colon.
 
-  Completion is a subsequence match, so typing `/changelog` still finds
-  `/skill:changelog` — the prefix does not have to be typed. Commands and
-  sequences keep their bare names; skills are namespaced because they are the ones
-  that arrive from somewhere else.
+  Completion is a fuzzy match, so typing `/changelog` still finds
+  `/skill:changelog` — the prefix does not have to be typed. Commands keep their
+  bare names; skills are namespaced because they arrive from somewhere else.
 
   A colon had to become legal in a command name for any of this to parse. It was
   not, so `/skill:name` matched nothing and fell through to "unknown command".
@@ -456,7 +455,7 @@
 
 - ddf0eea: Read personal config from `~/.glorious/config.json` as well.
 
-  Extensions, sequences and commands already come from `~/.glorious/` — the ancestor walk reaches it whenever a project sits under home — but config was read only from the project and `~/.config/glorious/`. The same directory holding your resources but not your settings is a rule nobody should have to learn. Both personal locations are now read, merged nearest-first one key at a time, so a project can pin the model while your personal config supplies the provider settings it does not mention.
+  Extensions and commands already come from `~/.glorious/` — the ancestor walk reaches it whenever a project sits under home — but config was read only from the project and `~/.config/glorious/`. The same directory holding your resources but not your settings is a rule nobody should have to learn. Both personal locations are now read, merged nearest-first one key at a time, so a project can pin the model while your personal config supplies the provider settings it does not mention.
 
   Also fixes a lint error that reached main: a regex written with a literal escape character, in the test that tolerates ANSI in a child process's output.
 
@@ -647,7 +646,7 @@
 
   All of them — plus a new `/reload` — now ship as `bundled/builtins.ts`, written against exactly the API a third party gets. With `web-fetch` already bundled, glorious ships nothing the core privileges: shadow any of them by name from `.glorious/extensions/`, or delete them and write your own. Nothing in the core depends on them existing.
 
-  The API gains what they needed: `g.inspect()` returns `{ commands, sequences, skills, extensions }` — every listing is a view over it — `g.clear()` drops the conversation the model replays, `g.reload()` re-reads from disk, and `g.print()` now takes `Line[]` as well as a string so an extension can draw styled output into the transcript.
+  The API gains what they needed: `g.inspect()` returns `{ commands, skills, extensions }` — every listing is a view over it — `g.clear()` drops the conversation the model replays, `g.reload()` re-reads from disk, and `g.print()` now takes `Line[]` as well as a string so an extension can draw styled output into the transcript.
 
   They print into the transcript instead of opening a panel over it. A listing you can scroll back to, copy out of, and read beside the work that prompted it beats one that takes the screen and has to be dismissed — and it costs the API no windowing surface to support. `ui/overlays.ts` and the sheet-sizing machinery behind it are gone with them: 261 lines of UI and 90 of tests for geometry nothing draws any more.
 
@@ -674,7 +673,7 @@
   - **Extensions.** A `.ts` file in `.glorious/extensions/` that default-exports a function taking the glorious API can register tools the model calls, slash commands that run your code, lifecycle hooks (`session_start`, `input`, `turn_start`/`turn_end`, `tool_start`/`tool_end`), status-line segments, footer rows, and custom rendering for its own tool rows. Bun runs `.ts` directly, so there is no build step, and everything arrives on the API object — including zod, as `g.z`, because an extension that had to resolve `zod` itself would work in a project and fail from your home directory. Renderers return glorious's own `Line[]` spans, never opentui types, so the renderer can be replaced without breaking a single extension. `/extensions` lists what loaded, what it registered and where it came from; one that fails to load says so loudly and takes nothing else with it. See `docs/extensions.md`.
   - **It extends itself.** `docs/` ships in the package, and the system prompt names its absolute path, lists what each file covers, and tells the model that a capability glorious lacks is usually an extension it should write and then verify with `glorious -p`. Asking for a new tool is now a request glorious fulfils rather than declines. It is pointed at the docs and not at `v2/`: the documented API is the contract, and handing it the implementation invites it to reach past that contract.
   - **`glorious -p "<prompt>"`.** One turn, headless, no alternate screen: assistant text on stdout, the tool trail on stderr. It is how the agent tests changes to itself, how anything scripts glorious, and — invoked through `bash` — how one glorious spawns another with every step of the child visible.
-  - **Sequences.** The markdown `$name` concept keeps working under its real name: run a shell command, optionally clear the conversation, optionally feed the output into a prompt — in that order. Files move to `.glorious/sequences/`; `.glorious/extensions/*.md` still loads for one release and says where to move.
+  - **Named shell shortcuts.** The old markdown workflow that ran a shell command and optionally fed its output into a prompt has been removed. Reusable behavior belongs in extensions or commands.
   - **Removed: subagents.** `eval/delegation` measured the same answers for ~1.8× the tokens and ~2.6× the wall clock. Its one real benefit, keeping the child's reading out of the parent's context, survives as `-p` through `bash`.
   - **Removed: MCP.** 7–9% of the context window for schemas you mostly do not call, paid every turn. Extensions register the same tools with no subprocess, no JSON-RPC, no approval fingerprints, and no cost until installed.
   - **Removed: plan mode.** One mode, build, with every tool always. A plan that needs to survive belongs in a file.

@@ -10,9 +10,9 @@ shadow a command you already had, and looking at `/deploy` told you nothing
 about which of the two it was. The prefix says where a command comes from.
 `trigger:` now renames the part after the colon.
 
-Completion is a subsequence match, so typing `/changelog` still finds
+Completion is a fuzzy match, so typing `/changelog` still finds
 `/skill:changelog` — the prefix does not have to be typed. Commands and
-sequences keep their bare names; skills are namespaced because they are the ones
+commands keep their bare names; skills are namespaced because they are the ones
 that arrive from somewhere else.
 
 A colon had to become legal in a command name for any of this to parse. It was
