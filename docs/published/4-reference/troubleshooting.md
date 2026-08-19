@@ -18,7 +18,7 @@ without running extensions or opening the TUI. it never prints secret values.
 ## missing credentials
 
 find the required environment variable under
-[model providers](./providers.md). export it in the shell that starts glrs.
+[model providers](../2-use/providers.md). export it in the shell that starts glrs.
 
 ## wrong model
 

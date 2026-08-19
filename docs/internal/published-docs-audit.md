@@ -7,25 +7,39 @@ Reviewed 2026-08-19 against the branch implementation.
 | Page | Code checked | Result |
 | --- | --- | --- |
 | root `README.md` | `install.sh`, `bin/glrs`, `package.json` | retained the terse landing page; corrected release channel and Bun/git requirements |
-| `1-quickstart.md` | `ui/screen.ts`, `composer.ts`, bundled commands, CLI startup | corrected install link, command inventory, queue/interrupt keys, exit/resume behavior |
-| `2-installation.md` | `docs-site/public/install.sh`, `bin/glrs`, `index.ts`, `package.json` | corrected `next` channel, Bun requirement, update behavior, uninstall commands, and artifact paths; removed nonexistent update/uninstall scripts |
-| `3-configuration.md` | `provider-registry/config.ts`, `writeconfig.ts`, reload host | aligned all three scopes, platform paths, precedence, aliases, additive lists, shorthand, writable section, and restart/reload boundary |
-| `advanced/4-sessions.md` | `glrs-core/session.ts`, `/session`, compaction code, print host | added persistence/resume/storage/clear/compact details; clarified that print mode creates no session |
-| `basics.md` | composer, mentions, queue, direct shell, guidance loader | aligned attachments, shell mode, queue keys, and actual rule-file walk |
-| `providers.md` | `PROVIDERS`, `ALIASES`, `missingFor`, model provider settings | completed provider/alias lists and aligned environment/config fallbacks; documented doctor limitations |
-| `models.md` | model resolution, metadata cache, request retry loop | aligned precedence, default, cache, provider settings, and three-attempt retry behavior |
-| `cli.md` | argument parser and print host | aligned every core command/alias, stream split, extension flags, precedence, and exit status |
-| `features.md` | TUI host, print host, tools, queue, compaction, discovery | reduced duplication while retaining the complete first-party behavior map |
-| `commands.md` | command parser, bundled commands, user commands, guidance loader | aligned expansion, search order, collision order, skill namespace, and actual rule paths |
-| `skills.md` | `skills.ts` | aligned all four roots, depth, validation, aliases, invocation, and model opt-out |
-| `extensions.md` | extension resolver, API, both hosts, registry, toolkit | aligned discovery, shipped roster, collisions, permissions, mode differences, hooks, rendering, and host capabilities |
-| `tools.md` | builtins tools, toolkit wrapper, web/ask/configure extensions | added conditional tools and aligned timeout, paths, output cap, filters, and permissions |
-| `troubleshooting.md` | doctor, config diagnostics, extension resolver, stores | aligned diagnostics, precedence, reload behavior, cache/session paths, and permissions |
-| `terminal-setup.md` | OpenTUI setup, key normalization, color and selection code | aligned Windows remap, Alt conventions, color, OSC 52, and terminal-owned keys |
-| `philosophy.md` | prompt construction, extension seams, permission model | factual; shortened to the implementation's current constraints |
-| `architecture.md` | package boundaries, turn path, rendering, persistence | removed stale file map and replaced it with package/runtime boundaries that exist now |
-| `lifecycle.md` | `EventName`, payload/verdict types, TUI host, print host | contains every event exactly once, return behavior, four print-mode exclusions, and the current host ordering difference |
-| `glossary.md` | public runtime/config vocabulary | aligned scope, session, turn, extension, command, skill, and tool terms |
+| `1-start/quickstart.md` | `ui/screen.ts`, `composer.ts`, bundled commands, CLI startup | corrected install link, command inventory, queue/interrupt keys, exit/resume behavior |
+| `1-start/installation.md` | `docs-site/public/install.sh`, `bin/glrs`, `index.ts`, `package.json` | corrected `next` channel, Bun requirement, update behavior, uninstall commands, and artifact paths; removed nonexistent update/uninstall scripts |
+| `1-start/configuration.md` | `provider-registry/config.ts`, `writeconfig.ts`, reload host | aligned all three scopes, platform paths, precedence, aliases, additive lists, shorthand, writable section, and restart/reload boundary |
+| `2-use/sessions.md` | `glrs-core/session.ts`, `/session`, compaction code, print host | added persistence/resume/storage/clear/compact details; clarified that print mode creates no session |
+| `2-use/basics.md` | composer, mentions, queue, direct shell, guidance loader | aligned attachments, shell mode, queue keys, and actual rule-file walk |
+| `2-use/providers.md` | `PROVIDERS`, `ALIASES`, `missingFor`, model provider settings | completed provider/alias lists and aligned environment/config fallbacks; documented doctor limitations |
+| `2-use/models.md` | model resolution, metadata cache, request retry loop | aligned precedence, default, cache, provider settings, and three-attempt retry behavior |
+| `4-reference/cli.md` | argument parser and print host | aligned every core command/alias, stream split, extension flags, precedence, and exit status |
+| `3-customize/commands.md` | command parser, bundled commands, user commands, guidance loader | aligned expansion, search order, collision order, skill namespace, and actual rule paths |
+| `3-customize/skills.md` | `skills.ts` | aligned all four roots, depth, validation, aliases, invocation, and model opt-out |
+| `3-customize/extensions.md` | extension resolver, API, both hosts, registry, toolkit | aligned discovery, shipped roster, collisions, permissions, mode differences, hooks, rendering, and host capabilities |
+| `2-use/tools.md` | builtins tools, toolkit wrapper, web/ask/configure extensions | added conditional tools and aligned timeout, paths, output cap, filters, and permissions |
+| `4-reference/troubleshooting.md` | doctor, config diagnostics, extension resolver, stores | aligned diagnostics, precedence, reload behavior, cache/session paths, and permissions |
+| `4-reference/terminal-setup.md` | OpenTUI setup, key normalization, color and selection code | aligned Windows remap, Alt conventions, color, OSC 52, and terminal-owned keys |
+| `5-internals/philosophy.md` | prompt construction, extension seams, permission model | factual; shortened to the implementation's current constraints |
+| `5-internals/architecture.md` | package boundaries, turn path, rendering, persistence | removed stale file map and replaced it with package/runtime boundaries that exist now |
+| `5-internals/lifecycle.md` | `EventName`, payload/verdict types, TUI host, print host | contains every event exactly once, return behavior, four print-mode exclusions, and the current host ordering difference |
+
+`features.md` was removed because it duplicated quickstart, basics, tools, and
+configuration. `glossary.md` was removed because its short definitions added no
+useful guidance beyond those pages.
+
+## Published hierarchy
+
+1. **start** — quickstart, installation, configuration
+2. **use** — basics, sessions, models, model providers, tools
+3. **customize** — commands, skills, extensions
+4. **reference** — CLI, terminal setup, troubleshooting
+5. **internals** — philosophy, architecture, lifecycle
+
+Numeric directory prefixes preserve this order and are removed from visible
+group titles by the document-groups plugin. Group rows are labels, not pages or
+links, in both navigation and the homepage index.
 
 ## Drift found outside the prose
 
@@ -41,8 +55,8 @@ Reviewed 2026-08-19 against the branch implementation.
 ### highest value
 
 1. **slash commands** — export first-party command metadata from the builtins extension. use it for registration, `/help`, and the quickstart table. the stale `esc` help text found in this audit is the same class of drift.
-2. **keys** — define one key/action manifest beside the composer dispatcher. use it for `/help`, quickstart, features, and terminal setup. key behavior is currently split across `screen.ts`, `composer.ts`, and prose.
-3. **tools** — export shipped tool metadata from builtins, web-fetch, ask-user, and `configure_extension`. generate tools/features tables and keep availability predicates in the same records.
+2. **keys** — define one key/action manifest beside the composer dispatcher. use it for `/help`, quickstart, basics, and terminal setup. key behavior is currently split across `screen.ts`, `composer.ts`, and prose.
+3. **tools** — export shipped tool metadata from builtins, web-fetch, ask-user, and `configure_extension`. generate tools and quickstart tables and keep availability predicates in the same records.
 4. **providers and aliases** — `PROVIDERS` and `ALIASES` are already data. expose a serializable documentation view and render the provider table directly.
 5. **config schema** — replace the hand-maintained `Config` type + `KNOWN` list + shape parser + documentation table with one schema/metadata source. generate keys, types, defaults, aliases, and merge behavior.
 

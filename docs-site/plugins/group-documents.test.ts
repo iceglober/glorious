@@ -40,4 +40,8 @@ describe("external document directory grouping", () => {
     expect(directoryLabel("API-guides")).toBe("API Guides");
     expect(directoryLabel("API-guides", true)).toBe("api guides");
   });
+
+  test("hides numeric directory-order prefixes from group titles", () => {
+    expect(directoryLabel("1-getting-started", true)).toBe("getting started");
+  });
 });

@@ -24,6 +24,7 @@ export const documentTitle = (file: string): string => {
 
 export const directoryLabel = (segment: string, lowercase = false): string => {
   const label = segment
+    .replace(/^\d+[-_]/u, "")
     .split(/[-_]/u)
     .filter(Boolean)
     .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)

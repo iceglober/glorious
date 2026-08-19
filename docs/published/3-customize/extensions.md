@@ -43,7 +43,7 @@ loaded in order; first name wins:
 | enabled shipped extensions | bundled |
 | other `extensions.load` paths (after resolution) | configured |
 
-`<User>` is defined under [configuration](./3-configuration.md). relative config
+`<User>` is defined under [configuration](../1-start/configuration.md). relative config
 paths resolve from the config file. a directory entry point is `index.ts`.
 
 an extension that fails to import or initialize is reported without stopping
@@ -77,7 +77,7 @@ same tool name.
 ```
 
 recording enable/disable choices requires `agentConfigAllowlist`; see
-[configuration](./3-configuration.md).
+[configuration](../1-start/configuration.md).
 
 ## permissions
 
@@ -140,7 +140,7 @@ g.on("tool_end", ({ result }) => result.replaceAll("secret", "[redacted]"));
 replace what the model reads. other hooks can rewrite input, context, and
 provider requests.
 
-see [lifecycle](./lifecycle.md) for every event, payload, and return value.
+see [lifecycle](../5-internals/lifecycle.md) for every event, payload, and return value.
 
 ## shell and paths
 
