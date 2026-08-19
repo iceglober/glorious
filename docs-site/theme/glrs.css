@@ -52,9 +52,13 @@ body { letter-spacing: -0.01em; }
 }
 .site-menu,
 .page-menu {
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-size: 1.05rem;
+  line-height: 1.6;
 }
+.tsd-navigation a,
+.tsd-navigation summary > span,
+.tsd-page-navigation a,
+.tsd-page-navigation-section > summary { padding-block: 0.4rem; }
 .tsd-navigation a,
 .tsd-page-navigation a { color: #6b6962; }
 .tsd-navigation a.current,
@@ -88,7 +92,7 @@ body { letter-spacing: -0.01em; }
 .tsd-page-navigation > .tsd-accordion-summary { align-items: center; }
 .tsd-page-navigation > .tsd-accordion-summary h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.2rem;
   line-height: 20px;
 }
 
