@@ -27,6 +27,7 @@
     "configurable-model-pricing",
     "context-pressure-and-delegation",
     "ctrl-c-exit-hint",
+    "dedupe-skill-roots",
     "deep-extension-api",
     "direct-shell-stream",
     "docs-catch-up",

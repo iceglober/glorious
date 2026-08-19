@@ -1,6 +1,6 @@
 {
   "name": "@glrs-dev/glrs",
-  "version": "1.0.0-next.53",
+  "version": "1.0.0-next.54",
   "private": false,
   "description": "glrs monorepo: a provider-neutral agent core and the glrs coding-agent product.",
   "license": "MIT",
