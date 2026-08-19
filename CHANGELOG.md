@@ -1,5 +1,49 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.52
+
+### Minor Changes
+
+- 343b6f1: glrs can tell you about a capability it does not have, and remember your answer.
+
+  `web_fetch` and `ask_user` ship in the box and wait to be asked for. That is a better default than loading everything, but it has an obvious failure: an agent asked to read a web page has no tool for it, and no way to know one exists. So the extensions that ship but have never been decided about are named to the model each turn, with a line saying what each is for.
+
+  **Nothing about this costs a prompt-cache miss.** The list rides the per-turn `<extensions>` block, which is rebuilt every turn anyway; the system prompt stays byte-identical, and messages already in history keep their cached prefix. `<extensions>` is already a preamble tag, so the block is stripped from a replayed transcript without a new one being added. There is a source-scan test pinning that, because moving one call in `index.ts` would break it and no assertion about output would notice — both paths reach the model.
+
+  Once you answer, it stops being offered. When every shipped extension has been decided, the section disappears entirely: an agent that keeps offering something you already declined is worse than one that never offered. The three states need no store of their own — named in `extensions.load` is a yes, named in `extensions.disable` is a no, in neither is a question nobody has answered.
+
+  Recording the answer needs permission, because config is yours to edit and nothing glrs does writes it. `"agentConfigAllowlist": ["extensions"]` opts that one section out. With it, a `configure_extension` tool records what you said; without it the suggestion still happens and glrs tells you the line to add instead. The tool is registered only when there is something undecided and only when the answer can actually be written, since a decline that cannot be recorded lasts until the next turn.
+
+  `/extensions` now lists what ships but is not loaded alongside what is, and `/extensions enable <name>` and `/extensions disable <name>` do the same thing by hand. Unlike the extension lists, `agentConfigAllowlist` is nearest-wins rather than additive: permission to write your config is not something a project you cloned should be able to widen.
+
+- 483386e: The tools that touch the machine are an extension now, so replacing one is registering its name.
+
+  `packages/extensions/builtins` owned seven slash commands and nothing else, while `bash`, `read`, `write`, `edit`, `grep` and `glob` were merged straight into the agent ahead of every extension. So the sentence the extension docs print in bold — _the core registers no slash commands and no tools of its own_ — was a claim the code did not support, and the package named `builtins` was the one place the built-ins were not.
+
+  They are the `builtins` extension now, registered through `g.tool` exactly as a tool you write is: same wrapper, same gate, same 30k result cap, same rows. `activate_skill` is the one tool the core still registers, because it needs a skill's body and the extension API does not carry one.
+
+  Replacing a tool no longer means shadowing anything. A tool name is kept by whoever claims it first and your project is walked before anything shipped, so registering `bash` in `.glrs/extensions/` simply wins. Shadowing by filename still works, but naming a file `builtins.ts` is a blunter instrument than it was — it now costs the six tools as well as the commands and leaves the model unable to do anything, so glrs says so at startup when it happens.
+
+  `g.settings()` is new on the extension API, carrying the resolved config so a tool can read `tool_timeout_ms` without importing the coding agent. Provider blocks are deliberately absent: they hold API keys.
+
+  **The path check on `read`, `write`, `edit`, `grep` and `glob` is gone.** Relative paths resolve against the project root, absolute paths are taken as given, and nothing is refused. It never bounded what the agent could touch — `bash` sat unconfined beside those five the whole time — so all it did was make the model reach a file the slow way after being told no on the direct one, which is a thing that actually happened and is why `~/.config/agents` was carved out as an exception. glrs runs in YOLO mode by design; this is that, without the theatre.
+
+  The move also settled a long-flaky test. `tools.test.ts > gives separate registries distinct event IDs` timed out under load for months because it built two full tool registries and called `loadSkills(process.cwd())` to do it — and passed at all only because this repository happens to ship a skill. It tests two wrapped tools now and runs in a millisecond.
+
+- ea99ba7: Config decides which extensions load, and the ones that add a capability now wait to be asked for.
+
+  Turning off a bundled extension meant shadowing it with a file of your own that did nothing — and an npm-installed glrs has no file to delete, so `web_fetch` was a tool you could not decline. `extensions.disable` names one and it does not load, from any of the four config files.
+
+  **`web-fetch` and `ask-user` no longer load by default.** They ship in the box and wait for `{"extensions":{"load":["web-fetch"]}}`. `builtins` is the exception and loads unless you explicitly disable it, because it carries the six tools and every slash command and an agent without them cannot do anything. This is a visible change on upgrade: `web_fetch` and `ask_user` disappear from an existing install until named.
+
+  `load` takes a shipped extension's name, the package it ships as, or a path — relative to the config file that wrote it, or absolute. Naming it by package specifier works today against the bundled copy and keeps working the day these are installed rather than shipped, so a config written now survives that change. `tools.disable` is a sibling key that withholds a tool name from the model whichever extension registered it, riding the same filter seam `g.filterTools` uses so the two intersect rather than one overwriting the other.
+
+  Unlike every other setting, these lists **add up across all four config files** rather than the nearest one winning. They are sets, not values: a project activating one extension must not switch off the one your personal config activates everywhere. `disable` beats `load` from any layer, because turning something off is the direction that has to be safe.
+
+  A name in `load` that resolves to nothing is a failure and says so under the spelling you wrote. A name in `disable` that matches nothing is only a note — nothing is broken, and the usual cause is `web_fetch` typed for `web-fetch`.
+
+  `glrs doctor` now lists what would load and where each one came from, resolved without running any of it. An extension is a program, and a diagnostic that executes programs is not a diagnostic. `/reload` re-reads config too, so editing `extensions.load` and reloading means the same thing as restarting — which is the one job anybody would use it for.
+
 ## 1.0.0-next.51
 
 ### Minor Changes

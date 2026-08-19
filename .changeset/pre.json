@@ -7,6 +7,7 @@
   },
   "changesets": [
     "activity-row",
+    "advertise-extensions",
     "agent-modes-and-commands",
     "api-parity-tests",
     "api-smells",
@@ -15,6 +16,7 @@
     "assistant-response-marker",
     "autocomplete-scroll-esc",
     "azure-env-credentials",
+    "builtins-owns-the-tools",
     "cli-version-update",
     "cloud-auth-connect",
     "compaction-visible",
@@ -33,6 +35,7 @@
     "docs-page-conventions",
     "docs-site-reference",
     "esc-help-and-color-test",
+    "extension-activation",
     "extension-shortcuts",
     "failed-tool-reason",
     "gemini-prompt-addendum",
