@@ -38,17 +38,21 @@ with the same name says so rather than quietly losing.
 
 | Path | Scope |
 | --- | --- |
-| `~/.config/agents/skills/` | you, everywhere |
-| `~/.agents/skills/` | you, everywhere |
-| `<any ancestor>/.agents/skills/` | shared, walking up to your home directory |
-| `.glrs/skills/` | this project |
+| `.glrs/skills/` | Project, glrs-specific |
+| `.agents/skills/` | Project, portable across agents |
+| `<User>/skills/` | User, glrs-specific |
+| `<config base>/agents/skills/` | User, portable across agents |
 
 Directories are searched recursively, so grouping skills into folders works —
 `skills/writing/changelog/SKILL.md` is the `changelog` skill. A directory that
 contains a `SKILL.md` is a skill and is not searched any further, so its own
 `references/` and `scripts/` are never mistaken for more skills.
 
-Nothing reads another agent's directories. Symlink one in if you want it here.
+`<User>` is `~/.config/glrs` on macOS and Linux and `%APPDATA%\glrs` on
+Windows, unless overridden. `<config base>` is `XDG_CONFIG_HOME` when set,
+otherwise `~/.config` or `%APPDATA%`. Nothing reads another agent's
+product-specific directories. Symlink a skill
+into one of the portable `agents/skills` directories if you want it here.
 
 ## Frontmatter
 

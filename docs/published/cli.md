@@ -24,6 +24,8 @@ glrs update               # update to the latest next release
 - `GLRS_MODEL` — model override, as `provider/model-id`; the default is `gpt-5.6-luna`.
 - `GLRS_VARIANT` — reasoning effort, when the model advertises one.
 - `GLRS_PRICE_MULTIPLIERS` — comma-separated provider price multipliers, such as `azure=1.1,openai=1`.
+- `GLRS_CONFIG_HOME` — explicit User configuration and resource directory.
+- `XDG_CONFIG_HOME` — parent of the User directory when the explicit override is unset.
 - `XDG_DATA_HOME` — where sessions live; defaults to `~/.local/share`.
 
 ## Sessions
@@ -34,8 +36,9 @@ model keeps its context.
 
 ## Configuration
 
-`.glrs/config.json` in the project, then `~/.config/glrs/config.json`.
-Read-only; the environment variables above win over both.
+Project-User `.glrs/config.local.json`, Project `.glrs/config.json`, then User
+`~/.config/glrs/config.json` (`%APPDATA%\glrs\config.json` on Windows).
+Environment variables above win over all three.
 
 ```json
 { "model": "anthropic/claude-opus-5", "variant": "high" }

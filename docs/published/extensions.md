@@ -45,13 +45,14 @@ Loaded in this order; the first file to claim a name wins.
 
 | Path | Scope |
 | --- | --- |
-| `.glrs/extensions/*.ts` | this project |
-| `.glrs/extensions/<name>/index.ts` | this project, multi-file |
-| `~/.config/agents/extensions/*.ts` | you, everywhere |
+| `.glrs/extensions/*.ts` | Project |
+| `.glrs/extensions/<name>/index.ts` | Project, multi-file |
+| `<User>/extensions/*.ts` | User, every project |
+| `<User>/extensions/<name>/index.ts` | User, every project, multi-file |
 | named in `extensions.load` | a shipped extension, or a path |
 | bundled with glrs | `builtins` only, unless asked for |
 
-Because project files load first, `.glrs/extensions/web-fetch.ts` replaces
+Because Project files load first, `.glrs/extensions/web-fetch.ts` replaces
 the bundled `web_fetch` rather than colliding with it.
 
 Three ship in the box, and one of them loads by default:
@@ -69,10 +70,10 @@ Three ship in the box, and one of them loads by default:
 `load` takes a shipped extension's name, the package it ships as, or a path —
 relative to the config file that wrote it, or absolute. `disable` takes any
 name at all and wins over `load` from any layer, because turning something off
-is the direction that has to be safe. Both lists **add up** across the four
-config files rather than the nearest one replacing the rest; a project
-activating one extension must not switch off the one your personal config
-activates everywhere.
+is the direction that has to be safe. Both lists **add up** across the three
+config files rather than the nearest one replacing the rest; Project
+activating one extension must not switch off the one User config activates
+everywhere.
 
 A name in `load` that resolves to nothing is a failure and says so — you asked
 for it and it is not there. A name in `disable` that matches nothing is only a
@@ -106,13 +107,16 @@ page. `activate_skill` is the single exception, because it needs a skill's body
 and the API does not carry one.
 
 To replace one tool, register its name — the first extension to claim a name
-keeps it and your project is walked first, so a `bash` of your own simply wins.
+keeps it and Project is loaded first, so a `bash` of your own simply wins.
 Shadowing a whole extension by filename still works, but naming a file
 `builtins.ts` now costs the six tools as well as the commands and leaves the
 model unable to do anything; glrs says so at startup when it happens.
 
 `/extensions` lists what loaded, what each one registered, and the file it came
-from. An extension that fails to load says so in the transcript — loudly, not by
+from. `<User>` is `~/.config/glrs` on macOS and Linux and `%APPDATA%\glrs` on
+Windows, unless `GLRS_CONFIG_HOME` or `XDG_CONFIG_HOME` overrides it.
+
+An extension that fails to load says so in the transcript — loudly, not by
 disappearing — and takes nothing else down with it.
 
 ## No approval prompt
@@ -475,7 +479,7 @@ g.activity(({ busy, queued, phase, columns }) =>
 );
 ```
 
-The first extension to return lines wins, so a project overrides a personal one
+The first extension to return lines wins, so Project overrides User
 the same way it overrides a command. Keep it to `columns` wide — nothing clips
 it for you. Both are called on every
 paint, so keep them cheap and synchronous — do the work in a hook and render

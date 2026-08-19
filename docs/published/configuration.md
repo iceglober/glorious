@@ -4,30 +4,40 @@ title: Configuration
 
 # Configuration
 
-Configuration is read-only JSON. The nearest value wins, one key at a time.
-The project file can select a model while personal configuration supplies the
-provider settings it does not mention.
+Configuration is JSON in three scopes. The nearest value wins, one key at a
+time. Project can select a model while User supplies provider settings it does
+not mention.
 
 ## Files
 
 In order of precedence:
 
-1. `.glrs/config.local.json` in the project — the copy you do not commit
-2. `.glrs/config.json` in the project
-3. `~/.glrs/config.json`
-4. `~/.config/glrs/config.json`
+| Scope | Path | Purpose |
+| --- | --- | --- |
+| **Project-User** | `<project>/.glrs/config.local.json` | your settings for this project; gitignored |
+| **Project** | `<project>/.glrs/config.json` | settings committed with the project |
+| **User** | see below | settings for you across every project |
 
-`.glorious/` is read everywhere `.glrs/` is, at lower precedence, so a project
-or a machine set up before the rename keeps working with nothing to move. All
-project paths still come before all personal ones whichever spelling each uses
-— a project pinning a model in `.glorious/` beats your personal `.glrs/`. The
-old name will stop being read in a future major version.
+The User directory is:
+
+| Platform | Default |
+| --- | --- |
+| macOS and Linux | `~/.config/glrs/` |
+| Windows | `%APPDATA%\glrs\` |
+
+`GLRS_CONFIG_HOME` replaces the User directory. `XDG_CONFIG_HOME`, when set,
+puts it at `$XDG_CONFIG_HOME/glrs/` and takes precedence over the platform
+default. The same User directory holds `extensions/`, `commands/`, and
+`skills/`; there is no second User tree at `~/.glrs`.
+
+Older `~/.glrs`, `.glorious`, and `~/.config/glorious` locations are no longer
+searched. Move their contents into the matching User or Project directory.
 
 Environment variables and CLI flags override configuration files.
 
-`config.local.json` is for the settings that are yours rather than the
-project's — a different model, a local endpoint. Add it to `.gitignore` and it
-layers over the committed file one key at a time, so it can change the model
+Project-User `config.local.json` is for settings that belong only to you rather
+than Project — a different model, a local endpoint. Add it to `.gitignore` and
+it layers over the committed file one key at a time, so it can change the model
 without restating the provider settings.
 
 ## When it does not take effect
@@ -109,16 +119,16 @@ say yes or no, it records the answer in `extensions.load` or
 `extensions.disable` rather than asking again next session. Without it the
 suggestion still happens; glrs just tells you the line to add.
 
-It writes the project's `.glrs/config.json`, keeps every other key, and takes
+It writes the Project `.glrs/config.json`, keeps every other key, and takes
 effect after a reload or restart. A JSON round-trip does not preserve comments
 or your formatting, which is worth knowing if you hand-format the file. Unlike
 the lists below, this key is nearest-wins — permission to write your config is
 not something a project you cloned should be able to widen.
 
-Unlike every other setting, the three lists **add up across all four files**
-rather than the nearest one winning. They are sets, not values: a project
-activating one extension must not switch off the one your personal config
-activates everywhere. `disable` beats `load` from any layer.
+Unlike every other setting, the three lists **add up across all three files**
+rather than the nearest one winning. They are sets, not values: Project
+activating one extension must not switch off the one User config activates
+everywhere. `disable` beats `load` from any layer.
 
 Unknown keys are ignored. Invalid JSON is reported by `glrs doctor` and
 ignored rather than preventing startup.
@@ -132,6 +142,9 @@ ignored rather than preventing startup.
 
 Each is also read as `GLORIOUS_<name>`, at lower precedence, so a shell profile
 written before the rename keeps working.
+
+- `GLRS_CONFIG_HOME` — explicit User directory.
+- `XDG_CONFIG_HOME` — parent of the User directory when `GLRS_CONFIG_HOME` is unset.
 - `XDG_DATA_HOME` — session storage root; defaults to `~/.local/share`.
 - `XDG_CACHE_HOME` — model catalogue cache root; defaults to `~/.cache`.
 - `NO_COLOR` — disable color when set.

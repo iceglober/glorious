@@ -10,9 +10,9 @@ In order of precedence:
 
 1. `--model provider/model-id` on the command line
 2. `GLRS_MODEL` / `GLRS_VARIANT`
-3. `.glrs/config.json` in the project
-4. `~/.glrs/config.json`
-5. `~/.config/glrs/config.json`
+3. Project-User: `.glrs/config.local.json`
+4. Project: `.glrs/config.json`
+5. User: `~/.config/glrs/config.json` (`%APPDATA%\glrs\config.json` on Windows)
 6. the default, `azure/gpt-5.6-luna`
 
 ```json
@@ -25,10 +25,9 @@ In order of precedence:
 `model` is `provider/model-id`; a bare id means azure. `variant` is the
 reasoning effort, when the model advertises one.
 
-Merged nearest-first, one key at a time: a project may pin the model while your
-personal config supplies the provider settings it does not mention. `~/.glrs/`
-is read because that is already where your extensions and commands
-live; `~/.config/glrs/` works too, for the XDG layout.
+Merged nearest-first, one key at a time: Project may pin the model while User
+supplies provider settings it does not mention. `GLRS_CONFIG_HOME` overrides
+the User directory; `XDG_CONFIG_HOME/glrs` overrides its platform default.
 
 Config is read-only — nothing writes it at runtime. The core has no model
 picker: edit the file or set the environment variable and restart, and

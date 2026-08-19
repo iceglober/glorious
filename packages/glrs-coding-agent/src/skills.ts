@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
+import { agentSkillsDirectories, userConfigDirectory } from "../../provider-registry/src";
 import type { Command } from "./commands";
 
 type Skill = {
@@ -73,32 +74,20 @@ const DESCRIPTION_MAX = 1024;
 const COMPATIBILITY_MAX = 500;
 const LEGAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
-const ancestors = (root: string, home: string): string[] => {
-  const directories: string[] = [];
-  let current = resolve(root);
-  while (true) {
-    directories.push(current);
-    if (current === home) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return directories;
-};
-
-// glrs's own directory and the vendor-neutral Agent Skills layout, and
-// nothing else. It used to also read ~/.claude/skills, every ancestor's
-// .claude/skills, ~/.claude/plugins/cache and ~/.config/amp/skills — so another
-// tool's whole skill surface arrived as glrs slash commands, and every one
-// of those names and descriptions was paid for in the per-turn preamble. Put a
-// symlink in .agents/skills/ if you want one of them here.
-const skillRoots = (root: string, home: string): string[] => {
+// Project glrs skills win, then portable project Agent Skills, then the same
+// two User locations. Nothing is inherited from arbitrary parent directories.
+const skillRoots = (
+  root: string,
+  home: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): string[] => {
+  const [projectAgents, userAgents] = agentSkillsDirectories(root, home, env, platform);
   return [
-    join(home, ".config", "agents", "skills"),
-    join(home, ".agents", "skills"),
-    ...ancestors(root, home).map((directory) => join(directory, ".agents", "skills")),
     join(root, ".glrs", "skills"),
-    join(root, ".glorious", "skills"),
+    projectAgents,
+    join(userConfigDirectory(home, env, platform), "skills"),
+    userAgents,
   ];
 };
 
@@ -254,11 +243,13 @@ const skillFiles = async (base: string, depth = 0): Promise<string[]> => {
 const discover = async (
   root: string,
   home: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
 ): Promise<{ skills: Skill[]; warnings: string[] }> => {
   const found: Skill[] = [];
   const warnings: string[] = [];
   const seen = new Map<string, string>();
-  for (const base of skillRoots(root, home)) {
+  for (const base of skillRoots(root, home, env, platform)) {
     for (const location of await skillFiles(resolve(base))) {
       const text = await Bun.file(location)
         .text()
@@ -322,8 +313,13 @@ const createSkillTool = (skills: Skill[]) => {
 // search somewhere empty. It could not: homedir() ignores $HOME on Bun, so the
 // suite read whatever skills were actually installed on the machine running it
 // — green on CI, red on any laptop with skills of its own.
-export const loadSkills = async (root: string, home: string = homedir()): Promise<Skills> => {
-  const { skills, warnings } = await discover(root, home);
+export const loadSkills = async (
+  root: string,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<Skills> => {
+  const { skills, warnings } = await discover(root, home, env, platform);
   // What the model is told exists. A skill that opted out of model invocation is
   // absent from here — which is the whole of that field: it does not appear in
   // the preamble, it is not activatable, and the only way to it is typing its

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configPaths, envSetting, loadConfig } from "./config";
+import { configScopes, envSetting, loadConfig, userConfigDirectory } from "./config";
 
 const roots: string[] = [];
 
@@ -71,23 +71,40 @@ describe("loadConfig", () => {
   });
 });
 
-// Extensions and commands already come from ~/.glrs — the
-// ancestor walk reaches it whenever a project sits under home. Config not
-// reading the same directory is a rule nobody should have to learn.
-describe("where personal config lives", () => {
-  test("both personal locations are read, project first", () => {
-    const paths = configPaths("/zz/project", "/zz/home");
-    // the copy you do not commit sits nearest, ahead of the one you do
-    expect(paths[0]).toBe("/zz/project/.glrs/config.local.json");
-    expect(paths[1]).toBe("/zz/project/.glrs/config.json");
-    expect(paths).toContain("/zz/home/.glrs/config.json");
-    expect(paths).toContain("/zz/home/.config/glrs/config.json");
+describe("the three config scopes", () => {
+  test("Project-User, Project, then User", () => {
+    const scopes = configScopes("/zz/project", "/zz/home", {}, "linux");
+    expect(scopes).toEqual([
+      { name: "Project-User", path: "/zz/project/.glrs/config.local.json" },
+      { name: "Project", path: "/zz/project/.glrs/config.json" },
+      { name: "User", path: "/zz/home/.config/glrs/config.json" },
+    ]);
   });
 
-  test("a project pins one key while personal config supplies another", async () => {
+  test("an explicit User directory wins over XDG", () => {
+    expect(
+      userConfigDirectory("/home/me", {
+        GLRS_CONFIG_HOME: "/mine/glrs",
+        XDG_CONFIG_HOME: "/xdg",
+      }),
+    ).toBe("/mine/glrs");
+  });
+
+  test("XDG_CONFIG_HOME contains the glrs User directory", () => {
+    expect(userConfigDirectory("/home/me", { XDG_CONFIG_HOME: "/xdg" })).toBe("/xdg/glrs");
+  });
+
+  test("Windows uses roaming application data", () => {
+    expect(userConfigDirectory("C:/Users/me", { APPDATA: "C:/Roaming" }, "win32")).toBe(
+      "C:\\Roaming\\glrs",
+    );
+  });
+
+  test("Project pins one key while User config supplies another", async () => {
+    const home = await userConfig(`{"variant":"high"}`);
     const root = await project(`{"model":"anthropic/claude-opus-5"}`);
-    const { config } = await loadConfig(root, join(root, "nohome"));
-    expect(config.model).toBe("anthropic/claude-opus-5");
+    const { config } = await loadConfig(root, home);
+    expect(config).toMatchObject({ model: "anthropic/claude-opus-5", variant: "high" });
   });
 });
 
@@ -166,12 +183,12 @@ describe("a config that does not do what it looks like it does", () => {
   });
 });
 
-// The personal layer, for checking that a project file wins one key at a time.
-const personal = async (contents: string): Promise<string> => {
+// The User scope, for checking that Project wins one key at a time.
+const userConfig = async (contents: string): Promise<string> => {
   const home = await mkdtemp(join(tmpdir(), "glrs-home-"));
   roots.push(home);
-  await mkdir(join(home, ".glrs"), { recursive: true });
-  await writeFile(join(home, ".glrs", "config.json"), contents);
+  await mkdir(join(home, ".config", "glrs"), { recursive: true });
+  await writeFile(join(home, ".config", "glrs", "config.json"), contents);
   return home;
 };
 
@@ -210,60 +227,12 @@ describe("how a queue delivers", () => {
     expect(diagnostics.join("\n")).toContain('"steeringMode" should be "one-at-a-time" or "all"');
   });
 
-  test("a project file wins over a personal one, one key at a time", async () => {
-    const home = await personal('{"steering_mode":"all","follow_up_mode":"all"}');
+  test("Project wins over User, one key at a time", async () => {
+    const home = await userConfig('{"steering_mode":"all","follow_up_mode":"all"}');
     const root = await project('{"follow_up_mode":"one-at-a-time"}');
     const { config } = await loadConfig(root, home);
     expect(config.steering_mode).toBe("all");
     expect(config.follow_up_mode).toBe("one-at-a-time");
-  });
-});
-
-// The rename kept every old name working rather than making a directory rename
-// and a shell-profile edit the price of upgrading. These pin that promise; the
-// rest of this file exercises `.glrs`, so without them the fallback would be
-// the only path covered or the only path broken and nobody would know which.
-describe("the names from before the rename", () => {
-  const named = async (dir: string, contents: string): Promise<string> => {
-    const root = await mkdtemp(join(tmpdir(), "glrs-legacy-"));
-    roots.push(root);
-    await mkdir(join(root, dir), { recursive: true });
-    await writeFile(join(root, dir, "config.json"), contents);
-    return root;
-  };
-
-  test("a project .glorious/config.json is still read", async () => {
-    const root = await named(".glorious", '{"model":"azure/from-the-old-name"}');
-    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.model).toBe("azure/from-the-old-name");
-    expect(diagnostics).toEqual([]);
-  });
-
-  test("with both present in one project, .glrs wins", async () => {
-    const root = await named(".glorious", '{"model":"azure/old"}');
-    await mkdir(join(root, ".glrs"), { recursive: true });
-    await writeFile(join(root, ".glrs", "config.json"), '{"model":"azure/new"}');
-    expect((await loadConfig(root, join(root, "nohome"))).config.model).toBe("azure/new");
-  });
-
-  // The ordering claim in configPaths: project beats personal regardless of
-  // which spelling each one uses, or the rename would quietly reorder
-  // precedence rather than just adding a name.
-  test("a project .glorious still beats a personal .glrs", async () => {
-    const home = await mkdtemp(join(tmpdir(), "glrs-legacy-home-"));
-    roots.push(home);
-    await mkdir(join(home, ".glrs"), { recursive: true });
-    await writeFile(join(home, ".glrs", "config.json"), '{"model":"azure/personal"}');
-    const root = await named(".glorious", '{"model":"azure/project"}');
-    expect((await loadConfig(root, home)).config.model).toBe("azure/project");
-  });
-
-  test("both spellings appear in the search path, new ones first", () => {
-    const paths = configPaths("/repo", "/home/me");
-    const first = paths.findIndex((path) => path.includes(".glrs"));
-    const later = paths.findIndex((path) => path.includes(".glorious"));
-    expect(first).toBeGreaterThanOrEqual(0);
-    expect(later).toBeGreaterThan(first);
   });
 });
 
@@ -372,20 +341,20 @@ describe("which extensions load", () => {
   });
 
   // The other trap: merge is hand-written, and lists are sets rather than
-  // values. A project activating one must not switch off the one your personal
+  // values. Project activating one must not switch off the one User
   // config activates everywhere.
   test("the lists add up across layers rather than replacing", async () => {
     const home = await mkdtemp(join(tmpdir(), "glrs-ext-home-"));
     roots.push(home);
-    await mkdir(join(home, ".glrs"), { recursive: true });
+    await mkdir(join(home, ".config", "glrs"), { recursive: true });
     await writeFile(
-      join(home, ".glrs", "config.json"),
+      join(home, ".config", "glrs", "config.json"),
       '{"extensions":{"load":["ask-user"],"disable":["web-fetch"]}}',
     );
     const root = await written('{"extensions":{"load":["web-fetch"]}}');
     const { config } = await loadConfig(root, home);
     expect([...(config.extensions?.load ?? [])].sort()).toEqual(["ask-user", "web-fetch"]);
-    // Disabled personally, still disabled even though the project asked for it.
+    // Disabled in User, still disabled even though Project asked for it.
     expect(config.extensions?.disable).toEqual(["web-fetch"]);
   });
 

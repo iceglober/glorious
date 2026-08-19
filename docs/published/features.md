@@ -146,15 +146,20 @@ session inherits whichever happened.
 | Path | Purpose |
 | --- | --- |
 | `AGENTS.md` / `AGENT.md` / `CLAUDE.md` | project rules, from the root down |
-| `.glrs/extensions/*.ts` | extensions — tools, commands, hooks, rendering |
-| `.glrs/commands/*.md` | `/name` prompts |
-| `.agents/skills/*/SKILL.md` | skills, listed to the model and loaded on demand — see `skills.md` |
-| `.glrs/config.json` | model, variant, provider settings |
-| `~/.glrs/config.json` | the same, for you rather than the project |
+| `.glrs/extensions/*.ts` | Project extensions — tools, commands, hooks, rendering |
+| `.glrs/commands/*.md` | Project `/name` prompts |
+| `.glrs/skills/*/SKILL.md` | Project glrs-specific skills |
+| `.agents/skills/*/SKILL.md` | Project portable skills — see `skills.md` |
+| `.glrs/config.json` | Project model, variant, provider settings |
+| `.glrs/config.local.json` | Project-User overrides; gitignored |
+| `<User>/config.json` | User settings, used in every project |
+| `<User>/{extensions,commands,skills}/` | User resources, used in every project |
 
-Also `~/.agents/` and `~/.config/agents/`, and `.glorious/` everywhere `.glrs/`
-appears above — the name before the rename, still read at lower precedence so
-nothing has to be moved by hand. Nothing reads another tool's directories.
+`<User>` defaults to `~/.config/glrs` on macOS and Linux and
+`%APPDATA%\glrs` on Windows. `GLRS_CONFIG_HOME` or `XDG_CONFIG_HOME` can move
+it. Portable User skills live under the platform config base's `agents/skills`.
+Nothing reads
+another tool's product-specific directories.
 
 ## Providers
 

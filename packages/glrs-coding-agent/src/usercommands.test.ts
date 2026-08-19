@@ -120,22 +120,20 @@ describe("loading command files from a project", () => {
 
   beforeAll(async () => {
     await mkdir(join(root, ".glrs", "commands"), { recursive: true });
-    await mkdir(join(root, ".agents", "commands"), { recursive: true });
     await writeFile(
       join(root, ".glrs", "commands", "ship.md"),
       "---\ndescription: Ship it\n---\nCut a release.",
     );
-    await writeFile(join(root, ".agents", "commands", "ship.md"), "A different ship.");
-    await writeFile(join(root, ".agents", "commands", "audit.md"), "Audit $ARGUMENTS.");
-    await writeFile(join(root, ".agents", "commands", "notes.txt"), "not a command");
-    await writeFile(join(root, ".agents", "commands", "empty.md"), "   ");
+    await writeFile(join(root, ".glrs", "commands", "audit.md"), "Audit $ARGUMENTS.");
+    await writeFile(join(root, ".glrs", "commands", "notes.txt"), "not a command");
+    await writeFile(join(root, ".glrs", "commands", "empty.md"), "   ");
   });
 
   afterAll(async () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  test("it finds commands in both .glrs and .agents", async () => {
+  test("it finds commands in the Project directory", async () => {
     const found = await loadUserCommands(root);
     expect(found.map((command) => command.name).sort()).toContain("audit");
   });
@@ -160,36 +158,21 @@ describe("loading command files from a project", () => {
   });
 });
 
-// glrs used to read ~/.claude, every ancestor's .claude, ~/.claude/plugins/
-// cache and ~/.config/amp/skills, so another tool's whole command and skill
-// surface arrived as glrs slash commands — and every skill description was
-// paid for in the per-turn preamble. Its own directory and the vendor-neutral
-// Agent Skills layout, and nothing else.
 describe("whose directories glrs reads", () => {
-  const roots = agentDirectories("/zz/project");
+  const roots = agentDirectories("/zz/project", "/zz/home", {}, "linux");
 
-  test("its own and the neutral standard", () => {
-    expect(roots).toContain("/zz/project/.glrs");
-    expect(roots).toContain("/zz/project/.agents");
-    expect(roots.some((root) => root.endsWith("/.config/agents"))).toBe(true);
+  test("Project then User, and nothing else", () => {
+    expect(roots).toEqual(["/zz/project/.glrs", "/zz/home/.config/glrs"]);
   });
 
-  test("no other tool's", () => {
-    for (const foreign of [".claude", "amp", "plugins"])
-      expect(roots.filter((root) => root.includes(foreign))).toEqual([]);
-  });
-});
-
-describe("command files under the name from before the rename", () => {
-  test("a .glorious/commands file is still loaded", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "glrs-legacy-cmd-"));
-    await mkdir(join(dir, ".glorious", "commands"), { recursive: true });
-    await writeFile(
-      join(dir, ".glorious", "commands", "legacyship.md"),
-      "---\ndescription: Ship it\n---\nCut a release.",
-    );
-    const commands = await loadUserCommands(dir);
-    expect(commands.map((one) => one.name)).toContain("legacyship");
-    await rm(dir, { recursive: true, force: true });
+  test("a User command is available in every project", async () => {
+    const home = await mkdtemp(join(tmpdir(), "glrs-user-cmd-"));
+    const project = await mkdtemp(join(tmpdir(), "glrs-project-cmd-"));
+    await mkdir(join(home, ".config", "glrs", "commands"), { recursive: true });
+    await writeFile(join(home, ".config", "glrs", "commands", "user-command.md"), "For me.");
+    const found = await loadUserCommands(project, home, {}, "linux");
+    expect(found.map((one) => one.name)).toContain("user-command");
+    await rm(home, { recursive: true, force: true });
+    await rm(project, { recursive: true, force: true });
   });
 });

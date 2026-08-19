@@ -267,7 +267,7 @@ export type Glrs = {
   root: string;
   /**
    * Zod, for describing a tool's input. Handed over rather than imported: an
-   * extension in ~/.config/agents/extensions has no node_modules of its own to
+   * extension in the User extensions directory has no node_modules of its own to
    * resolve it from, and one that works in your home directory but not in a
    * project is not a working extension. An extension needs no imports at all.
    */
@@ -406,7 +406,7 @@ export type Glrs = {
   /**
    * Replace the activity row — what the turn is doing, how long it has been
    * doing it, and how to stop it. Return null to leave glrs's own. The
-   * first extension to return lines wins, so a project can override a personal
+   * first extension to return lines wins, so Project can override User
    * one the same way it overrides a command.
    */
   activity: (render: (state: Activity) => Line[] | null) => void;

@@ -323,19 +323,23 @@ describe("discovery reaches skills that are organised", () => {
   });
 });
 
-// The rename kept the old directory readable. Everything above uses `.glrs`, so
-// without this the fallback would be uncovered and its loss would look like a
-// skill that was simply never written.
-describe("skills under the name from before the rename", () => {
-  test("a .glorious/skills tree is still loaded", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "glrs-legacy-skills-"));
-    await mkdir(join(dir, ".glorious", "skills", "zz-legacy"), { recursive: true });
-    await writeFile(
-      join(dir, ".glorious", "skills", "zz-legacy", "SKILL.md"),
-      "---\nname: zz-legacy\ndescription: Loaded from the old directory name.\n---\n\nbody\n",
-    );
-    const skills = await loadSkills(dir);
-    expect(skills.summaries.map((one) => one.name)).toContain("zz-legacy");
+describe("the four skill locations", () => {
+  test("a skill in the User glrs directory is available in a project", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-user-skills-"));
+    const home = join(dir, "home");
+    const project = join(dir, "project");
+    await writeSkill(join(home, ".config", "glrs", "skills", "zz-user"), "zz-user");
+    const skills = await loadSkills(project, home, {}, "linux");
+    expect(skills.summaries.map((one) => one.name)).toContain("zz-user");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("a skill in an arbitrary ancestor is not inherited", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-ancestor-skills-"));
+    const project = join(dir, "nested", "project");
+    await writeSkill(join(dir, ".agents", "skills", "zz-ancestor"), "zz-ancestor");
+    const skills = await loadSkills(project, join(dir, "home"), {}, "linux");
+    expect(skills.summaries.map((one) => one.name)).not.toContain("zz-ancestor");
     await rm(dir, { recursive: true, force: true });
   });
 });

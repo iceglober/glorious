@@ -143,8 +143,7 @@ const walkFallback = async (root: string): Promise<string[]> => {
     for (const entry of entries) {
       // Dot directories are noise to @-completion except the agent's own, which
       // holds the skills and extensions you would want to reference by path.
-      if (entry.name.startsWith(".") && entry.name !== ".glrs" && entry.name !== ".glorious")
-        continue;
+      if (entry.name.startsWith(".") && entry.name !== ".glrs") continue;
       if (SKIP.includes(entry.name)) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) await walk(full, depth + 1);

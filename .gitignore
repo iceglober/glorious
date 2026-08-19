@@ -38,8 +38,9 @@ core/eval/results/
 core/eval/traj/
 eval/**/results.json
 
-# Local Glorious preferences and credentials metadata. Shared project defaults
-# in .glorious/config.json stay tracked.
+# Project-User settings stay local; Project config.json stays tracked.
+/.glrs/config.local.json
+# Keep the retired path ignored so an existing local file cannot be committed.
 /.glorious/config.local.json
 
 # local agent event log

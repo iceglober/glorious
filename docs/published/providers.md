@@ -39,9 +39,11 @@ Azure accepts three names because the portal, the CLI and the SDK each use a
 different one, and the SDK reads only its own — a key sitting in the environment
 under the wrong name used to fail a session with no explanation.
 
-Provider settings can sit in the project's `.glrs/config.json`, in
-`~/.glrs/config.json`, or in `~/.config/glrs/config.json` — merged
-nearest-first, so a project overrides one key without restating the rest.
+Provider settings can sit in Project-User `.glrs/config.local.json`, Project
+`.glrs/config.json`, or User `config.json` — merged nearest-first, so a project
+overrides one key without restating the rest. User defaults to
+`~/.config/glrs/config.json` on macOS and Linux and
+`%APPDATA%\glrs\config.json` on Windows.
 
 ## Anything else
 

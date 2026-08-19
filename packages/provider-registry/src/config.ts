@@ -1,11 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, win32 } from "node:path";
 
-// Two files, read-only, no schema. The four-layer merge with provenance
-// tracking that used to live here served two fields once the model picker and
-// MCP were gone; a project file and a personal one, project wins, is the whole
-// of it. Nothing writes config at runtime any more — you edit the file.
+// Three scopes, nearest value wins: Project-User, Project, then User. Config is
+// hand-edited unless configuration explicitly allows glrs to record extension choices.
 
 export type ProviderSettings = {
   // Base URL, for an OpenAI-compatible endpoint that is not one of the named
@@ -63,32 +61,83 @@ export type Config = {
 
 export type LoadedConfig = { config: Config; diagnostics: string[] };
 
-// Project first, then either personal location. `~/.glrs/` is read because
-// that is where extensions and commands already come from — the
-// ancestor walk reaches it whenever a project sits under home — and having the
-// same directory hold resources but not config is a rule nobody should have to
-// learn. `~/.config/glrs/` stays for anyone following the XDG layout.
-// `home` is a parameter rather than a call to homedir() for the same reason it
-// is one in skills.ts: without it a test reads whatever config happens to be
-// installed on the machine running it, and homedir() ignores $HOME on Bun so
-// there is no way to point it somewhere empty.
-// `.glorious` is still read everywhere `.glrs` is, so a checkout that predates
-// the rename keeps working without anyone editing anything. Project paths all
-// come before personal ones regardless of spelling — a project pinning a model
-// in `.glorious/` must still beat your personal `.glrs/`, or the rename would
-// quietly reorder precedence rather than just adding a name.
-export const configPaths = (root: string, home: string = homedir()): string[] => [
-  // `.local.` is the conventional name for the copy you do not commit, so it is
-  // the first thing anyone tries and it was silently not a file glrs read.
-  join(root, ".glrs", "config.local.json"),
-  join(root, ".glrs", "config.json"),
-  join(root, ".glorious", "config.local.json"),
-  join(root, ".glorious", "config.json"),
-  join(home, ".glrs", "config.json"),
-  join(home, ".config", "glrs", "config.json"),
-  join(home, ".glorious", "config.json"),
-  join(home, ".config", "glorious", "config.json"),
-];
+const userConfigBase = (
+  home: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): string => {
+  const paths = platform === "win32" ? win32 : { join, resolve };
+  if (env.XDG_CONFIG_HOME) return paths.resolve(env.XDG_CONFIG_HOME);
+  if (platform === "win32")
+    return paths.resolve(env.APPDATA ?? paths.join(home, "AppData", "Roaming"));
+  return paths.join(home, ".config");
+};
+
+// One User directory holds every user-scoped glrs resource: config,
+// extensions, commands and skills. An explicit glrs override wins, then the XDG
+// convention, then the platform-native default. APPDATA is Windows's roaming
+// configuration directory; LOCALAPPDATA is deliberately not used for config.
+export const userConfigDirectory = (
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string => {
+  const paths = platform === "win32" ? win32 : { join, resolve };
+  if (env.GLRS_CONFIG_HOME) return paths.resolve(env.GLRS_CONFIG_HOME);
+  return paths.join(userConfigBase(home, env, platform), "glrs");
+};
+
+// The three scopes, nearest first: Project-User is the gitignored local copy,
+// Project is committed with the repository, and User applies across projects.
+// `home`, `env` and `platform` are parameters so tests never read the config of
+// the machine running them.
+export const configPaths = (
+  root: string,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] => {
+  const paths = platform === "win32" ? win32 : { join };
+  return [
+    paths.join(root, ".glrs", "config.local.json"),
+    paths.join(root, ".glrs", "config.json"),
+    paths.join(userConfigDirectory(home, env, platform), "config.json"),
+  ];
+};
+
+export const configScopes = (
+  root: string,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Array<{ name: "Project-User" | "Project" | "User"; path: string }> =>
+  configPaths(root, home, env, platform).map((path, index) => ({
+    name: (["Project-User", "Project", "User"] as const)[index],
+    path,
+  }));
+
+export const glrsDirectories = (
+  root: string,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] => {
+  const paths = platform === "win32" ? win32 : { join };
+  return [paths.join(root, ".glrs"), userConfigDirectory(home, env, platform)];
+};
+
+export const agentSkillsDirectories = (
+  root: string,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] => {
+  const paths = platform === "win32" ? win32 : { join };
+  return [
+    paths.join(root, ".agents", "skills"),
+    paths.join(userConfigBase(home, env, platform), "agents", "skills"),
+  ];
+};
 
 // Every setting the environment can carry, read as GLRS_<name> first and
 // GLORIOUS_<name> after. The rename kept every old variable working rather than
@@ -275,7 +324,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
 
 // Additive, unlike every scalar below. Extensions and tools are sets, not
 // values: a project that activates one must not switch off the one your
-// personal config activates everywhere, and a name disabled anywhere stays
+// User config activates everywhere, and a name disabled anywhere stays
 // disabled — turning something off is the direction that has to be safe.
 const union = (near?: readonly string[], far?: readonly string[]): string[] | undefined => {
   const all = [...new Set([...(near ?? []), ...(far ?? [])])];
@@ -321,15 +370,20 @@ export const rooted = (entry: string, from: string, home: string): string =>
 
 // Malformed JSON is reported rather than swallowed — a config that silently
 // does nothing is the hardest kind to debug. A missing file is not a problem.
-export const loadConfig = async (root: string, home: string = homedir()): Promise<LoadedConfig> => {
+export const loadConfig = async (
+  root: string,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<LoadedConfig> => {
   const diagnostics: string[] = [];
   const read = async (path: string): Promise<Config> => {
     const text = await readFile(path, "utf8").catch(() => null);
     if (text === null) return {};
     try {
       const shaped = shapeOf(JSON.parse(text), path.replace(home, "~"), diagnostics);
-      // Resolved here, where the file it came from is still known: the four
-      // layers merge into one object a line later, and nothing after that can
+      // Resolved here, where the file it came from is still known: the three
+      // scopes merge into one object a line later, and nothing after that can
       // tell which of them wrote "./tools/reviewer.ts".
       if (shaped.extensions?.load === undefined) return shaped;
       return {
@@ -344,8 +398,8 @@ export const loadConfig = async (root: string, home: string = homedir()): Promis
       return {};
     }
   };
-  // Nearest wins, one key at a time: a project may pin the model while personal
-  // config supplies the provider settings it does not mention.
-  const layers = await Promise.all(configPaths(root, home).map(read));
+  // Nearest wins, one key at a time: Project may pin the model while User
+  // supplies provider settings it does not mention.
+  const layers = await Promise.all(configPaths(root, home, env, platform).map(read));
   return { config: layers.reduce((near, far) => merge(near, far)), diagnostics };
 };

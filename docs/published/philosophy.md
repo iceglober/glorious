@@ -23,7 +23,7 @@ or operating-system controls when a boundary matters.
 
 A **session** is the persisted conversation. A **turn** is one request and the
 model/tool work it causes. Extensions are TypeScript modules discovered from a
-project or personal configuration and loaded through the public API.
+Project or User configuration and loaded through the public API.
 
 The interactive terminal UI and `glrs -p` are two front ends to the same
 turn-oriented runtime. Its behavior is defined by the tools, context, and

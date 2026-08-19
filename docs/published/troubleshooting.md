@@ -30,7 +30,7 @@ model: azure/gpt-5.6-luna
 ```
 
 - **`model` takes a string**, not an object: `"model": "azure/gpt-5.6-sol"`. A nested `{"selected": "…"}` is ignored.
-- **The filename is `config.json` or `config.local.json`**, inside `.glrs/`. No other name is read.
+- **Project uses `.glrs/config.json`; Project-User uses `.glrs/config.local.json`.** User uses `config.json` in the User directory.
 - **Providers are not enabled or disabled.** A provider is used when a model names it and its credentials are present; `"enabled": true` does nothing.
 - **`~/.config/glrs/config.json` may be an old one.** Earlier versions used a nested `agent.llm` shape; none of it is read now, and `doctor` says so.
 
@@ -45,7 +45,7 @@ Use a fully qualified model label:
 glrs --model provider/model-id
 ```
 
-`GLRS_MODEL` overrides both project and personal config. OpenAI-compatible
+`GLRS_MODEL` overrides Project-User, Project, and User config. OpenAI-compatible
 providers need a configured base URL.
 
 ## Offline use

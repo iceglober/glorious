@@ -62,16 +62,20 @@ const blank: Line = [{ text: "" }];
 
 // Where something came from, in a word. The absolute path was accurate and
 // unreadable: three of them turned a five-line listing into fifteen, and the
-// part that actually matters is whether this is yours, the project's, or
-// glrs's own.
+// part that actually matters is whether this is User, Project, or glrs's own.
 const originOf = (g: Glrs, path: string): string => {
   if (path.includes("/v2/bundled/")) return "bundled";
   if (path.startsWith(g.root)) return "project";
-  // Spelled out rather than defaulting HOME to a sentinel. It defaulted to a
-  // NUL byte — chosen because nothing starts with one — which made this whole
-  // file binary to ripgrep, so every search of it silently found nothing.
-  const home = process.env.HOME;
-  if (home !== undefined && home !== "" && path.startsWith(home)) return "personal";
+  // GLRS_CONFIG_HOME may sit outside HOME, and Windows normally has USERPROFILE
+  // and APPDATA rather than HOME. Any of them makes this a User resource.
+  const userRoots = [
+    process.env.GLRS_CONFIG_HOME,
+    process.env.XDG_CONFIG_HOME,
+    process.env.APPDATA,
+    process.env.HOME,
+    process.env.USERPROFILE,
+  ].filter((root): root is string => root !== undefined && root !== "");
+  if (userRoots.some((root) => path.toLowerCase().startsWith(root.toLowerCase()))) return "user";
   return "other";
 };
 
