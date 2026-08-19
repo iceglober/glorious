@@ -8,13 +8,11 @@ const watched = [
   join(root, "packages", "glrs-core", "src"),
   join(root, "packages", "glrs-coding-agent", "src", "sdk.ts"),
   join(root, "packages", "provider-registry", "src"),
-  join(site, "homepage.md"),
   join(site, "api"),
   join(site, "plugins"),
   join(site, "public"),
   join(site, "theme"),
   join(site, "typedoc.json"),
-  join(site, "homepage.md")
 ];
 
 const build = async (): Promise<boolean> => {

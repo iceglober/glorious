@@ -1,25 +1,15 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": [
-    "../packages/glrs-coding-agent/src/public-extension-api.ts",
-    "../packages/glrs-coding-agent/src/sdk.ts"
-  ],
   "entryPointStrategy": "resolve",
   "alwaysCreateEntryPointModule": true,
   "tsconfig": "../packages/tsconfig.json",
-  "out": "./dist",
   "plugin": [
-    "./plugins/project-landing.ts",
     "./theme/index.ts",
     "./plugins/group-documents.ts",
     "@boneskull/typedoc-plugin-mermaid"
   ],
   "theme": "glrs",
-  "router": "project-landing",
-  "projectLanding": {
-    "path": "agent",
-    "label": "coding agent"
-  },
+  "router": "structure-dir",
   "customCss": "./theme/glrs.css",
   "name": "glrs",
   "includeVersion": false,
@@ -28,10 +18,6 @@
     "ci": "https://github.com/iceglober/glorious/actions/workflows/ci.yml",
     "npm": "https://www.npmjs.com/package/@glrs-dev/glrs"
   },
-  "readme": "./homepage.md",
-  "projectDocuments": [
-    "../docs/published/**/*.md"
-  ],
   "lowercaseDocumentGroupTitles": true,
   "sortEntryPoints": false,
   "searchInComments": true,

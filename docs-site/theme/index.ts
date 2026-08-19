@@ -8,30 +8,21 @@ import {
   type ProjectReflection,
 } from "typedoc";
 import { documentFolderNames } from "../plugins/group-documents.ts";
-import { PROJECT_LANDING_OPTION, projectLanding } from "../plugins/project-landing.ts";
 
 class GlrsRenderContext extends DefaultThemeRenderContext {
   constructor(...args: ConstructorParameters<typeof DefaultThemeRenderContext>) {
     super(...args);
-    const pageSidebar = this.pageSidebar;
-    this.pageSidebar = (props) =>
-      props.url === "index.html" ? JSX.createElement(JSX.Fragment, null) : pageSidebar(props);
-    const sidebar = this.sidebar;
-    this.sidebar = (props) =>
-      props.url === "index.html" ? JSX.createElement(JSX.Fragment, null) : sidebar(props);
-    this.indexTemplate = (props) => {
-      const landing = projectLanding(this.options.getValue(PROJECT_LANDING_OPTION));
-      return JSX.createElement(
-        "div",
-        { class: "tsd-panel tsd-typography" },
-        JSX.createElement(JSX.Raw, { html: this.markdown(props.model.readme ?? []) }),
+    this.indexTemplate = (props) =>
+      JSX.createElement(
+        JSX.Fragment,
+        null,
         JSX.createElement(
-          "p",
-          null,
-          JSX.createElement("a", { href: `/${landing.path}/` }, landing.label),
+          "div",
+          { class: "tsd-panel tsd-typography" },
+          JSX.createElement(JSX.Raw, { html: this.markdown(props.model.readme ?? []) }),
         ),
+        this.moduleReflection(props.model),
       );
-    };
     const moduleMemberSummary = this.moduleMemberSummary;
     this.moduleMemberSummary = (member) => {
       const isFolder =
