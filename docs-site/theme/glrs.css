@@ -51,7 +51,10 @@ body { letter-spacing: -0.01em; }
   padding: 2rem 1.25rem;
 }
 .site-menu,
-.page-menu { font-size: 0.78rem; }
+.page-menu {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
 .tsd-navigation a,
 .tsd-page-navigation a { color: #6b6962; }
 .tsd-navigation a.current,
@@ -85,6 +88,7 @@ body { letter-spacing: -0.01em; }
 .tsd-page-navigation > .tsd-accordion-summary { align-items: center; }
 .tsd-page-navigation > .tsd-accordion-summary h3 {
   margin: 0;
+  font-size: 1rem;
   line-height: 20px;
 }
 

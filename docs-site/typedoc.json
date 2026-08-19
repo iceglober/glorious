@@ -22,6 +22,7 @@
   "projectDocuments": [
     "../docs/published/**/*.md"
   ],
+  "lowercaseDocumentGroupTitles": true,
   "sortEntryPoints": false,
   "searchInComments": true,
   "searchInDocuments": true,

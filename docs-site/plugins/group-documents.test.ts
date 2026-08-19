@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   compareDocumentPaths,
+  directoryLabel,
   documentDirectories,
   documentPath,
 } from "./group-documents-utils.ts";
@@ -33,5 +34,10 @@ describe("external document directory grouping", () => {
 
   test("does nothing without a glob", () => {
     expect(documentDirectories("/repo/docs/guides/setup.md", ["/repo/docs/setup.md"])).toBeNull();
+  });
+
+  test("can lowercase humanized directory titles", () => {
+    expect(directoryLabel("API-guides")).toBe("API Guides");
+    expect(directoryLabel("API-guides", true)).toBe("api guides");
   });
 });
