@@ -77,11 +77,57 @@ const shadowNote: Record<string, string> = {
 // `defaultOn` is what separates the extension the agent cannot work without
 // from the ones that add a capability. builtins always loads unless you
 // explicitly disable it; the rest wait to be named in `extensions.load`.
+// `summary` is written for the model rather than for a listing: it is what the
+// agent reads when deciding whether to suggest turning one on, so it says what
+// the extension is for and not what it is called.
 const bundled = [
-  { name: "ask-user", origin: "@glrs-dev/glrs-ext-ask-user", load: askUser, defaultOn: false },
-  { name: "builtins", origin: "@glrs-dev/glrs-ext-builtins", load: builtins, defaultOn: true },
-  { name: "web-fetch", origin: "@glrs-dev/glrs-ext-web-fetch", load: webFetch, defaultOn: false },
+  {
+    name: "ask-user",
+    origin: "@glrs-dev/glrs-ext-ask-user",
+    load: askUser,
+    defaultOn: false,
+    summary: "asks the user a multiple-choice question and waits for the answer",
+  },
+  {
+    name: "builtins",
+    origin: "@glrs-dev/glrs-ext-builtins",
+    load: builtins,
+    defaultOn: true,
+    summary: "the file, search and shell tools, and every slash command",
+  },
+  {
+    name: "web-fetch",
+    origin: "@glrs-dev/glrs-ext-web-fetch",
+    load: webFetch,
+    defaultOn: false,
+    summary:
+      "fetches web pages and returns them as markdown, rendering JavaScript when Chrome is installed",
+  },
 ];
+
+// Which of the shipped extensions is on, off, or has never been decided. The
+// three states fall out of the two config lists rather than needing a store of
+// their own: named in `load` is a yes, named in `disable` is a no, and in
+// neither is a question nobody has answered.
+export type Shipped = {
+  name: string;
+  summary: string;
+  state: "on" | "off" | "undecided";
+};
+
+export const shippedExtensions = (settings?: ExtensionSettings): Shipped[] => {
+  const on = new Set((settings?.load ?? []).map(key));
+  const off = new Set((settings?.disable ?? []).map(key));
+  return bundled.map(({ name, origin, defaultOn, summary }) => {
+    const named = on.has(key(name)) || on.has(key(origin));
+    const banned = off.has(key(name)) || off.has(key(origin));
+    return {
+      name,
+      summary,
+      state: banned ? "off" : named || defaultOn ? "on" : "undecided",
+    };
+  });
+};
 
 // What config says about which extensions load. Declared here rather than
 // imported from provider-registry for the same reason QueueMode is declared

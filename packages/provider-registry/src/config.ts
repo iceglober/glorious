@@ -53,6 +53,11 @@ export type Config = {
   follow_up_mode?: QueueMode;
   extensions?: ExtensionSettings;
   tools?: ToolSettings;
+  // Config is hand-edited by default: nothing glrs does writes it. Listing a
+  // section here is how you opt one out of that, so the agent can record an
+  // answer you gave it rather than asking you to paste a line every session.
+  // Only "extensions" is understood today.
+  agentConfigAllowlist?: readonly string[];
   providers?: Record<string, ProviderSettings>;
 };
 
@@ -126,6 +131,7 @@ const KNOWN = [
   "follow_up_mode",
   "extensions",
   "tools",
+  "agentConfigAllowlist",
   "providers",
   ...Object.keys(ALSO_KNOWN),
 ];
@@ -171,15 +177,17 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   // works, and the half that does not is otherwise invisible.
   const names = (value: unknown, block: string, key: string): string[] | undefined => {
     if (value === undefined) return undefined;
+    // A top-level list has no inner key, so the label is just its own name.
+    const label = key === "" ? block : `${block}.${key}`;
     if (!Array.isArray(value)) {
-      diagnostics.push(`${where}: ${block}.${key} should be an array of names — ignored`);
+      diagnostics.push(`${where}: ${label} should be an array of names — ignored`);
       return undefined;
     }
     const kept: string[] = [];
     value.forEach((entry, at) => {
       const name = stringOf(entry);
       if (name === undefined)
-        diagnostics.push(`${where}: ${block}.${key}[${at}] should be a string — ignored`);
+        diagnostics.push(`${where}: ${label}[${at}] should be a string — ignored`);
       else kept.push(name.trim());
     });
     return kept.length > 0 ? kept : undefined;
@@ -225,6 +233,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     'an object with "load" and "disable", or an array of names',
   );
   const tools = listBlock<ToolSettings>("tools", ["disable"], 'an object with "disable"');
+  const allowlist = names(raw.agentConfigAllowlist, "agentConfigAllowlist", "");
 
   if (raw.providers !== undefined && !isObject(raw.providers)) wrong("providers", "an object");
 
@@ -259,6 +268,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     follow_up_mode: queueMode("follow_up_mode"),
     ...(extensions !== undefined ? { extensions } : {}),
     ...(tools !== undefined ? { tools } : {}),
+    ...(allowlist !== undefined ? { agentConfigAllowlist: allowlist } : {}),
     ...(Object.keys(providers).length > 0 ? { providers } : {}),
   };
 };
@@ -293,6 +303,9 @@ const merge = (near: Config, far: Config): Config => ({
   follow_up_mode: near.follow_up_mode ?? far.follow_up_mode,
   extensions: mergedLists<ExtensionSettings>(["load", "disable"], near.extensions, far.extensions),
   tools: mergedLists<ToolSettings>(["disable"], near.tools, far.tools),
+  // Nearest wins rather than adding up: permission to write your config is not
+  // something a project you cloned should be able to widen.
+  agentConfigAllowlist: near.agentConfigAllowlist ?? far.agentConfigAllowlist,
   providers: { ...far.providers, ...near.providers },
 });
 
