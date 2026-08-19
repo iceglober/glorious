@@ -34,6 +34,7 @@ import {
   describeContribution,
   type ExtensionHost,
   fire,
+  promptContributions,
   resetRegistry,
 } from "./extension-api";
 import {
@@ -41,6 +42,7 @@ import {
   loadExtensions,
   resolveExtensions,
   shippedExtensions,
+  skillRootsFor,
 } from "./extensions";
 import { expandMentions, fileCandidates } from "./mentions";
 import { runPrint } from "./print";
@@ -241,7 +243,13 @@ const main = async (): Promise<void> => {
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
       ? envToolTimeout
       : config.config.tool_timeout_ms;
-  let skills = await loadSkills(root);
+  // Which extensions would load, worked out without running any of them, so an
+  // extension's own skills/ directory can join the roots here — at startup,
+  // hundreds of lines before extensions themselves load.
+  let extensionSkillRoots = skillRootsFor(
+    (await resolveExtensions(root, config.config.extensions)).plan,
+  );
+  let skills = await loadSkills(root, undefined, extensionSkillRoots);
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills, which answer under a `skill:` prefix of their own.
   let userCommands = await loadUserCommands(root);
@@ -382,7 +390,7 @@ const main = async (): Promise<void> => {
     // misses every turn. `<extensions>` is already a PREAMBLE_TAG, so this is
     // stripped from a replayed transcript without a new tag.
     extensionPrompt: () => [
-      ...registry.promptLines,
+      ...promptContributions(registry.promptLines),
       ...availableLines(
         shippedExtensions(config.config.extensions),
         (config.config.agentConfigAllowlist ?? []).some(
@@ -923,9 +931,15 @@ const main = async (): Promise<void> => {
       ),
     compact: (options) => runCompaction(options ?? {}, false),
     reload: async () => {
+      // Re-derived rather than reused: /reload re-reads config, so an extension
+      // turned on since startup brings its skills with it.
+      const rereadForSkills = await loadConfig(root);
+      extensionSkillRoots = skillRootsFor(
+        (await resolveExtensions(root, rereadForSkills.config.extensions)).plan,
+      );
       const [refreshedCommands, refreshedSkills] = await Promise.all([
         loadUserCommands(root),
-        loadSkills(root),
+        loadSkills(root, undefined, extensionSkillRoots),
       ]);
       userCommands = refreshedCommands;
       skills = refreshedSkills;

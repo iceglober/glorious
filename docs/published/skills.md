@@ -42,11 +42,17 @@ with the same name says so rather than quietly losing.
 | `~/.agents/skills/` | you, everywhere |
 | `<any ancestor>/.agents/skills/` | shared, walking up to your home directory |
 | `.glrs/skills/` | this project |
+| `<extension>/skills/` | shipped with an extension that loads |
 
 Directories are searched recursively, so grouping skills into folders works —
 `skills/writing/changelog/SKILL.md` is the `changelog` skill. A directory that
 contains a `SKILL.md` is a skill and is not searched any further, so its own
 `references/` and `scripts/` are never mistaken for more skills.
+
+An extension can carry its own `skills/` directory — see `extensions.md`. Those
+are searched last, so a skill you wrote always beats one that arrived with an
+extension. They are found without the extension running: glrs works out which
+extensions would load before it reads skills.
 
 Nothing reads another agent's directories. Symlink one in if you want it here.
 

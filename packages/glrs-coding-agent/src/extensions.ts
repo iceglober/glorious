@@ -86,6 +86,7 @@ const bundled = [
     origin: "@glrs-dev/glrs-ext-ask-user",
     load: askUser,
     defaultOn: false,
+    dir: join(import.meta.dir, "..", "..", "extensions", "ask-user"),
     summary: "asks the user a multiple-choice question and waits for the answer",
   },
   {
@@ -93,6 +94,7 @@ const bundled = [
     origin: "@glrs-dev/glrs-ext-builtins",
     load: builtins,
     defaultOn: true,
+    dir: join(import.meta.dir, "..", "..", "extensions", "builtins"),
     summary: "the file, search and shell tools, and every slash command",
   },
   {
@@ -100,6 +102,7 @@ const bundled = [
     origin: "@glrs-dev/glrs-ext-web-fetch",
     load: webFetch,
     defaultOn: false,
+    dir: join(import.meta.dir, "..", "..", "extensions", "web-fetch"),
     summary:
       "fetches web pages and returns them as markdown, rendering JavaScript when Chrome is installed",
   },
@@ -147,6 +150,10 @@ export type Planned = {
   name: string;
   origin: string;
   source: "disk" | "bundled" | "config";
+  // The directory the extension lives in. Its `skills/` subdirectory, if it has
+  // one, joins the skill roots — which is why this is on the *plan*: working it
+  // out must not require running the extension.
+  dir: string;
   path?: string;
   load?: (glrs: never) => void | Promise<void>;
 };
@@ -183,7 +190,13 @@ export const resolveExtensions = async (
   // wins — is untouched by anything config says.
   for (const entry of (await Promise.all(extensionRoots(root).map(entryPoints))).flat()) {
     if (take(entry.name) !== "free") continue;
-    plan.push({ name: entry.name, origin: entry.path, source: "disk", path: entry.path });
+    plan.push({
+      name: entry.name,
+      origin: entry.path,
+      source: "disk",
+      dir: dirname(entry.path),
+      path: entry.path,
+    });
   }
 
   for (const entry of bundled) {
@@ -199,7 +212,13 @@ export const resolveExtensions = async (
     // these are installed rather than bundled.
     if (!entry.defaultOn && !wanted.has(key(entry.name)) && !wanted.has(key(entry.origin)))
       continue;
-    plan.push({ name: entry.name, origin: entry.origin, source: "bundled", load: entry.load });
+    plan.push({
+      name: entry.name,
+      origin: entry.origin,
+      source: "bundled",
+      dir: entry.dir,
+      load: entry.load,
+    });
   }
 
   // Whatever `load` named that discovery and the roster did not account for.
@@ -231,7 +250,13 @@ export const resolveExtensions = async (
     const named = basename(entryPath, ".ts").toLowerCase();
     const label = named === "index" ? basename(dirname(entryPath)).toLowerCase() : named;
     if (take(label) !== "free") continue;
-    plan.push({ name: label, origin: entryPath, source: "config", path: entryPath });
+    plan.push({
+      name: label,
+      origin: entryPath,
+      source: "config",
+      dir: dirname(entryPath),
+      path: entryPath,
+    });
   }
 
   for (const one of settings?.disable ?? [])
@@ -246,6 +271,12 @@ export const resolveExtensions = async (
 // project can shadow a shipped extension by name — replacing web_fetch is a
 // supported thing to do. (An older comment here claimed bundled ones came
 // first; they never have.)
+// Where each extension that would load keeps its skills. Derived from the plan,
+// so no extension has to run to answer it — which is what lets skills load at
+// startup even though extensions do not load until much later.
+export const skillRootsFor = (plan: readonly Planned[]): string[] =>
+  plan.map((entry) => join(entry.dir, "skills"));
+
 export const loadExtensions = async (
   root: string,
   registry: Registry,
