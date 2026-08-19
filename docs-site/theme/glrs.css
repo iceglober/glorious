@@ -109,8 +109,8 @@ footer > * { display: none; }
 
 @media (min-width: 1200px) {
   .page-menu {
-    margin-left: -2rem;
     padding-left: 0;
+    transform: translateX(-4rem);
   }
 }
 
