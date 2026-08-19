@@ -166,14 +166,8 @@ export const runShell = async (
     onOutput,
   );
   const parts = [got.out.trimEnd(), got.err.trimEnd()].filter((part) => part.length > 0);
-  if (got.note) {
-    parts.push(got.note);
-    onOutput?.(got.note, "stderr");
-  } else if (got.code !== 0) {
-    const exit = `[exit ${got.code}]`;
-    parts.push(exit);
-    onOutput?.(exit, "stderr");
-  }
+  if (got.note) parts.push(got.note);
+  else if (got.code !== 0) parts.push(`[exit ${got.code}]`);
   return {
     output: capText(parts.join("\n"), RESULT_LIMIT),
     stdout: capText(got.out.trimEnd(), RESULT_LIMIT),
