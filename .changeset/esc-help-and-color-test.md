@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": patch
+"@glrs-dev/glrs": patch
 ---
 
 `/help` now describes what Esc actually does: it interrupts the turn, and only takes back the newest queued message when nothing is running. The line read "interrupt the turn · drop the newest queued message" as if it did both — which is exactly the behaviour that was fixed when it stopped silently dequeueing mid-turn.

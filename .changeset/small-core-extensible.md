@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": major
+"@glrs-dev/glrs": major
 ---
 
 Tear glorious down to a small core with a real extension API. Non-test source drops from ~6,500 lines to ~4,900 — 4,200 lines deleted against 1,700 added, most of the additions being the extension API itself — and everything removed is now expressible as a TypeScript file you write.

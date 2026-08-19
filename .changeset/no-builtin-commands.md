@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 The core registers no slash commands and no tools of its own.

@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 Say what the model is doing while you wait for it.

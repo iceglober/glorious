@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 Read only glorious's own directories and the vendor-neutral Agent Skills layout.

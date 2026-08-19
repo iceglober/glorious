@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 Bundle the new internal monorepo package boundaries into the existing `@glrs-dev/glorious` distribution.

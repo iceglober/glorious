@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 Compaction, `@file` references, piped input, readable listings — and two queue bugs.

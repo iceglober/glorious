@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 Stream the model's answer instead of waiting for it, and show reasoning while it happens.

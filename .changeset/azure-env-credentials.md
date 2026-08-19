@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": patch
+"@glrs-dev/glrs": patch
 ---
 
 Use the environment credential the provider picker already reports as available.

@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 Add `/models` for switching providers and models during a session, with models.dev catalog metadata, provider-qualified model identities, fuzzy search, scrolling, and reasoning-variant selection.

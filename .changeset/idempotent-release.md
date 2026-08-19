@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": patch
+"@glrs-dev/glrs": patch
 ---
 
 The release workflow publishes whatever version main is at.

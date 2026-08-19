@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": patch
+"@glrs-dev/glrs": patch
 ---
 
 The first extension to claim a tool name keeps it, and a tool filter no longer depends on load order.

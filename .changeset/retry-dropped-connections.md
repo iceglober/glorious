@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": patch
+"@glrs-dev/glrs": patch
 ---
 
 Retry a dropped connection instead of killing the turn.
