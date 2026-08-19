@@ -1,70 +1,83 @@
 ---
-title: Troubleshooting
+title: troubleshooting
 ---
 
-# Troubleshooting
+# troubleshooting
 
-## Diagnostics
+## start here
 
 ```sh
 glrs doctor
 glrs doctor --json
+glrs --version
 ```
 
-This reports the selected model, provider, missing credentials, and config
-syntax diagnostics without opening the chat UI.
+`doctor` checks the model, provider, credentials, config, and extension plan
+without running extensions or opening the TUI. it never prints secret values.
 
-## Credentials
+## missing credentials
 
-Check the provider's required environment variable on the [Providers](./providers.md)
-page. `doctor` reports what is missing without printing secret values.
+find the required environment variable under
+[model providers](./providers.md). export it in the shell that starts glrs.
 
-## The status line shows a model I did not choose
-
-Almost always a config file that is not being read, or one whose `model` is not
-a string. `glrs doctor` names both:
-
-```
-model: azure/gpt-5.6-luna
-.glrs/config.json: "model" should be a string like "azure/gpt-5.6-sol", got object — ignored
-```
-
-- **`model` takes a string**, not an object: `"model": "azure/gpt-5.6-sol"`. A nested `{"selected": "…"}` is ignored.
-- **Project uses `.glrs/config.json`; Project-User uses `.glrs/config.local.json`.** User uses `config.json` in the User directory.
-- **Providers are not enabled or disabled.** A provider is used when a model names it and its credentials are present; `"enabled": true` does nothing.
-- **`~/.config/glrs/config.json` may be an old one.** Earlier versions used a nested `agent.llm` shape; none of it is read now, and `doctor` says so.
-
-With no configuration at all the model is `azure/gpt-5.6-luna`. Seeing exactly
-that is the sign nothing you wrote is being applied.
-
-## Wrong model or provider
-
-Use a fully qualified model label:
+## wrong model
 
 ```sh
-glrs --model provider/model-id
+glrs --model provider/model-id doctor
 ```
 
-`GLRS_MODEL` overrides Project-User, Project, and User config. OpenAI-compatible
-providers need a configured base URL.
+precedence is CLI, environment, Project-User, Project, User, then default.
+`GLRS_MODEL` overrides every config file.
 
-## Offline use
+`model` must be a string:
 
-The models.dev catalogue is cached under `$XDG_CACHE_HOME/glrs/models.dev.json`.
-Without a catalogue response, the selected model can still run, but context and
-pricing metadata may be unavailable.
+```json
+{ "model": "azure/gpt-5.6-sol" }
+```
 
-## Sessions
+`{"model":{"selected":"..."}}` is ignored and reported. providers are selected
+by the model prefix; `"enabled": true` has no effect.
 
-Sessions are plain JSON under `$XDG_DATA_HOME/glrs/sessions`. Resume with:
+## config is ignored
+
+check the exact paths:
+
+| scope | path |
+| --- | --- |
+| Project-User | `.glrs/config.local.json` |
+| Project | `.glrs/config.json` |
+| User | `<User>/config.json` |
+
+invalid JSON, wrong value types, and files with no recognized settings appear in
+`doctor`. unknown keys beside a valid setting are ignored.
+
+## extension is missing
+
+```text
+/extensions
+/reload
+```
+
+`doctor` shows what would load and why a configured path failed. `/extensions`
+shows what actually loaded. config changes apply after `/reload` or restart.
+
+## offline
+
+model metadata is cached at
+`${XDG_CACHE_HOME:-~/.cache}/glrs/models.dev.json`. without it, model calls still
+work; context percentage, variants, and prices may be unknown.
+
+## resume
 
 ```sh
 glrs --resume
 glrs --resume <id>
 ```
 
-## Access and permissions
+sessions are plain JSON under
+`${XDG_DATA_HOME:-~/.local/share}/glrs/sessions`.
 
-glrs has no permission prompt or sandbox. It uses the invoking process's
-permissions. Use a worktree, container, or operating-system boundary when you
-need isolation, and review changes with git.
+## permissions
+
+glrs uses the invoking process's permissions. it has no sandbox or approval
+prompt. review changes with git and use a worktree or container for isolation.

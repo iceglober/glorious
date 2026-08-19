@@ -1,19 +1,19 @@
 ---
-title: Models
+title: models
 ---
 
-# Models
+# models
 
-## Choosing a model
+## choose one
 
-In order of precedence:
+highest precedence first:
 
-1. `--model provider/model-id` on the command line
-2. `GLRS_MODEL` / `GLRS_VARIANT`
-3. Project-User: `.glrs/config.local.json`
-4. Project: `.glrs/config.json`
-5. User: `~/.config/glrs/config.json` (`%APPDATA%\glrs\config.json` on Windows)
-6. the default, `azure/gpt-5.6-luna`
+1. `--model provider/model-id`
+2. `GLRS_MODEL` and `GLRS_VARIANT`
+3. Project-User `.glrs/config.local.json`
+4. Project `.glrs/config.json`
+5. User `<User>/config.json`
+6. `azure/gpt-5.6-luna`
 
 ```json
 {
@@ -22,66 +22,55 @@ In order of precedence:
 }
 ```
 
-`model` is `provider/model-id`; a bare id means azure. `variant` is the
-reasoning effort, when the model advertises one.
+`model` is `provider/model-id`; a bare ID uses Azure. `variant` is reasoning
+effort when the model supports it.
 
-Merged nearest-first, one key at a time: Project may pin the model while User
-supplies provider settings it does not mention. `GLRS_CONFIG_HOME` overrides
-the User directory; `XDG_CONFIG_HOME/glrs` overrides its platform default.
+edit config or set an environment variable before starting. the core has no
+model picker. an extension can switch the next turn with `g.setModel()`.
 
-Config is read-only — nothing writes it at runtime. The core has no model
-picker: edit the file or set the environment variable and restart, and
-`--resume <id>` picks the session back up.
+## providers
 
-An extension can add one. `g.models()` returns the catalogue and
-`g.setModel(label, variant)` switches for the next turn — see
-`extensions.md`.
-
-## Providers
-
-Fifteen built in, plus any OpenAI-compatible endpoint. Which variable each one
-reads, what else it needs, and how to point at a local server: `providers.md`.
-
-Nothing is stored in a keychain. Nothing prompts for a key.
-
-Per-provider settings, when a provider needs them:
+glrs includes fifteen providers and any OpenAI-compatible endpoint with a base
+URL. credentials come from environment variables. see
+[model providers](./providers.md).
 
 ```json
 {
   "providers": {
     "amazon-bedrock": { "region": "eu-west-1" },
     "google-vertex": { "project": "my-project", "location": "europe-west4" },
-    "my-endpoint": { "api": "https://example.com/v1" }
+    "ollama": { "api": "http://localhost:11434/v1" }
   }
 }
 ```
 
-## Cost and context
+## context and price
 
-At startup glrs asks [models.dev](https://models.dev) for one thing: the
-context window and per-token pricing of the model you already selected. That is
-what makes the status line's `ctx 12.3k(1%)` meaningful — a percentage needs a
-denominator.
+glrs asks [models.dev](https://models.dev) for the selected model's context
+window, prices, and reasoning variants. it caches successful responses at:
 
-The answer is cached to `~/.cache/glrs/models.dev.json`, so after the first
-successful fetch it works offline. Before that, or if the cache is gone and the
-network is too, the status line reads `unknown` and everything else works.
+```text
+${XDG_CACHE_HOME:-~/.cache}/glrs/models.dev.json
+```
 
-`GLRS_PRICE_MULTIPLIERS=azure=1.1` scales the published rates when your
-provider's pricing differs.
+without metadata the model still runs; context percentage and cost may be
+unknown.
 
-## When a turn dies
-
-A connection lost before the model responds is retried three times and you never
-see it. One lost mid-response cannot be retried — tokens are already on screen
-and replaying would duplicate them — so it reports that the connection dropped
-and stops. Send `continue`: the failed turn leaves a reminder of what it was
-doing on the next one.
-
-## Diagnostics
+provider pricing can be adjusted:
 
 ```sh
-glrs doctor          # model and config diagnostics
+export GLRS_PRICE_MULTIPLIERS=azure=1.1,openai=1
+```
+
+## failed connections
+
+a connection lost before output starts is retried three times. a mid-response
+disconnect cannot be retried without duplicating output; send `continue`.
+
+## diagnostics
+
+```sh
+glrs doctor
 glrs doctor --json
 glrs --version
 ```

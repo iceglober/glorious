@@ -1,74 +1,61 @@
 ---
-title: Commands
+title: commands
 ---
 
-# Commands
+# commands
 
-## Slash commands from markdown
+## markdown commands
 
-A file in `.glrs/commands/` becomes `/name`. Its body is the prompt.
+a markdown file becomes `/name`:
 
 ```markdown
+<!-- .glrs/commands/review.md -->
 ---
-description: Review the working diff for anything that would fail CI
+description: review the working diff for anything that would fail CI
 ---
 
-Read `git diff` and report anything that would fail CI. Do not fix it yet.
+read `git diff` and report anything that would fail CI. do not fix it yet.
 ```
 
-`$ARGUMENTS` and `$1`..`$9` expand. A body with no placeholder still gets the
-arguments appended inside `<arguments>`, so `/review src/auth.ts` does not
-silently drop the path.
+`$ARGUMENTS` expands to all arguments. `$1` through `$9` expand one word each. a
+body with no placeholder receives its arguments in an `<arguments>` block.
 
-Searched in Project `.glrs/commands/`, then User `commands/`. The User directory
-is `~/.config/glrs` on macOS and Linux and `%APPDATA%\glrs` on Windows, unless
-overridden. First name wins, and nothing is reserved — the core registers no commands, so a
-file may claim `/clear` or `/help` if you want it to. Extensions register before
-skills and command files, so the bundled ones win by default.
+searched in order:
 
-For a command that runs code instead of producing a prompt, register one from an
-extension — see `extensions.md`.
+1. Project `.glrs/commands/`
+2. User `<User>/commands/`
 
-## Skills
+first name wins. extension commands load before skills and markdown commands.
 
-Skills follow the Agent Skills standard: a directory containing `SKILL.md` with
-`name` and `description` frontmatter. The directory name must match `name`.
+## extension commands
 
-```markdown
----
-name: verify
-description: Drive the glrs TUI end-to-end and capture what it paints.
----
+use an extension when a command should run code instead of becoming a model
+prompt:
 
-...instructions...
+```ts
+export default function (g) {
+  g.command("branch", {
+    description: "show the current branch",
+    run: async () => g.print((await g.exec("git branch --show-current")).stdout),
+  });
+}
 ```
 
-Every skill's name and description are listed to the model on each turn; the
-body is loaded only when the model calls `activate_skill`, or when you type its
-slash command. That is the point — a skill costs a line until it is used.
+## skills as commands
 
-Discovered in Project `.glrs/skills/` and `.agents/skills/`, then User
-`skills/` and the portable User `agents/skills/`. `/skills` lists what was found
-and from where; `r` in that list reloads.
+every skill is available as `/skill:name`. a skill can set `trigger` to change
+the part after `skill:`.
 
-Another tool's directories are deliberately not read. glrs used to pick up
-`~/.claude/skills`, `~/.claude/plugins/cache` and `~/.config/amp/skills`, which
-turned someone else's whole skill surface into glrs slash commands — and put
-every one of their descriptions in the per-turn preamble. Symlink one into
-`.agents/skills/` if you want it here.
+skills keep their namespace so installing one cannot silently replace `/deploy`
+or another command. fuzzy completion means typing `/deploy` can still find
+`/skill:deploy`.
 
-Skills answer under a `skill:` prefix — `/skill:changelog` — so installing one
-cannot shadow a command you already had, and `/deploy` is never ambiguous about
-where it came from. Completion is a fuzzy match, so typing `/changelog`
-still finds it. A skill may declare `trigger: /name` to rename the part after
-the colon; without one it is the skill's own name. See `skills.md`.
+## project rules
 
-## AGENTS.md
+glrs reads the first of `AGENTS.md`, `AGENT.md`, or `CLAUDE.md` in each directory
+from the filesystem root to the project. nearer files come later in the prompt.
 
-`AGENTS.md`, `AGENT.md` or `CLAUDE.md` — the first that exists in a directory —
-is read from the system root down to the project, plus `~/.config/agents/`, and
-folded into the system prompt as `<repo-rules>`. `read` also appends any
-`AGENTS.md` guidance from the directory of the file being read.
+User rules also come from the platform config base's `agents/` directory.
 
-This is the cheapest place to put a standing instruction. It is part of the
-cached prefix, so it costs nothing per turn.
+rules are part of the stable prompt prefix. use them for short standing
+instructions; use a skill for procedures loaded only when needed.

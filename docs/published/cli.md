@@ -1,45 +1,50 @@
 ---
-title: CLI
+title: cli
 ---
 
-# CLI
+# cli
 
-## Commands
+## commands
 
-```sh
-glrs                      # open a session in the current git repo
-glrs -p "<prompt>"        # one turn, headless: answer on stdout, tools on stderr
-glrs --resume             # pick an earlier session
-glrs --resume <id>        # reopen one directly
-glrs doctor [--json]      # model, config diagnostics, and what would load
-glrs --version            # print the version
-glrs update               # update to the latest next release
+| command | action |
+| --- | --- |
+| `glrs` | start a new TUI session |
+| `glrs -p "<prompt>"` | run one headless turn |
+| `cat log \| glrs -p "what failed?"` | add piped input to the prompt |
+| `glrs --resume` | choose a session to resume |
+| `glrs --resume <id>` | resume one session |
+| `glrs --model provider/model` | choose a model for this run |
+| `glrs doctor [--json]` | inspect model, credentials, config, and extensions |
+| `glrs --version` | print the installed version |
+| `glrs update` | install the newest `next` release |
+
+in print mode, assistant text goes to stdout and tool activity goes to stderr.
+
+## environment
+
+| variable | purpose |
+| --- | --- |
+| `GLRS_MODEL` | `provider/model-id` override |
+| `GLRS_VARIANT` | reasoning effort |
+| `GLRS_PRICE_MULTIPLIERS` | provider price adjustments |
+| `GLRS_TOOL_TIMEOUT_MS` | built-in tool timeout in milliseconds |
+| `GLRS_CONFIG_HOME` | explicit User directory |
+| `XDG_CONFIG_HOME` | config base |
+| `XDG_DATA_HOME` | session data base |
+| `XDG_CACHE_HOME` | model metadata cache base |
+| `NO_COLOR` | disable color |
+
+provider credential variables are listed under [model providers](./providers.md).
+
+## config precedence
+
+```text
+CLI > environment > Project-User > Project > User > defaults
 ```
 
-## Environment
+see [configuration](./3-configuration.md) for paths and schema.
 
-- `AZURE_FOUNDRY_API_KEY` / `AZURE_API_KEY` / `AZURE_OPENAI_API_KEY` — the model
-  key. First one set wins.
-- `AZURE_RESOURCE_NAME` — your Azure AI Foundry resource.
-- `GLRS_MODEL` — model override, as `provider/model-id`; the default is `gpt-5.6-luna`.
-- `GLRS_VARIANT` — reasoning effort, when the model advertises one.
-- `GLRS_PRICE_MULTIPLIERS` — comma-separated provider price multipliers, such as `azure=1.1,openai=1`.
-- `GLRS_CONFIG_HOME` — explicit User configuration and resource directory.
-- `XDG_CONFIG_HOME` — parent of the User directory when the explicit override is unset.
-- `XDG_DATA_HOME` — where sessions live; defaults to `~/.local/share`.
+## exit status
 
-## Sessions
-
-Sessions are written to `$XDG_DATA_HOME/glrs/sessions` as plain JSON. Each
-one records the whole conversation, so `--resume` replays the transcript and the
-model keeps its context.
-
-## Configuration
-
-Project-User `.glrs/config.local.json`, Project `.glrs/config.json`, then User
-`~/.config/glrs/config.json` (`%APPDATA%\glrs\config.json` on Windows).
-Environment variables above win over all three.
-
-```json
-{ "model": "anthropic/claude-opus-5", "variant": "high" }
-```
+`glrs -p` returns a non-zero status when the turn fails. interactive sessions
+report errors in the transcript and remain open.

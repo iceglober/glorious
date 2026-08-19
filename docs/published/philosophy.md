@@ -1,30 +1,35 @@
 ---
-title: Philosophy
+title: philosophy
 ---
 
-# Philosophy
+# philosophy
 
-glrs is a simple coding agent for developers and technical problem solvers.
-It combines a model, tools, context, and a turn loop that can inspect and change
-the repository where it runs.
+glrs is a simple agent: a model, tools, context, and a turn loop over a git
+repository.
 
-Its promise is a **minimal core with maximum extensibility**. The core provides a
-small set of composable primitives. Tools, commands, skills, lifecycle hooks,
-status, and rendering are capabilities that can be added without forking.
+## small core
 
-## Direct execution
+tools, commands, skills, hooks, status, and rendering compose through public
+seams. behavior that can be an extension does not need to be core.
 
-There are no permission prompts. glrs runs with the permissions of the
-process that launched it. Permission prompts are not a security boundary for an
-agent that can already edit and execute; use git review, worktrees, containers,
-or operating-system controls when a boundary matters.
+## direct execution
 
-## The runtime language
+glrs runs with the permissions of its process. confirmation prompts are not a
+security boundary after an agent can edit and execute code. use git review,
+worktrees, containers, or operating-system controls when a boundary matters.
 
-A **session** is the persisted conversation. A **turn** is one request and the
-model/tool work it causes. Extensions are TypeScript modules discovered from a
-Project or User configuration and loaded through the public API.
+## stable context
 
-The interactive terminal UI and `glrs -p` are two front ends to the same
-turn-oriented runtime. Its behavior is defined by the tools, context, and
-turn loop exposed through the runtime.
+volatile project state stays out of the system prompt. it rides in per-turn
+context so providers can reuse the stable prompt prefix.
+
+## visible work
+
+tool calls, failures, timing, usage, and compaction are shown in the transcript.
+headless mode sends answers to stdout and the same tool trail to stderr.
+
+## vocabulary
+
+a **session** is a persisted conversation. a **turn** is one user request and
+all model/tool work it causes. an **extension** is TypeScript loaded from
+Project or User.

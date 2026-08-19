@@ -1,70 +1,66 @@
 ---
-title: Tools
+title: tools
 ---
 
-# Tools
+# tools
 
-Every tool is always available — there is no permission system and no mode
-switching. The agent operates on the git repository you launched it in.
+## machine
 
-None of them are built in. The nine below are extensions: `bash`, `read`,
-`write`, `edit`, `grep` and `glob` are the `builtins` extension, `web_fetch`
-and `ask_user` are their own, and `activate_skill` is the one tool the core
-still registers because it needs a skill's body. All of them go through the
-same `g.tool` any tool you write goes through, and the first extension to claim
-a name keeps it — so replacing one means registering that name in
-`.glrs/extensions/`, not shadowing anything.
+| tool | action |
+| --- | --- |
+| `read` | read UTF-8 with numbered lines |
+| `write` | replace a file; create parent directories |
+| `edit` | exact replacements across one or more files, atomically per call |
+| `grep` | search contents with ripgrep syntax |
+| `glob` | list matching files, newest first |
+| `bash` | run a shell command in the Project root |
 
-## Files
+these six come from the `builtins` extension. `bash` is killed after the
+configured timeout, ten minutes by default. interrupts kill its process group.
 
-- **read** — reads a UTF-8 file, each line prefixed `N|`.
-- **write** — writes a file, creating parent directories.
-- **edit** — exact string replacements across one or more files in a single
-  call. Everything resolves before anything is written, so a failure leaves the
-  whole tree untouched, and each file is swapped in by rename.
-- **grep** — ripgrep over file contents.
-- **glob** — lists files matching a pattern, newest first.
+relative paths resolve from the Project root. absolute paths and `..` are not
+blocked.
 
-## Shell
+## optional
 
-- **bash** — runs a command in the project root. Killed after 10 minutes; an
-  interrupt kills the whole process group.
+| tool | action | activation |
+| --- | --- | --- |
+| `web_fetch` | fetch up to ten pages as markdown; use Chrome for JavaScript pages | load `web-fetch` |
+| `ask_user` | ask selectable questions in the TUI | load `ask-user` |
+| `activate_skill` | load a skill body | appears when skills exist |
 
-## Web
+```json
+{
+  "extensions": { "load": ["web-fetch", "ask-user"] }
+}
+```
 
-- **web_fetch** — fetches up to ten pages and returns their content as
-  markdown. Renders with an installed Chrome when there is one, so pages built
-  by JavaScript work. Cross-host redirects are reported rather than followed.
-  Ships in the box but off until named: `{"extensions":{"load":["web-fetch"]}}`.
+`ask_user` is absent in print mode.
 
-## Agent
+## output
 
-- **ask_user** — asks you questions with selectable options. An extension,
-  written against `g.ui.capture`, off until named in `extensions.load`. Absent
-  in `-p` mode either way, where there is nobody to answer.
-- **activate_skill** — loads a skill's full instructions. Present only when
-  skills are found.
+tool output is capped at 30,000 characters. throws become `ERROR:` strings the
+model can read and recover from.
 
-## Extensions
+`edit` resolves every replacement before writing anything. one bad replacement
+leaves every target unchanged.
 
-A `.ts` file in `.glrs/extensions/` can register tools of its own, and they
-arrive alongside these with the same event stream, output cap and error
-handling. A project extension wins a name collision, so you can replace any of
-them — including `bash` — with your own.
+## replace or restrict
 
-Naming a file `builtins.ts` is a blunter instrument than it looks: it shadows
-the whole extension, which costs the six tools *and* every slash command, and
-leaves the model unable to do anything. glrs says so at startup when it
-happens. To replace one tool, register that one name.
+a Project extension registers first. register the same tool name to replace a
+shipped implementation.
 
-## Permissions
+```ts
+export default function (g) {
+  g.filterTools((name) => name !== "bash");
+}
+```
 
-There are none. glrs runs in YOLO mode, which is the only mode: once an
-agent can write and run code, a confirmation dialog is not a boundary, and
-neither is a path check on the tools that sit beside `bash`.
+`tools.disable` removes names through config. `tool_call` hooks can refuse calls
+based on their arguments.
 
-Output is capped and a killed command takes its process group with it.
+## permissions
 
-## Output cap
-
-Tool output over 30,000 characters is truncated for the model.
+tools run with the invoking process's permissions. there is no sandbox or
+confirmation prompt. use git, worktrees, containers, and operating-system
+controls when a boundary matters.

@@ -1,17 +1,18 @@
 ---
-title: Glossary
+title: glossary
 ---
 
-# Glossary
+# glossary
 
-- **Agent** — the model plus tools, context, and turn loop that can inspect or change a repository.
-- **Core** — the small runtime and extension seams: turns, sessions, discovery, and primitive tools.
-- **Extension** — a TypeScript module that adds capabilities through the glrs API.
-- **Tool** — a callable operation exposed to the model, such as `read`, `edit`, or an extension tool.
-- **Command** — a named user operation invoked with `/name`.
-- **Skill** — reusable instructions in a `SKILL.md` file, optionally invokable as a command.
-- **Session** — the persisted conversation that can be resumed.
-- **Turn** — one request and the model/tool work it causes.
-- **System prompt** — the stable instructions and API context the agent receives on every turn.
-- **YOLO mode** — no permission prompts; access matches the invoking process.
-- **Reload** — an explicit re-read of discovered skills, commands, and extensions.
+- **agent** — model + tools + context + turn loop
+- **command** — a user operation invoked with `/name`
+- **core** — provider-neutral turns, sessions, events, and shell primitives
+- **extension** — TypeScript that adds capabilities through the glrs API
+- **Project** — committed `.glrs` resources for one repository
+- **Project-User** — gitignored local config for one repository
+- **session** — a persisted conversation that can be resumed
+- **skill** — reusable instructions in a `SKILL.md`
+- **tool** — an operation callable by the model
+- **turn** — one user request and all model/tool work it causes
+- **User** — global config and resources for one machine user
+- **YOLO mode** — no permission prompts; process permissions apply

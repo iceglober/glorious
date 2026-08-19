@@ -1,106 +1,89 @@
 ---
-title: Architecture
+title: architecture
 ---
 
-# Architecture
+# architecture
 
-The coding-agent implementation is TypeScript in `packages/glrs-coding-agent/src/`,
-run by Bun with no build step. The
-public extension API is documented separately from implementation details.
+glrs is a Bun/TypeScript monorepo with four runtime layers.
 
-## The turn loop
+| package | owns |
+| --- | --- |
+| `glrs-core` | provider-neutral events, sessions, settings, and shell primitives |
+| `provider-registry` | providers, credentials, model resolution, and metadata |
+| `glrs-coding-agent` | CLI, turn queue, TUI, discovery, and extension host |
+| `extensions/*` | shipped tools and commands |
 
+## startup
+
+```text
+CLI arguments
+  → project root
+  → config + model
+  → session
+  → skills + commands + extensions
+  → TUI or print host
 ```
-index.ts            owns the session: wiring, state, paint
-  chat.ts           queues turns, pairs tool starts with ends, holds history
-  agent.ts          builds the request, streams the response
-  tools.ts          the tools the model can call, and the gate around them
-  extension-api.ts  the surface extensions are written against
-  extensions.ts     finds and loads them
-  bundled/          the extensions glrs ships: builtins, web-fetch
-  render.ts         everything -> Line[]
-  ui/               Line[] -> the terminal, via opentui
+
+`doctor` stops before running extension code. it resolves and reports the plan
+only.
+
+## one turn
+
+```text
+input
+  → queue
+  → per-turn context
+  → provider stream
+  → tool calls, if any
+  → final response
+  → session events on disk
 ```
 
-`index.ts` is the only module that knows about all the others. Everything below
-it takes callbacks and returns data.
+a turn may contain several model calls. each tool result returns to the model
+before the next call.
 
-One turn:
+## stable prompt
 
-1. `chat.send(text)` queues it; `drain()` runs the queue one at a time.
-2. `agent.run()` assembles `[...history, { role: "user", content: preamble + prompt }]`
-   and calls `streamText`.
-3. The stream is iterated part by part. Text and reasoning deltas go out as
-   `onDelta`; tool calls as `onTool`; which part of the call is in flight as
-   `onPhase`.
-4. `index.ts` accumulates deltas and paints them once per tick, not once per
-   delta.
-5. When the turn ends, `chat` announces a `turn` event holding the messages, and
-   `session.ts` writes them to disk.
+the system prompt stays byte-identical across projects and turns. changing data
+— date, git state, skills, extension contributions — goes in the per-turn user
+message.
 
-## The prompt cache, and why the preamble exists
+this preserves provider prompt-cache prefixes. tests fail when volatile content
+moves back into the system prompt.
 
-The system prompt must be **byte-identical** across turns, sessions and
-projects. Anything that changes — the date, the branch, the dirty-file count,
-the skills catalog, what extensions contributed — rides in the per-turn user
-message instead, where it is frozen into history once written.
+## extensions
 
-This is measured, not assumed: `eval/caching` puts the same volatile block in
-each position and reports what the provider served from cache on a resumed turn.
-In the system prompt: 0%. In the user message: nearly all of it. A changed
-footer truncates the cached prefix at the system prompt and the entire
-conversation behind it is reprocessed.
+`extension-api.ts` is a facade over existing seams, not a second runtime:
 
-`prompt.test.ts` fails if any volatile value reappears in the system prompt.
-Every preamble block must also be named in `PREAMBLE_TAGS`, or `events.ts` will
-replay it into the transcript as if the user had typed it.
+- `g.tool` registers through the same wrapper as shipped tools
+- `g.exec` uses the same shell primitive as direct `!` commands
+- `g.on` subscribes to the turn and tool event stream
+- render callbacks return glrs `Line[]`, never terminal-library types
 
-## Rendering
+Project extensions load before User and shipped extensions. first registration
+wins for tools and commands.
 
-`render.ts` turns events into `Line[]` — arrays of `{ text, tone, bold, ... }`
-spans — and knows nothing about terminals. `ui/chrome.ts` turns `Line[]` into
-opentui `StyledText`. That seam is why extensions can draw without importing a
-renderer, and why the renderer could be replaced without touching them.
+## rendering
 
-The paint runs on a 100ms tick, but every writer goes through `painter()` in
-`ui/screen.ts`, which keys on the rendered content and skips the render when
-nothing changed. Nothing animates: a tick where no number moved costs nothing.
+runtime events become `Line[]` spans in the coding agent. the terminal layer
+turns those spans into OpenTUI nodes.
 
-## Tools
+streaming updates are batched on a 100 ms paint tick. unchanged frames are
+skipped. there is no animation loop.
 
-There are no built-ins. `bash`, `read`, `write`, `edit`, `grep` and `glob` are
-the `builtins` extension, registered through `g.tool` exactly as a tool you
-write is. What the core keeps is the machinery they share, in `toolkit.ts`: the
-`wrapTool` wrapper is what makes anything a real tool — the same event stream
-drives the live row, the same 30k cap keeps one call from eating the context,
-and the same catch turns a throw into an `ERROR:` the model can recover from.
+## persistence
 
-The first extension to claim a tool name keeps it, and your project is walked
-before anything shipped, so registering `bash` in `.glrs/extensions/` replaces
-the shipped one rather than racing it.
+sessions are JSON records with an event log. resume rebuilds conversation context,
+usage totals, and extension entries from those events.
 
-Output caps and process-group kill live in `glrs-core/src/shell.ts`, which both
-sides use. Paths are not checked: relative ones resolve against the project
-root and absolute ones are taken as given.
+config is separate and merged from Project-User, Project, and User.
 
-`wrapTool` also carries the gate an extension's `tool_call`/`tool_end` handlers
-drive: refuse a call before it runs, or rewrite what the model is told came
-back. Because every tool goes through the same wrapper, a policy written once
-covers built-ins, bundled extensions and third-party tools alike.
+## entry points
 
-## Two entry points
+`glrs` and `glrs -p` use the same model, tools, extensions, sessions, and turn
+loop. only presentation differs:
 
-`glrs` opens the TUI. `glrs -p "<prompt>"` runs one turn headless:
-assistant text to stdout, the tool trail to stderr, extensions loaded the same
-way, `ask_user` withheld because nobody is there. Print mode is how the agent
-verifies changes to itself, how anything scripts glrs, and how one glrs
-spawns another through `bash`.
-
-## What is deliberately absent
-
-No plan mode, no subagents, no MCP, no model picker, no permission prompts, no
-session encryption, no animation — and no built-in slash commands or tools at
-all: `/help`, `/clear`, `/skills`, `/extensions`, `/reload` and `web_fetch` are
-bundled extensions. Each was removed with a reason recorded in the
-commit that removed it; `git log` is the argument. What replaced all of them is
-`docs/published/extensions.md`.
+| mode | assistant output | tool trail | interactive capture |
+| --- | --- | --- | --- |
+| TUI | transcript | transcript | yes |
+| print | stdout | stderr | no |
