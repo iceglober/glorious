@@ -1,3 +1,4 @@
+/** @module Providers */
 import type { ModelProvider } from "../../glorious-core/src";
 
 export * from "./config";

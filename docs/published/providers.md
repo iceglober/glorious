@@ -1,8 +1,8 @@
 ---
-title: Providers
+title: Model Providers
 ---
 
-# Providers
+# Model Providers
 
 Fifteen providers glorious knows without being told, plus any endpoint that
 speaks the OpenAI API.

@@ -1,13 +1,13 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": [
-    "./api/core.ts",
-    "./api/coding-agent.ts",
-    "./api/providers.ts"
+    "../packages/glorious-core/src/index.ts",
+    "../packages/glorious-coding-agent/src/sdk.ts",
+    "../packages/provider-registry/src/index.ts"
   ],
   "entryPointStrategy": "resolve",
   "alwaysCreateEntryPointModule": true,
-  "tsconfig": "./tsconfig.json",
+  "tsconfig": "../packages/tsconfig.json",
   "out": "./dist",
   "plugin": [
     "./theme/index.ts",

@@ -1,3 +1,4 @@
+/** @module Coding Agent */
 import type {
   AgentCore,
   ExtensionContext,
