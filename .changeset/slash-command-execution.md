@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": patch
+"@glrs-dev/glrs": patch
 ---
 
 Fix two faults in user-defined slash commands, both hit the first time one was run for real.

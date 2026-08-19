@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 Arrow keys edit the draft, and a subagent's tool calls stay out of the session.

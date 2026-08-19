@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 `/reload` reloads extensions, and `write` can reach the directory the docs point at.

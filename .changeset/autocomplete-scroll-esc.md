@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": minor
+"@glrs-dev/glrs": minor
 ---
 
 The completion list scrolls with the selection, and Esc dismisses it without interrupting.

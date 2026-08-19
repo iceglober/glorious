@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": major
+"@glrs-dev/glrs": major
 ---
 
 Replace the implementation with a ground-up rewrite in `v2/`, and delete `core/`.

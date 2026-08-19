@@ -1,5 +1,5 @@
 ---
-"@glrs-dev/glorious": patch
+"@glrs-dev/glrs": patch
 ---
 
 `ask_user` ships as its own package rather than a second entry point on the builtins one.
