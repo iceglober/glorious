@@ -1,5 +1,59 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.53
+
+### Minor Changes
+
+- 51a7980: An extension can add subcommands to the `glrs` executable.
+
+  `g.cli("wt", { description, run })` makes `glrs wt …` work. Until now an extension could give the agent a tool and give you a slash command, but everything it offered lived inside a session — so a capability that is really a piece of tooling, like managing git worktrees, had to be a separate program with its own name on your PATH.
+
+  **A subcommand runs outside any session.** No model, no transcript, no screen, no credentials, nothing to wait for. `g.print` writes straight to stdout undecorated so the output pipes; `g.root`, `g.exec`, `g.settings` and `g.z` work as usual; `g.send`, `g.model`, `g.ui.capture` and the rest throw and say why rather than returning something plausible. That refusal is filled in one place, so adding a member to the API cannot quietly leave this path with a hole in it — the type demands it be answered, and "this needs a session" is a better answer than a lie.
+
+  Extensions are loaded to find out whether a word is a subcommand, so this is reached only after glrs's own words are ruled out: a bare `glrs`, `glrs -p …`, `glrs doctor`, `glrs update` and `glrs --version` never pay for it, and none of them can be taken by an extension. The first extension to claim a subcommand keeps it, the same rule tools follow, so `glrs wt` does not depend on load order.
+
+  `glrs <unknown>` now lists what extensions have added rather than only what is built in — the extensions that would have claimed the word have just been loaded and asked, so naming them costs nothing.
+
+- 7950ad6: An extension can ship a skill, and a prompt contribution can say something about the session.
+
+  Two seams, both of which existed in a shape that was almost enough.
+
+  **`g.prompt` accepts a function.** It pushed a string, and the per-turn preamble was rebuilt every turn — but from strings fixed at registration, so a contribution could describe the extension and nothing else. Passing a function has it asked fresh each turn, which is what lets one say what the _session_ is doing. Returning `""` says nothing, so a line that is only sometimes relevant costs nothing when it is not, and one that throws loses its own line rather than the turn. Both hosts resolve contributions through the same function; this is the third thing the TUI and `-p` each have to do identically and the previous two had drifted.
+
+  **An extension can carry a `skills/` directory** beside its source, laid out exactly like `.glrs/skills/`. The obstacle was ordering — skills are read at startup, extensions do not load until hundreds of lines later — and the fix is that `resolveExtensions` is inert: it stats directories and executes nothing, so it can run first and say which extensions _would_ load. Their skill directories join the roots without a single extension having run, at startup rather than after a reload. Extension roots are appended last, so a skill in your project or your home directory still wins a contested name.
+
+  Two defects fixed on the way, both found while mapping this:
+
+  - **`~/.agents/skills` was searched twice.** It is listed explicitly and reached again by the ancestor walk whenever your project sits under `$HOME`, so every personal skill was found twice and warned that it collided with itself — naming the same path on both sides of the sentence. The test suite could not see it: every test passes a scratch home outside the tree, which is exactly what stops the ancestor walk reaching it.
+  - **`originOf` still tested for `/v2/bundled/`**, a directory that stopped existing when this became a monorepo. Nothing had matched it in months, so `/skills` and `/extensions` tagged everything glrs ships as `other`.
+
+- 4a192cc: `glrs wt` creates and audits git worktrees, and knows which ones you are still working in.
+
+  Worktree management arrives as a first-party extension: `glrs wt` from a terminal, `/wt` inside a session, and a skill that teaches the agent when to reach for one. It ships off, like every first-party extension since — `{"extensions":{"load":["worktree"]}}` turns it on.
+
+  **`glrs wt doctor` is why this is an extension rather than a wrapper.** glrs records the directory every session ran in, so it can tell you which worktrees somebody is still working in before you clean anything up — something a standalone tool cannot know:
+
+  ```
+  fix-the-login-redirect
+      /Users/…/.glrs/worktrees/repo/fix-the-login-redirect
+      active 9m ago · a session was working here recently · 2 uncommitted changes
+  ```
+
+  A session older than a week is reported but does not block: that is history, not occupancy.
+
+  `wt new "fix the login bug"` makes the branch **and** the directory `fix-the-login-bug`, from a freshly fetched `origin/<default>`. A project can put an executable at `.glrs/hooks/wt_new` to do whatever a fresh worktree needs — install dependencies, copy a `.env` across; it is handed the worktree directory as its argument and in `WORKTREE_DIR`/`REPO_NAME`, and a hook that fails warns rather than costing you the worktree.
+
+  Four things it deliberately does differently from the tool it replaces:
+
+  - **git is the source of truth**, not a registry file. A registry drifts, self-rewrites on every read, and once it has any entry it stops falling back to git — so a worktree made with plain `git worktree add` becomes invisible. `git worktree list --porcelain` cannot go stale.
+  - **A name already taken is refused.** The old behaviour was `git branch -D` on a collision, which throws away whatever was on that branch.
+  - **No upstream is set.** Branching from a remote-tracking start point sets one automatically, so a fresh branch reported "up to date with origin/main" however far it had diverged; `--no-track` is what actually leaves it unset, and `git push -u` sets the right one.
+  - **Unpushed commits are measured against the branch's own remote**, not against the base — a branch fully pushed to its own remote used to count as unpushed and be skipped forever.
+
+  Removal stays yours. The skill tells the agent to run `doctor` and report, and to hand you the command rather than run it: deleting a worktree deletes a directory, and deciding what is safe needs judgement about work the agent may not be able to see.
+
+  Two bugs the tests caught while building this, both of the same shape: git reports real paths, and on macOS `/var` is a symlink to `/private/var`. A computed path and a git-reported one for the same directory compared unequal, so the main checkout was offered up for removal as a worktree on a protected branch, and a session's recorded directory failed to match the worktree it was in — silent, and in the direction that deletes work.
+
 ## 1.0.0-next.52
 
 ### Minor Changes

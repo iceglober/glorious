@@ -17,6 +17,7 @@
     "autocomplete-scroll-esc",
     "azure-env-credentials",
     "builtins-owns-the-tools",
+    "cli-extension-point",
     "cli-version-update",
     "cloud-auth-connect",
     "compaction-visible",
@@ -37,6 +38,7 @@
     "esc-help-and-color-test",
     "extension-activation",
     "extension-shortcuts",
+    "extension-skills",
     "failed-tool-reason",
     "gemini-prompt-addendum",
     "heading-anchor-conventions",
@@ -93,6 +95,7 @@
     "v2-rewrite",
     "wave-sub-status",
     "web-fetch-fallback",
+    "worktree-extension",
     "wrap-questions-and-pause-feedback"
   ]
 }
