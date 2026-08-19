@@ -515,17 +515,21 @@ describe("what Esc does", () => {
     chat.send("queued");
     await Bun.sleep(5); // let the first turn actually start
     // exactly what index.ts's interrupt() does
-    const stopped = chat.abort() || chat.dequeue() !== null;
-    expect(stopped).toBe(true);
+    expect(chat.abort()).toBe(true);
     expect(aborted).toBe(true);
-    // the queued message is still queued, not silently removed
-    expect(chat.queued).toEqual(["queued"]);
+    // the queued message is still queued, not silently removed and not sent
+    expect(chat.queued.map((item) => item.text)).toEqual(["queued"]);
+    expect(chat.held).toBe(true);
     await settle(chat);
+    // and it stays that way: a held queue does not march on into whatever
+    // state the interrupt left behind
+    expect(chat.queued.map((item) => item.text)).toEqual(["queued"]);
   });
 
-  test("with nothing running, it takes the newest queued message back", async () => {
-    const { chat } = harness([() => done("a"), () => done("b")]);
-    expect(chat.abort() || chat.dequeue() !== null).toBe(false);
+  test("with nothing running and nothing queued, there is nothing to stop", () => {
+    const { chat } = harness([]);
+    expect(chat.abort()).toBe(false);
+    expect(chat.held).toBe(false);
   });
 });
 
@@ -548,5 +552,284 @@ describe("where an interrupt reminder sits", () => {
     expect(prompts[1].indexOf("the actual new request")).toBeLessThan(
       prompts[1].indexOf(REMINDER_OPEN),
     );
+  });
+});
+
+// An agent whose turn has a known number of step boundaries and asks for
+// steering at each one, exactly as agent.ts does through prepareStep. What it
+// was handed at each boundary is recorded, so a test can say *when* a message
+// arrived rather than only that it did — which is the whole difference between
+// steering and queueing.
+const stepping = (steps: number, onStart?: (run: number) => void) => {
+  const delivered: string[][] = [];
+  const prompts: string[] = [];
+  let runs = 0;
+  const agent = {
+    run: async (
+      prompt: string,
+      _history: ModelMessage[],
+      turn: { onSteer?: () => readonly string[]; onRetry?: (n: number, why: string) => void },
+    ) => {
+      prompts.push(prompt);
+      onStart?.(runs++);
+      for (let step = 0; step < steps; step += 1) {
+        // yield, so anything queued from onStart has actually landed
+        await Bun.sleep(0);
+        delivered.push([...(turn.onSteer?.() ?? [])]);
+      }
+      return done("ok");
+    },
+  } as unknown as Agent;
+  return { agent, delivered, prompts };
+};
+
+describe("a steering message joins the turn that is already running", () => {
+  test("it arrives at the next step boundary, not as a new turn", async () => {
+    let chat!: ReturnType<typeof createChat>;
+    const { agent, delivered, prompts } = stepping(3, (run) => {
+      if (run === 0) chat.send("actually, use bun", null, "steer");
+    });
+    chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
+    chat.send("start");
+    await settle(chat);
+    // delivered at the first boundary, and the turn was never restarted
+    expect(delivered).toEqual([["actually, use bun"], [], []]);
+    expect(prompts).toEqual(["start"]);
+  });
+
+  test("the transcript records it as something the user said mid-turn", async () => {
+    let chat!: ReturnType<typeof createChat>;
+    const events: SessionEvent[] = [];
+    const { agent } = stepping(2, (run) => {
+      if (run === 0) chat.send("use bun", null, "steer");
+    });
+    chat = createChat(agent, { onEvent: (event) => events.push(event), onSignal: () => {} });
+    chat.send("start");
+    await settle(chat);
+    const said = events.filter((event) => event.type === "user");
+    expect(said).toEqual([
+      { type: "user", text: "start" },
+      // marked, so the TUI does not read it as the start of a new turn
+      { type: "user", text: "use bun", steer: true },
+    ]);
+  });
+
+  test("one at a time is one per boundary; all is everything at the first", async () => {
+    const queueTwo = (chat: () => ReturnType<typeof createChat>) => (run: number) => {
+      if (run !== 0) return;
+      chat().send("a", null, "steer");
+      chat().send("b", null, "steer");
+    };
+
+    let paced!: ReturnType<typeof createChat>;
+    const one = stepping(
+      3,
+      queueTwo(() => paced),
+    );
+    paced = createChat(one.agent, { onEvent: () => {}, onSignal: () => {} });
+    paced.send("start");
+    await settle(paced);
+    expect(one.delivered).toEqual([["a"], ["b"], []]);
+
+    let bulk!: ReturnType<typeof createChat>;
+    const every = stepping(
+      3,
+      queueTwo(() => bulk),
+    );
+    bulk = createChat(every.agent, {
+      onEvent: () => {},
+      onSignal: () => {},
+      steeringMode: "all",
+    });
+    bulk.send("start");
+    await settle(bulk);
+    expect(every.delivered).toEqual([["a", "b"], [], []]);
+  });
+
+  // Waiting for a boundary that is never going to come is not a kinder
+  // failure than simply answering.
+  test("with nothing running there is nothing to steer, so it becomes the turn", async () => {
+    const { chat, prompts } = harness([() => done("ok")]);
+    chat.send("do it", null, "steer");
+    await settle(chat);
+    expect(prompts).toEqual(["do it"]);
+  });
+
+  test("a turn that ends before any boundary leaves it queued, not dropped", async () => {
+    let chat!: ReturnType<typeof createChat>;
+    // no boundaries at all: the turn answers and stops
+    const { agent, prompts } = stepping(0, (run) => {
+      if (run === 0) chat.send("too late", null, "steer");
+    });
+    chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
+    chat.send("start");
+    await settle(chat);
+    expect(prompts).toEqual(["start", "too late"]);
+  });
+
+  // A dropped stream is re-sent from the first step. A message taken by the
+  // attempt that died was delivered only to a request that was thrown away.
+  test("a re-sent attempt gets the message the dead one took", async () => {
+    const events: SessionEvent[] = [];
+    const seen: string[][] = [];
+    let chat!: ReturnType<typeof createChat>;
+    let runs = 0;
+    const agent = {
+      run: async (
+        _prompt: string,
+        _history: ModelMessage[],
+        turn: { onSteer?: () => readonly string[]; onRetry?: (n: number, why: string) => void },
+      ) => {
+        if (runs++ === 0) {
+          // queued while this turn is running, which is what makes it steering
+          chat.send("fix it", null, "steer");
+          seen.push([...(turn.onSteer?.() ?? [])]);
+          turn.onRetry?.(1, "socket closed");
+          seen.push([...(turn.onSteer?.() ?? [])]);
+        }
+        return done("ok");
+      },
+    } as unknown as Agent;
+    chat = createChat(agent, {
+      onEvent: (event) => events.push(event),
+      onSignal: () => {},
+    });
+    chat.send("start");
+    await settle(chat);
+    // the attempt that survived saw it too
+    expect(seen).toEqual([["fix it"], ["fix it"]]);
+    // and the transcript shows it once, not once per attempt
+    expect(events.filter((event) => event.type === "user" && event.steer === true)).toHaveLength(1);
+  });
+});
+
+describe("Esc holds the queue rather than marching it on", () => {
+  test("sending anything releases it", async () => {
+    const prompts: string[] = [];
+    const agent = {
+      run: async (prompt: string) => {
+        prompts.push(prompt);
+        await Bun.sleep(20);
+        return done("ok");
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
+    chat.send("first");
+    chat.send("second");
+    await Bun.sleep(5);
+    chat.abort();
+    await settle(chat);
+    // "second" never ran: stopping the turn stopped the queue with it
+    expect(prompts).toEqual(["first"]);
+    expect(chat.held).toBe(true);
+    // and starting work again is what releases it — no key of its own
+    chat.send("third");
+    await settle(chat);
+    expect(prompts).toEqual(["first", "second", "third"]);
+  });
+
+  test("release lets it run without adding to it", async () => {
+    let started = 0;
+    const agent = {
+      run: async () => {
+        started += 1;
+        await Bun.sleep(20);
+        return done("ok");
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
+    chat.send("first");
+    chat.send("second");
+    await Bun.sleep(5);
+    chat.abort();
+    await settle(chat);
+    expect(started).toBe(1);
+    expect(chat.held).toBe(true);
+    // not busy: nothing is going to happen to a held queue until you say so
+    expect(chat.busy).toBe(false);
+    expect(chat.release()).toBe(true);
+    await settle(chat);
+    expect(started).toBe(2);
+    expect(chat.queued).toEqual([]);
+  });
+
+  test("releasing an unheld queue reports that there was nothing to release", () => {
+    const { chat } = harness([]);
+    expect(chat.release()).toBe(false);
+  });
+});
+
+describe("taking a queued message back", () => {
+  test("the newest leaves the queue, whichever kind it is", async () => {
+    let chat!: ReturnType<typeof createChat>;
+    const { agent } = stepping(4, (run) => {
+      if (run !== 0) return;
+      chat.send("a follow-up");
+      chat.send("a steer", null, "steer");
+    });
+    chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
+    chat.send("start");
+    await Bun.sleep(0);
+    // the steering message was queued last, so it is what comes back first
+    expect(chat.unqueue()?.text).toBe("a steer");
+    expect(chat.unqueue()?.text).toBe("a follow-up");
+    expect(chat.unqueue()).toBeNull();
+    await settle(chat);
+  });
+
+  // Restoring the expanded body of a slash command would put a page of prompt
+  // in the composer where "/review" was typed.
+  test("a slash command comes back as what was typed", async () => {
+    const agent = {
+      run: async () => {
+        await Bun.sleep(20);
+        return done("ok");
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, { onEvent: () => {}, onSignal: () => {} });
+    chat.send("start");
+    chat.send("the long expanded body of the review command", "/review");
+    await Bun.sleep(5);
+    const taken = chat.unqueue();
+    expect(taken?.label).toBe("/review");
+    expect(taken?.text).toBe("the long expanded body of the review command");
+    chat.abort();
+    await settle(chat);
+  });
+});
+
+describe("how many follow-ups one turn takes", () => {
+  test("one at a time by default", async () => {
+    const { chat, prompts } = harness([() => done("1"), () => done("2"), () => done("3")]);
+    chat.send("first");
+    chat.send("second");
+    chat.send("third");
+    await settle(chat);
+    expect(prompts).toEqual(["first", "second", "third"]);
+  });
+
+  test("all makes the queue a single turn", async () => {
+    const script = [() => done("1"), () => done("2")];
+    const prompts: string[] = [];
+    const agent = {
+      run: async (prompt: string) => {
+        prompts.push(prompt);
+        const next = script.shift();
+        if (!next) throw new Error("script exhausted");
+        await Bun.sleep(10);
+        return next();
+      },
+    } as unknown as Agent;
+    const chat = createChat(agent, {
+      onEvent: () => {},
+      onSignal: () => {},
+      followUpMode: "all",
+    });
+    chat.send("first");
+    await Bun.sleep(2);
+    chat.send("second");
+    chat.send("third");
+    await settle(chat);
+    expect(prompts).toEqual(["first", "second\n\nthird"]);
   });
 });

@@ -59,6 +59,25 @@ export const shouldResend = (state: {
   state.attempt <= state.attempts &&
   worthRetrying(state.failure);
 
+// Where a steering message goes in the turn's own record. It was appended to
+// what the model saw at a step boundary, so in the stored conversation it
+// belongs between the step it arrived after and the step that answered it —
+// not at the end, where the assistant would appear to have answered it before
+// it was said, and a later compaction would summarise it in the wrong order.
+export const withInjected = (
+  responses: readonly ModelMessage[],
+  injected: ReadonlyArray<{ at: number; message: ModelMessage }>,
+): ModelMessage[] => {
+  const out = responses.slice();
+  // Latest insertion first, so an index recorded earlier still counts the same
+  // messages it counted when it was recorded. Reversed before the sort because
+  // sort is stable: two injections at the same index would otherwise come out
+  // swapped.
+  for (const { at, message } of [...injected].reverse().sort((a, b) => b.at - a.at))
+    out.splice(Math.max(0, Math.min(at, out.length)), 0, message);
+  return out;
+};
+
 export const worthRetrying = (failure: unknown): boolean => {
   if (failure instanceof TypeError) return true;
   if (!(failure instanceof Error)) return false;
@@ -301,6 +320,12 @@ export const createAgent = (setup: Setup) => {
         // turn that pauses for several seconds and then starts over should say
         // why it did.
         onRetry?: (attempt: number, why: string) => void;
+        // Anything the user said while this turn was running, asked for at
+        // every step boundary. What it returns is appended to the messages for
+        // the next step, so the model reads it before it chooses its next
+        // action rather than after the turn has finished going the wrong way.
+        // Returning nothing is the normal case and costs a function call.
+        onSteer?: () => readonly string[];
       },
     ) => {
       // What extensions contribute rides in the per-turn message, not the
@@ -357,6 +382,11 @@ export const createAgent = (setup: Setup) => {
       }
 
       async function once(mark: () => void) {
+        // Scoped to the attempt, not the turn: a re-sent stream starts the step
+        // loop over, so injections from the attempt that died are not part of
+        // what this one will produce. The messages themselves are not lost —
+        // chat.ts puts them back when onRetry fires.
+        const injected: Array<{ at: number; message: ModelMessage }> = [];
         // streamText returns synchronously; its promises settle once the stream
         // below is drained.
         turn.onPhase("sending");
@@ -369,6 +399,19 @@ export const createAgent = (setup: Setup) => {
           tools: toolsFor(turn.onTool),
           messages: [...shown],
           abortSignal: turn.signal,
+          // The one seam where a message can join a turn already in flight.
+          // Appending keeps the cached prefix intact, so steering costs the
+          // tokens of what was said and nothing else.
+          prepareStep: ({ messages, responseMessages }) => {
+            const steering = turn.onSteer?.() ?? [];
+            if (steering.length === 0) return {};
+            const message: ModelMessage = { role: "user", content: steering.join("\n\n") };
+            // Recorded against how many response messages exist right now,
+            // which is the position this has to reappear at when the turn's
+            // messages are stored.
+            injected.push({ at: responseMessages.length, message });
+            return { messages: [...messages, message] };
+          },
           // The SDK's default is console.error, which writes a raw stack over the
           // alternate screen. The failure still travels: it arrives as an error
           // part and the loop below throws it.
@@ -437,7 +480,11 @@ export const createAgent = (setup: Setup) => {
         ]);
         return {
           text,
-          messages: [...sent, ...responseMessages],
+          // Steering messages are appended by prepareStep, so they are in
+          // neither `sent` nor `responseMessages`. Left out here the model
+          // would have answered something the stored conversation never says
+          // was asked.
+          messages: [...sent, ...withInjected(responseMessages, injected)],
           stoppedAtStepLimit: !text.trim() && steps.length >= STEP_LIMIT,
         };
       }

@@ -165,3 +165,56 @@ describe("a config that does not do what it looks like it does", () => {
     await rm(dir, { recursive: true, force: true });
   });
 });
+
+// The personal layer, for checking that a project file wins one key at a time.
+const personal = async (contents: string): Promise<string> => {
+  const home = await mkdtemp(join(tmpdir(), "glorious-home-"));
+  roots.push(home);
+  await mkdir(join(home, ".glorious"), { recursive: true });
+  await writeFile(join(home, ".glorious", "config.json"), contents);
+  return home;
+};
+
+describe("how a queue delivers", () => {
+  test("nothing sets either mode by default", async () => {
+    const root = await project('{"model":"azure/x"}');
+    const { config } = await loadConfig(root, join(root, "nohome"));
+    expect(config.steering_mode).toBeUndefined();
+    expect(config.follow_up_mode).toBeUndefined();
+  });
+
+  test("the snake_case spellings glorious uses elsewhere", async () => {
+    const root = await project('{"steering_mode":"all","follow_up_mode":"one-at-a-time"}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.steering_mode).toBe("all");
+    expect(config.follow_up_mode).toBe("one-at-a-time");
+    expect(diagnostics).toEqual([]);
+  });
+
+  // The camelCase names are what these settings are called in the docs of the
+  // agent this queue was modelled on, so they are what gets typed first.
+  test("the camelCase spellings are read too", async () => {
+    const root = await project('{"steeringMode":"all","followUpMode":"all"}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.steering_mode).toBe("all");
+    expect(config.follow_up_mode).toBe("all");
+    expect(diagnostics).toEqual([]);
+  });
+
+  // A recognised key with an unusable value is otherwise dropped exactly as
+  // silently as a typo.
+  test("a value that is not a mode is reported under the name that was written", async () => {
+    const root = await project('{"steeringMode":"batch"}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.steering_mode).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain('"steeringMode" should be "one-at-a-time" or "all"');
+  });
+
+  test("a project file wins over a personal one, one key at a time", async () => {
+    const home = await personal('{"steering_mode":"all","follow_up_mode":"all"}');
+    const root = await project('{"follow_up_mode":"one-at-a-time"}');
+    const { config } = await loadConfig(root, home);
+    expect(config.steering_mode).toBe("all");
+    expect(config.follow_up_mode).toBe("one-at-a-time");
+  });
+});

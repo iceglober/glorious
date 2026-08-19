@@ -40,6 +40,7 @@ import {
   assistantBlock,
   errorText,
   eventBlock,
+  heldRow,
   type Line,
   NO_TOOL_RUN,
   noticeBlock,
@@ -273,7 +274,9 @@ const main = async (): Promise<void> => {
         ),
       );
     }
-    for (const text of chat.queued) progress.push(queuedRow(text));
+    for (const entry of chat.queued)
+      progress.push(queuedRow({ kind: entry.kind, text: entry.label ?? entry.text }));
+    if (chat.held) progress.push(heldRow(chat.queued.length));
     screen.setProgress(progress);
     screen.setFooter(registry.footers.flatMap((render) => safely(render) ?? []));
     // An extension gets first refusal on the activity row; the default stands
@@ -371,7 +374,12 @@ const main = async (): Promise<void> => {
         onExtensionFailure,
       );
     }
-    if (event.type === "user") {
+    // A steering message is something the user said *into* a turn that was
+    // already running, so it is a user event that does not start a turn. Left
+    // unguarded it reset `produced`, and a turn that had already run three
+    // tools then reported "(no response)"; and it told every extension a new
+    // turn had begun in the middle of the one they were already watching.
+    if (event.type === "user" && event.steer !== true) {
       produced = false;
       void fire(registry, "turn_start", { text: event.text }, onExtensionFailure);
     }
@@ -449,18 +457,6 @@ const main = async (): Promise<void> => {
       case "empty":
         if (!produced) screen.print(noticeBlock("(no response)"), false);
         break;
-      case "dequeued":
-        screen.restoreInput(value.text);
-        // Loud, and it says where the text went. Muted, this was easy to miss
-        // and the message looked like it had been dropped.
-        screen.print(
-          noticeBlock(
-            `(taken out of the queue and put back in the composer — press Enter to send it)\n  ${value.text.split("\n")[0].slice(0, 72)}`,
-            "warning",
-          ),
-          false,
-        );
-        break;
       case "idle":
         void fire(registry, "idle", {}, onExtensionFailure);
         maybeCompact();
@@ -486,7 +482,15 @@ const main = async (): Promise<void> => {
     onFileSearch: (query) => fileCandidates(root, query),
     // `@path` keeps its place in what the transcript shows — it is what was
     // typed — while the file's contents ride along with the message.
-    onSubmit: (text) => {
+    onSubmit: (text, kind) => {
+      // Enter on an empty composer means "carry on" after Esc held the queue,
+      // and nothing at all otherwise. It never reaches an extension's `input`
+      // hook: there is no input.
+      if (text.trim() === "") {
+        chat.release();
+        repaint();
+        return;
+      }
       void fire(registry, "input", { text }, onExtensionFailure).then(async (said) => {
         if (said === false) {
           repaint();
@@ -496,9 +500,17 @@ const main = async (): Promise<void> => {
         const { prompt, attached, missing } = await expandMentions(root, typed);
         for (const path of missing)
           render({ type: "notice", text: `(no such file: @${path} — sent as text)` });
-        chat.send(prompt, attached.length === 0 ? null : typed);
+        chat.send(prompt, attached.length === 0 ? null : typed, kind);
         repaint();
       });
+    },
+    // Alt+Up. The message leaves the queue and comes back to the composer, so
+    // rescinding and editing are the same gesture: retype it and press Enter,
+    // or clear the line and it is gone.
+    onUnqueue: () => {
+      const taken = chat.unqueue();
+      if (taken !== null) screen.restoreInput(taken.label ?? taken.text);
+      repaint();
     },
     onShell: (command) => {
       screen.print(userBlock(`!${command}`), true);
@@ -651,6 +663,8 @@ const main = async (): Promise<void> => {
       return typeof added === "string" ? added : undefined;
     },
     history: messagesOf(session.events),
+    steeringMode: config.config.steering_mode,
+    followUpMode: config.config.follow_up_mode,
   });
 
   // Loaded after the screen exists, so a failure has somewhere to be seen, and
@@ -662,7 +676,7 @@ const main = async (): Promise<void> => {
     exec: (command, args) => runShell(root, command, args),
     mode: "tui" as const,
     send: (text, options) => {
-      chat.send(text, options.label ?? null, options.steer === true);
+      chat.send(text, options.label ?? null, options.steer === true ? "steer" : "follow-up");
       repaint();
     },
     setInput: (text) => {
@@ -843,11 +857,11 @@ const main = async (): Promise<void> => {
     release = resolve;
   });
 
-  // Stopping the work comes first. This dequeued first, so pressing Esc during
-  // a turn with anything queued silently pulled the queued message back into
-  // the composer and let the turn run on — the message was never sent, and
-  // nothing about the running turn changed, which reads as Esc doing nothing.
-  const interrupt = (): boolean => chat.abort() || chat.dequeue() !== null;
+  // One job: stop. The turn is aborted and the queue is held rather than
+  // marching on into whatever state the interrupt left behind. Nothing is
+  // taken out of the composer and nothing is put into it — Alt+Up is the key
+  // for that, and Enter on an empty line lets the queue run again.
+  const interrupt = (): boolean => chat.abort();
 
   // The teardown waits on session_end, so an extension that writes a file or
   // posts a result on the way out actually finishes. It cannot usefully print:

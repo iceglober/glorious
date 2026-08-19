@@ -6,7 +6,7 @@ export const SECTIONS = [
   { to: "/concepts", label: "concepts", pages: [["Philosophy", "/philosophy"], ["Glossary", "/glossary"], ["Architecture", "/architecture"]] },
   { to: "/extend", label: "extend", pages: [["Extensions", "/extensions"], ["Lifecycle", "/lifecycle"], ["Skills", "/skills"], ["Commands", "/commands"]] },
   { to: "/reference", label: "reference", pages: [["Tools", "/tools"], ["Providers", "/providers"], ["Models", "/models"], ["Configuration", "/configuration"], ["CLI", "/cli"], ["Extension API", "/api"]] },
-  { to: "/help", label: "help", pages: [["Troubleshooting", "/troubleshooting"], ["Changelog", "/changelog"]] },
+  { to: "/help", label: "help", pages: [["Terminal setup", "/terminal-setup"], ["Troubleshooting", "/troubleshooting"], ["Changelog", "/changelog"]] },
 ] as const;
 
 const isCurrentSection = (pathname: string, to: string, pages: readonly (readonly [string, string])[]) => pathname === to || pages.some(([, page]) => pathname === page);

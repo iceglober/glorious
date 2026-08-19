@@ -450,8 +450,23 @@ export const runningRow = (
   ];
 };
 
-export const queuedRow = (text: string): Line => [
-  { text: `  ↳ queued: ${clip(flatten(text), 64)}`, tone: "warning" },
+// One waiting message. The kind leads because it is what decides when the
+// message lands, and it is the thing you would want to catch if you pressed the
+// wrong chord.
+export const queuedRow = (entry: { kind: "steer" | "follow-up"; text: string }): Line => [
+  {
+    text: `  ↳ ${entry.kind === "steer" ? "steering" : "queued"}: ${clip(flatten(entry.text), 64)}`,
+    tone: "warning",
+  },
+];
+
+// Esc stopped the turn and the queue with it. The rows above already say what
+// is waiting; this says why none of it is moving and what makes it move again.
+export const heldRow = (waiting: number): Line => [
+  {
+    text: `  ⏸ ${waiting} held — Enter releases · Alt+Up takes the last one back`,
+    tone: "warning",
+  },
 ];
 
 const tokenCount = (tokens: number | null): string => {

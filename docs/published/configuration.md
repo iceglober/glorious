@@ -51,6 +51,8 @@ about is not a broken config.
 {
   "model": "provider/model-id",
   "variant": "high",
+  "steering_mode": "one-at-a-time",
+  "follow_up_mode": "one-at-a-time",
   "providers": {
     "openai-compatible": { "api": "http://localhost:11434/v1" },
     "amazon-bedrock": { "region": "us-east-1" },
@@ -62,10 +64,21 @@ about is not a broken config.
 - `model` — model label as `provider/model-id`. A bare model id uses the default provider.
 - `variant` — reasoning effort when the model advertises one.
 - `tool_timeout_ms` — maximum time for a built-in shell/search tool, in milliseconds. Defaults to 600000.
+- `steering_mode` — how many waiting `Alt+Enter` messages are delivered at each step boundary of the running turn. `"one-at-a-time"` (default) or `"all"`.
+- `follow_up_mode` — how many waiting `Enter` messages become one turn. `"one-at-a-time"` (default) or `"all"`.
 - `providers.<name>.api` — base URL for an OpenAI-compatible endpoint.
 - `providers.<name>.region` — AWS Bedrock region.
 - `providers.<name>.project` — Google Vertex project.
 - `providers.<name>.location` — Google Vertex location.
+
+`one-at-a-time` is the default for both because it is the setting that lets the
+model answer what you said before it reads what you said next. `all` is for
+when the messages are one thought split across three Enters — it joins them
+with a blank line and delivers them as a single message. See
+[features](/features#the-message-queue) for what the two kinds of message are.
+
+Both are also read under their camelCase spellings, `steeringMode` and
+`followUpMode`.
 
 Unknown keys are ignored. Invalid JSON is reported by `glorious doctor` and
 ignored rather than preventing startup.
