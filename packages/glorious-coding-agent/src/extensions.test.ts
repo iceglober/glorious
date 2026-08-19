@@ -400,3 +400,40 @@ describe("reloading extensions", () => {
     await rm(dir, { recursive: true, force: true });
   });
 });
+
+// The bundled roster is a hardcoded list of static imports (extensions.ts), and
+// nothing asserted it actually loads — so moving one of them to a new package
+// was caught by nothing but a manual run.
+//
+// A path that no longer resolves does not reach `failures`: the imports are at
+// the top of extensions.ts, so it fails when this file imports it and the whole
+// suite goes red. That is the louder half of the guard. These tests cover the
+// quieter half — a roster entry that resolves but is wired to the wrong name or
+// origin, which loads fine and simply is not the extension you meant.
+describe("the extensions that ship with glorious", () => {
+  test("every bundled one loads, and none of them fails", async () => {
+    const { result } = await load();
+    const loaded = result as {
+      extensions: ReadonlyArray<{ name: string; origin: string }>;
+      failures: ReadonlyArray<{ origin: string; message: string }>;
+    };
+    const shipped = loaded.extensions.filter((one) => one.origin.startsWith("@glrs-dev/"));
+    expect(shipped.map((one) => one.name).sort()).toEqual(["ask-user", "builtins", "web-fetch"]);
+    // A shipped extension that throws in its own factory is isolated and lands
+    // here, which reads as a missing capability nobody notices until a turn
+    // needs it.
+    expect(loaded.failures.filter((one) => one.origin.startsWith("@glrs-dev/"))).toEqual([]);
+  });
+
+  test("each one says where it came from", async () => {
+    const { result } = await load();
+    const { extensions } = result as {
+      extensions: ReadonlyArray<{ name: string; origin: string }>;
+    };
+    const origin = (name: string): string | undefined =>
+      extensions.find((one) => one.name === name)?.origin;
+    expect(origin("ask-user")).toBe("@glrs-dev/glorious-ask-user");
+    expect(origin("builtins")).toBe("@glrs-dev/glorious-builtins");
+    expect(origin("web-fetch")).toBe("@glrs-dev/glorious-web-fetch");
+  });
+});
