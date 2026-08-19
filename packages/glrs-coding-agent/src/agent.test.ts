@@ -99,19 +99,45 @@ describe("a stream that fails part-way", () => {
 });
 
 describe("what we ask the provider for", () => {
+  const openai = { provider: "openai", modelId: "gpt-5" };
+
   test("reasoning travels as content, never as a server-side reference", () => {
     // store:true (the provider's default when unset) replays reasoning as
     // {type:"item_reference", id:"rs_…"}, and a missed lookup kills the turn
-    expect(providerOptions(undefined, "key").store).toBe(false);
+    expect(providerOptions(openai, "key").openai?.store).toBe(false);
   });
 
   test("the cache key still rides along, so prompt caching is unaffected", () => {
-    expect(providerOptions(undefined, "abc123").promptCacheKey).toBe("abc123");
+    expect(providerOptions(openai, "abc123").openai?.promptCacheKey).toBe("abc123");
   });
 
-  test("effort is sent only when a mode asked for one", () => {
-    expect(providerOptions("high", "k")).toMatchObject({ reasoningEffort: "high" });
-    expect(providerOptions(undefined, "k")).not.toHaveProperty("reasoningEffort");
+  test("effort is sent only when one was configured", () => {
+    expect(providerOptions({ ...openai, variant: "high" }, "k").openai).toMatchObject({
+      reasoningEffort: "high",
+    });
+    expect(providerOptions(openai, "k").openai).not.toHaveProperty("reasoningEffort");
+  });
+
+  // The whole object used to be nested under `openai` whatever the provider
+  // was, so `{"model":"anthropic/…","variant":"high"}` validated, passed
+  // doctor, and reached nothing that reads it.
+  test("each provider is asked in its own words, under its own namespace", () => {
+    expect(
+      providerOptions({ provider: "anthropic", modelId: "claude", variant: "high" }, "k"),
+    ).toMatchObject({ anthropic: { thinking: { type: "enabled" } } });
+    expect(
+      providerOptions({ provider: "google", modelId: "gemini", variant: "high" }, "k"),
+    ).toMatchObject({ google: { thinkingConfig: { includeThoughts: true } } });
+    expect(
+      providerOptions({ provider: "amazon-bedrock", modelId: "x", variant: "low" }, "k"),
+    ).toMatchObject({ bedrock: { reasoningConfig: { maxReasoningEffort: "low" } } });
+  });
+
+  test("no provider is handed a namespace it does not read", () => {
+    for (const provider of ["anthropic", "google", "amazon-bedrock"])
+      expect(providerOptions({ provider, modelId: "m", variant: "high" }, "k")).not.toHaveProperty(
+        "openai",
+      );
   });
 });
 

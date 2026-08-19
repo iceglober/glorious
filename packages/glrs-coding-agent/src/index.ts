@@ -17,10 +17,14 @@ import {
   envSetting,
   loadCatalogue,
   loadConfig,
+  type ModelOption,
   missingFor,
   modelLabel,
   modelMetadata,
   modelRef,
+  NoModelChosen,
+  noteFor,
+  PROVIDERS,
   providerSpec,
 } from "../../provider-registry/src";
 import { createAgent } from "./agent";
@@ -168,7 +172,17 @@ const main = async (): Promise<void> => {
   const { root, os, branch, worktree, git, label } = probe();
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
-    const chosen = currentModel(resolvedConfig.config);
+    // Now that nothing is defaulted, "no model configured" is a state doctor
+    // exists to report — so it is caught here rather than ending the one
+    // command whose whole job is to say what is wrong.
+    let chosen: ModelOption | undefined;
+    let modelProblem: string | undefined;
+    try {
+      chosen = currentModel(resolvedConfig.config);
+    } catch (thrown) {
+      if (!(thrown instanceof NoModelChosen)) throw thrown;
+      modelProblem = (thrown as Error).message;
+    }
     // Resolved, not loaded: this says what would run without running any of it.
     // An extension is a program, and a diagnostic that executes programs is not
     // a diagnostic.
@@ -180,18 +194,37 @@ const main = async (): Promise<void> => {
         ...planned.failures.map((one) => `extensions.load "${one.origin}": ${one.message}`),
       ],
       model: chosen,
-      provider: providerSpec(chosen.provider)?.label ?? `${chosen.provider} (OpenAI-compatible)`,
-      missing: missingFor(chosen.provider, resolvedConfig.config.providers?.[chosen.provider]),
+      provider:
+        chosen === undefined
+          ? undefined
+          : (providerSpec(chosen.provider)?.label ?? `${chosen.provider} (OpenAI-compatible)`),
+      missing:
+        chosen === undefined
+          ? []
+          : missingFor(chosen.provider, resolvedConfig.config.providers?.[chosen.provider]),
+      // How to obtain the credential, for the providers that need more than a
+      // variable set — ADC for vertex, the credential chain for bedrock.
+      note: chosen === undefined ? undefined : noteFor(chosen.provider),
       extensions: planned.plan.map(({ name, origin, source }) => ({ name, origin, source })),
     };
     if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else {
       const lines = [
-        `model: ${modelLabel(report.model)}`,
-        `provider: ${report.provider}`,
-        ...(report.missing.length === 0
-          ? ["credentials: found"]
-          : report.missing.map((gap) => `missing: ${gap}`)),
+        report.model === undefined ? "model: not configured" : `model: ${modelLabel(report.model)}`,
+        ...(modelProblem === undefined ? [] : [`  ${modelProblem}`]),
+        // Named here because the message above says they are. A diagnostic
+        // that points at a list it does not print is the same defect as a
+        // config key that parses and does nothing.
+        ...(report.model === undefined
+          ? [`providers: ${PROVIDERS.map((one) => one.id).join(", ")}`]
+          : []),
+        ...(report.provider === undefined ? [] : [`provider: ${report.provider}`]),
+        ...(report.model === undefined
+          ? []
+          : report.missing.length === 0
+            ? ["credentials: found"]
+            : report.missing.map((gap) => `missing: ${gap}`)),
+        ...(report.note === undefined || report.missing.length === 0 ? [] : [`  ${report.note}`]),
         `extensions: ${
           report.extensions.length === 0
             ? "none"

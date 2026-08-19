@@ -80,14 +80,26 @@ const catalogue = async (fetcher: typeof fetch): Promise<unknown | null> => {
     return cached();
   }
 };
-export const modelRef = (value: string, provider = "azure"): ModelRef => {
+// Thrown when nothing has chosen a model, and when a model names no provider.
+// Both are the same failure from the caller's side: glrs does not know what to
+// run, and picking something would be worse than saying so.
+export class NoModelChosen extends Error {}
+
+// Every model names its provider. A bare id used to mean azure, which made the
+// most likely provider the one nobody chose — and the one whose base URL was
+// silently ignored. There is no default now, so a model that names no provider
+// is an error rather than a guess.
+export const modelRef = (value: string): ModelRef => {
   const slash = value.indexOf("/");
-  return slash < 1
-    ? { provider: canonicalProvider(provider), modelId: value }
-    : {
-        provider: canonicalProvider(value.slice(0, slash)),
-        modelId: value.slice(slash + 1),
-      };
+  if (slash < 1)
+    throw new NoModelChosen(
+      `"${value}" names no provider. Models are written provider/model-id, as in ` +
+        "anthropic/claude-opus-4-1 or azure/gpt-5. `glrs doctor` lists what ships.",
+    );
+  return {
+    provider: canonicalProvider(value.slice(0, slash)),
+    modelId: value.slice(slash + 1),
+  };
 };
 
 export const modelLabel = (model: ModelRef): string => `${model.provider}/${model.modelId}`;
@@ -115,13 +127,20 @@ const providerSettings = (
   config?: Config,
 ): Pick<ModelOption, "api" | "region" | "project" | "location"> => {
   const metadata = config?.providers?.[provider];
+  // `api` is carried for every provider, not only the OpenAI-compatible ones.
+  // Bedrock and vertex used to drop it here — the key parsed, validated, merged
+  // and then vanished before the model was built, so a private endpoint or a
+  // proxy silently went to the public one.
+  const api = metadata?.api === undefined ? {} : { api: metadata.api };
   if (provider === "amazon-bedrock")
     return {
+      ...api,
       region:
         metadata?.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1",
     };
   if (provider === "google-vertex")
     return {
+      ...api,
       project:
         metadata?.project ?? process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GOOGLE_VERTEX_PROJECT,
       location:
@@ -130,11 +149,17 @@ const providerSettings = (
         process.env.GOOGLE_VERTEX_LOCATION ??
         "global",
     };
-  return metadata?.api === undefined ? {} : { api: metadata.api };
+  return api;
 };
 
 export const currentModel = (config?: Config): ModelOption => {
-  const model = envSetting("MODEL") ?? config?.model ?? "gpt-5.6-luna";
+  const model = envSetting("MODEL") ?? config?.model;
+  if (model === undefined || model.trim() === "")
+    throw new NoModelChosen(
+      "No model is configured. Set one with --model provider/model-id, GLRS_MODEL, or " +
+        '{"model": "provider/model-id"} in .glrs/config.json. ' +
+        "`glrs doctor` lists the providers that ship.",
+    );
   const ref = modelRef(model);
   return {
     ...ref,
@@ -257,8 +282,14 @@ export const resolveApiKey = (option: {
 
 export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch): LanguageModel => {
   const apiKey = resolveApiKey(option);
+  // azure was the one branch that dropped the base URL, and — being the former
+  // default provider — the one most likely to need it. A gateway or a private
+  // resource configured through providers.azure.api went to the public
+  // endpoint without a word.
   if (option.provider === "azure" || option.npm === "@ai-sdk/azure")
-    return createAzure({ apiKey, fetch: fetcher as typeof fetch })(option.modelId);
+    return createAzure({ apiKey, baseURL: option.api, fetch: fetcher as typeof fetch })(
+      option.modelId,
+    );
   if (option.provider === "amazon-bedrock")
     return createAmazonBedrock({
       apiKey,
