@@ -1,4 +1,3 @@
-/** @module Core */
 import type { ModelMessage } from "ai";
 import type { z } from "zod";
 import type { SessionEvent } from "./events";

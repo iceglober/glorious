@@ -1,9 +1,8 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": [
-    "../packages/glorious-core/src/index.ts",
-    "../packages/glorious-coding-agent/src/sdk.ts",
-    "../packages/provider-registry/src/index.ts"
+    "../packages/glorious-coding-agent/src/public-extension-api.ts",
+    "../packages/glorious-coding-agent/src/sdk.ts"
   ],
   "entryPointStrategy": "resolve",
   "alwaysCreateEntryPointModule": true,
