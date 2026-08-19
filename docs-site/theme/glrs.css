@@ -59,8 +59,9 @@ body { letter-spacing: -0.01em; }
   background-image: url("https://github.com/iceglober/glorious/actions/workflows/ci.yml/badge.svg?branch=main");
 }
 #tsd-toolbar-links a[href="https://www.npmjs.com/package/@glrs-dev/glrs"]:not(:last-child) {
-  width: 98px;
-  background-image: url("https://img.shields.io/npm/v/%40glrs-dev%2Fglrs/next?label=npm%40next");
+  width: 142px;
+  height: 28px;
+  background-image: url("https://img.shields.io/npm/v/%40glrs-dev%2Fglrs/next?label=npm%40next&style=for-the-badge");
 }
 
 .container { max-width: none; padding-inline: clamp(1rem, 4vw, 3.5rem); }
