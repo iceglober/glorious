@@ -108,7 +108,10 @@ footer::before { content: "glorious · next"; }
 footer > * { display: none; }
 
 @media (min-width: 1200px) {
-  .container-main { column-gap: 1rem; }
+  .container-main {
+    grid-template-columns: minmax(14rem, 1fr) minmax(0, 76ch) minmax(16rem, 1fr);
+    column-gap: 1rem;
+  }
   .site-menu { margin-right: clamp(0.5rem, 3vw, 3rem); }
   .page-menu { padding-left: 0; }
 }
