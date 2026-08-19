@@ -35,11 +35,13 @@ a name keeps it — so replacing one means registering that name in
 - **web_fetch** — fetches up to ten pages and returns their content as
   markdown. Renders with an installed Chrome when there is one, so pages built
   by JavaScript work. Cross-host redirects are reported rather than followed.
+  Ships in the box but off until named: `{"extensions":{"load":["web-fetch"]}}`.
 
 ## Agent
 
-- **ask_user** — asks you questions with selectable options. Not a built-in: a bundled extension, written against `g.ui.capture`. Absent in `-p`
-  mode, where there is nobody to answer.
+- **ask_user** — asks you questions with selectable options. An extension,
+  written against `g.ui.capture`, off until named in `extensions.load`. Absent
+  in `-p` mode either way, where there is nobody to answer.
 - **activate_skill** — loads a skill's full instructions. Present only when
   skills are found.
 

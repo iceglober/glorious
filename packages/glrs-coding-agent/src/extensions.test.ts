@@ -13,7 +13,7 @@ import {
   type Registry,
   resetRegistry,
 } from "./extension-api";
-import { loadExtensions } from "./extensions";
+import { loadExtensions, resolveExtensions } from "./extensions";
 import type { ToolEvent } from "./toolkit";
 
 let root = "";
@@ -364,7 +364,7 @@ describe("reloading extensions", () => {
 
     await write(dir, "late", tool("late_arrival"));
     resetRegistry(registry);
-    await loadExtensions(dir, registry, local, () => {}, "1");
+    await loadExtensions(dir, registry, local, () => {}, { token: "1" });
     expect(Object.keys(registry.tools)).toContain("late_arrival");
     await rm(dir, { recursive: true, force: true });
   });
@@ -378,7 +378,7 @@ describe("reloading extensions", () => {
     const local = { ...host, root: dir };
     await loadExtensions(dir, registry, local, () => {});
     resetRegistry(registry);
-    await loadExtensions(dir, registry, local, () => {}, "2");
+    await loadExtensions(dir, registry, local, () => {}, { token: "2" });
     expect(registry.commands.filter((command) => command.name === "just_one")).toHaveLength(0);
     expect(Object.keys(registry.tools).filter((name) => name === "just_one")).toHaveLength(1);
     await rm(dir, { recursive: true, force: true });
@@ -394,7 +394,7 @@ describe("reloading extensions", () => {
 
     await write(dir, "edited", tool("after_edit"));
     resetRegistry(registry);
-    await loadExtensions(dir, registry, local, () => {}, "3");
+    await loadExtensions(dir, registry, local, () => {}, { token: "3" });
     expect(Object.keys(registry.tools)).toContain("after_edit");
     expect(Object.keys(registry.tools)).not.toContain("before_edit");
     await rm(dir, { recursive: true, force: true });
@@ -425,58 +425,124 @@ describe("reloading extensions", () => {
 // quieter half — a roster entry that resolves but is wired to the wrong name or
 // origin, which loads fine and simply is not the extension you meant.
 describe("the extensions that ship with glrs", () => {
-  test("every bundled one loads, and none of them fails", async () => {
-    const { result } = await load();
-    const loaded = result as {
+  const shipped = async (settings?: {
+    load?: readonly string[];
+    disable?: readonly string[];
+  }): Promise<{
+    extensions: ReadonlyArray<{ name: string; origin: string }>;
+    failures: ReadonlyArray<{ origin: string; message: string }>;
+    notes: readonly string[];
+  }> => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-roster-"));
+    const registry = createRegistry();
+    const result = (await loadExtensions(dir, registry, { ...host, root: dir }, () => {}, {
+      settings,
+    })) as {
       extensions: ReadonlyArray<{ name: string; origin: string }>;
       failures: ReadonlyArray<{ origin: string; message: string }>;
+      notes: readonly string[];
     };
-    const shipped = loaded.extensions.filter((one) => one.origin.startsWith("@glrs-dev/"));
-    expect(shipped.map((one) => one.name).sort()).toEqual(["ask-user", "builtins", "web-fetch"]);
-    // A shipped extension that throws in its own factory is isolated and lands
-    // here, which reads as a missing capability nobody notices until a turn
-    // needs it.
-    expect(loaded.failures.filter((one) => one.origin.startsWith("@glrs-dev/"))).toEqual([]);
+    await rm(dir, { recursive: true, force: true });
+    // Only what glrs ships. `agentDirectories` puts ~/.config/agents/extensions
+    // on the walk unconditionally, so a temp project still picks up whatever the
+    // machine running these tests happens to have installed there.
+    return {
+      ...result,
+      extensions: result.extensions.filter((one) => one.origin.startsWith("@glrs-dev/")),
+    };
+  };
+
+  // builtins carries the six tools and every slash command, so it is the one
+  // the agent cannot work without. The rest add a capability and wait to be
+  // asked for.
+  test("only builtins loads when config says nothing", async () => {
+    const loaded = await shipped();
+    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins"]);
+  });
+
+  test("naming one in load turns it on", async () => {
+    const loaded = await shipped({ load: ["web-fetch"] });
+    expect(loaded.extensions.map((one) => one.name).sort()).toEqual(["builtins", "web-fetch"]);
+  });
+
+  // The roster records the package specifier, so a config written now keeps
+  // working the day these are installed rather than bundled.
+  test("it can be named by the package it ships as", async () => {
+    const loaded = await shipped({ load: ["@glrs-dev/glrs-ext-ask-user"] });
+    expect(loaded.extensions.map((one) => one.name)).toContain("ask-user");
+  });
+
+  test("disable turns off the one that is on by default", async () => {
+    const loaded = await shipped({ disable: ["builtins"] });
+    expect(loaded.extensions).toEqual([]);
+  });
+
+  test("disable beats load", async () => {
+    const loaded = await shipped({ load: ["web-fetch"], disable: ["web-fetch"] });
+    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins"]);
   });
 
   test("each one says where it came from", async () => {
-    const { result } = await load();
-    const { extensions } = result as {
-      extensions: ReadonlyArray<{ name: string; origin: string }>;
-    };
+    const loaded = await shipped({ load: ["web-fetch", "ask-user"] });
     const origin = (name: string): string | undefined =>
-      extensions.find((one) => one.name === name)?.origin;
+      loaded.extensions.find((one) => one.name === name)?.origin;
     expect(origin("ask-user")).toBe("@glrs-dev/glrs-ext-ask-user");
     expect(origin("builtins")).toBe("@glrs-dev/glrs-ext-builtins");
     expect(origin("web-fetch")).toBe("@glrs-dev/glrs-ext-web-fetch");
   });
 });
 
-// Everything above discovers extensions under `.glrs`. This is the other half
-// of the promise the rename made: a project that has not been renamed keeps
-// loading, and an extension that stopped loading would otherwise look exactly
-// like one that was never written.
-describe("extensions under the name from before the rename", () => {
-  test("a .glorious/extensions file is still discovered", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "glrs-legacy-ext-"));
-    await mkdir(join(dir, ".glorious", "extensions"), { recursive: true });
+// You asked for something and it is not there; that is a failure, not a
+// preference. Disabling something that was never going to load is the other
+// way round — nothing is broken, but the usual cause is a typo.
+describe("what config says that does not resolve", () => {
+  const attempt = async (settings: {
+    load?: readonly string[];
+    disable?: readonly string[];
+  }): Promise<{ failures: ReadonlyArray<{ message: string }>; notes: readonly string[] }> => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-resolve-"));
+    const plan = await resolveExtensions(dir, settings);
+    await rm(dir, { recursive: true, force: true });
+    return plan;
+  };
+
+  test("a name that is neither bundled nor on disk fails", async () => {
+    const { failures } = await attempt({ load: ["web-fech"] });
+    expect(failures[0]?.message).toContain("no extension by that name");
+  });
+
+  test("a scheme is refused with its reason rather than silently", async () => {
+    const { failures } = await attempt({ load: ["npm:@acme/thing"] });
+    expect(failures[0]?.message).toContain("need an installer");
+  });
+
+  test("an absolute path that is not there says which file", async () => {
+    const { failures } = await attempt({ load: ["/tmp/glrs-nope/ext.ts"] });
+    expect(failures[0]?.message).toContain("no such file");
+  });
+
+  test("a disable that matches nothing is a note, not a failure", async () => {
+    const { failures, notes } = await attempt({ disable: ["web_fetch"] });
+    expect(failures).toEqual([]);
+    expect(notes.join("\n")).toContain('names "web_fetch"');
+  });
+
+  // An extension is a program. A diagnostic that runs programs is not a
+  // diagnostic, which is why `glrs doctor` reports from the plan.
+  test("resolving runs nothing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-inert-"));
+    await mkdir(join(dir, ".glrs", "extensions"), { recursive: true });
     await Bun.write(
-      join(dir, ".glorious", "extensions", "legacyprobe.ts"),
-      `export default function (g) {
-         g.tool({ name: "legacy_probe", description: "d", input: g.z.object({}), execute: async () => "ok" });
-       }`,
+      join(dir, ".glrs", "extensions", "boom.ts"),
+      'throw new Error("this must not run");',
     );
-    const registry = createRegistry();
-    await loadExtensions(dir, registry, { ...host, root: dir }, () => {});
-    expect(Object.keys(registry.tools)).toContain("legacy_probe");
+    const { plan, failures } = await resolveExtensions(dir);
+    expect(plan.map((one) => one.name)).toContain("boom");
+    expect(failures).toEqual([]);
     await rm(dir, { recursive: true, force: true });
   });
 });
 
-// The six tools are an extension now, which means override is decided by the
-// registry rather than by a spread in agent.ts. Nothing about that is visible
-// to the type checker, and getting it backwards would silently hand a shipped
-// tool priority over the one a project wrote.
 describe("replacing a tool glrs ships", () => {
   const bashFrom = async (dir: string): Promise<string> => {
     const registry = createRegistry();

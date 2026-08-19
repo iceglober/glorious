@@ -63,6 +63,8 @@ about is not a broken config.
   "variant": "high",
   "steering_mode": "one-at-a-time",
   "follow_up_mode": "one-at-a-time",
+  "extensions": { "load": ["web-fetch"], "disable": [] },
+  "tools": { "disable": [] },
   "providers": {
     "openai-compatible": { "api": "http://localhost:11434/v1" },
     "amazon-bedrock": { "region": "us-east-1" },
@@ -76,6 +78,9 @@ about is not a broken config.
 - `tool_timeout_ms` — maximum time for a built-in shell/search tool, in milliseconds. Defaults to 600000.
 - `steering_mode` — how many waiting `Alt+Enter` messages are delivered at each step boundary of the running turn. `"one-at-a-time"` (default) or `"all"`.
 - `follow_up_mode` — how many waiting `Enter` messages become one turn. `"one-at-a-time"` (default) or `"all"`.
+- `extensions.load` — shipped extensions to turn on, by name or by the package they ship as, plus paths (relative to this file, or absolute). `builtins` is on without being named; `web-fetch` and `ask-user` are not.
+- `extensions.disable` — names that must not load, whichever layer asked for them. Beats `load`.
+- `tools.disable` — tool names withheld from the model, whichever extension registered them.
 - `providers.<name>.api` — base URL for an OpenAI-compatible endpoint.
 - `providers.<name>.region` — AWS Bedrock region.
 - `providers.<name>.project` — Google Vertex project.
@@ -89,6 +94,11 @@ with a blank line and delivers them as a single message. See
 
 Both are also read under their camelCase spellings, `steeringMode` and
 `followUpMode`.
+
+Unlike every other setting, the three lists **add up across all four files**
+rather than the nearest one winning. They are sets, not values: a project
+activating one extension must not switch off the one your personal config
+activates everywhere. `disable` beats `load` from any layer.
 
 Unknown keys are ignored. Invalid JSON is reported by `glrs doctor` and
 ignored rather than preventing startup.

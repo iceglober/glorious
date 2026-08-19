@@ -11,7 +11,7 @@ glrs                      # open a session in the current git repo
 glrs -p "<prompt>"        # one turn, headless: answer on stdout, tools on stderr
 glrs --resume             # pick an earlier session
 glrs --resume <id>        # reopen one directly
-glrs doctor [--json]      # model and config diagnostics
+glrs doctor [--json]      # model, config diagnostics, and what would load
 glrs --version            # print the version
 glrs update               # update to the latest next release
 ```
