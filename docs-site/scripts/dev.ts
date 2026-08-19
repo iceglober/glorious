@@ -9,6 +9,7 @@ const watched = [
   join(root, "packages", "glorious-coding-agent", "src", "sdk.ts"),
   join(root, "packages", "provider-registry", "src"),
   join(site, "api"),
+  join(site, "plugins"),
   join(site, "public"),
   join(site, "theme"),
   join(site, "typedoc.json"),

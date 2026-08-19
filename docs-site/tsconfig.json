@@ -9,8 +9,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["bun"]
   },
-  "include": ["scripts/**/*.ts", "theme/**/*.ts"]
+  "include": ["plugins/**/*.ts", "scripts/**/*.ts", "theme/**/*.ts"]
 }
