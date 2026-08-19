@@ -503,10 +503,30 @@ const main = async (): Promise<void> => {
     onShell: (command) => {
       screen.print(userBlock(`!${command}`), true);
       void fire(registry, "user_bash", { command }, onExtensionFailure);
-      void runShell(root, command).then(({ output, ok }) => {
-        if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
+      let shown = 0;
+      let clipped = false;
+      const display = (text: string, stream: "stdout" | "stderr"): void => {
+        if (text === "") return;
+        if (shown >= 30_000) {
+          if (!clipped) {
+            clipped = true;
+            screen.print(noticeBlock("[output truncated at 30,000 characters]", "warning"), false);
+            repaint();
+          }
+          return;
+        }
+        const remaining = 30_000 - shown;
+        const visible = text.slice(0, remaining).trimEnd();
+        shown += Math.min(text.length, remaining);
+        if (visible !== "")
+          screen.print(noticeBlock(visible, stream === "stderr" ? "warning" : "muted"), false);
+        if (!clipped && text.length > remaining) {
+          clipped = true;
+          screen.print(noticeBlock("[output truncated at 30,000 characters]", "warning"), false);
+        }
         repaint();
-      });
+      };
+      void runShell(root, command, [], display).then(() => repaint());
     },
     cwd: root,
     onCommand: (name, args) => {

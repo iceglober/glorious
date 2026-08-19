@@ -264,6 +264,20 @@ describe("the API keeps its promises", () => {
     expect(result.output).toContain("err");
   });
 
+  test("shell output streams before a long-running command exits", async () => {
+    const chunks: string[] = [];
+    const running = runShell(
+      process.cwd(),
+      "printf 'ready\\n'; sleep 0.3; printf 'done\\n'",
+      [],
+      (text) => chunks.push(text),
+    );
+    await Bun.sleep(100);
+    expect(chunks.join("")).toContain("ready");
+    expect(chunks.join("")).not.toContain("done");
+    expect((await running).stdout).toContain("done");
+  });
+
   test("a command that works reports zero", async () => {
     expect(await runShell(process.cwd(), "true")).toMatchObject({ code: 0, ok: true });
   });
