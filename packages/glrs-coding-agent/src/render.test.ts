@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   advanceToolRun,
+  dequeueShortcut,
   elapsed,
   errorText,
   eventBlock,
@@ -126,8 +127,9 @@ describe("the activity row", () => {
       .flat()
       .map((s) => s.text)
       .join("");
-    expect(line).toContain("2 queued");
+    expect(line).toContain(`2 queued (${dequeueShortcut()} dequeue)`);
     expect(line).toContain("writing 0.4s");
+    expect(line.indexOf("queued")).toBeLessThan(line.indexOf("Esc interrupt"));
   });
 
   test("elapsed stays readable past a minute", () => {
@@ -330,10 +332,19 @@ describe("the queued count matches the queued rows", () => {
     expect(queuedRow({ kind: "follow-up", text: "x" })[0].tone).toBe("warning");
   });
 
-  test("the phase and the hint stay accent", () => {
-    expect(spans(2)[0]).toMatchObject({ tone: "accent" });
-    expect(spans(2)[0].text).toContain("writing 0.4s");
-    expect(spans(2)[0].text).toContain("Esc interrupt");
+  test("the phase and interrupt hint stay accent", () => {
+    const accent = spans(2)
+      .filter((span) => span.tone === "accent")
+      .map((span) => span.text)
+      .join("");
+    expect(accent).toContain("writing 0.4s");
+    expect(accent).toContain("Esc interrupt");
+  });
+
+  test("the dequeue shortcut follows the platform", () => {
+    expect(dequeueShortcut("darwin")).toBe("Opt+↑");
+    expect(dequeueShortcut("win32")).toBe("Alt+↑");
+    expect(dequeueShortcut("linux")).toBe("Alt+↑");
   });
 
   test("no count, no extra span", () => {
