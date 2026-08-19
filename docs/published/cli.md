@@ -14,7 +14,13 @@ glrs --resume <id>        # reopen one directly
 glrs doctor [--json]      # model, config diagnostics, and what would load
 glrs --version            # print the version
 glrs update               # update to the latest next release
+glrs <subcommand>         # anything an extension added with g.cli
 ```
+
+An extension can add subcommands of its own — `glrs wt list` and the like. They
+run without opening a session, so they cost nothing to start and need no model
+credentials. `glrs <unknown>` lists what is available. See
+[extensions](/extensions).
 
 ## Environment
 

@@ -26,6 +26,7 @@ import {
 import { createAgent } from "./agent";
 import { availableLines } from "./available";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
+import { cliUsage, runCli, subcommandOf } from "./cli";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { cleanShellChunk, shellCompletion } from "./direct-shell";
 import {
@@ -145,8 +146,29 @@ const main = async (): Promise<void> => {
   let resumeId: string | undefined;
   // Found wherever it sits: flags may precede it now, and `--model x doctor`
   // silently opening the TUI instead of reporting was worse than an error.
-  const doctor = args.includes("doctor");
+  // The first bare word that is not some flag's value. `--model x doctor` finds
+  // `doctor`, and `glrs wt doctor` finds `wt` — which is the distinction that
+  // matters now that a subcommand can have arguments of its own. Scanning for
+  // the word anywhere meant `glrs wt doctor` ran glrs's doctor and never
+  // reached the extension.
+  const subcommand = subcommandOf(args);
+  const doctor = subcommand?.name === "doctor";
   const doctorJson = doctor && args.includes("--json");
+  // A first bare word that is none of glrs's own may be a subcommand an
+  // extension added. Finding out means loading them, so it happens here —
+  // after `--version`, `update` and `doctor` are ruled out, and before the
+  // usage error. A bare `glrs`, `glrs -p …` and `glrs doctor` never pay for it.
+  if (subcommand !== null && !doctor) {
+    const { root: cliRoot } = probe();
+    const outcome = await runCli(subcommand.name, subcommand.rest, { root: cliRoot });
+    if (outcome.handled) return;
+    // Not a subcommand anybody registered. The usage error can now say what is
+    // available rather than only what is built in, because the extensions that
+    // would have claimed it have just been loaded and asked.
+    throw new Error(
+      `Unknown subcommand '${subcommand.name}'.\n${USAGE}${cliUsage(outcome.available)}`,
+    );
+  }
   // A bare word is only ever a flag's value. Anything else is a typo, and
   // saying so beats opening a session that ignores what was asked for.
   if (!doctor)

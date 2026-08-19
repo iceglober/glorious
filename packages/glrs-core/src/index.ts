@@ -90,12 +90,16 @@ export type Settings = {
 
 export type ExtensionContext = {
   root: string;
-  mode: "tui" | "print";
+  mode: "tui" | "print" | "cli";
   hasUI: boolean;
   z: typeof z;
   ui: UiHost;
   tool: <Schema extends z.ZodType>(spec: ToolSpec<Schema>) => void;
   command: (name: string, spec: CommandSpec) => void;
+  cli: (
+    name: string,
+    spec: { description: string; run: (args: readonly string[]) => void | Promise<void> },
+  ) => void;
   on: (event: string, handler: (payload: unknown) => unknown) => void;
   exec: (
     command: string,
