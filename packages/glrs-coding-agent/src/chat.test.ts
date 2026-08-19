@@ -4,7 +4,7 @@ import type { SessionEvent } from "../../glrs-core/src/events";
 import type { Agent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
 import { REMINDER_CLOSE, REMINDER_OPEN } from "./prompt";
-import type { ToolEvent } from "./tools";
+import type { ToolEvent } from "./toolkit";
 
 type Outcome = Awaited<ReturnType<Agent["run"]>>;
 

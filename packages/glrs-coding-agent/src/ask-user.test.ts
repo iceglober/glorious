@@ -7,7 +7,6 @@ import {
   type ExtensionHost,
   type Key,
 } from "./extension-api";
-import { BUILT_IN_TOOL_NAMES } from "./tools";
 
 // The question widget is an extension, and this drives it exactly as the
 // terminal does: hand it keys, read the lines it draws. If this file needed
@@ -163,10 +162,6 @@ describe("the question widget, driven by keys", () => {
 });
 
 describe("what the core is left holding", () => {
-  test("ask_user is not a built-in tool", () => {
-    expect([...BUILT_IN_TOOL_NAMES]).not.toContain("ask_user");
-  });
-
   test("it registers nothing where there is nobody to answer", () => {
     const registry = createRegistry();
     const host = { root: "/tmp", mode: "print" as const } as unknown as ExtensionHost;

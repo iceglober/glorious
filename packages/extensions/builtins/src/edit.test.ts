@@ -2,12 +2,14 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSkills } from "./skills";
-import { createTools } from "./tools";
+import { createCodingTools } from "./tools";
 
 const dir = await mkdtemp(join(tmpdir(), "glrs-edit-"));
-const skills = await loadSkills(process.cwd());
-const tools = createTools(dir, () => {}, skills);
+// The tools take their scope rather than computing it, so a test hands them one
+// and never has to know where the host keeps its documentation.
+const tools = Object.fromEntries(
+  createCodingTools(dir, { read: [], write: [] }).map((spec) => [spec.name, spec]),
+);
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
@@ -15,10 +17,17 @@ afterAll(async () => {
 
 const execute = tools.edit?.execute as (i: unknown, o: unknown) => Promise<string>;
 
-const edit = async (path: string, edits: unknown[]): Promise<string> =>
-  execute({ files: [{ path, edits }] }, {});
+// A registered tool goes through wrapTool, which turns a throw into the
+// "ERROR: …" string the model reads. These specs are raw, so the harness does
+// that one thing rather than every assertion below learning about it — what is
+// under test here is which edits reach disk, not how a failure is worded.
+const failed = (thrown: unknown): string =>
+  `ERROR: ${thrown instanceof Error ? thrown.message : String(thrown)}`;
 
-const editFiles = async (files: unknown[]): Promise<string> => execute({ files }, {});
+const edit = async (path: string, edits: unknown[]): Promise<string> =>
+  execute({ files: [{ path, edits }] }, {}).catch(failed);
+
+const editFiles = async (files: unknown[]): Promise<string> => execute({ files }, {}).catch(failed);
 
 const fixture = async (name: string, body: string): Promise<string> => {
   await writeFile(join(dir, name), body);

@@ -5,7 +5,7 @@ import builtins from "../../extensions/builtins/src";
 import webFetch from "../../extensions/web-fetch/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import { describeThrown } from "./render";
-import type { ToolEvent } from "./tools";
+import type { ToolEvent } from "./toolkit";
 import { agentDirectories } from "./usercommands";
 
 // An extension is a TypeScript file that registers capabilities against the API
@@ -27,6 +27,9 @@ export type LoadedExtension = {
 export type ExtensionLoad = {
   extensions: LoadedExtension[];
   failures: Array<{ origin: string; message: string }>;
+  // Nothing is broken, but something is worth knowing — a file that took a
+  // shipped extension's name and the capability that went with it.
+  notes: string[];
 };
 
 const extensionRoots = (root: string): string[] =>
@@ -61,6 +64,16 @@ const failureText = (thrown: unknown): string => {
   return /Cannot find module/u.test(thrown.message) ? "no index.ts" : thrown.message;
 };
 
+// What each shipped extension is worth saying about, when a file on disk takes
+// its name and the shipped one therefore does not load. Shadowing was always
+// supported and is still the point; `builtins` is the one whose loss is worth
+// interrupting for, because it now carries the six tools as well as the seven
+// commands and an agent without them cannot do anything at all.
+const shadowNote: Record<string, string> = {
+  builtins:
+    "shadows the extension that provides bash, read, write, edit, grep, glob and every slash command — the model has no tools unless yours registers them",
+};
+
 const bundled = [
   { name: "ask-user", origin: "@glrs-dev/glrs-ext-ask-user", load: askUser },
   { name: "builtins", origin: "@glrs-dev/glrs-ext-builtins", load: builtins },
@@ -68,8 +81,10 @@ const bundled = [
 ];
 
 // Each extension is loaded and invoked on its own, so one that throws on import
-// or in its factory costs only itself. Bundled ones come first, and a project
-// can shadow one by name — replacing web_fetch is a supported thing to do.
+// or in its factory costs only itself. Files on disk are walked first and a
+// project can shadow a shipped extension by name — replacing web_fetch is a
+// supported thing to do. (An older comment here claimed bundled ones came
+// first; they never have.)
 export const loadExtensions = async (
   root: string,
   registry: Registry,
@@ -81,6 +96,7 @@ export const loadExtensions = async (
   token?: string,
 ): Promise<ExtensionLoad> => {
   const seen = new Set<string>();
+  const notes: string[] = [];
   const extensions: LoadedExtension[] = [];
   const failures: ExtensionLoad["failures"] = [];
 
@@ -105,7 +121,11 @@ export const loadExtensions = async (
     }
   }
   for (const entry of bundled) {
-    if (seen.has(entry.name)) continue;
+    if (seen.has(entry.name)) {
+      const cost = shadowNote[entry.name];
+      if (cost !== undefined) notes.push(`${entry.name}.ts ${cost}`);
+      continue;
+    }
     seen.add(entry.name);
     try {
       await entry.load(createApi(host, registry, onToolEvent, entry.origin) as never);
@@ -114,5 +134,5 @@ export const loadExtensions = async (
       failures.push({ origin: entry.origin, message: failureText(thrown) });
     }
   }
-  return { extensions, failures };
+  return { extensions, failures, notes };
 };

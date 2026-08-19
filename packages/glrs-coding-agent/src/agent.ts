@@ -3,7 +3,7 @@ import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
 import { createModel, type ModelOption, modelCost } from "../../provider-registry/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { errorText } from "./render";
-import { createTools, type ToolEvent } from "./tools";
+import type { ToolEvent } from "./toolkit";
 
 const STEP_LIMIT = 100;
 const DEADLINES_MS = [30 * 60_000, 10 * 60_000, 10 * 60_000];
@@ -221,11 +221,17 @@ export const createAgent = (setup: Setup) => {
   // permissive the filter itself was. Loading order decided which tools existed.
   let filters: ReadonlyArray<(name: string) => boolean> = [];
 
-  // Extensions land last, so one can deliberately replace a built-in — the same
-  // "closest definition wins" rule commands already follow.
+  // Every tool the model can call now comes from the registry, including the
+  // six that touch the machine — they are the builtins extension, registered
+  // through `g.tool` like any other. Which one wins a contested name is decided
+  // there, first-claimed-first-kept, rather than by the order of this spread.
+  //
+  // `activate_skill` is the exception and stays here: it needs the skill's body,
+  // which the extension API does not carry. It leads, so an extension can still
+  // replace it.
   const toolsFor = (onTool: (event: ToolEvent) => void) => {
     const all = {
-      ...createTools(setup.root, onTool, setup.skillTools, setup.toolTimeoutMs),
+      ...(setup.skillTools.tool ? { activate_skill: setup.skillTools.tool } : {}),
       ...(setup.extensionTools?.(onTool) ?? {}),
     };
     if (filters.length === 0) return all;

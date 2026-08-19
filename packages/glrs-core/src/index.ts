@@ -79,6 +79,22 @@ export type Usage = {
   total: { input: number; output: number; cached: number; cost: number; steps: number };
 };
 
+// What this session considers in scope, beyond the project root. The host owns
+// the policy — only it knows where its own documentation and configuration live
+// — and a tool that confines paths does the enforcing. Reads reach further than
+// writes: glrs hands the model an absolute path to its own docs and tells it to
+// read them.
+export type Scope = { read: readonly string[]; write: readonly string[] };
+
+// This session's resolved settings, merged from every config file that applied.
+// Provider blocks are deliberately absent: they hold API keys, and an extension
+// that wants them can read the files itself rather than being handed them.
+export type Settings = {
+  tool_timeout_ms?: number;
+  steering_mode?: "one-at-a-time" | "all";
+  follow_up_mode?: "one-at-a-time" | "all";
+};
+
 export type ExtensionContext = {
   root: string;
   mode: "tui" | "print";
@@ -107,6 +123,8 @@ export type ExtensionContext = {
   usage: () => Usage;
   session: () => { id: string; file: string; title: string; events: number };
   prompt: (text: string) => void;
+  scope: () => Scope;
+  settings: () => Readonly<Settings>;
 };
 
 export type Glrs = ExtensionContext;

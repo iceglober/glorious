@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import packageJson from "../../../package.json";
 import { messagesOf, type SessionEvent, usageTotals } from "../../glrs-core/src/events";
+import { loadAgentRules } from "../../glrs-core/src/guidance";
 import {
   createSession,
   loadPromptHistory,
@@ -10,6 +11,7 @@ import {
   saveSession,
   sessionFile,
 } from "../../glrs-core/src/session";
+import { runShell } from "../../glrs-core/src/shell";
 import {
   currentModel,
   envSetting,
@@ -33,7 +35,6 @@ import {
   resetRegistry,
 } from "./extension-api";
 import { loadExtensions } from "./extensions";
-import { loadAgentRules } from "./guidance";
 import { expandMentions, fileCandidates } from "./mentions";
 import { runPrint } from "./print";
 import { fence } from "./prompt";
@@ -53,8 +54,9 @@ import {
   statusRow,
   userBlock,
 } from "./render";
+import { sessionScope } from "./scope";
 import { loadSkills } from "./skills";
-import { firstDetail, runShell, setToolGate, type ToolEvent } from "./tools";
+import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
 
@@ -744,6 +746,14 @@ const main = async (): Promise<void> => {
     root,
     exec: (command, args) => runShell(root, command, args),
     mode: "tui" as const,
+    // The tools that confine paths are an extension now, so what is in scope
+    // has to reach them the same way anything else does.
+    scope: sessionScope,
+    settings: () => ({
+      tool_timeout_ms: toolTimeoutMs,
+      steering_mode: config.config.steering_mode,
+      follow_up_mode: config.config.follow_up_mode,
+    }),
     send: (text, options) => {
       chat.send(text, options.label ?? null, options.steer === true ? "steer" : "follow-up");
       repaint();
@@ -864,6 +874,7 @@ const main = async (): Promise<void> => {
       loaded = await loadAllExtensions(String(Date.now()));
       for (const failure of loaded.failures)
         render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
+      for (const said of loaded.notes) render({ type: "notice", text: `(extension) ${said}` });
       registerCommands();
       agent.setSkills(refreshedSkills);
       repaint();
@@ -877,6 +888,7 @@ const main = async (): Promise<void> => {
   registerCommands();
   for (const failure of loaded.failures)
     render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
+  for (const said of loaded.notes) render({ type: "notice", text: `(extension) ${said}` });
   // Config problems were reported only by `glrs doctor`, which is a command
   // you run once you already suspect something — and a config that silently does
   // nothing gives you nothing to suspect. A model set in a file that was never

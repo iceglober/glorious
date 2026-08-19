@@ -4,7 +4,7 @@ import type { Agent, TurnPhase } from "./agent";
 import { reminder } from "./prompt";
 import { merge, newest, type Queued, type QueueKind, type QueueMode, take } from "./queue";
 import { errorText } from "./render";
-import type { ToolEvent } from "./tools";
+import type { ToolEvent } from "./toolkit";
 
 // Everything a turn reports, plus the one thing only the chat can be doing.
 export type ChatPhase = TurnPhase | "compacting" | null;
