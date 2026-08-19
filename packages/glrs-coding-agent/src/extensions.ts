@@ -284,8 +284,15 @@ export const resolveExtensions = async (
 // Where each extension that would load keeps its skills. Derived from the plan,
 // so no extension has to run to answer it — which is what lets skills load at
 // startup even though extensions do not load until much later.
-export const skillRootsFor = (plan: readonly Planned[]): string[] =>
-  plan.map((entry) => join(entry.dir, "skills"));
+//
+// Deduplicated, because a disk extension's `dir` is the directory the file sits
+// in — so two of them side by side in `~/.config/agents/extensions/` yield that
+// one `skills/` directory twice. Discovery walks each root it is given, so a
+// repeated root finds every skill under it again and warns that two skills share
+// a name, naming the same path on both sides.
+export const skillRootsFor = (plan: readonly Planned[]): string[] => [
+  ...new Set(plan.map((entry) => join(entry.dir, "skills"))),
+];
 
 export const loadExtensions = async (
   root: string,
