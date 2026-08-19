@@ -58,7 +58,6 @@ body { letter-spacing: -0.01em; }
 .tsd-navigation a:hover,
 .tsd-page-navigation a.current,
 .tsd-page-navigation a:hover { color: #c43a32; }
-.tsd-navigation a.current::before { content: "→ "; }
 
 .col-content { max-width: 76ch; padding-block: clamp(2.5rem, 6vw, 6rem); }
 .tsd-typography h1,
