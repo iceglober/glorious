@@ -9,12 +9,17 @@
   "tsconfig": "../packages/tsconfig.json",
   "out": "./dist",
   "plugin": [
+    "./plugins/project-landing.ts",
     "./theme/index.ts",
     "./plugins/group-documents.ts",
     "@boneskull/typedoc-plugin-mermaid"
   ],
   "theme": "glrs",
-  "router": "glrs-agent",
+  "router": "project-landing",
+  "projectLanding": {
+    "path": "agent",
+    "label": "coding agent"
+  },
   "customCss": "./theme/glrs.css",
   "name": "glrs",
   "includeVersion": false,

@@ -4,30 +4,11 @@ import {
   DefaultThemeRenderContext,
   DocumentReflection,
   JSX,
-  PageKind,
   type NavigationElement,
   type ProjectReflection,
-  type Reflection,
-  StructureDirRouter,
 } from "typedoc";
 import { documentFolderNames } from "../plugins/group-documents.ts";
-
-class AgentRouter extends StructureDirRouter {
-  protected override getIdealBaseName(reflection: Reflection): string {
-    return `agent/${super.getIdealBaseName(reflection)}`;
-  }
-
-  override buildPages(project: ProjectReflection) {
-    const pages = super.buildPages(project).map((page) => {
-      if (page.model === project && page.kind === PageKind.Reflection)
-        return { ...page, url: "agent/index.html" };
-      if (page.kind === PageKind.Hierarchy) return { ...page, url: "agent/hierarchy/index.html" };
-      return page;
-    });
-    this.fullUrls.set(project, "agent/index.html");
-    return pages;
-  }
-}
+import { PROJECT_LANDING_OPTION, projectLanding } from "../plugins/project-landing.ts";
 
 class GlrsRenderContext extends DefaultThemeRenderContext {
   constructor(...args: ConstructorParameters<typeof DefaultThemeRenderContext>) {
@@ -38,12 +19,19 @@ class GlrsRenderContext extends DefaultThemeRenderContext {
     const sidebar = this.sidebar;
     this.sidebar = (props) =>
       props.url === "index.html" ? JSX.createElement(JSX.Fragment, null) : sidebar(props);
-    this.indexTemplate = (props) =>
-      JSX.createElement(
+    this.indexTemplate = (props) => {
+      const landing = projectLanding(this.options.getValue(PROJECT_LANDING_OPTION));
+      return JSX.createElement(
         "div",
         { class: "tsd-panel tsd-typography" },
         JSX.createElement(JSX.Raw, { html: this.markdown(props.model.readme ?? []) }),
+        JSX.createElement(
+          "p",
+          null,
+          JSX.createElement("a", { href: `/${landing.path}/` }, landing.label),
+        ),
       );
+    };
     const moduleMemberSummary = this.moduleMemberSummary;
     this.moduleMemberSummary = (member) => {
       const isFolder =
@@ -87,6 +75,5 @@ class GlrsTheme extends DefaultTheme {
 }
 
 export function load(application: Application): void {
-  application.renderer.defineRouter("glrs-agent", AgentRouter);
   application.renderer.defineTheme("glrs", GlrsTheme);
 }
