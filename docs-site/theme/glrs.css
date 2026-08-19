@@ -108,10 +108,8 @@ footer::before { content: "glorious · next"; }
 footer > * { display: none; }
 
 @media (min-width: 1200px) {
-  .page-menu {
-    padding-left: 0;
-    transform: translateX(-4rem);
-  }
+  .page-menu { padding-left: 0; }
+  .page-menu > .tsd-page-navigation { transform: translateX(-4rem); }
 }
 
 @media (max-width: 900px) {
