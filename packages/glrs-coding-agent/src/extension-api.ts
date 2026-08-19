@@ -163,6 +163,21 @@ export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   renderResult?: (result: string, ok: boolean) => Line[];
 };
 
+// A subcommand of the `glrs` executable, contributed by an extension. It runs
+// outside any session — no model, no transcript, no screen — so what reaches it
+// is git, the filesystem and stdout. That is what `glrs wt list` needs and all
+// it needs; anything wanting the model belongs in a slash command or a tool.
+export type CliSpec = {
+  /** One line, shown by `glrs --help` under the extension that added it. */
+  description: string;
+  /**
+   * Everything after the subcommand name, already split. Throw to exit
+   * non-zero — the message goes to stderr, the same way every other failure in
+   * glrs surfaces.
+   */
+  run: (args: readonly string[]) => void | Promise<void>;
+};
+
 export type CommandSpec = {
   description: string;
   run: (args: string) => void | Promise<void>;
@@ -276,6 +291,12 @@ export type Glrs = {
   tool: <Schema extends z.ZodType>(spec: ToolSpec<Schema>) => void;
   /** Register a slash command the user can type. */
   command: (name: string, spec: CommandSpec) => void;
+  /**
+   * Add a subcommand to the `glrs` executable: `g.cli("wt", …)` makes
+   * `glrs wt …` work. It runs without a session, so `g.print` writes to stdout
+   * and the members needing a model or a screen throw rather than pretend.
+   */
+  cli: (name: string, spec: CliSpec) => void;
   /** Bind a key. Only fires when the composer has focus and no overlay is up. */
   key: (spec: KeySpec) => void;
   /** Register a CLI flag: `glrs --name value`. */
@@ -331,8 +352,9 @@ export type Glrs = {
   reload: () => Promise<void>;
 
   /** "tui" when a terminal is attached, "print" for a headless -p run. */
-  mode: "tui" | "print";
-  /** False in print mode: nothing can be asked and nothing can be drawn. */
+  // "cli" is a subcommand run: no session, no model, no screen.
+  mode: "tui" | "print" | "cli";
+  /** False outside the TUI: nothing can be asked and nothing can be drawn. */
   hasUI: boolean;
   /** Prompts, pickers and the composer. Throws in print mode. */
   ui: Ui;
@@ -416,7 +438,7 @@ export type Glrs = {
 // the facade has no idea whether it is talking to a TUI or a print run.
 export type ExtensionHost = {
   root: string;
-  mode: "tui" | "print";
+  mode: "tui" | "print" | "cli";
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
   send: (text: string, options: { label?: string; steer?: boolean }) => void;
   print: (content: string | Line[], tone: Tone) => void;
@@ -459,6 +481,8 @@ export type Registry = {
   tools: ToolSet;
   commands: Command[];
   runners: Map<string, (args: string) => void | Promise<void>>;
+  // Subcommands of the executable. First claim kept, like tools.
+  cli: Map<string, CliSpec & { origin: string }>;
   handlers: Map<EventName, Array<Handler<EventName>>>;
   renderers: Map<string, ToolRenderer>;
   // Every extension's tool filter. All of them must agree for a tool to survive.
@@ -476,7 +500,14 @@ export type Registry = {
   // there being no approval prompt to have read it out beforehand.
   contributions: Map<
     string,
-    { tools: string[]; shadowed: string[]; commands: string[]; hooks: number; ui: number }
+    {
+      tools: string[];
+      shadowed: string[];
+      commands: string[];
+      cli: string[];
+      hooks: number;
+      ui: number;
+    }
   >;
 };
 
@@ -495,6 +526,7 @@ export const resetRegistry = (registry: Registry): void => {
   registry.keys.length = 0;
   registry.markdown.length = 0;
   registry.runners.clear();
+  registry.cli.clear();
   registry.handlers.clear();
   registry.renderers.clear();
   registry.flags.clear();
@@ -506,6 +538,7 @@ export const createRegistry = (): Registry => ({
   tools: {},
   commands: [],
   runners: new Map(),
+  cli: new Map(),
   handlers: new Map(),
   renderers: new Map(),
   toolFilters: [],
@@ -527,6 +560,7 @@ export const describeContribution = (registry: Registry, origin: string): string
     entry.tools.length > 0 && `tools: ${entry.tools.join(", ")}`,
     entry.shadowed.length > 0 && `shadowed: ${entry.shadowed.join(", ")}`,
     entry.commands.length > 0 && `commands: ${entry.commands.map((n) => `/${n}`).join(", ")}`,
+    entry.cli.length > 0 && `cli: ${entry.cli.map((n) => `glrs ${n}`).join(", ")}`,
     entry.hooks > 0 && `${entry.hooks} hook${entry.hooks === 1 ? "" : "s"}`,
     entry.ui > 0 && `${entry.ui} ui`,
   ].filter((part): part is string => typeof part === "string");
@@ -547,6 +581,7 @@ export const createApi = (
     tools: [] as string[],
     shadowed: [] as string[],
     commands: [] as string[],
+    cli: [] as string[],
     hooks: 0,
     ui: 0,
   };
@@ -585,6 +620,17 @@ export const createApi = (
           call: spec.renderCall as ToolRenderer["call"],
           result: spec.renderResult,
         });
+    },
+    // First claim kept, like tools: two extensions offering `glrs wt` should not
+    // depend on load order, and the project is walked before anything shipped.
+    cli: (name, spec) => {
+      const slug = name.toLowerCase();
+      if (registry.cli.has(slug)) {
+        ledger.shadowed.push(`${slug} (cli)`);
+        return;
+      }
+      ledger.cli.push(slug);
+      registry.cli.set(slug, { ...spec, origin });
     },
     command: (name, spec) => {
       const slug = name.toLowerCase();

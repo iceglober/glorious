@@ -174,6 +174,43 @@ For a command that should instead become a prompt, write a markdown file in
 `.glrs/commands/` — see `commands.md`. For one that runs a shell command and
 then feeds its output to the model, use `g.send` from an extension.
 
+### `g.cli(name, spec)`
+
+Adds a subcommand to the `glrs` executable, so an extension can be something you
+run as well as something the agent uses.
+
+```ts
+g.cli("wt", {
+  description: "Create, audit and clean git worktrees",
+  async run(args) {
+    if (args[0] === "list") g.print((await g.exec("git worktree list")).stdout);
+  },
+});
+```
+
+```
+$ glrs wt list
+```
+
+**A subcommand runs outside any session.** No model, no transcript, no screen —
+so there is nothing to wait for and nothing to pay for. `g.print` writes
+straight to stdout, undecorated, so its output pipes into other commands.
+`g.root`, `g.exec`, `g.settings` and `g.z` work as they always do; anything
+needing a model or a screen — `g.send`, `g.model`, `g.ui.capture` — throws and
+says why. Put that kind of work in a slash command or a tool.
+
+Everything after the subcommand's own name arrives in `args`, already split.
+Throw to exit non-zero; the message goes to stderr, the same way every other
+failure in glrs surfaces.
+
+The first extension to claim a name keeps it, the same rule tools follow — so
+two extensions offering `glrs wt` do not depend on which loaded first. glrs's
+own words (`doctor`, `update`, `--version`) are resolved before any extension
+is asked, so they cannot be taken.
+
+`glrs <unknown>` lists what extensions have added, so a subcommand that exists
+is discoverable without reading the extension that added it.
+
 ### `g.on(event, handler)`
 
 | Event | Payload | Returning a value |

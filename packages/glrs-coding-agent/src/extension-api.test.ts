@@ -304,6 +304,58 @@ describe("the extensions glrs ships but has not loaded", () => {
   });
 });
 
+// A subcommand of the executable. Registered like a tool rather than like a
+// slash command, because two extensions offering `glrs wt` must not depend on
+// which loaded first.
+describe("subcommands an extension adds to the executable", () => {
+  test("it lands in the registry under its own name", () => {
+    const { g, registry } = harness();
+    g.cli("wt", { description: "worktrees", run: () => {} });
+    expect(registry.cli.get("wt")?.description).toBe("worktrees");
+    expect(registry.cli.get("wt")?.origin).toBe("test-extension");
+  });
+
+  test("the name is lowercased, the way commands are", () => {
+    const { g, registry } = harness();
+    g.cli("WT", { description: "d", run: () => {} });
+    expect(registry.cli.has("wt")).toBe(true);
+  });
+
+  test("the first extension to claim a subcommand keeps it", async () => {
+    const { g, registry } = harness();
+    let ran = "";
+    g.cli("wt", {
+      description: "the project's",
+      run: () => {
+        ran = "project";
+      },
+    });
+    const shipped = createApi(
+      { root: "/tmp/project", mode: "tui" } as unknown as ExtensionHost,
+      registry,
+      () => {},
+      "@glrs-dev/glrs-ext-worktree",
+    );
+    shipped.cli("wt", {
+      description: "the shipped one",
+      run: () => {
+        ran = "shipped";
+      },
+    });
+
+    await registry.cli.get("wt")?.run([]);
+    expect(ran).toBe("project");
+    // The loser is reported rather than dropped, so /extensions stays honest.
+    expect(describeContribution(registry, "@glrs-dev/glrs-ext-worktree")).toContain("shadowed");
+  });
+
+  test("what it registered shows up in the contribution ledger", () => {
+    const { g, registry } = harness();
+    g.cli("wt", { description: "d", run: () => {} });
+    expect(describeContribution(registry, "test-extension")).toContain("cli: glrs wt");
+  });
+});
+
 // Enforced by construction: the Proxy above records every member these tests
 // read, so adding an API member without testing it fails here rather than
 // shipping untested.
