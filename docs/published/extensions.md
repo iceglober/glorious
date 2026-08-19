@@ -88,6 +88,13 @@ g.tool({
 });
 ```
 
+**The first extension to claim a tool name keeps it**, the same rule the table
+above states for file names. Extensions load project-first, so registering
+`bash` in `.glorious/extensions/` replaces the one glorious ships — you do not
+have to shadow the whole extension that provides it. A later registration of a
+name already taken is refused and reported by `/extensions` as `shadowed`,
+rather than silently winning or silently vanishing.
+
 `execute` returns a string — that is what the model reads. Throwing is fine: it
 becomes `ERROR: <message>`, which the model can read and recover from. Results
 are capped at 30k characters, the same as every built-in tool.
@@ -346,6 +353,12 @@ noShell.filterTools((name) => name !== "bash");
 
 This replaced `setTools(names)`, which set one global list: the second extension
 to call it silently undid the first, and neither could see the other.
+
+A filter is a predicate, applied every time the model is asked what it can
+call — not a list of names resolved once when you registered it. So a tool
+registered by an extension that loads after yours is still judged by your
+filter rather than missed by it, and load order does not decide what the model
+can see.
 
 `filterTools` and `tool_call` are not the same thing. A filter **removes** the
 tool, so the model never sees it. A `tool_call` handler **refuses** a call and

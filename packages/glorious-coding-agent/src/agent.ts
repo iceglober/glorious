@@ -192,9 +192,15 @@ export const createAgent = (setup: Setup) => {
   const openaiOptions = (scope: string) => providerOptions(setup.model.variant, cacheKey(scope));
 
   // Withheld, not forbidden: a tool the model cannot see cannot be talked into
-  // being used. null means everything. This is the seam a read-only mode is
-  // written against, now that there is no mode in the core.
-  let allowed: readonly string[] | null = null;
+  // being used. An empty list means everything survives. This is the seam a
+  // read-only mode is written against, now that there is no mode in the core.
+  //
+  // The predicates are kept, not the names they matched. This held the resolved
+  // list, computed once at the moment a filter was registered — so a tool
+  // belonging to an extension that had not loaded yet was absent from that
+  // snapshot and stayed withheld for the rest of the session, however
+  // permissive the filter itself was. Loading order decided which tools existed.
+  let filters: ReadonlyArray<(name: string) => boolean> = [];
 
   // Extensions land last, so one can deliberately replace a built-in — the same
   // "closest definition wins" rule commands already follow.
@@ -203,9 +209,12 @@ export const createAgent = (setup: Setup) => {
       ...createTools(setup.root, onTool, setup.skillTools, setup.toolTimeoutMs),
       ...(setup.extensionTools?.(onTool) ?? {}),
     };
-    if (allowed === null) return all;
-    const keep = new Set(allowed);
-    return Object.fromEntries(Object.entries(all).filter(([name]) => keep.has(name)));
+    if (filters.length === 0) return all;
+    // Asked afresh here, per model call, so a tool registered after the filter
+    // was is judged by it rather than missed by it.
+    return Object.fromEntries(
+      Object.entries(all).filter(([name]) => filters.every((keep) => keep(name))),
+    );
   };
 
   const settings = () => ({
@@ -256,11 +265,8 @@ export const createAgent = (setup: Setup) => {
     // the second would silently undo the first, and neither could see the
     // other. Intersecting composes — a restriction can only ever narrow — and
     // nothing has to know what else is installed.
-    setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>): void => {
-      allowed =
-        filters.length === 0
-          ? null
-          : Object.keys(toolsFor(() => {})).filter((name) => filters.every((keep) => keep(name)));
+    setToolFilters: (next: ReadonlyArray<(name: string) => boolean>): void => {
+      filters = next;
     },
     prompt: (): string => systemPrompt(setup),
     setModel: (next: ModelOption): void => {
