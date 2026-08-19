@@ -1,5 +1,62 @@
 # @glrs-dev/glorious
 
+## 1.0.0-next.51
+
+### Minor Changes
+
+- ab86255: Two ways to send a message while the agent is working, and one key that takes any of them back.
+
+  `Enter` queues a follow-up: it waits until the agent has finished everything and then becomes its own turn. `Alt+Enter` queues a steering message, which joins the turn that is already running. Enter is the follow-up because it is the one that cannot make things worse — it has no way to change what the running turn does — and steering is the deliberate act, so it carries the modifier.
+
+  Steering is real now rather than a name for jumping the queue. It used to mean "become the next turn", which only helped after the model had already spent twenty steps going the wrong way. A steering message is appended to what the model sees at the next step boundary, through the AI SDK's `prepareStep`, so it is read before the next action is chosen and the turn is neither restarted nor thrown away. Appending keeps the cached prefix intact, so steering costs the tokens of what was said and nothing else. The message is spliced back into the turn's stored messages at the position it was delivered — left at the end, the assistant would appear to have answered something the conversation never says was asked, and a later compaction would summarise it in the wrong order. A dropped stream is re-sent from the first step, so anything the dead attempt took goes back in the queue rather than being delivered only to a request that was discarded.
+
+  `Alt+↑` lifts the newest waiting message out of the queue and into the composer. There is no separate rescind and no separate edit, because taking it back is both: retype it and press Enter, or clear the line and it is gone. A slash command comes back as `/review` rather than the page of prompt it expands into.
+
+  `Esc` now has one job. It stops the running turn and holds the queue rather than marching it on into whatever state the interrupt left behind — and it no longer pulls a queued message into the composer, which is what used to make Esc during a turn look like it had done nothing. `Enter` on an empty composer releases the hold; so does sending anything else.
+
+  Two settings, `steering_mode` and `follow_up_mode`, choose whether one waiting message is delivered at a time (the default, so the model answers what you said before it reads what you said next) or all of them at once. Both are also read as `steeringMode` and `followUpMode`.
+
+  New `terminal-setup` page: on Windows Terminal `Alt+Enter` is fullscreen and never reaches glorious, so it documents the remap. Alt is accepted under both conventions terminals use for it — the `ESC` prefix and the kitty protocol's modifier bit — so the chords work in terminals that speak neither exclusively.
+
+- 57d7f1c: glorious is glrs, everywhere, and everything it wrote under the old name is still read.
+
+  The docs site has been glrs.dev since it went up, and a real 1.0 is close enough that a rename after it would be a migration rather than a rename. So: the published package is `@glrs-dev/glrs`, the command is `glrs`, the internal packages are `@glrs-dev/glrs-core` and `@glrs-dev/glrs-coding-agent`, the extension API type is `Glrs`, and the agent introduces itself as glrs. First-party extension packages take a `glrs-ext-` prefix — `@glrs-dev/glrs-ext-builtins`, `-ask-user`, `-web-fetch` — so a package's kind is legible from its name once third parties publish alongside them.
+
+  Nothing you already have stops working. `.glorious/` is read everywhere `.glrs/` is and `GLORIOUS_<name>` everywhere `GLRS_<name>` is, both at lower precedence, so a checkout or a shell profile written before the rename needs no edit. Project config still beats personal config whichever spelling each uses — a project pinning a model in `.glorious/` beats your personal `.glrs/`, because the rename adds a name rather than reordering precedence. Sessions are read from both stores and written to the new one, so resuming an old session migrates it and the old copy is left where it is. The old names will stop being read in a future major version. `glorious` also survives as an alias for the `glrs` command.
+
+  **`write` reaches less than it did.** Widening writes past the project root exists so the model can save an extension or a skill to your personal agent directory without being refused. That grant used to be whole directories — all of `~/.glorious`, all of `~/.agents` — which was harmless only because nothing else lived there. `~/.glrs` is somewhere people keep checkouts, so a blanket grant would have let `write` leave one project and land in another. The grant is now the resources it was always about: `extensions/`, `skills/`, `commands/`, and `config.json` under each of those roots.
+
+  Three things that had no tests now do, because the rename is exactly the kind of change that breaks them silently: the old config directory and environment variables still being read, the session store spanning both directories without listing a resumed session twice, and the write grant covering the resource directories and nothing around them. Session storage was untestable before this — the directories were module-level constants read at import, so pointing them somewhere disposable was impossible — and is computed per call now.
+
+  One test was passing for the wrong reason and is fixed here: it asserted a file's contents were readable with `toContain("probe")` against a file named `zz-read-probe.txt`, so the refusal message — which quotes the path it refused — satisfied the assertion just as well as the file did.
+
+### Patch Changes
+
+- 4ffc38a: `ask_user` ships as its own package rather than a second entry point on the builtins one.
+
+  `packages/extensions/builtins` exported two extensions: `.` for the slash commands and `./ask-user` for the question widget. They share nothing — no code, no types, no reason to be versioned together — and the arrangement made `builtins` a package whose name described half its contents. `ask_user` now lives in `packages/extensions/ask-user`, exporting one thing from one path, and the bundled roster names it `@glrs-dev/glorious-ask-user`.
+
+  Nothing changes at runtime. The extension loads under the same name, registers the same tool, and still withholds itself in print mode where there is nobody to answer.
+
+  The bundled roster had no test at all — three hardcoded static imports that nothing asserted actually loaded, so a move like this one was caught only by running the app. It has two now: every shipped extension loads without a failure, and each reports the origin it is supposed to. The louder failure was already covered by accident, since a path that stops resolving takes the whole suite down with it; these cover the quiet one, where an entry resolves but is wired to the wrong name.
+
+  Also fixes a doc path that still pointed at `v2/bundled/ask-user.ts`, from before the monorepo move.
+
+- 3bfc9b8: Stream direct `!` shell-command output while it runs, show running state, and clearly report silent completion or failure.
+- ed64d60: The first extension to claim a tool name keeps it, and a tool filter no longer depends on load order.
+
+  Two bugs in the same seam, both of which made what the model can call depend on the order extensions happened to load in.
+
+  **A tool filter held names, not predicates.** `g.filterTools` resolved its predicate to a list of tool names once, at the moment it was registered. A tool belonging to an extension that had not loaded yet was simply absent from that list, so it stayed withheld for the rest of the session however permissive the filter itself was — a read-only extension that loaded early would withhold a tool it had never been asked about. The predicates are kept now and applied per model call, so a tool that arrives later is judged by the filter rather than missed by it.
+
+  **Tool names were last-writer-wins.** Every other namespace in glorious is first-wins — commands, user commands, skills, the activity row — and the table in the extension docs states it as a general rule. Tool names were the exception, and the exception ran backwards: because extensions load project-first, the later an extension loaded the more it could take, so the ones glorious ships would have beaten a project's own. Registering `bash` in `.glorious/extensions/` now replaces the shipped one, and you do not have to shadow a whole extension to replace one of its tools.
+
+  A registration that loses is reported rather than dropped in silence. `/extensions` lists it as `shadowed: bash` under the extension that tried, because that listing is the only account anyone gets of what a loaded extension did and claiming a tool it does not own would make the account wrong.
+
+  Neither bug was visible to the type checker and neither had a test. Both do now, and both tests fail against the previous behaviour.
+
+- 7a0d338: Generate glrs.dev with TypeDoc, a custom glrs theme, Mermaid diagrams, API reference pages, and long-form External Documents.
+
 ## 1.0.0-next.50
 
 ### Minor Changes
