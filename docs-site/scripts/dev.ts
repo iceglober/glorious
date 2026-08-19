@@ -1,18 +1,20 @@
-import { existsSync, watch, type FSWatcher } from "node:fs";
+import { existsSync, statSync, watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 
 const site = join(import.meta.dir, "..");
 const root = join(site, "..");
 const watched = [
   join(root, "docs", "published"),
-  join(root, "packages", "glorious-core", "src"),
-  join(root, "packages", "glorious-coding-agent", "src", "sdk.ts"),
+  join(root, "packages", "glrs-core", "src"),
+  join(root, "packages", "glrs-coding-agent", "src", "sdk.ts"),
   join(root, "packages", "provider-registry", "src"),
+  join(site, "homepage.md"),
   join(site, "api"),
   join(site, "plugins"),
   join(site, "public"),
   join(site, "theme"),
   join(site, "typedoc.json"),
+  join(site, "homepage.md")
 ];
 
 const build = async (): Promise<boolean> => {
@@ -59,9 +61,7 @@ const changed = (): void => {
 };
 const watchers: FSWatcher[] = watched
   .filter(existsSync)
-  .map((path) =>
-    watch(path, { recursive: !path.endsWith(".json") && !path.endsWith(".ts") }, changed),
-  );
+  .map((path) => watch(path, { recursive: statSync(path).isDirectory() }, changed));
 
 const stop = (): void => {
   for (const watcher of watchers) watcher.close();

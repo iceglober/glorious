@@ -12,19 +12,17 @@ import { documentFolderNames } from "../plugins/group-documents.ts";
 class GlrsRenderContext extends DefaultThemeRenderContext {
   constructor(...args: ConstructorParameters<typeof DefaultThemeRenderContext>) {
     super(...args);
-    const pageNavigation = this.pageNavigation;
-    this.pageNavigation = (props) =>
-      props.model.isProject() ? JSX.createElement(JSX.Fragment, null) : pageNavigation(props);
+    const pageSidebar = this.pageSidebar;
+    this.pageSidebar = (props) =>
+      props.model.isProject() ? JSX.createElement(JSX.Fragment, null) : pageSidebar(props);
+    const sidebar = this.sidebar;
+    this.sidebar = (props) =>
+      props.model.isProject() ? JSX.createElement(JSX.Fragment, null) : sidebar(props);
     this.indexTemplate = (props) =>
       JSX.createElement(
-        JSX.Fragment,
-        null,
-        JSX.createElement(
-          "div",
-          { class: "tsd-panel tsd-typography" },
-          JSX.createElement(JSX.Raw, { html: this.markdown(props.model.readme ?? []) }),
-        ),
-        this.moduleReflection(props.model),
+        "div",
+        { class: "tsd-panel tsd-typography" },
+        JSX.createElement(JSX.Raw, { html: this.markdown(props.model.readme ?? []) }),
       );
     const moduleMemberSummary = this.moduleMemberSummary;
     this.moduleMemberSummary = (member) => {

@@ -120,6 +120,13 @@ body { letter-spacing: -0.01em; }
 }
 
 footer { display: none; }
+.page-menu:empty,
+.site-menu:empty { display: none; }
+.container-main:has(.site-menu:empty) {
+  grid-template-columns: minmax(0, 76ch);
+  grid-template-areas: "content";
+  justify-content: center;
+}
 
 @media (min-width: 1200px) {
   .container-main {
