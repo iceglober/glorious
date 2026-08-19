@@ -53,10 +53,23 @@ Loaded in this order; the first file to claim a name wins.
 Because project files load first, `.glrs/extensions/web-fetch.ts` replaces
 the bundled `web_fetch` rather than colliding with it.
 
-Two extensions ship enabled: `web-fetch` (the `web_fetch` tool) and `builtins`
-(`/help`, `/clear`, `/skills`, `/extensions`, `/reload`). **The core registers no
-slash commands and no tools of its own** — everything glrs ships is written
-against the API on this page. Shadow either by name, or delete them.
+Three ship enabled: `builtins` (the `bash`, `read`, `write`, `edit`, `grep` and
+`glob` tools, plus `/help`, `/clear`, `/compact`, `/session`, `/skills`,
+`/extensions` and `/reload`), `web-fetch` (the `web_fetch` tool) and `ask-user`
+(the `ask_user` tool, in the TUI only).
+
+**The core registers no slash commands and no tools of its own.** That was an
+aspiration for a while and is now literally true: the six tools that touch the
+machine went from being merged into the agent ahead of every extension to being
+the `builtins` extension, registered through `g.tool` like anything on this
+page. `activate_skill` is the single exception, because it needs a skill's body
+and the API does not carry one.
+
+To replace one tool, register its name — the first extension to claim a name
+keeps it and your project is walked first, so a `bash` of your own simply wins.
+Shadowing a whole extension by filename still works, but naming a file
+`builtins.ts` now costs the six tools as well as the commands and leaves the
+model unable to do anything; glrs says so at startup when it happens.
 
 `/extensions` lists what loaded, what each one registered, and the file it came
 from. An extension that fails to load says so in the transcript — loudly, not by

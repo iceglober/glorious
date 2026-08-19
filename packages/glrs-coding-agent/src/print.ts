@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { loadAgentRules } from "../../glrs-core/src/guidance";
+import { runShell } from "../../glrs-core/src/shell";
 import { currentModel, envSetting, loadConfig, modelMetadata } from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
-import { loadAgentRules } from "./guidance";
 import { expandMentions } from "./mentions";
 import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
 import { loadSkills } from "./skills";
-import { firstDetail, resultSummary, runShell, setToolGate, type ToolEvent } from "./tools";
+import { firstDetail, resultSummary, setToolGate, type ToolEvent } from "./toolkit";
 
 // Headless. One turn, no TUI, no session file, and nobody to ask — so ask_user
 // is withheld rather than left to hang on an answer that cannot arrive.
@@ -99,6 +100,7 @@ export const runPrint = async (
     {
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
+      settings: () => ({ tool_timeout_ms: toolTimeoutMs }),
       send: () => note("[extension] send() has no meaning in print mode; ignored"),
       print: (content) =>
         note(
@@ -169,6 +171,7 @@ export const runPrint = async (
     (event) => toolSink(event),
   );
   for (const failure of loaded.failures) note(`[extension ${failure.origin}] ${failure.message}`);
+  for (const said of loaded.notes) note(`[extension] ${said}`);
   for (const warning of skills.warnings) note(`[skill] ${warning}`);
   for (const problem of loadedConfig.diagnostics) note(`[config] ${problem}`);
 

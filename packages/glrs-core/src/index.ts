@@ -79,6 +79,15 @@ export type Usage = {
   total: { input: number; output: number; cached: number; cost: number; steps: number };
 };
 
+// This session's resolved settings, merged from every config file that applied.
+// Provider blocks are deliberately absent: they hold API keys, and an extension
+// that wants them can read the files itself rather than being handed them.
+export type Settings = {
+  tool_timeout_ms?: number;
+  steering_mode?: "one-at-a-time" | "all";
+  follow_up_mode?: "one-at-a-time" | "all";
+};
+
 export type ExtensionContext = {
   root: string;
   mode: "tui" | "print";
@@ -107,6 +116,7 @@ export type ExtensionContext = {
   usage: () => Usage;
   session: () => { id: string; file: string; title: string; events: number };
   prompt: (text: string) => void;
+  settings: () => Readonly<Settings>;
 };
 
 export type Glrs = ExtensionContext;

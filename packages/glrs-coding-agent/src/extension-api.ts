@@ -1,11 +1,13 @@
 import type { ModelMessage, ToolSet } from "ai";
 import { z } from "zod";
+import type { Settings } from "../../glrs-core/src";
+import type { ShellResult as ToolShellResult } from "../../glrs-core/src/shell";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import { clip, type Line, type Tone } from "./render";
 import type { SkillSummary } from "./skills";
-import type { ToolEvent } from "./tools";
-import { wrapTool } from "./tools";
+import type { ToolEvent } from "./toolkit";
+import { wrapTool } from "./toolkit";
 
 // The public surface an extension is written against. Everything on it is a
 // facade over a seam that already exists inside glrs — `tool` lands where
@@ -22,13 +24,10 @@ export type { Activity, Line, Span, Tone } from "./render";
 
 import type { Activity } from "./render";
 
-export type ShellResult = {
-  output: string;
-  stdout: string;
-  stderr: string;
-  code: number;
-  ok: boolean;
-};
+// One definition, in core, where both the coding agent and the tools extension
+// can reach it. This was briefly declared here as well; two copies of one shape
+// is two things to remember to change, and the last pair had already drifted.
+export type ShellResult = ToolShellResult;
 
 export type EventName =
   | "session_start"
@@ -293,6 +292,12 @@ export type Glrs = {
   columns: () => number;
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
+  /**
+   * This session's resolved settings, merged from every config file that
+   * applied. Provider blocks are absent: they hold API keys, and an extension
+   * that wants them can read the files itself rather than be handed them.
+   */
+  settings: () => Readonly<Settings>;
   /** What is loaded: commands, skills, extensions. */
   inspect: () => Loaded;
   /** Drop the conversation the model replays. The transcript is untouched. */
@@ -399,6 +404,7 @@ export type ExtensionHost = {
   columns: () => number;
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
   setInput: (text: string) => void;
+  settings: () => Readonly<Settings>;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
@@ -526,6 +532,7 @@ export const createApi = (
   registry.contributions.set(origin, ledger);
   return {
     root: host.root,
+    settings: () => host.settings(),
     z,
     // First to claim a name keeps it, which is the rule every other namespace
     // here already follows — commands, user commands, skills, and the activity

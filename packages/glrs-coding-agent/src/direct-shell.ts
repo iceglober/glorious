@@ -1,4 +1,4 @@
-import type { ShellResult } from "./tools";
+import type { ShellResult } from "../../glrs-core/src/shell";
 
 export const cleanShellChunk = (text: string): string => {
   const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "gu");

@@ -60,7 +60,7 @@ describe("a tool is timed once", () => {
   // chat.ts used to pair start with end and subtract, so the transcript and
   // anything else reading the same call could report different durations.
   test("the elapsed time is measured at the call and carried on the event", () => {
-    expect(read("tools.ts")).toContain("const elapsedMs = Date.now() - began");
+    expect(read("toolkit.ts")).toContain("const elapsedMs = Date.now() - began");
     expect(read("chat.ts")).toContain("elapsedMs: tool.elapsedMs");
   });
 

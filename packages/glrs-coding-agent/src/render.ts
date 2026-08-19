@@ -1,5 +1,5 @@
 import type { SessionEvent } from "../../glrs-core/src/events";
-import { resultSummary } from "./tools";
+import { resultSummary } from "./toolkit";
 
 export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
 

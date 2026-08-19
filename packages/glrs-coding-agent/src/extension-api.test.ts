@@ -45,6 +45,7 @@ const harness = () => {
   const host = {
     root: "/tmp/project",
     mode: "tui" as const,
+    settings: () => ({ tool_timeout_ms: 4242, steering_mode: "all" as const }),
     exec: async (command: string) => {
       calls.push({ method: "exec", args: [command] });
       return { output: "", stdout: "", stderr: "", code: 0, ok: true };
@@ -259,6 +260,21 @@ describe("what an extension can reach", () => {
     g.events.on("mine", (payload) => heard.push(payload));
     g.events.emit("mine", { n: 1 });
     expect(heard).toEqual([{ n: 1 }]);
+  });
+});
+
+// The one member the tools extension is written against. Without it the tools
+// could not tell how long a command may run, and the only way to find out would
+// be to import the coding agent — which is exactly what an extension may not do.
+describe("what the host tells an extension about the session", () => {
+  test("settings carry the resolved config, without the provider blocks", () => {
+    const { g } = harness();
+    const settings = g.settings();
+    expect(settings.tool_timeout_ms).toBe(4242);
+    expect(settings.steering_mode).toBe("all");
+    // Provider settings hold API keys. An extension that wants them can read
+    // the config files itself rather than being handed them.
+    expect("providers" in settings).toBe(false);
   });
 });
 

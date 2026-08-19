@@ -8,7 +8,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./events": "./src/events.ts",
-    "./session": "./src/session.ts"
+    "./session": "./src/session.ts",
+    "./shell": "./src/shell.ts",
+    "./guidance": "./src/guidance.ts"
   },
   "files": [
     "src",

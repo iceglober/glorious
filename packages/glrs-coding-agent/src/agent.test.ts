@@ -249,7 +249,18 @@ describe("when a dropped stream may be sent again", () => {
 // simply absent from it and stayed withheld for the session. Which tools the
 // model could see depended on extension load order.
 describe("which tools a filter withholds", () => {
-  const nothing = (): ToolSet => ({});
+  const named = (...names: string[]): ToolSet =>
+    Object.fromEntries(
+      names.map((name) => [
+        name,
+        tool({ description: name, inputSchema: z.object({}), execute: async () => name }),
+      ]),
+    );
+
+  // Every tool now arrives through the registry, including the six that touch
+  // the machine — they are the builtins extension. So a test about filtering
+  // supplies its own rather than leaning on what the agent happens to build.
+  const nothing = (): ToolSet => named("read", "write", "bash");
 
   const build = (extensionTools: () => ToolSet = nothing) =>
     createAgent({
@@ -278,6 +289,24 @@ describe("which tools a filter withholds", () => {
     expect(build().toolNames()).toContain("write");
   });
 
+  test("the agent registers no tools of its own beyond activate_skill", () => {
+    // The six moved to an extension. Handed nothing, the agent has nothing —
+    // which is the claim "the core registers no tools of its own" makes.
+    const bare = createAgent({
+      root: "/tmp",
+      model: { name: "test", provider: "azure", modelId: "test", env: [] },
+      sessionId: "bare",
+      rules: "",
+      cwd: "/tmp",
+      os: "darwin",
+      date: "2026-08-18",
+      git: "",
+      skills: "",
+      skillTools: { catalog: "", commands: [], summaries: [], warnings: [], tool: undefined },
+    });
+    expect(bare.toolNames()).toEqual([]);
+  });
+
   test("a filter withholds what it refuses", () => {
     const agent = build();
     agent.setToolFilters([(name) => name !== "write"]);
@@ -288,20 +317,21 @@ describe("which tools a filter withholds", () => {
   // The one that was broken. The filter is registered while the extension
   // supplying `greet` has not loaded; `greet` appears afterwards.
   test("a tool that arrives after the filter is still judged by it", () => {
-    let extra: ToolSet = {};
+    let extra: ToolSet = named("read", "write", "bash");
     const agent = build(() => extra);
     agent.setToolFilters([(name) => name !== "write"]);
-    extra = greet();
+    extra = { ...named("read", "write", "bash"), ...greet() };
     expect(agent.toolNames()).toContain("greet");
     expect(agent.toolNames()).not.toContain("write");
   });
 
   test("a later tool the filter refuses is still refused", () => {
-    let extra: ToolSet = {};
+    let extra: ToolSet = named("read", "write", "bash");
     const agent = build(() => extra);
     agent.setToolFilters([(name) => name !== "greet"]);
-    extra = greet();
+    extra = { ...named("read", "write", "bash"), ...greet() };
     expect(agent.toolNames()).not.toContain("greet");
+    expect(agent.toolNames()).toContain("read");
   });
 
   // Every filter has to agree, so a restriction can only ever narrow and no

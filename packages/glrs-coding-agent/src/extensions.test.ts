@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runShell } from "../../glrs-core/src/shell";
 import {
   type Capture,
   createApi,
@@ -13,7 +14,7 @@ import {
   resetRegistry,
 } from "./extension-api";
 import { loadExtensions } from "./extensions";
-import { runShell, type ToolEvent } from "./tools";
+import type { ToolEvent } from "./toolkit";
 
 let root = "";
 const captured: Capture[] = [];
@@ -46,6 +47,7 @@ const host: ExtensionHost = {
     captured.push(spec);
     return { close: () => {}, repaint: () => {} };
   },
+  settings: () => ({ tool_timeout_ms: 1000 }),
   inspect: () => ({ commands: [], skills: [], extensions: [] }),
   clear: () => "cleared" as const,
   compact: async () => ({ outcome: "too-short" as const }),
@@ -467,6 +469,51 @@ describe("extensions under the name from before the rename", () => {
     const registry = createRegistry();
     await loadExtensions(dir, registry, { ...host, root: dir }, () => {});
     expect(Object.keys(registry.tools)).toContain("legacy_probe");
+    await rm(dir, { recursive: true, force: true });
+  });
+});
+
+// The six tools are an extension now, which means override is decided by the
+// registry rather than by a spread in agent.ts. Nothing about that is visible
+// to the type checker, and getting it backwards would silently hand a shipped
+// tool priority over the one a project wrote.
+describe("replacing a tool glrs ships", () => {
+  const bashFrom = async (dir: string): Promise<string> => {
+    const registry = createRegistry();
+    await loadExtensions(dir, registry, { ...host, root: dir }, () => {});
+    const entry = registry.tools.bash as {
+      execute: (input: unknown, call: unknown) => Promise<string>;
+    };
+    return entry.execute({ command: "unused" }, {});
+  };
+
+  test("with no project extension, the shipped bash is what runs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-shipped-"));
+    expect(await bashFrom(dir)).not.toContain("FROM-THE-PROJECT");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("a project extension registering bash wins", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-override-"));
+    await mkdir(join(dir, ".glrs", "extensions"), { recursive: true });
+    await Bun.write(
+      join(dir, ".glrs", "extensions", "mybash.ts"),
+      `export default function (g) {
+         g.tool({ name: "bash", description: "d", input: g.z.object({ command: g.z.string() }), execute: async () => "FROM-THE-PROJECT" });
+       }`,
+    );
+    // Executed, not counted. Both registrations leave a key called `bash`
+    // behind, so the only assertion that means anything is whose body ran.
+    expect(await bashFrom(dir)).toBe("FROM-THE-PROJECT");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("the six all arrive, so nothing was dropped in the move", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-six-"));
+    const registry = createRegistry();
+    await loadExtensions(dir, registry, { ...host, root: dir }, () => {});
+    for (const name of ["bash", "read", "write", "edit", "grep", "glob"])
+      expect(Object.keys(registry.tools)).toContain(name);
     await rm(dir, { recursive: true, force: true });
   });
 });

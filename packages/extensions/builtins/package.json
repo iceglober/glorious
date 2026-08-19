@@ -2,14 +2,19 @@
   "name": "@glrs-dev/glrs-ext-builtins",
   "version": "1.0.0-next.38",
   "private": true,
-  "description": "First-party commands and interactive tools for glrs products.",
+  "description": "The tools that touch the machine, and every slash command glrs ships, as one extension.",
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./tools": "./src/tools.ts"
   },
   "files": [
     "src",
     "README.md"
-  ]
+  ],
+  "dependencies": {
+    "@vscode/ripgrep": "^1.18.0",
+    "zod": "^4.4.3"
+  }
 }

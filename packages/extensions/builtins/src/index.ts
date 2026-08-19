@@ -1,12 +1,21 @@
 import type { Glrs, Line } from "../../../glrs-core/src";
+import { createCodingTools } from "./tools";
 
-// Every slash command glrs ships. None of them are built in — the core
-// registers no commands at all, and these arrive through exactly the API a
-// third party writes against. That is the test: if /help could not be written
-// as an extension, "extensible" would be a claim rather than a fact.
+// Everything glrs ships that a third party could have written: the six tools
+// that touch the machine, and every slash command. None of it is built in —
+// the core registers no tools and no commands at all, and all of this arrives
+// through exactly the API you would write against. That is the test: if /help
+// or `bash` could not be written as an extension, "extensible" would be a
+// claim rather than a fact.
 //
-// Shadow any of them with your own .glrs/extensions/builtins.ts, or delete
-// the lot and write your own. Nothing in the core depends on them existing.
+// Replace any one piece by registering the same name in .glrs/extensions/ —
+// a tool name is kept by whoever claims it first and your project is walked
+// before anything shipped, so a `bash` of your own simply wins.
+//
+// Shadowing this whole extension with a file called builtins.ts is a different
+// and much larger thing than it used to be: it costs the six tools as well as
+// the commands, which leaves the model unable to do anything. glrs says so at
+// startup when it happens.
 //
 // They print into the transcript rather than opening a panel over it. A listing
 // you can scroll back to, copy out of, and read beside the work that prompted it
@@ -67,6 +76,8 @@ const originOf = (g: Glrs, path: string): string => {
 };
 
 export default function builtins(g: Glrs): void {
+  for (const spec of createCodingTools(g.root, g.settings().tool_timeout_ms)) g.tool(spec);
+
   g.command("help", {
     description: "Show commands and keys",
     run: () => {

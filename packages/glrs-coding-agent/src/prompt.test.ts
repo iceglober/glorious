@@ -105,10 +105,12 @@ describe("the prompt agrees with the tool registry", () => {
   // telling the model to call something it had no way to call. Tool names are
   // the snake_case tokens in the prompt surfaces; every one must be registered.
   test("every tool the prompts name is one the model can actually call", async () => {
-    const { createTools } = await import("./tools");
-    const { loadSkills } = await import("./skills");
-    const skills = await loadSkills(process.cwd());
-    const registry = Object.keys(createTools("/tmp", () => {}, skills));
+    // The six come from the builtins extension now, and `activate_skill` is the
+    // one tool the core still registers itself. Listed rather than derived from
+    // a live loadSkills(), which only found one because this repo happens to
+    // ship a skill — in a checkout without one the guard quietly passed.
+    const { createCodingTools } = await import("../../extensions/builtins/src/tools");
+    const registry = [...createCodingTools("/tmp").map((spec) => spec.name), "activate_skill"];
     const surfaces = [systemPrompt({ rules: "" }), skillsPrompt("PLACEHOLDER")];
     const named = new Set(
       surfaces.flatMap((text) =>

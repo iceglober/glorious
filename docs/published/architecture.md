@@ -68,13 +68,20 @@ nothing changed. Nothing animates: a tick where no number moved costs nothing.
 
 ## Tools
 
-`createTools` builds the built-ins. Extensions add theirs through the same
-`wrapTool` wrapper, which is what makes them real tools: the same event stream
+There are no built-ins. `bash`, `read`, `write`, `edit`, `grep` and `glob` are
+the `builtins` extension, registered through `g.tool` exactly as a tool you
+write is. What the core keeps is the machinery they share, in `toolkit.ts`: the
+`wrapTool` wrapper is what makes anything a real tool — the same event stream
 drives the live row, the same 30k cap keeps one call from eating the context,
 and the same catch turns a throw into an `ERROR:` the model can recover from.
 
-Path confinement, output caps and process-group kill live in `tools.ts` and are
-not negotiable per-call — they never prompt, so they are not permission theatre.
+The first extension to claim a tool name keeps it, and your project is walked
+before anything shipped, so registering `bash` in `.glrs/extensions/` replaces
+the shipped one rather than racing it.
+
+Output caps and process-group kill live in `glrs-core/src/shell.ts`, which both
+sides use. Paths are not checked: relative ones resolve against the project
+root and absolute ones are taken as given.
 
 `wrapTool` also carries the gate an extension's `tool_call`/`tool_end` handlers
 drive: refuse a call before it runs, or rewrite what the model is told came

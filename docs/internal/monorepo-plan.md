@@ -42,8 +42,14 @@ The coding agent owns the product experience:
 - TUI, composer, terminal rendering, and keyboard behavior
 - CLI entry points, `-p`, `doctor`, `update`, and resume UX
 - coding-agent system prompt and repository context
-- default tools for files, shell, search, mentions, and skills
+- the tool machinery every tool shares — event ids, the gate, the result cap
+  (`toolkit.ts`) — and what the session considers in scope (`scope.ts`)
+- `activate_skill`, the one tool the core still registers, because it needs a
+  skill's body and the extension API does not carry one
 - the default package and executable named `glrs`
+
+The tools for files, shell and search are no longer here: they are the
+`builtins` extension.
 
 The coding agent depends on core and the provider registry. Core never imports
 products, provider implementations, or extensions.
@@ -58,8 +64,9 @@ consumes only the provider-neutral model port.
 
 Built-in extensions are independently testable packages that depend on core:
 
+- the tools that touch the machine: `bash`, `read`, `write`, `edit`, `grep`, `glob`
 - command listings such as help, skills, extensions, reload, clear, compact, and session
-- `web-fetch`
+- `web-fetch`, `ask-user`
 - future provider-specific or workflow-specific capabilities
 
 A built-in extension may be bundled by the coding agent, but it must remain
@@ -71,7 +78,9 @@ usable through the same extension API as a user extension.
 - The coding-agent source and tests live in `packages/glrs-coding-agent`.
 - Provider configuration, adapters, metadata, and tests live in `packages/provider-registry`.
 - Canonical events and JSON session persistence live in `packages/glrs-core`.
-- Built-in commands, `ask_user`, and `web_fetch` are independent extension packages.
+- The tools for files, shell and search, the slash commands, `ask_user` and
+  `web_fetch` are all extension packages. The core registers one tool
+  (`activate_skill`) and no commands.
 - The root package remains the public distribution for the `glrs` executable.
 - Boundary checks are enforced; Changesets versions and publishes only the root package.
 
