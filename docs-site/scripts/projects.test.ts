@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { projectFromIndex } from "./projects.ts";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { discoverProjects, projectFromIndex } from "./projects.ts";
 
 describe("documentation project indexes", () => {
   test("the parent directory is the route and frontmatter supplies the label", () => {
@@ -43,5 +46,26 @@ describe("documentation project indexes", () => {
     expect(() =>
       projectFromIndex("/repo/docs/published/Not Safe/index.md", "---\nlabel: x\n---\n"),
     ).toThrow("URL-safe");
+  });
+
+  test("discovers multiple projects and their first landing document", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-doc-projects-"));
+    try {
+      for (const [path, label] of [
+        ["agent", "coding agent"],
+        ["notes", "release notes"],
+      ]) {
+        await mkdir(join(root, path), { recursive: true });
+        await writeFile(join(root, path, "index.md"), `---\nlabel: ${label}\n---\n`);
+        await writeFile(join(root, path, "1-start.md"), `---\ntitle: start\n---\n`);
+      }
+      const projects = await discoverProjects(root);
+      expect(projects.map((project) => project.label)).toEqual(["coding agent", "release notes"]);
+      expect(projects.every((project) => project.landingDocument?.endsWith("1-start.md"))).toBe(
+        true,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

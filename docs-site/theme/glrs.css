@@ -120,7 +120,6 @@ body { letter-spacing: -0.01em; }
 }
 
 footer { display: none; }
-.project-landing { max-width: 76ch; margin-inline: auto; }
 
 @media (min-width: 1200px) {
   .container-main {

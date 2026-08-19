@@ -8,6 +8,7 @@ export type DocumentationProject = {
   index: string;
   entryPoints: string[];
   projectDocuments: string[];
+  landingDocument?: string;
 };
 
 const scalar = (value: string): string => {
@@ -62,7 +63,13 @@ export const discoverProjects = async (published: string): Promise<Documentation
     if (!entry.isDirectory()) continue;
     const index = join(published, entry.name, "index.md");
     const text = await readFile(index, "utf8").catch(() => null);
-    if (text !== null) projects.push(projectFromIndex(index, text));
+    if (text !== null) {
+      const project = projectFromIndex(index, text);
+      const documents = [...new Bun.Glob("**/!(index).md").scanSync({ cwd: dirname(index) })].sort();
+      if (documents.length === 0) throw new Error(`${index}: project needs at least one document`);
+      project.landingDocument = join(dirname(index), documents[0]);
+      projects.push(project);
+    }
   }
   if (projects.length === 0) throw new Error(`${published}: no */index.md documentation projects`);
   return projects;

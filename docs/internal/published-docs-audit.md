@@ -39,9 +39,9 @@ useful guidance beyond those pages.
 6. **internals** — philosophy, architecture, lifecycle
 
 `docs/published/coding-agent/index.md` supplies the label and optional entry
-points; its parent directory supplies `/coding-agent/`. The build discovers and
-builds every `docs/published/*/index.md` project independently, then generates
-the root project list from those files.
+points. The build discovers every `docs/published/*/index.md` project, groups
+its guides and API entries in one shared navigation, and generates the root
+project list from those files.
 
 Numeric file and directory prefixes preserve page order and are removed from
 visible page/group titles by frontmatter and the document-groups plugin. Group

@@ -4,6 +4,7 @@
   "alwaysCreateEntryPointModule": true,
   "tsconfig": "../packages/tsconfig.json",
   "plugin": [
+    "./plugins/project-navigation.ts",
     "./theme/index.ts",
     "./plugins/group-documents.ts",
     "@boneskull/typedoc-plugin-mermaid"
