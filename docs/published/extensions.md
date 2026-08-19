@@ -48,15 +48,37 @@ Loaded in this order; the first file to claim a name wins.
 | `.glrs/extensions/*.ts` | this project |
 | `.glrs/extensions/<name>/index.ts` | this project, multi-file |
 | `~/.config/agents/extensions/*.ts` | you, everywhere |
-| bundled with glrs | shipped, enabled by default |
+| named in `extensions.load` | a shipped extension, or a path |
+| bundled with glrs | `builtins` only, unless asked for |
 
 Because project files load first, `.glrs/extensions/web-fetch.ts` replaces
 the bundled `web_fetch` rather than colliding with it.
 
-Three ship enabled: `builtins` (the `bash`, `read`, `write`, `edit`, `grep` and
-`glob` tools, plus `/help`, `/clear`, `/compact`, `/session`, `/skills`,
-`/extensions` and `/reload`), `web-fetch` (the `web_fetch` tool) and `ask-user`
-(the `ask_user` tool, in the TUI only).
+Three ship in the box, and one of them loads by default:
+
+| | |
+| --- | --- |
+| `builtins` | `bash`, `read`, `write`, `edit`, `grep`, `glob`, and `/help` `/clear` `/compact` `/session` `/skills` `/extensions` `/reload` — **always on** unless you disable it |
+| `web-fetch` | the `web_fetch` tool — off until named |
+| `ask-user` | the `ask_user` tool, TUI only — off until named |
+
+```json
+{ "extensions": { "load": ["web-fetch"], "disable": ["builtins"] } }
+```
+
+`load` takes a shipped extension's name, the package it ships as, or a path —
+relative to the config file that wrote it, or absolute. `disable` takes any
+name at all and wins over `load` from any layer, because turning something off
+is the direction that has to be safe. Both lists **add up** across the four
+config files rather than the nearest one replacing the rest; a project
+activating one extension must not switch off the one your personal config
+activates everywhere.
+
+A name in `load` that resolves to nothing is a failure and says so — you asked
+for it and it is not there. A name in `disable` that matches nothing is only a
+note, since nothing is broken and the usual cause is a typo.
+
+`glrs doctor` lists what would load, without running any of it.
 
 **The core registers no slash commands and no tools of its own.** That was an
 aspiration for a while and is now literally true: the six tools that touch the

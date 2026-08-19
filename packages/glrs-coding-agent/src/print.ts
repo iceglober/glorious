@@ -169,11 +169,16 @@ export const runPrint = async (
       entries: () => [],
     },
     (event) => toolSink(event),
+    { settings: loadedConfig.config.extensions },
   );
   for (const failure of loaded.failures) note(`[extension ${failure.origin}] ${failure.message}`);
   for (const said of loaded.notes) note(`[extension] ${said}`);
   for (const warning of skills.warnings) note(`[skill] ${warning}`);
   for (const problem of loadedConfig.diagnostics) note(`[config] ${problem}`);
+  const banned = new Set(
+    (loadedConfig.config.tools?.disable ?? []).map((name) => name.trim().toLowerCase()),
+  );
+  if (banned.size > 0) agent.setToolFilters([(name) => !banned.has(name.toLowerCase())]);
 
   const onSigint = (): void => stop.abort();
   process.on("SIGINT", onSigint);

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 // Two files, read-only, no schema. The four-layer merge with provenance
 // tracking that used to live here served two fields once the model picker and
@@ -24,6 +24,22 @@ export type ProviderSettings = {
 // coding agent because config cannot depend on it — see check-boundaries.ts.
 export type QueueMode = "one-at-a-time" | "all";
 
+// Which extensions load, and which do not. `load` names a shipped extension or
+// a path; `disable` names anything at all and stops it loading. Declared here
+// rather than imported from the coding agent for the same reason QueueMode is —
+// config cannot depend on it, see check-boundaries.ts.
+export type ExtensionSettings = {
+  load?: readonly string[];
+  disable?: readonly string[];
+};
+
+// Tools are not extensions and the two lists have different lifetimes, so this
+// is a sibling key rather than a third field above. A name here is withheld
+// from the model whichever extension registered it.
+export type ToolSettings = {
+  disable?: readonly string[];
+};
+
 export type Config = {
   // "provider/model-id", e.g. "azure/gpt-5.6-luna". A bare id means azure.
   model?: string;
@@ -35,6 +51,8 @@ export type Config = {
   steering_mode?: QueueMode;
   // Enter messages, delivered once the agent has finished all its work.
   follow_up_mode?: QueueMode;
+  extensions?: ExtensionSettings;
+  tools?: ToolSettings;
   providers?: Record<string, ProviderSettings>;
 };
 
@@ -96,12 +114,18 @@ const ALSO_KNOWN: Record<string, keyof Config> = {
   followUpMode: "follow_up_mode",
 };
 
+// Forgetting an entry here is not cosmetic: a file that configures only
+// extensions would be told "nothing here is a glrs setting — the whole file is
+// ignored" while the extensions loaded anyway, which is a diagnostic that
+// contradicts what happened.
 const KNOWN = [
   "model",
   "variant",
   "tool_timeout_ms",
   "steering_mode",
   "follow_up_mode",
+  "extensions",
+  "tools",
   "providers",
   ...Object.keys(ALSO_KNOWN),
 ];
@@ -143,6 +167,65 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     }
     return undefined;
   };
+  // Per entry, not per list: an array with one number in it is a list that half
+  // works, and the half that does not is otherwise invisible.
+  const names = (value: unknown, block: string, key: string): string[] | undefined => {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) {
+      diagnostics.push(`${where}: ${block}.${key} should be an array of names — ignored`);
+      return undefined;
+    }
+    const kept: string[] = [];
+    value.forEach((entry, at) => {
+      const name = stringOf(entry);
+      if (name === undefined)
+        diagnostics.push(`${where}: ${block}.${key}[${at}] should be a string — ignored`);
+      else kept.push(name.trim());
+    });
+    return kept.length > 0 ? kept : undefined;
+  };
+
+  const listBlock = <T extends Record<string, readonly string[] | undefined>>(
+    block: "extensions" | "tools",
+    keys: readonly string[],
+    wanted: string,
+  ): T | undefined => {
+    const value = raw[block];
+    if (value === undefined) return undefined;
+    // `"extensions": ["web-fetch"]` is the shorthand everyone tries first.
+    if (Array.isArray(value)) {
+      const load = names(value, block, keys[0] ?? "load");
+      return load === undefined ? undefined : ({ [keys[0] ?? "load"]: load } as unknown as T);
+    }
+    if (!isObject(value)) {
+      wrong(block, wanted);
+      return undefined;
+    }
+    // A block glrs recognises holding nothing it knows will not do what it
+    // looks like it does — the same rule the whole-file check below applies.
+    if (!keys.some((key) => key in value)) {
+      const inside = Object.keys(value);
+      if (inside.length > 0)
+        diagnostics.push(
+          `${where}: "${block}" has no ${keys.map((key) => `"${key}"`).join(" or ")} (${inside.slice(0, 4).join(", ")}) — ignored`,
+        );
+      return undefined;
+    }
+    const out = Object.fromEntries(
+      keys
+        .map((key) => [key, names(value[key], block, key)])
+        .filter(([, list]) => list !== undefined),
+    ) as unknown as T;
+    return Object.keys(out).length > 0 ? out : undefined;
+  };
+
+  const extensions = listBlock<ExtensionSettings>(
+    "extensions",
+    ["load", "disable"],
+    'an object with "load" and "disable", or an array of names',
+  );
+  const tools = listBlock<ToolSettings>("tools", ["disable"], 'an object with "disable"');
+
   if (raw.providers !== undefined && !isObject(raw.providers)) wrong("providers", "an object");
 
   const providers: Record<string, ProviderSettings> = {};
@@ -174,8 +257,32 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     tool_timeout_ms: positiveNumberOf(raw.tool_timeout_ms),
     steering_mode: queueMode("steering_mode"),
     follow_up_mode: queueMode("follow_up_mode"),
+    ...(extensions !== undefined ? { extensions } : {}),
+    ...(tools !== undefined ? { tools } : {}),
     ...(Object.keys(providers).length > 0 ? { providers } : {}),
   };
+};
+
+// Additive, unlike every scalar below. Extensions and tools are sets, not
+// values: a project that activates one must not switch off the one your
+// personal config activates everywhere, and a name disabled anywhere stays
+// disabled — turning something off is the direction that has to be safe.
+const union = (near?: readonly string[], far?: readonly string[]): string[] | undefined => {
+  const all = [...new Set([...(near ?? []), ...(far ?? [])])];
+  return all.length === 0 ? undefined : all;
+};
+
+const mergedLists = <T extends Record<string, readonly string[] | undefined>>(
+  keys: readonly string[],
+  near?: T,
+  far?: T,
+): T | undefined => {
+  const out = Object.fromEntries(
+    keys
+      .map((key) => [key, union(near?.[key], far?.[key])])
+      .filter(([, list]) => list !== undefined),
+  ) as unknown as T;
+  return Object.keys(out).length > 0 ? out : undefined;
 };
 
 const merge = (near: Config, far: Config): Config => ({
@@ -184,8 +291,20 @@ const merge = (near: Config, far: Config): Config => ({
   tool_timeout_ms: near.tool_timeout_ms ?? far.tool_timeout_ms,
   steering_mode: near.steering_mode ?? far.steering_mode,
   follow_up_mode: near.follow_up_mode ?? far.follow_up_mode,
+  extensions: mergedLists<ExtensionSettings>(["load", "disable"], near.extensions, far.extensions),
+  tools: mergedLists<ToolSettings>(["disable"], near.tools, far.tools),
   providers: { ...far.providers, ...near.providers },
 });
+
+// A path in a config file means a path from that file. Only the prefixes that
+// are unambiguously a path are touched; everything else is a name, and a name
+// has to survive untouched so the loader can match it against what ships.
+export const rooted = (entry: string, from: string, home: string): string =>
+  entry.startsWith("~/")
+    ? join(home, entry.slice(2))
+    : /^\.\.?[/\\]/u.test(entry)
+      ? resolve(from, entry)
+      : entry;
 
 // Malformed JSON is reported rather than swallowed — a config that silently
 // does nothing is the hardest kind to debug. A missing file is not a problem.
@@ -195,7 +314,18 @@ export const loadConfig = async (root: string, home: string = homedir()): Promis
     const text = await readFile(path, "utf8").catch(() => null);
     if (text === null) return {};
     try {
-      return shapeOf(JSON.parse(text), path.replace(home, "~"), diagnostics);
+      const shaped = shapeOf(JSON.parse(text), path.replace(home, "~"), diagnostics);
+      // Resolved here, where the file it came from is still known: the four
+      // layers merge into one object a line later, and nothing after that can
+      // tell which of them wrote "./tools/reviewer.ts".
+      if (shaped.extensions?.load === undefined) return shaped;
+      return {
+        ...shaped,
+        extensions: {
+          ...shaped.extensions,
+          load: shaped.extensions.load.map((entry) => rooted(entry, dirname(path), home)),
+        },
+      };
     } catch {
       diagnostics.push(`${path.replace(home, "~")}: not valid JSON, ignored`);
       return {};

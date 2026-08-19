@@ -21,9 +21,13 @@ wrong, that is a bug.
 
 ## Tools the model can call
 
-`bash` · `read` · `write` · `edit` · `grep` · `glob` ·
-`activate_skill`, plus `web_fetch` from a bundled extension and anything an
-extension registers — including `ask_user`, which is a bundled extension rather than a built-in.
+`bash` · `read` · `write` · `edit` · `grep` · `glob` · `activate_skill`, plus
+anything an extension registers.
+
+Only `activate_skill` is the core's; the six are the `builtins` extension,
+which loads unless you disable it. `web_fetch` and `ask_user` also ship in the
+box but wait to be asked for — `{"extensions":{"load":["web-fetch"]}}`. See
+[configuration](/configuration).
 
 `edit` changes many files in one call and resolves every replacement before
 writing, so a failure leaves the tree untouched. Output is capped at 30,000

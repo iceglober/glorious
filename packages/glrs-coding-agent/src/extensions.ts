@@ -1,5 +1,5 @@
-import { readdir } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { readdir, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
 import webFetch from "../../extensions/web-fetch/src";
@@ -74,11 +74,126 @@ const shadowNote: Record<string, string> = {
     "shadows the extension that provides bash, read, write, edit, grep, glob and every slash command — the model has no tools unless yours registers them",
 };
 
+// `defaultOn` is what separates the extension the agent cannot work without
+// from the ones that add a capability. builtins always loads unless you
+// explicitly disable it; the rest wait to be named in `extensions.load`.
 const bundled = [
-  { name: "ask-user", origin: "@glrs-dev/glrs-ext-ask-user", load: askUser },
-  { name: "builtins", origin: "@glrs-dev/glrs-ext-builtins", load: builtins },
-  { name: "web-fetch", origin: "@glrs-dev/glrs-ext-web-fetch", load: webFetch },
+  { name: "ask-user", origin: "@glrs-dev/glrs-ext-ask-user", load: askUser, defaultOn: false },
+  { name: "builtins", origin: "@glrs-dev/glrs-ext-builtins", load: builtins, defaultOn: true },
+  { name: "web-fetch", origin: "@glrs-dev/glrs-ext-web-fetch", load: webFetch, defaultOn: false },
 ];
+
+// What config says about which extensions load. Declared here rather than
+// imported from provider-registry for the same reason QueueMode is declared
+// twice: extension loading has no business depending on the model registry,
+// and a structural type costs three lines.
+export type ExtensionSettings = {
+  load?: readonly string[];
+  disable?: readonly string[];
+};
+
+const key = (name: string): string => name.trim().toLowerCase();
+
+// Everything that would load, worked out without running any of it. `glrs
+// doctor` reports from this: an extension is a program, and a diagnostic that
+// executes programs is not a diagnostic.
+export type Planned = {
+  name: string;
+  origin: string;
+  source: "disk" | "bundled" | "config";
+  path?: string;
+  load?: (glrs: never) => void | Promise<void>;
+};
+
+export type ExtensionPlan = {
+  plan: Planned[];
+  failures: Array<{ origin: string; message: string }>;
+  notes: string[];
+};
+
+export const resolveExtensions = async (
+  root: string,
+  settings?: ExtensionSettings,
+): Promise<ExtensionPlan> => {
+  const plan: Planned[] = [];
+  const failures: ExtensionPlan["failures"] = [];
+  const notes: string[] = [];
+  const seen = new Set<string>();
+  const off = new Set((settings?.disable ?? []).map(key));
+  const wanted = new Set((settings?.load ?? []).map(key));
+  const claimed = new Set<string>();
+
+  const take = (name: string): "taken" | "off" | "free" => {
+    if (seen.has(name)) return "taken";
+    seen.add(name);
+    if (off.has(name)) {
+      claimed.add(name);
+      return "off";
+    }
+    return "free";
+  };
+
+  // Discovery first, so the documented rule — the first file to claim a name
+  // wins — is untouched by anything config says.
+  for (const entry of (await Promise.all(extensionRoots(root).map(entryPoints))).flat()) {
+    if (take(entry.name) !== "free") continue;
+    plan.push({ name: entry.name, origin: entry.path, source: "disk", path: entry.path });
+  }
+
+  for (const entry of bundled) {
+    const seat = take(entry.name);
+    if (seat === "taken") {
+      const cost = shadowNote[entry.name];
+      if (cost !== undefined) notes.push(`${entry.name}.ts ${cost}`);
+      continue;
+    }
+    if (seat === "off") continue;
+    // Named by its own name or by the package it ships as. The roster already
+    // records the specifier, so a config written today keeps working the day
+    // these are installed rather than bundled.
+    if (!entry.defaultOn && !wanted.has(key(entry.name)) && !wanted.has(key(entry.origin)))
+      continue;
+    plan.push({ name: entry.name, origin: entry.origin, source: "bundled", load: entry.load });
+  }
+
+  // Whatever `load` named that discovery and the roster did not account for.
+  for (const entry of settings?.load ?? []) {
+    const name = key(entry);
+    if (seen.has(name) || bundled.some((one) => key(one.origin) === name)) continue;
+    if (entry.includes(":")) {
+      failures.push({
+        origin: entry,
+        message: `"${entry.split(":")[0]}:" packages need an installer glrs does not have yet — name a bundled extension or a path`,
+      });
+      continue;
+    }
+    if (!isAbsolute(entry)) {
+      const near = bundled.map((one) => one.name).join(", ");
+      failures.push({
+        origin: entry,
+        message: `no extension by that name is bundled or on disk — glrs ships ${near}`,
+      });
+      continue;
+    }
+    const entryPath = (await stat(entry).catch(() => null))?.isDirectory()
+      ? join(entry, "index.ts")
+      : entry;
+    if (!(await stat(entryPath).catch(() => null))?.isFile()) {
+      failures.push({ origin: entry, message: `no such file: ${entryPath}` });
+      continue;
+    }
+    const named = basename(entryPath, ".ts").toLowerCase();
+    const label = named === "index" ? basename(dirname(entryPath)).toLowerCase() : named;
+    if (take(label) !== "free") continue;
+    plan.push({ name: label, origin: entryPath, source: "config", path: entryPath });
+  }
+
+  for (const one of settings?.disable ?? [])
+    if (!claimed.has(key(one)))
+      notes.push(`extensions.disable names "${one}", which is not an extension that would load`);
+
+  return { plan, failures, notes };
+};
 
 // Each extension is loaded and invoked on its own, so one that throws on import
 // or in its factory costs only itself. Files on disk are walked first and a
@@ -90,45 +205,30 @@ export const loadExtensions = async (
   registry: Registry,
   host: ExtensionHost,
   onToolEvent: (event: ToolEvent) => void,
-  // Appended to the import specifier so a reload re-reads the file. Without it
-  // the module cache hands back the version loaded at startup, and editing an
-  // extension would appear to do nothing.
-  token?: string,
+  // `token` is appended to the import specifier so a reload re-reads the file;
+  // without it the module cache hands back the version loaded at startup and
+  // editing an extension appears to do nothing. A bag rather than a fifth
+  // positional, because the next thing to arrive here is an install root.
+  options: { token?: string; settings?: ExtensionSettings } = {},
 ): Promise<ExtensionLoad> => {
-  const seen = new Set<string>();
-  const notes: string[] = [];
+  const { plan, failures, notes } = await resolveExtensions(root, options.settings);
   const extensions: LoadedExtension[] = [];
-  const failures: ExtensionLoad["failures"] = [];
 
-  const found = (await Promise.all(extensionRoots(root).map(entryPoints))).flat();
-
-  for (const entry of found) {
-    if (seen.has(entry.name)) continue;
-    seen.add(entry.name);
+  for (const entry of plan) {
     try {
-      const specifier = resolve(entry.path);
-      const module = (await import(token === undefined ? specifier : `${specifier}?${token}`)) as {
-        default?: (glrs: ReturnType<typeof createApi>) => void | Promise<void>;
-      };
-      if (typeof module.default !== "function")
-        throw new Error("no default export — an extension exports a function taking (glrs)");
-      // Awaited before the session starts, so an extension that fetches or
-      // reads on the way up has finished registering before the first turn.
-      await module.default(createApi(host, registry, onToolEvent, entry.path));
-      extensions.push({ name: entry.name, origin: entry.path });
-    } catch (thrown) {
-      failures.push({ origin: entry.path, message: failureText(thrown) });
-    }
-  }
-  for (const entry of bundled) {
-    if (seen.has(entry.name)) {
-      const cost = shadowNote[entry.name];
-      if (cost !== undefined) notes.push(`${entry.name}.ts ${cost}`);
-      continue;
-    }
-    seen.add(entry.name);
-    try {
-      await entry.load(createApi(host, registry, onToolEvent, entry.origin) as never);
+      if (entry.path === undefined) {
+        await entry.load?.(createApi(host, registry, onToolEvent, entry.origin) as never);
+      } else {
+        const specifier = resolve(entry.path);
+        const module = (await import(
+          options.token === undefined ? specifier : `${specifier}?${options.token}`
+        )) as { default?: (glrs: ReturnType<typeof createApi>) => void | Promise<void> };
+        if (typeof module.default !== "function")
+          throw new Error("no default export — an extension exports a function taking (glrs)");
+        // Awaited before the session starts, so an extension that fetches or
+        // reads on the way up has finished registering before the first turn.
+        await module.default(createApi(host, registry, onToolEvent, entry.path));
+      }
       extensions.push({ name: entry.name, origin: entry.origin });
     } catch (thrown) {
       failures.push({ origin: entry.origin, message: failureText(thrown) });

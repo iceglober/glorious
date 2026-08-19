@@ -34,7 +34,7 @@ import {
   fire,
   resetRegistry,
 } from "./extension-api";
-import { loadExtensions } from "./extensions";
+import { type ExtensionSettings, loadExtensions, resolveExtensions } from "./extensions";
 import { expandMentions, fileCandidates } from "./mentions";
 import { runPrint } from "./print";
 import { fence } from "./prompt";
@@ -164,11 +164,20 @@ const main = async (): Promise<void> => {
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
     const chosen = currentModel(resolvedConfig.config);
+    // Resolved, not loaded: this says what would run without running any of it.
+    // An extension is a program, and a diagnostic that executes programs is not
+    // a diagnostic.
+    const planned = await resolveExtensions(root, resolvedConfig.config.extensions);
     const report = {
-      diagnostics: resolvedConfig.diagnostics,
+      diagnostics: [
+        ...resolvedConfig.diagnostics,
+        ...planned.notes,
+        ...planned.failures.map((one) => `extensions.load "${one.origin}": ${one.message}`),
+      ],
       model: chosen,
       provider: providerSpec(chosen.provider)?.label ?? `${chosen.provider} (OpenAI-compatible)`,
       missing: missingFor(chosen.provider, resolvedConfig.config.providers?.[chosen.provider]),
+      extensions: planned.plan.map(({ name, origin, source }) => ({ name, origin, source })),
     };
     if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else {
@@ -178,6 +187,11 @@ const main = async (): Promise<void> => {
         ...(report.missing.length === 0
           ? ["credentials: found"]
           : report.missing.map((gap) => `missing: ${gap}`)),
+        `extensions: ${
+          report.extensions.length === 0
+            ? "none"
+            : report.extensions.map((one) => `${one.name} (${one.source})`).join(", ")
+        }`,
         ...report.diagnostics,
       ];
       process.stdout.write(`${lines.join("\n")}\n`);
@@ -867,7 +881,19 @@ const main = async (): Promise<void> => {
       // success that said nothing about the omission.
       resetRegistry(registry);
       agent.setToolFilters([]);
-      loaded = await loadAllExtensions(String(Date.now()));
+      // Config is re-read rather than closed over: editing `extensions.load`
+      // and pressing /reload has to mean the same thing as restarting, or the
+      // one job it would be used for is the one job it does not do. Only the
+      // extension and tool blocks are taken — swapping the model behind a
+      // reload is a different feature.
+      const reread = await loadConfig(root);
+      loaded = await loadAllExtensions({
+        token: String(Date.now()),
+        settings: reread.config.extensions,
+      });
+      applyToolBans(reread.config.tools?.disable);
+      for (const problem of reread.diagnostics)
+        render({ type: "notice", text: `(config) ${problem}` });
       for (const failure of loaded.failures)
         render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
       for (const said of loaded.notes) render({ type: "notice", text: `(extension) ${said}` });
@@ -877,10 +903,24 @@ const main = async (): Promise<void> => {
     },
   };
 
-  const loadAllExtensions = (token?: string) =>
-    loadExtensions(root, registry, extensionHost, (event) => toolSink(event), token);
+  const loadAllExtensions = (options: { token?: string; settings?: ExtensionSettings } = {}) =>
+    loadExtensions(root, registry, extensionHost, (event) => toolSink(event), {
+      token: options.token,
+      settings: "settings" in options ? options.settings : config.config.extensions,
+    });
+
+  // `tools.disable` withholds a name from the model whichever extension
+  // registered it. It rides the same filter seam an extension's g.filterTools
+  // uses, so the two intersect rather than one overwriting the other — and it
+  // has to be re-applied after a reload, which resets the filters to none.
+  const applyToolBans = (names: readonly string[] | undefined): void => {
+    const off = new Set((names ?? []).map((name) => name.trim().toLowerCase()));
+    registry.toolFilters.push((name) => !off.has(name.toLowerCase()));
+    agent.setToolFilters(registry.toolFilters);
+  };
 
   let loaded = await loadAllExtensions();
+  applyToolBans(config.config.tools?.disable);
   registerCommands();
   for (const failure of loaded.failures)
     render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });

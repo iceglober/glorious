@@ -299,3 +299,106 @@ describe("settings carried by the environment", () => {
     expect(envSetting("PROBE")).toBeUndefined();
   });
 });
+
+// Reported from a live session: the only way to turn off a bundled extension
+// was to shadow it with a file of your own that did nothing, and an
+// npm-installed glrs has no file to delete.
+describe("which extensions load", () => {
+  const written = async (contents: string): Promise<string> => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-ext-"));
+    roots.push(root);
+    await mkdir(join(root, ".glrs"), { recursive: true });
+    await writeFile(join(root, ".glrs", "config.json"), contents);
+    return root;
+  };
+
+  test("nothing sets a list by default", async () => {
+    const root = await written('{"model":"azure/x"}');
+    const { config } = await loadConfig(root, join(root, "nohome"));
+    expect(config.extensions).toBeUndefined();
+    expect(config.tools).toBeUndefined();
+  });
+
+  test("a list to load and a list to disable", async () => {
+    const root = await written('{"extensions":{"load":["web-fetch"],"disable":["ask-user"]}}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.extensions?.load).toEqual(["web-fetch"]);
+    expect(config.extensions?.disable).toEqual(["ask-user"]);
+    expect(diagnostics).toEqual([]);
+  });
+
+  test("the bare-array shorthand is read as a load list", async () => {
+    const root = await written('{"extensions":["web-fetch"]}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.extensions?.load).toEqual(["web-fetch"]);
+    expect(diagnostics).toEqual([]);
+  });
+
+  test("tools.disable is its own block", async () => {
+    const root = await written('{"tools":{"disable":["write","edit"]}}');
+    expect((await loadConfig(root, join(root, "nohome"))).config.tools?.disable).toEqual([
+      "write",
+      "edit",
+    ]);
+  });
+
+  test("a list that is not a list is reported", async () => {
+    const root = await written('{"extensions":{"load":"web-fetch"}}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.extensions).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain("extensions.load should be an array");
+  });
+
+  // One bad entry is dropped by index; the rest of the list still works.
+  test("a non-string entry is named by position and the rest survive", async () => {
+    const root = await written('{"extensions":{"load":["web-fetch",42]}}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.extensions?.load).toEqual(["web-fetch"]);
+    expect(diagnostics.join("\n")).toContain("extensions.load[1] should be a string");
+  });
+
+  test("a block with neither key says so", async () => {
+    const root = await written('{"extensions":{"enabled":["web-fetch"]}}');
+    const { diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(diagnostics.join("\n")).toContain('"extensions" has no "load" or "disable"');
+  });
+
+  // The trap: forget the KNOWN entry and a file configuring only extensions is
+  // told the whole file was ignored, while the extensions load anyway.
+  test("a file that sets only extensions is not called a foreign config", async () => {
+    const root = await written('{"extensions":{"load":["web-fetch"]}}');
+    const { diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(diagnostics.join("\n")).not.toContain("nothing here is a glrs setting");
+  });
+
+  // The other trap: merge is hand-written, and lists are sets rather than
+  // values. A project activating one must not switch off the one your personal
+  // config activates everywhere.
+  test("the lists add up across layers rather than replacing", async () => {
+    const home = await mkdtemp(join(tmpdir(), "glrs-ext-home-"));
+    roots.push(home);
+    await mkdir(join(home, ".glrs"), { recursive: true });
+    await writeFile(
+      join(home, ".glrs", "config.json"),
+      '{"extensions":{"load":["ask-user"],"disable":["web-fetch"]}}',
+    );
+    const root = await written('{"extensions":{"load":["web-fetch"]}}');
+    const { config } = await loadConfig(root, home);
+    expect([...(config.extensions?.load ?? [])].sort()).toEqual(["ask-user", "web-fetch"]);
+    // Disabled personally, still disabled even though the project asked for it.
+    expect(config.extensions?.disable).toEqual(["web-fetch"]);
+  });
+
+  test("a relative path is resolved against the file that wrote it", async () => {
+    const root = await written('{"extensions":{"load":["./ext/deploy.ts"]}}');
+    const { config } = await loadConfig(root, join(root, "nohome"));
+    expect(config.extensions?.load?.[0]).toBe(join(root, ".glrs", "ext", "deploy.ts"));
+  });
+
+  test("a package specifier is left exactly as written", async () => {
+    const root = await written('{"extensions":{"load":["@glrs-dev/glrs-ext-web-fetch"]}}');
+    expect((await loadConfig(root, join(root, "nohome"))).config.extensions?.load).toEqual([
+      "@glrs-dev/glrs-ext-web-fetch",
+    ]);
+  });
+});
