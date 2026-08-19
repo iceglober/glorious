@@ -110,6 +110,8 @@ body { letter-spacing: -0.01em; }
 
 .tsd-navigation.settings { display: none; }
 .site-menu > .tsd-navigation > a:first-child { display: none; }
+.site-menu .tsd-navigation a,
+.site-menu .tsd-navigation summary > span { white-space: nowrap; }
 .tsd-page-navigation > .tsd-accordion-summary { align-items: center; }
 .tsd-page-navigation > .tsd-accordion-summary h3 {
   margin: 0;
