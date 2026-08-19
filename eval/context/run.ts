@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { systemPrompt } from "../../packages/glorious-coding-agent/src/prompt";
+import { systemPrompt } from "../../packages/glrs-coding-agent/src/prompt";
 
 // Does a long context make this model worse at the same job?
 //
@@ -18,7 +18,7 @@ import { systemPrompt } from "../../packages/glorious-coding-agent/src/prompt";
 // run costs a fraction of its nominal token count.
 
 const model = createAzure({ apiKey: process.env.AZURE_OPENAI_API_KEY })(
-  process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna",
+  process.env.GLRS_MODEL ?? "gpt-5.6-luna",
 );
 
 const SIZES = (process.env.SIZES ?? "4000,25000,60000,120000,200000").split(",").map(Number);

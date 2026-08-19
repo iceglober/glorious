@@ -6,7 +6,7 @@ title: Commands
 
 ## Slash commands from markdown
 
-A file in `.glorious/commands/` becomes `/name`. Its body is the prompt.
+A file in `.glrs/commands/` becomes `/name`. Its body is the prompt.
 
 ```markdown
 ---
@@ -20,7 +20,7 @@ Read `git diff` and report anything that would fail CI. Do not fix it yet.
 arguments appended inside `<arguments>`, so `/review src/auth.ts` does not
 silently drop the path.
 
-Searched in `.glorious/commands/` and `.agents/commands/` up the directory tree,
+Searched in `.glrs/commands/` and `.agents/commands/` up the directory tree,
 then `~/.config/agents/commands/`. First name wins, and nothing is reserved — the core registers no commands, so a
 file may claim `/clear` or `/help` if you want it to. Extensions register before
 skills and command files, so the bundled ones win by default.
@@ -36,7 +36,7 @@ Skills follow the Agent Skills standard: a directory containing `SKILL.md` with
 ```markdown
 ---
 name: verify
-description: Drive the glorious TUI end-to-end and capture what it paints.
+description: Drive the glrs TUI end-to-end and capture what it paints.
 ---
 
 ...instructions...
@@ -46,13 +46,13 @@ Every skill's name and description are listed to the model on each turn; the
 body is loaded only when the model calls `activate_skill`, or when you type its
 slash command. That is the point — a skill costs a line until it is used.
 
-Discovered under `.glorious/skills/` and `.agents/skills/` up the tree, plus
+Discovered under `.glrs/skills/` and `.agents/skills/` up the tree, plus
 `~/.agents/skills/` and `~/.config/agents/skills/`. `/skills` lists what was
 found and from where; `r` in that list reloads.
 
-Another tool's directories are deliberately not read. glorious used to pick up
+Another tool's directories are deliberately not read. glrs used to pick up
 `~/.claude/skills`, `~/.claude/plugins/cache` and `~/.config/amp/skills`, which
-turned someone else's whole skill surface into glorious slash commands — and put
+turned someone else's whole skill surface into glrs slash commands — and put
 every one of their descriptions in the per-turn preamble. Symlink one into
 `.agents/skills/` if you want it here.
 

@@ -3,7 +3,7 @@ import { createModel, currentModel } from "./models";
 import { missingFor, PROVIDERS, providerSpec } from "./providers";
 
 describe("the provider table", () => {
-  test("covers the providers glorious ships a factory for", () => {
+  test("covers the providers glrs ships a factory for", () => {
     for (const id of ["anthropic", "openai", "azure", "google", "google-vertex", "amazon-bedrock"])
       expect(providerSpec(id)).toBeDefined();
   });
@@ -55,7 +55,7 @@ describe("what doctor reports as missing", () => {
   });
 });
 
-// A local server, a gateway or a company proxy is reachable without glorious
+// A local server, a gateway or a company proxy is reachable without glrs
 // shipping a factory for it. This used to throw "Provider x is not supported"
 // unless models.dev happened to publish it, which no local server does.
 describe("OpenAI-compatible endpoints", () => {

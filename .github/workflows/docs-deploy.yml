@@ -6,8 +6,8 @@ on:
     paths:
       - "docs-site/**"
       - "docs/published/**"
-      - "packages/glorious-coding-agent/src/extension-api.ts"
-      - "packages/glorious-core/src/**"
+      - "packages/glrs-coding-agent/src/extension-api.ts"
+      - "packages/glrs-core/src/**"
       - ".github/workflows/docs-deploy.yml"
   workflow_dispatch:
     inputs:

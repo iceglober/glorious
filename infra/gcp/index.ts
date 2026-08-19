@@ -16,7 +16,7 @@
  *   glrs:domain            Domain name (e.g. glrs.dev)
  *   glrs:docsBucket        Bucket name for docs site (must be globally unique)
  *   glrs:githubOrg         GitHub org (iceglober)
- *   glrs:githubRepo        GitHub repo (glorious)
+ *   glrs:githubRepo        GitHub repo (glrs)
  *
  * Bootstrap step (one-time, manual):
  *   1. gcloud projects create glrs-prod

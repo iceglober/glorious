@@ -13,23 +13,23 @@ const files = async (dir: string): Promise<string[]> => {
 
 const rules = [
   {
-    root: "packages/glorious-core/src",
+    root: "packages/glrs-core/src",
     forbidden: [
-      "@glrs-dev/glorious-coding-agent",
+      "@glrs-dev/glrs-coding-agent",
       "@glrs-dev/provider-registry",
-      "packages/glorious-coding-agent",
+      "packages/glrs-coding-agent",
     ],
   },
   {
     root: "packages/provider-registry/src",
-    forbidden: ["@glrs-dev/glorious-coding-agent", "packages/glorious-coding-agent"],
+    forbidden: ["@glrs-dev/glrs-coding-agent", "packages/glrs-coding-agent"],
   },
   {
     root: "packages/extensions",
     forbidden: [
-      "@glrs-dev/glorious-coding-agent",
+      "@glrs-dev/glrs-coding-agent",
       "@glrs-dev/provider-registry",
-      "packages/glorious-coding-agent",
+      "packages/glrs-coding-agent",
     ],
   },
 ];

@@ -9,10 +9,10 @@ title: Models
 In order of precedence:
 
 1. `--model provider/model-id` on the command line
-2. `GLORIOUS_MODEL` / `GLORIOUS_VARIANT`
-3. `.glorious/config.json` in the project
-4. `~/.glorious/config.json`
-5. `~/.config/glorious/config.json`
+2. `GLRS_MODEL` / `GLRS_VARIANT`
+3. `.glrs/config.json` in the project
+4. `~/.glrs/config.json`
+5. `~/.config/glrs/config.json`
 6. the default, `azure/gpt-5.6-luna`
 
 ```json
@@ -26,9 +26,9 @@ In order of precedence:
 reasoning effort, when the model advertises one.
 
 Merged nearest-first, one key at a time: a project may pin the model while your
-personal config supplies the provider settings it does not mention. `~/.glorious/`
+personal config supplies the provider settings it does not mention. `~/.glrs/`
 is read because that is already where your extensions and commands
-live; `~/.config/glorious/` works too, for the XDG layout.
+live; `~/.config/glrs/` works too, for the XDG layout.
 
 Config is read-only — nothing writes it at runtime. The core has no model
 picker: edit the file or set the environment variable and restart, and
@@ -59,16 +59,16 @@ Per-provider settings, when a provider needs them:
 
 ## Cost and context
 
-At startup glorious asks [models.dev](https://models.dev) for one thing: the
+At startup glrs asks [models.dev](https://models.dev) for one thing: the
 context window and per-token pricing of the model you already selected. That is
 what makes the status line's `ctx 12.3k(1%)` meaningful — a percentage needs a
 denominator.
 
-The answer is cached to `~/.cache/glorious/models.dev.json`, so after the first
+The answer is cached to `~/.cache/glrs/models.dev.json`, so after the first
 successful fetch it works offline. Before that, or if the cache is gone and the
 network is too, the status line reads `unknown` and everything else works.
 
-`GLORIOUS_PRICE_MULTIPLIERS=azure=1.1` scales the published rates when your
+`GLRS_PRICE_MULTIPLIERS=azure=1.1` scales the published rates when your
 provider's pricing differs.
 
 ## When a turn dies
@@ -82,7 +82,7 @@ doing on the next one.
 ## Diagnostics
 
 ```sh
-glorious doctor          # model and config diagnostics
-glorious doctor --json
-glorious --version
+glrs doctor          # model and config diagnostics
+glrs doctor --json
+glrs --version
 ```

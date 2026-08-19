@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { environmentPrompt, systemPrompt } from "../../packages/glorious-coding-agent/src/prompt";
+import { environmentPrompt, systemPrompt } from "../../packages/glrs-coding-agent/src/prompt";
 
 // Does putting volatile content in the system prompt cost the cache?
 //
-// Shape A is what glorious used to do: the environment block sat at the tail of
+// Shape A is what glrs used to do: the environment block sat at the tail of
 // the system prompt. Shape B is what it does now: the system prompt is static
 // and the environment rides inside the user message, frozen into history.
 //
@@ -15,7 +15,7 @@ import { environmentPrompt, systemPrompt } from "../../packages/glorious-coding-
 // from cache.
 
 const model = createAzure({ apiKey: process.env.AZURE_OPENAI_API_KEY })(
-  process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna",
+  process.env.GLRS_MODEL ?? "gpt-5.6-luna",
 );
 
 const rules = "# Conventions\n- Use bun, never npm.\n- Function components only.\n";

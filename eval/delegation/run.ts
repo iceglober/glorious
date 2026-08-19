@@ -19,7 +19,7 @@ import { z } from "zod";
 //            clause that admits what a subagent reports.
 
 const model = createAzure({ apiKey: process.env.AZURE_OPENAI_API_KEY })(
-  process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna",
+  process.env.GLRS_MODEL ?? "gpt-5.6-luna",
 );
 
 const SEEDS = Number(process.env.SEEDS ?? 4);
@@ -116,7 +116,7 @@ const run = async (arm: string, instructions: string): Promise<Run> => {
 };
 
 const before = await Bun.file(join(here, "before.txt")).text();
-const { systemPrompt } = await import("../../packages/glorious-coding-agent/src/prompt");
+const { systemPrompt } = await import("../../packages/glrs-coding-agent/src/prompt");
 const after = systemPrompt({ rules: "" });
 
 const rows: Run[] = [];

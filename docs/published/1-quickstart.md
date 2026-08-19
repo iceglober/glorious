@@ -16,18 +16,18 @@ export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource
 ```
 
-`GLORIOUS_MODEL` overrides the default model (`gpt-5.6-luna`).
+`GLRS_MODEL` overrides the default model (`gpt-5.6-luna`).
 
 ## Open a session
 
 From inside a git repo:
 
 ```sh
-glorious
+glrs
 ```
 
 Type, and the agent reads and edits files and runs commands as you chat.
-`glorious --resume` reopens an earlier session.
+`glrs --resume` reopens an earlier session.
 
 ## Slash commands
 
@@ -52,7 +52,7 @@ The `!` prefix remains available for one-off shell commands.
 
 ## Project rules and skills
 
-glorious reads `AGENTS.md`, `AGENT.md` or `CLAUDE.md` from the working
+glrs reads `AGENTS.md`, `AGENT.md` or `CLAUDE.md` from the working
 directory upwards, nearer files last. Skills — a directory with a `SKILL.md`
 carrying `name` and `description` frontmatter — are discovered the same way;
 only the name and description are loaded until the agent activates one.

@@ -1,11 +1,11 @@
-import type { Glorious, Line } from "../../../glorious-core/src";
+import type { Glrs, Line } from "../../../glrs-core/src";
 
-// Every slash command glorious ships. None of them are built in — the core
+// Every slash command glrs ships. None of them are built in — the core
 // registers no commands at all, and these arrive through exactly the API a
 // third party writes against. That is the test: if /help could not be written
 // as an extension, "extensible" would be a claim rather than a fact.
 //
-// Shadow any of them with your own .glorious/extensions/builtins.ts, or delete
+// Shadow any of them with your own .glrs/extensions/builtins.ts, or delete
 // the lot and write your own. Nothing in the core depends on them existing.
 //
 // They print into the transcript rather than opening a panel over it. A listing
@@ -20,7 +20,7 @@ type Row = { name: string; tag?: string; note: string };
 // One aligned block. The eye reads down the names, so they get a column of
 // their own; descriptions are clipped to what is left rather than wrapped,
 // because a listing that reflows is a listing you cannot skim.
-const table = (g: Glorious, rows: readonly Row[]): Line[] => {
+const table = (g: Glrs, rows: readonly Row[]): Line[] => {
   const width = Math.max(40, g.columns() - 2);
   const nameCol = Math.min(NAME_MAX, Math.max(...rows.map((row) => row.name.length)));
   const tagCol = rows.some((row) => row.tag)
@@ -41,7 +41,7 @@ const table = (g: Glorious, rows: readonly Row[]): Line[] => {
 
 // A heading with the hint that belongs to it pushed to the right margin, so the
 // heading reads as a heading and the hint stays out of the way.
-const heading = (g: Glorious, title: string, hint = ""): Line => {
+const heading = (g: Glrs, title: string, hint = ""): Line => {
   const room = Math.max(0, g.columns() - 2 - title.length - hint.length - 2);
   return [
     { text: title, tone: "accent", bold: true },
@@ -54,8 +54,8 @@ const blank: Line = [{ text: "" }];
 // Where something came from, in a word. The absolute path was accurate and
 // unreadable: three of them turned a five-line listing into fifteen, and the
 // part that actually matters is whether this is yours, the project's, or
-// glorious's own.
-const originOf = (g: Glorious, path: string): string => {
+// glrs's own.
+const originOf = (g: Glrs, path: string): string => {
   if (path.includes("/v2/bundled/")) return "bundled";
   if (path.startsWith(g.root)) return "project";
   // Spelled out rather than defaulting HOME to a sentinel. It defaulted to a
@@ -66,7 +66,7 @@ const originOf = (g: Glorious, path: string): string => {
   return "other";
 };
 
-export default function builtins(g: Glorious): void {
+export default function builtins(g: Glrs): void {
   g.command("help", {
     description: "Show commands and keys",
     run: () => {

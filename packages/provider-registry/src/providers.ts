@@ -1,10 +1,10 @@
-// The providers glorious knows without being told: what each is called, which
+// The providers glrs knows without being told: what each is called, which
 // environment variables carry its credentials, and what else it needs before it
 // can answer.
 //
 // This is the table `doctor` reads to say what is missing, and the table
 // credential resolution walks. Each provider's SDK has its own default variable
-// and would find it unaided — but then glorious cannot tell you *why* a session
+// and would find it unaided — but then glrs cannot tell you *why* a session
 // will not start, and cannot accept the second and third names a provider
 // answers to. Azure answers to three.
 //
@@ -111,9 +111,9 @@ export const nearestProvider = (id: string): string | undefined => {
   );
 };
 
-// Any id glorious does not know is treated as an OpenAI-compatible endpoint,
+// Any id glrs does not know is treated as an OpenAI-compatible endpoint,
 // which is what makes Ollama, LM Studio, vLLM, a gateway or a company proxy
-// reachable without glorious shipping a factory for each. It needs a base URL,
+// reachable without glrs shipping a factory for each. It needs a base URL,
 // because there is nothing else to guess from.
 export const compatibleNote =
   'Unknown providers are treated as OpenAI-compatible. Give one a base URL: {"providers":{"<id>":{"api":"http://localhost:11434/v1"}}}';

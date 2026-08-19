@@ -1,13 +1,12 @@
 {
-  "name": "@glrs-dev/glorious-builtins",
+  "name": "@glrs-dev/glrs-ext-builtins",
   "version": "1.0.0-next.38",
   "private": true,
-  "description": "First-party commands and interactive tools for glorious products.",
+  "description": "First-party commands and interactive tools for glrs products.",
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./ask-user": "./src/ask-user.ts"
+    ".": "./src/index.ts"
   },
   "files": [
     "src",
