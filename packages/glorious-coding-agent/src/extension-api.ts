@@ -441,7 +441,10 @@ export type Registry = {
   // What each extension registered, keyed by its file. /extensions reads this,
   // and it is the only account anyone gets of what a loaded extension did —
   // there being no approval prompt to have read it out beforehand.
-  contributions: Map<string, { tools: string[]; commands: string[]; hooks: number; ui: number }>;
+  contributions: Map<
+    string,
+    { tools: string[]; shadowed: string[]; commands: string[]; hooks: number; ui: number }
+  >;
 };
 
 // Empty every container in place. A reload replaces what extensions
@@ -489,6 +492,7 @@ export const describeContribution = (registry: Registry, origin: string): string
   if (!entry) return "registered nothing";
   const parts = [
     entry.tools.length > 0 && `tools: ${entry.tools.join(", ")}`,
+    entry.shadowed.length > 0 && `shadowed: ${entry.shadowed.join(", ")}`,
     entry.commands.length > 0 && `commands: ${entry.commands.map((n) => `/${n}`).join(", ")}`,
     entry.hooks > 0 && `${entry.hooks} hook${entry.hooks === 1 ? "" : "s"}`,
     entry.ui > 0 && `${entry.ui} ui`,
@@ -506,12 +510,32 @@ export const createApi = (
   onToolEvent: (event: ToolEvent) => void,
   origin: string,
 ): Glorious => {
-  const ledger = { tools: [] as string[], commands: [] as string[], hooks: 0, ui: 0 };
+  const ledger = {
+    tools: [] as string[],
+    shadowed: [] as string[],
+    commands: [] as string[],
+    hooks: 0,
+    ui: 0,
+  };
   registry.contributions.set(origin, ledger);
   return {
     root: host.root,
     z,
+    // First to claim a name keeps it, which is the rule every other namespace
+    // here already follows — commands, user commands, skills, and the activity
+    // row. Tool names were the one exception, and the exception ran backwards:
+    // the later an extension loaded, the more it could take. Since the loader
+    // walks the project before anything shipped, first-wins is what makes a
+    // project extension able to replace a tool glorious ships.
+    //
+    // The loser is recorded rather than dropped silently: /extensions is the
+    // only account anyone gets of what an extension did, and listing a tool it
+    // does not own would make that account wrong.
     tool: (spec) => {
+      if (Object.hasOwn(registry.tools, spec.name)) {
+        ledger.shadowed.push(spec.name);
+        return;
+      }
       ledger.tools.push(spec.name);
       registry.tools[spec.name] = wrapTool(
         onToolEvent,

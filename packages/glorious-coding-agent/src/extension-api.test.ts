@@ -4,9 +4,11 @@ import { join } from "node:path";
 import {
   createApi,
   createRegistry,
+  describeContribution,
   type ExtensionHost,
   fire,
   type Glorious,
+  type Registry,
 } from "./extension-api";
 
 // The extension API is glorious's product surface: the core registers no tools
@@ -417,5 +419,104 @@ describe("the lifecycle page matches the code", () => {
     const listed = [...page().matchAll(/^\| `([a-z_]+)` \|/gmu)].map((m) => m[1]);
     expect(listed.filter((event) => !known.has(event))).toEqual([]);
     expect(listed.length).toBe(known.size);
+  });
+});
+
+// Tool names were the one namespace here where the *last* registration won.
+// Every other one — commands, user commands, skills, the activity row — is
+// first-wins, and the exception ran backwards: the later an extension loaded,
+// the more it could take. Since the loader walks the project before anything
+// glorious ships, first-wins is what makes a project extension able to replace
+// a tool that ships in the box.
+describe("two extensions claiming one tool name", () => {
+  const joining = (registry: Registry, origin: string): Glorious =>
+    createApi(
+      { root: "/tmp/project", mode: "tui" } as unknown as ExtensionHost,
+      registry,
+      () => {},
+      origin,
+    );
+
+  const run = async (registry: Registry, name: string): Promise<string> => {
+    const entry = registry.tools[name] as {
+      execute: (input: unknown, call: unknown) => Promise<string>;
+    };
+    return entry.execute({}, {});
+  };
+
+  test("the first registration is the one the model gets", async () => {
+    const { g, registry } = harness();
+    g.tool({
+      name: "bash",
+      description: "the project's",
+      input: g.z.object({}),
+      execute: async () => "from the project",
+    });
+    const shipped = joining(registry, "@glrs-dev/glorious-builtins");
+    shipped.tool({
+      name: "bash",
+      description: "the shipped one",
+      input: shipped.z.object({}),
+      execute: async () => "from the box",
+    });
+
+    // Executed rather than counted. Both registrations leave a key of the same
+    // name behind, so the only assertion that means anything is whose body ran.
+    expect(await run(registry, "bash")).toBe("from the project");
+  });
+
+  test("the renderer stays with whoever won the name", () => {
+    const { g, registry } = harness();
+    g.tool({
+      name: "bash",
+      description: "the project's",
+      input: g.z.object({}),
+      execute: async () => "ok",
+    });
+    const shipped = joining(registry, "@glrs-dev/glorious-builtins");
+    shipped.tool({
+      name: "bash",
+      description: "the shipped one",
+      input: shipped.z.object({}),
+      execute: async () => "ok",
+      renderCall: () => [[{ text: "from the box" }]],
+    });
+    // The winner registered no renderer, so there must not be one — a tool and
+    // its renderer being drawn from different extensions would render a call
+    // that never happens.
+    expect(registry.renderers.has("bash")).toBe(false);
+  });
+
+  test("the one that lost says so instead of claiming the tool", () => {
+    const { g, registry } = harness();
+    g.tool({
+      name: "bash",
+      description: "the project's",
+      input: g.z.object({}),
+      execute: async () => "ok",
+    });
+    const shipped = joining(registry, "@glrs-dev/glorious-builtins");
+    shipped.tool({
+      name: "bash",
+      description: "the shipped one",
+      input: shipped.z.object({}),
+      execute: async () => "ok",
+    });
+    // /extensions is the only account anyone gets of what a loaded extension
+    // did, there being no approval prompt to have read it out beforehand.
+    // Listing a tool it does not own would make that account wrong.
+    expect(describeContribution(registry, "test-extension")).toContain("tools: bash");
+    expect(describeContribution(registry, "@glrs-dev/glorious-builtins")).toBe("shadowed: bash");
+  });
+
+  test("a name nobody else claimed is registered as normal", async () => {
+    const { g, registry } = harness();
+    g.tool({
+      name: "solo",
+      description: "d",
+      input: g.z.object({}),
+      execute: async () => "only me",
+    });
+    expect(await run(registry, "solo")).toBe("only me");
   });
 });

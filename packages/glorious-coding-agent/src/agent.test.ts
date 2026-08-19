@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { providerOptions, settleQuietly, shouldResend, worthRetrying } from "./agent";
+import { type ToolSet, tool } from "ai";
+import { z } from "zod";
+import { createAgent, providerOptions, settleQuietly, shouldResend, worthRetrying } from "./agent";
 import { errorText } from "./render";
 
 describe("settleQuietly", () => {
@@ -230,5 +232,87 @@ describe("when a dropped stream may be sent again", () => {
 
   test("a refusal is not a dropped connection", () => {
     expect(shouldResend(state({ failure: new Error("401 Unauthorized") }))).toBe(false);
+  });
+});
+
+// A tool filter is a predicate, and it is applied per model call rather than
+// resolved once into a list of names. That distinction is the whole of the bug
+// this covers: the resolved list was computed at the moment a filter was
+// registered, so a tool belonging to an extension that had not loaded yet was
+// simply absent from it and stayed withheld for the session. Which tools the
+// model could see depended on extension load order.
+describe("which tools a filter withholds", () => {
+  const nothing = (): ToolSet => ({});
+
+  const build = (extensionTools: () => ToolSet = nothing) =>
+    createAgent({
+      root: "/tmp",
+      model: { name: "test", provider: "azure", modelId: "test", env: [] },
+      sessionId: "filters",
+      rules: "",
+      cwd: "/tmp",
+      os: "darwin",
+      date: "2026-08-18",
+      git: "",
+      skills: "",
+      skillTools: { catalog: "", commands: [], summaries: [], warnings: [], tool: undefined },
+      extensionTools,
+    });
+
+  const greet = (): ToolSet => ({
+    greet: tool({
+      description: "say hello",
+      inputSchema: z.object({}),
+      execute: async () => "hello",
+    }),
+  });
+
+  test("with no filters at all, everything survives", () => {
+    expect(build().toolNames()).toContain("write");
+  });
+
+  test("a filter withholds what it refuses", () => {
+    const agent = build();
+    agent.setToolFilters([(name) => name !== "write"]);
+    expect(agent.toolNames()).not.toContain("write");
+    expect(agent.toolNames()).toContain("read");
+  });
+
+  // The one that was broken. The filter is registered while the extension
+  // supplying `greet` has not loaded; `greet` appears afterwards.
+  test("a tool that arrives after the filter is still judged by it", () => {
+    let extra: ToolSet = {};
+    const agent = build(() => extra);
+    agent.setToolFilters([(name) => name !== "write"]);
+    extra = greet();
+    expect(agent.toolNames()).toContain("greet");
+    expect(agent.toolNames()).not.toContain("write");
+  });
+
+  test("a later tool the filter refuses is still refused", () => {
+    let extra: ToolSet = {};
+    const agent = build(() => extra);
+    agent.setToolFilters([(name) => name !== "greet"]);
+    extra = greet();
+    expect(agent.toolNames()).not.toContain("greet");
+  });
+
+  // Every filter has to agree, so a restriction can only ever narrow and no
+  // extension has to know what else is installed.
+  test("filters intersect rather than the last one winning", () => {
+    const agent = build();
+    agent.setToolFilters([(name) => name !== "write", (name) => name !== "bash"]);
+    const names = agent.toolNames();
+    expect(names).not.toContain("write");
+    expect(names).not.toContain("bash");
+    expect(names).toContain("read");
+  });
+
+  test("clearing the filters brings everything back", () => {
+    const agent = build();
+    agent.setToolFilters([() => false]);
+    expect(agent.toolNames()).toEqual([]);
+    agent.setToolFilters([]);
+    expect(agent.toolNames()).toContain("write");
   });
 });
