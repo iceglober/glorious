@@ -18,6 +18,12 @@ export type ProviderSettings = {
   location?: string;
 };
 
+// How much of a message queue one delivery takes. "one-at-a-time" hands over
+// the oldest waiting message and leaves the rest; "all" hands over everything
+// waiting as a single delivery. Declared here rather than imported from the
+// coding agent because config cannot depend on it — see check-boundaries.ts.
+export type QueueMode = "one-at-a-time" | "all";
+
 export type Config = {
   // "provider/model-id", e.g. "azure/gpt-5.6-luna". A bare id means azure.
   model?: string;
@@ -25,6 +31,10 @@ export type Config = {
   variant?: string;
   // Maximum time in milliseconds for a built-in shell/search tool.
   tool_timeout_ms?: number;
+  // Alt+Enter messages, delivered into the turn that is already running.
+  steering_mode?: QueueMode;
+  // Enter messages, delivered once the agent has finished all its work.
+  follow_up_mode?: QueueMode;
   providers?: Record<string, ProviderSettings>;
 };
 
@@ -57,7 +67,28 @@ const stringOf = (value: unknown): string | undefined =>
 const positiveNumberOf = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 
-const KNOWN = ["model", "variant", "tool_timeout_ms", "providers"];
+const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
+
+const queueModeOf = (value: unknown): QueueMode | undefined =>
+  QUEUE_MODES.includes(value as QueueMode) ? (value as QueueMode) : undefined;
+
+// The camelCase spellings are what the two settings are called in the docs of
+// the agent this queue was modelled on, so they are what someone arriving from
+// there types first. Reading both costs a line and saves a silent no-op.
+const ALSO_KNOWN: Record<string, keyof Config> = {
+  steeringMode: "steering_mode",
+  followUpMode: "follow_up_mode",
+};
+
+const KNOWN = [
+  "model",
+  "variant",
+  "tool_timeout_ms",
+  "steering_mode",
+  "follow_up_mode",
+  "providers",
+  ...Object.keys(ALSO_KNOWN),
+];
 
 // Read what is recognised and ignore the rest — a config that has grown a key
 // glorious no longer knows about is not a broken config, and refusing to start
@@ -84,6 +115,18 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     wrong("variant", 'a string like "high"');
   if (raw.tool_timeout_ms !== undefined && positiveNumberOf(raw.tool_timeout_ms) === undefined)
     wrong("tool_timeout_ms", "a positive number");
+  // Read under either spelling, and reported under the one that was written so
+  // the message points at the line in the file.
+  const queueMode = (key: "steering_mode" | "follow_up_mode"): QueueMode | undefined => {
+    const alias = Object.keys(ALSO_KNOWN).find((name) => ALSO_KNOWN[name] === key);
+    for (const name of [key, alias].filter((one): one is string => one !== undefined)) {
+      if (raw[name] === undefined) continue;
+      const mode = queueModeOf(raw[name]);
+      if (mode === undefined) wrong(name, '"one-at-a-time" or "all"');
+      else return mode;
+    }
+    return undefined;
+  };
   if (raw.providers !== undefined && !isObject(raw.providers)) wrong("providers", "an object");
 
   const providers: Record<string, ProviderSettings> = {};
@@ -113,6 +156,8 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     model: stringOf(raw.model),
     variant: stringOf(raw.variant),
     tool_timeout_ms: positiveNumberOf(raw.tool_timeout_ms),
+    steering_mode: queueMode("steering_mode"),
+    follow_up_mode: queueMode("follow_up_mode"),
     ...(Object.keys(providers).length > 0 ? { providers } : {}),
   };
 };
@@ -121,6 +166,8 @@ const merge = (near: Config, far: Config): Config => ({
   model: near.model ?? far.model,
   variant: near.variant ?? far.variant,
   tool_timeout_ms: near.tool_timeout_ms ?? far.tool_timeout_ms,
+  steering_mode: near.steering_mode ?? far.steering_mode,
+  follow_up_mode: near.follow_up_mode ?? far.follow_up_mode,
   providers: { ...far.providers, ...near.providers },
 });
 

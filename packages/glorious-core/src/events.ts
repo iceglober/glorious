@@ -3,7 +3,11 @@ import type { ModelMessage } from "ai";
 export const PREAMBLE_TAGS = ["where-you-are", "skills", "extensions"] as const;
 
 export type SessionEvent =
-  | { type: "user"; text: string }
+  // `steer` marks a message the user sent into a turn that was already running,
+  // rather than one that started a turn. Optional so a session written before
+  // steering existed still loads, and read by the TUI so a steering message is
+  // not mistaken for the start of a new turn.
+  | { type: "user"; text: string; steer?: boolean }
   | { type: "assistant"; text: string }
   // input and result are what an extension's renderer redraws from on replay;
   // both are optional so a session written before extensions still loads.

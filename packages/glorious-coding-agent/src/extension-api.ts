@@ -278,7 +278,10 @@ export type Glorious = {
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
   /**
    * Start a turn. `label` is what the transcript shows instead of the text.
-   * `steer` jumps the queue so it lands next rather than last.
+   * `steer` joins the turn already running, at its next step boundary, so the
+   * model reads it before it chooses its next action; without it the message
+   * waits until the agent has finished all its work. With nothing running the
+   * two are the same thing — a turn.
    */
   send: (text: string, options?: { label?: string; steer?: boolean }) => void;
   /** Write into the transcript. Pass Line[] when you want it styled. */

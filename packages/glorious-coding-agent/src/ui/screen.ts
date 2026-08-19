@@ -6,8 +6,11 @@ import {
   completionWindow,
   composerKeyBindings,
   composerWrapMode,
+  enterKeys,
+  isAlt,
 } from "../composer";
 import type { Capture } from "../extension-api";
+import type { QueueKind } from "../queue";
 import type { Line } from "../render";
 import { createChrome, fillHex, panelHex } from "./chrome";
 
@@ -19,7 +22,13 @@ const quitLine: Line = [{ text: "Ctrl+C again to exit", tone: "warning" }];
 export const createScreen = async (callbacks: {
   promptHistory?: string[];
   onPromptHistory?: (history: string[]) => void;
-  onSubmit: (text: string) => void;
+  // `kind` is which queue the message joins when the agent is busy: Enter
+  // sends a follow-up, Alt+Enter a steering message. With nothing running they
+  // are the same thing — a turn — which is why the composer does not care
+  // whether the agent is working and never has to be told.
+  onSubmit: (text: string, kind: QueueKind) => void;
+  // Alt+Up: hand the newest waiting message back to the composer.
+  onUnqueue: () => void;
   onShell: (command: string) => void;
   cwd: string;
   onCommand: (name: string, args: string) => void;
@@ -79,7 +88,7 @@ export const createScreen = async (callbacks: {
       { name: "return", shift: true, action: "newline" },
       { name: "kpenter", shift: true, action: "newline" },
     ],
-    onSubmit: () => submit(),
+    onSubmit: () => submit("follow-up"),
     wrapMode: composerWrapMode,
     width: composerWidth(),
     backgroundColor: fillHex,
@@ -377,14 +386,20 @@ export const createScreen = async (callbacks: {
 
   input.onContentChange = syncShellMode;
 
-  const submit = (): void => {
+  const submit = (kind: QueueKind = "follow-up"): void => {
     const text = input.plainText;
     const selected = autocompleteItems[autocompleteIndex]?.name;
     if (autocompleteOpen && autocompleteSigil && autocompleteSigil.query !== selected) {
       completeCommand();
       return;
     }
-    if (text.trim() === "") return;
+    // Enter on an empty composer used to do nothing at all, which makes it the
+    // one key free to mean "carry on" after Esc held the queue. Routed through
+    // onSubmit so the chat decides whether there is anything to release.
+    if (text.trim() === "") {
+      callbacks.onSubmit("", kind);
+      return;
+    }
     const dismiss = (): void => {
       autocompleteOpen = false;
       autocompleteItems = [];
@@ -409,7 +424,7 @@ export const createScreen = async (callbacks: {
     callbacks.onPromptHistory?.(past.slice());
     cursor = null;
     compose("");
-    callbacks.onSubmit(text);
+    callbacks.onSubmit(text, kind);
   };
 
   const onCtrlC = (): void => {
@@ -454,6 +469,20 @@ export const createScreen = async (callbacks: {
       syncShellMode();
       return;
     }
+    // Both Alt chords are taken before the completion menu and before the
+    // textarea's own bindings, which match on name and shift only — Alt+Enter
+    // would otherwise reach `return` → submit and queue a follow-up, silently
+    // doing the opposite of what was pressed.
+    if (isAlt(event) && enterKeys.has(event.name ?? "")) {
+      event.stopPropagation();
+      submit("steer");
+      return;
+    }
+    if (isAlt(event) && event.name === "up") {
+      event.stopPropagation();
+      callbacks.onUnqueue();
+      return;
+    }
     if (autocompleteOpen) {
       if (event.name === "up") {
         event.stopPropagation();
@@ -495,8 +524,8 @@ export const createScreen = async (callbacks: {
     // Arrow keys move within what you are typing and only reach for history at
     // the edges, the way a shell does. Ctrl+P/Ctrl+N stay unconditional history,
     // so recalling a long prompt never costs you fast cycling.
-    const arrowBack = !event.shift && event.name === "up";
-    const arrowForward = !event.shift && event.name === "down";
+    const arrowBack = !event.shift && !isAlt(event) && event.name === "up";
+    const arrowForward = !event.shift && !isAlt(event) && event.name === "down";
     const back =
       (arrowBack && atFirstLine(input.plainText, input.cursorOffset)) ||
       (event.ctrl && event.name === "p");

@@ -21,6 +21,7 @@ import extensionsMd from "../../docs/published/extensions.md?raw";
 import skillsMd from "../../docs/published/skills.md?raw";
 import lifecycleMd from "../../docs/published/lifecycle.md?raw";
 import architectureMd from "../../docs/published/architecture.md?raw";
+import terminalSetupMd from "../../docs/published/terminal-setup.md?raw";
 import troubleshootingMd from "../../docs/published/troubleshooting.md?raw";
 import apiMd from "./generated/extension-api.md?raw";
 
@@ -51,6 +52,7 @@ export function App() {
             <Route path="skills" element={<Doc md={skillsMd} title="Skills" />} />
             <Route path="lifecycle" element={<Doc md={lifecycleMd} title="Lifecycle" />} />
             <Route path="architecture" element={<Doc md={architectureMd} title="Architecture" />} />
+            <Route path="terminal-setup" element={<Doc md={terminalSetupMd} title="Terminal setup" />} />
             <Route path="troubleshooting" element={<Doc md={troubleshootingMd} title="Troubleshooting" />} />
             <Route path="api" element={<Doc md={apiMd} title="Extension API" />} />
             <Route path="changelog" element={<Changelog />} />

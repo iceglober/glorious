@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { type ToolSet, tool } from "ai";
+import { type ModelMessage, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { createAgent, providerOptions, settleQuietly, shouldResend, worthRetrying } from "./agent";
+import {
+  createAgent,
+  providerOptions,
+  settleQuietly,
+  shouldResend,
+  withInjected,
+  worthRetrying,
+} from "./agent";
 import { errorText } from "./render";
 
 describe("settleQuietly", () => {
@@ -314,5 +321,61 @@ describe("which tools a filter withholds", () => {
     expect(agent.toolNames()).toEqual([]);
     agent.setToolFilters([]);
     expect(agent.toolNames()).toContain("write");
+  });
+});
+
+// A steering message is appended to what the model sees at a step boundary, so
+// it is in neither the messages that were sent nor the ones that came back.
+// Putting it at the end of the record instead would have the assistant answer
+// something the stored conversation never says was asked.
+describe("where a steering message lands in the turn's record", () => {
+  const say = (role: "assistant" | "user", content: string): ModelMessage =>
+    ({ role, content }) as ModelMessage;
+  const texts = (messages: readonly ModelMessage[]): string[] =>
+    messages.map((message) => `${message.role}:${String(message.content)}`);
+
+  test("between the step it arrived after and the step that answered it", () => {
+    const responses = [say("assistant", "one"), say("assistant", "two"), say("assistant", "three")];
+    expect(texts(withInjected(responses, [{ at: 2, message: say("user", "use bun") }]))).toEqual([
+      "assistant:one",
+      "assistant:two",
+      "user:use bun",
+      "assistant:three",
+    ]);
+  });
+
+  test("two of them keep both their positions and their order", () => {
+    const responses = [say("assistant", "one"), say("assistant", "two"), say("assistant", "three")];
+    expect(
+      texts(
+        withInjected(responses, [
+          { at: 1, message: say("user", "first") },
+          { at: 3, message: say("user", "second") },
+        ]),
+      ),
+    ).toEqual(["assistant:one", "user:first", "assistant:two", "assistant:three", "user:second"]);
+  });
+
+  // Cannot happen while step boundaries are what records the index — every
+  // boundary has at least one response message behind it — but a stable sort
+  // would otherwise reverse them, and that is a silent corruption.
+  test("two at the same index stay in the order they arrived", () => {
+    expect(
+      texts(
+        withInjected(
+          [say("assistant", "one")],
+          [
+            { at: 1, message: say("user", "first") },
+            { at: 1, message: say("user", "second") },
+          ],
+        ),
+      ),
+    ).toEqual(["assistant:one", "user:first", "user:second"]);
+  });
+
+  test("nothing injected leaves the responses exactly as they were", () => {
+    const responses = [say("assistant", "one")];
+    expect(withInjected(responses, [])).toEqual(responses);
+    expect(withInjected(responses, [])).not.toBe(responses);
   });
 });

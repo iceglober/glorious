@@ -42,11 +42,70 @@ reason. A tool describes its own result through `renderResult`; see
 | `/name` | a command — `Tab` completes, `↑↓` move. Skills answer to `/skill:name` |
 | `@path` | reference a file or directory; a file's contents travel with the message, a directory's listing does. Completion searches the whole tree, respects `.gitignore`, and scrolls |
 | `!command` | run the rest of the line as shell |
-| `Enter` | send, or queue if a turn is running |
+| `Enter` | send, or queue as a follow-up if a turn is running |
+| `Alt+Enter` | queue as a steering message, delivered into the running turn |
 | `Shift+Enter` | newline |
-| `Esc` | interrupt the turn; with none running, take back the newest queued message |
+| `Alt+↑` | take the newest queued message back into the composer |
+| `Esc` | stop the turn and hold the queue |
 | `Ctrl+C` | clear the composer · interrupt · again to quit |
 | `↑` `↓` | prompt history at the edges of the draft; `Ctrl+P`/`Ctrl+N` always |
+
+On Windows Terminal, `Alt+Enter` toggles fullscreen before glorious ever sees
+it. [terminal-setup](/terminal-setup) has the remap.
+
+## The message queue
+
+You can type while the agent is working. What differs is when the message
+lands.
+
+**`Enter` — a follow-up.** It waits until the agent has finished everything and
+then becomes its own turn. It cannot change what the running turn does, which
+is why it is the default: pressing Enter while something is in flight has no
+way to make things worse.
+
+**`Alt+Enter` — a steering message.** It joins the turn that is already
+running, at the next step boundary — the moment between the model finishing a
+round of tool calls and deciding what to do next. The model reads it before it
+takes another action, so a turn heading the wrong way can be turned around
+without being thrown away and started over. With nothing running there is
+nothing to steer, so it simply becomes the turn.
+
+Waiting messages are listed above the composer, steering first, because that is
+the order they will be delivered in:
+
+```
+  ↳ steering: use bun, not npm
+  ↳ queued: then open a PR
+```
+
+### Taking one back
+
+`Alt+↑` lifts the newest waiting message out of the queue and into the
+composer. There is no separate rescind and no separate edit — taking it back is
+both. Retype it and press `Enter` to queue it again, or clear the line and it
+is gone.
+
+Press it twice and both messages come back, stacked in queue order with a blank
+line between them; the queue shrinks by two. They are one block of text at that
+point, so pressing `Enter` re-queues them as a single message.
+
+A slash command comes back as what you typed — `/review`, not the page of
+prompt it expands into.
+
+### Stopping
+
+`Esc` stops the running turn and holds the queue with it. Nothing fires into
+the state the interrupt left behind, and nothing is dumped into your composer.
+What was waiting is still listed:
+
+```
+  ↳ queued: then open a PR
+  ⏸ 1 held — Enter releases · Alt+Up takes the last one back
+```
+
+`Enter` on an empty composer releases it. So does sending anything else —
+starting work again is not something you do by accident, so it needs no key of
+its own.
 
 ## Commands
 

@@ -5,6 +5,7 @@ import {
   completionWindow,
   composerKeyBindings,
   composerWrapMode,
+  isAlt,
 } from "./composer";
 
 describe("prompt composer", () => {
@@ -121,5 +122,23 @@ describe("the completion window on a short terminal", () => {
       expect(count).toBe(1);
       expect(first).toBe(index);
     }
+  });
+});
+
+// Alt is the modifier that turns Enter into a steering message and Up into
+// "give me that back". Reading only the kitty-protocol flag would make both
+// chords silently do nothing in every terminal that does not speak it.
+describe("spotting the Alt modifier", () => {
+  test("the ESC-prefix path reports it as meta", () => {
+    expect(isAlt({ meta: true, option: false })).toBe(true);
+  });
+
+  test("the kitty path reports it as option", () => {
+    expect(isAlt({ meta: false, option: true })).toBe(true);
+  });
+
+  test("an unmodified key is not Alt", () => {
+    expect(isAlt({ meta: false, option: false })).toBe(false);
+    expect(isAlt({})).toBe(false);
   });
 });

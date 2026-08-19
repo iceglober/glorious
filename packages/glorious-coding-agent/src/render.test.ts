@@ -327,7 +327,7 @@ describe("the queued count matches the queued rows", () => {
   test("it carries the same tone a queued row does", () => {
     const count = spans(2).find((span) => span.text.includes("queued"));
     expect(count?.tone).toBe("warning");
-    expect(queuedRow("x")[0].tone).toBe("warning");
+    expect(queuedRow({ kind: "follow-up", text: "x" })[0].tone).toBe("warning");
   });
 
   test("the phase and the hint stay accent", () => {

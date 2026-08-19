@@ -1,4 +1,11 @@
-const enterKeys = new Set(["return", "kpenter", "linefeed"]);
+export const enterKeys = new Set(["return", "kpenter", "linefeed"]);
+
+// Whether Alt was held. It arrives as `meta` from a terminal that prefixes the
+// key with ESC and as `option` under the kitty protocol, which also sets `meta`
+// — so checking `option` alone silently does nothing in every terminal that
+// does not speak kitty, which is most of them.
+export const isAlt = (event: { meta?: boolean; option?: boolean }): boolean =>
+  event.meta === true || event.option === true;
 
 export const composerWrapMode = "word" as const;
 

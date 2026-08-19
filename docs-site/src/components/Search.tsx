@@ -5,7 +5,8 @@ const PAGES = [
   ["install", "/install"], ["quickstart", "/quickstart"], ["features", "/features"], ["philosophy", "/philosophy"],
   ["glossary", "/glossary"], ["extensions", "/extensions"], ["lifecycle", "/lifecycle"], ["commands", "/commands"], ["skills", "/skills"],
   ["tools", "/tools"], ["providers", "/providers"], ["models", "/models"],
-  ["configuration", "/configuration"], ["architecture", "/architecture"], ["troubleshooting", "/troubleshooting"],
+  ["configuration", "/configuration"], ["architecture", "/architecture"],
+  ["terminal setup", "/terminal-setup"], ["troubleshooting", "/troubleshooting"],
   ["extension API", "/api"], ["changelog", "/changelog"],
 ] as const;
 
