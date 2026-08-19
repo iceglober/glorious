@@ -27,9 +27,26 @@ or
 
 requires Bun.
 
+**bun**
+
 ```sh
 bun add -g @glrs-dev/glrs@next
+```
+
+**pnpm**
+
+```sh
 pnpm add -g @glrs-dev/glrs@next
+```
+
+**yarn**
+
+```sh
 yarn global add @glrs-dev/glrs@next
+```
+
+**npm**
+
+```sh
 npm i -g @glrs-dev/glrs@next
 ```

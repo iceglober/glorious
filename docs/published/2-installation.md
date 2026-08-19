@@ -19,10 +19,27 @@ the script checks for git and offers to install Bun when it is missing.
 
 ## package manager
 
+**bun**
+
 ```sh
 bun add -g @glrs-dev/glrs@next
+```
+
+**pnpm**
+
+```sh
 pnpm add -g @glrs-dev/glrs@next
+```
+
+**yarn**
+
+```sh
 yarn global add @glrs-dev/glrs@next
+```
+
+**npm**
+
+```sh
 npm install -g @glrs-dev/glrs@next
 ```
 
@@ -48,10 +65,27 @@ or rerun the matching package-manager install command above.
 
 ## uninstall (sad)
 
+**bun**
+
 ```sh
 bun remove -g @glrs-dev/glrs
+```
+
+**pnpm**
+
+```sh
 pnpm remove -g @glrs-dev/glrs
+```
+
+**yarn**
+
+```sh
 yarn global remove @glrs-dev/glrs
+```
+
+**npm**
+
+```sh
 npm uninstall -g @glrs-dev/glrs
 ```
 
