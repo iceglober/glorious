@@ -14,7 +14,7 @@
     "@boneskull/typedoc-plugin-mermaid"
   ],
   "theme": "glrs",
-  "router": "structure-dir",
+  "router": "glrs-agent",
   "customCss": "./theme/glrs.css",
   "name": "glrs",
   "includeVersion": false,

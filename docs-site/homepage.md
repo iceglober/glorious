@@ -1,1 +1,1 @@
-[coding agent](../docs/published/1-quickstart.md)
+[coding agent](/agent/)
