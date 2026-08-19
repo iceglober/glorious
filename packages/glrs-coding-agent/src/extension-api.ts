@@ -1,10 +1,10 @@
 import type { ModelMessage, ToolSet } from "ai";
 import { z } from "zod";
 import type { Settings } from "../../glrs-core/src";
-import type { Shipped } from "./extensions";
+import type { FirstPartyExtension } from "./extensions";
 import type { WriteOutcome } from "./writeconfig";
 
-// What recording a choice about a shipped extension can come back as.
+/** Result of recording a first-party extension choice in Project config. */
 export type ExtensionChoice = WriteOutcome | "unknown";
 
 import type { ShellResult as ToolShellResult } from "../../glrs-core/src/shell";
@@ -35,6 +35,7 @@ import type { Activity } from "./render";
 // is two things to remember to change, and the last pair had already drifted.
 export type ShellResult = ToolShellResult;
 
+/** Lifecycle event names accepted by {@link Glrs.on}. */
 export type EventName =
   | "session_start"
   | "session_end"
@@ -57,6 +58,7 @@ export type EventName =
   | "before_provider_request"
   | "after_provider_response";
 
+/** Payload delivered for each {@link EventName}. */
 export type EventPayload = {
   session_start: { root: string };
   // The session is tearing down. Awaited, so an extension gets to finish.
@@ -135,6 +137,7 @@ export type EventPayload = {
 // What a handler may return, per event. Most return nothing; the ones that can
 // change what happens say so in their own type rather than every handler
 // sharing one loose `string | false`.
+/** Return values that let selected lifecycle hooks change execution. */
 export type Verdict = {
   input: string | false;
   tool_call: string | false;
@@ -144,14 +147,29 @@ export type Verdict = {
   before_provider_request: { headers?: Record<string, string>; body?: unknown };
 };
 
+/** Value an event handler may return for event `E`. */
 export type HandlerVerdict<E extends EventName = EventName> =
   | undefined
   | (E extends keyof Verdict ? Verdict[E] : never);
 
+/** Synchronous or asynchronous lifecycle event handler. */
 export type Handler<E extends EventName> = (
   payload: EventPayload[E],
 ) => HandlerVerdict<E> | Promise<HandlerVerdict<E>>;
 
+/**
+ * Definition of a model-callable tool.
+ *
+ * @example
+ * ```ts
+ * g.tool({
+ *   name: "count_todos",
+ *   description: "Count TODO comments under a path.",
+ *   input: g.z.object({ path: g.z.string() }),
+ *   execute: async ({ path }) => (await g.exec(`rg -c TODO ${path}`)).stdout,
+ * });
+ * ```
+ */
 export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   name: string;
   description: string;
@@ -163,6 +181,7 @@ export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   renderResult?: (result: string, ok: boolean) => Line[];
 };
 
+/** Definition of a user-invoked slash command. */
 export type CommandSpec = {
   description: string;
   run: (args: string) => void | Promise<void>;
@@ -171,6 +190,7 @@ export type CommandSpec = {
 // What is loaded right now. Every listing glrs used to ship as a built-in
 // command is a view over this and nothing more, which is why none of them are
 // built in any longer.
+/** Snapshot returned by {@link Glrs.inspect}. */
 export type Loaded = {
   commands: ReadonlyArray<{ name: string; description: string; origin?: string }>;
   // The real type, not a copy of its fields — a second declaration of the same
@@ -180,6 +200,7 @@ export type Loaded = {
   extensions: ReadonlyArray<{ name: string; origin: string; contributed: string }>;
 };
 
+/** Model identity and optional catalogue metadata. */
 export type ModelInfo = {
   label: string;
   provider: string;
@@ -189,6 +210,7 @@ export type ModelInfo = {
   context?: number;
 };
 
+/** Token, cache, context, and cost usage for the active session. */
 export type Usage = {
   /** Context size the provider last reported, or null before the first call. */
   tokens: number | null;
@@ -200,6 +222,7 @@ export type Usage = {
   total: { input: number; output: number; cached: number; cost: number; steps: number };
 };
 
+/** Metadata for the active session. */
 export type SessionInfo = {
   id: string;
   file: string;
@@ -210,6 +233,7 @@ export type SessionInfo = {
 // A keybinding an extension owns. Returning true consumes the key, so the
 // composer never sees it — which is what Tab-cycling and Ctrl+B used to be
 // before they were core, and what they would be again as extensions.
+/** TUI keybinding registered by an extension. */
 export type KeySpec = {
   key: string;
   ctrl?: boolean;
@@ -218,6 +242,7 @@ export type KeySpec = {
   run: () => void | Promise<void>;
 };
 
+/** CLI flag registered by an extension. */
 export type FlagSpec = {
   description: string;
   // Called with everything after the flag on the command line.
@@ -234,6 +259,7 @@ export type Key = {
   text: string;
 };
 
+/** Renderer and key handler used while an extension owns the composer. */
 export type Capture = {
   /** Draw the composer area. Called on every key, and on resize. */
   render: (columns: number) => Line[];
@@ -241,6 +267,7 @@ export type Capture = {
   onKey: (key: Key) => void;
 };
 
+/** Interactive TUI capabilities. Guard access with {@link Glrs.hasUI}. */
 export type Ui = {
   /**
    * Take over the composer area: draw your own lines there and receive every
@@ -262,6 +289,21 @@ export type Ui = {
   setInput: (text: string) => void;
 };
 
+/**
+ * Public host API passed to every extension.
+ *
+ * Registration methods (`tool`, `command`, `key`, `flag`, and `on`) are normally
+ * called during initialization. Runtime methods remain valid until shutdown.
+ *
+ * @example Add status and observe tool calls
+ * ```ts
+ * export default function (g: Glrs) {
+ *   let calls = 0;
+ *   g.on("tool_start", () => { calls += 1; });
+ *   g.status(() => `${calls} tool calls`);
+ * }
+ * ```
+ */
 export type Glrs = {
   /** The project root every path is resolved against. */
   root: string;
@@ -305,11 +347,11 @@ export type Glrs = {
    */
   settings: () => Readonly<Settings>;
   /**
-   * The extensions glrs ships, and whether each is on, off, or has never been
+   * First-party extensions, and whether each is on, off, or has never been
    * decided. The three states come from config: named in `extensions.load`,
    * named in `extensions.disable`, or in neither.
    */
-  available: () => readonly Shipped[];
+  available: () => readonly FirstPartyExtension[];
   /**
    * Record that one should or should not load, by writing `extensions.load` or
    * `extensions.disable` in the project's config. Returns `"not-allowed"` unless
@@ -424,7 +466,7 @@ export type ExtensionHost = {
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
   setInput: (text: string) => void;
   settings: () => Readonly<Settings>;
-  available: () => readonly Shipped[];
+  available: () => readonly FirstPartyExtension[];
   setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
@@ -561,8 +603,8 @@ export const createApi = (
     // here already follows — commands, user commands, skills, and the activity
     // row. Tool names were the one exception, and the exception ran backwards:
     // the later an extension loaded, the more it could take. Since the loader
-    // walks the project before anything shipped, first-wins is what makes a
-    // project extension able to replace a tool glrs ships.
+    // walks the project before first-party extensions, first-wins is what makes a
+    // project extension able to replace a first-party tool.
     //
     // The loser is recorded rather than dropped silently: /extensions is the
     // only account anyone gets of what an extension did, and listing a tool it

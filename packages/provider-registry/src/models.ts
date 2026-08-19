@@ -80,14 +80,14 @@ const catalogue = async (fetcher: typeof fetch): Promise<unknown | null> => {
     return cached();
   }
 };
-export const modelRef = (value: string, provider = "azure"): ModelRef => {
+export const modelRef = (value: string): ModelRef => {
   const slash = value.indexOf("/");
-  return slash < 1
-    ? { provider: canonicalProvider(provider), modelId: value }
-    : {
-        provider: canonicalProvider(value.slice(0, slash)),
-        modelId: value.slice(slash + 1),
-      };
+  if (slash < 1 || slash === value.length - 1)
+    throw new Error(`Model must be "provider/model-id", got "${value}".`);
+  return {
+    provider: canonicalProvider(value.slice(0, slash)),
+    modelId: value.slice(slash + 1),
+  };
 };
 
 export const modelLabel = (model: ModelRef): string => `${model.provider}/${model.modelId}`;
@@ -134,7 +134,11 @@ const providerSettings = (
 };
 
 export const currentModel = (config?: Config): ModelOption => {
-  const model = envSetting("MODEL") ?? config?.model ?? "gpt-5.6-luna";
+  const model = (envSetting("MODEL") ?? config?.model)?.trim();
+  if (!model)
+    throw new Error(
+      'No model configured. Set GLRS_MODEL="provider/model-id" or add "model" to glrs config.',
+    );
   const ref = modelRef(model);
   return {
     ...ref,

@@ -28,8 +28,8 @@ npm install -g @glrs-dev/glrs@next
 
 all package-manager installs still require Bun at runtime.
 
-get started with [quickstart](./quickstart.md) or open
-[configuration](./configuration.md).
+get started with [quickstart](./1-quickstart.md). a model is required before the
+first run; see [configuration](./3-customize/1-configuration.md).
 
 ## update
 

@@ -22,7 +22,7 @@ export type ProviderSettings = {
 // coding agent because config cannot depend on it — see check-boundaries.ts.
 export type QueueMode = "one-at-a-time" | "all";
 
-// Which extensions load, and which do not. `load` names a shipped extension or
+// Which extensions load, and which do not. `load` names a first-party extension or
 // a path; `disable` names anything at all and stops it loading. Declared here
 // rather than imported from the coding agent for the same reason QueueMode is —
 // config cannot depend on it, see check-boundaries.ts.
@@ -39,7 +39,7 @@ export type ToolSettings = {
 };
 
 export type Config = {
-  // "provider/model-id", e.g. "azure/gpt-5.6-luna". A bare id means azure.
+  // Required at runtime as "provider/model-id"; bare ids are rejected.
   model?: string;
   // Reasoning effort, when the model advertises one.
   variant?: string;

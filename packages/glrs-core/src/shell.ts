@@ -18,6 +18,7 @@ export type Capture = { out: string; err: string; code: number; note: string };
 
 // What a shell command tells you. `output` is everything, interleaved, for a
 // transcript; the rest is for a program deciding what to do next.
+/** Captured shell output and exit status returned to extension shell callers. */
 export type ShellResult = {
   output: string;
   stdout: string;

@@ -23,6 +23,7 @@ type Skill = {
   modelInvocable: boolean;
 };
 
+/** Discoverable skill metadata exposed through extension inspection. */
 export type SkillSummary = {
   name: string;
   description: string;

@@ -11,7 +11,7 @@ glrs is a Bun/TypeScript monorepo with four runtime layers.
 | `glrs-core` | provider-neutral events, sessions, settings, and shell primitives |
 | `provider-registry` | providers, credentials, model resolution, and metadata |
 | `glrs-coding-agent` | CLI, turn queue, TUI, discovery, and extension host |
-| `extensions/*` | shipped tools and commands |
+| `extensions/*` | first-party tools and commands |
 
 ## startup
 
@@ -55,12 +55,12 @@ moves back into the system prompt.
 
 `extension-api.ts` is a facade over existing seams, not a second runtime:
 
-- `g.tool` registers through the same wrapper as shipped tools
+- `g.tool` registers through the same wrapper as first-party tools
 - `g.exec` uses the same shell primitive as direct `!` commands
 - `g.on` subscribes to the turn and tool event stream
 - render callbacks return glrs `Line[]`, never terminal-library types
 
-Project extensions load before User and shipped extensions. first registration
+Project extensions load before User and first-party extensions. first registration
 wins for tools and commands.
 
 ## rendering

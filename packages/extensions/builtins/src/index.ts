@@ -1,7 +1,7 @@
 import type { Glrs, Line } from "../../../glrs-core/src";
 import { createCodingTools } from "./tools";
 
-// Everything glrs ships that a third party could have written: the six tools
+// Every first-party capability that a third party could have written: the six tools
 // that touch the machine, and every slash command. None of it is built in —
 // the core registers no tools and no commands at all, and all of this arrives
 // through exactly the API you would write against. That is the test: if /help
@@ -10,7 +10,7 @@ import { createCodingTools } from "./tools";
 //
 // Replace any one piece by registering the same name in .glrs/extensions/ —
 // a tool name is kept by whoever claims it first and your project is walked
-// before anything shipped, so a `bash` of your own simply wins.
+// before first-party extensions, so a `bash` of your own simply wins.
 //
 // Shadowing this whole extension with a file called builtins.ts is a different
 // and much larger thing than it used to be: it costs the six tools as well as
@@ -90,7 +90,7 @@ export default function builtins(g: Glrs): void {
     g.tool({
       name: "configure_extension",
       description:
-        "Record that an extension glrs ships should or should not load, once the user has said so. Only for a clear answer to a suggestion you made — never to change what is loaded on your own initiative. Takes effect after a reload or restart.",
+        "Record that a first-party extension should or should not load, once the user has said so. Only for a clear answer to a suggestion you made — never to change what is loaded on your own initiative. Takes effect after a reload or restart.",
       input: g.z.object({
         name: g.z.string().describe("The extension's name, as listed in the available section"),
         enable: g.z
@@ -102,7 +102,7 @@ export default function builtins(g: Glrs): void {
         if (outcome === "written")
           return `Recorded: ${name} will ${enable ? "load" : "not load"}. It applies after a reload or restart.`;
         if (outcome === "already") return `${name} was already ${enable ? "enabled" : "disabled"}.`;
-        if (outcome === "unknown") return `ERROR: ${name} is not an extension glrs ships.`;
+        if (outcome === "unknown") return `ERROR: ${name} is not a first-party extension.`;
         if (outcome === "not-allowed")
           return 'ERROR: glrs may not write config. Tell the user to add "agentConfigAllowlist": ["extensions"] to .glrs/config.json, or to add the extension to extensions.load themselves.';
         return "ERROR: could not write .glrs/config.json.";
@@ -167,7 +167,7 @@ export default function builtins(g: Glrs): void {
   // `/extensions` still lists, so the thing it did before this is the thing it
   // does when you type it the way you always have.
   g.command("extensions", {
-    description: "List loaded extensions, or enable/disable one that ships with glrs",
+    description: "List loaded extensions, or enable/disable a first-party extension",
     run: async (args) => {
       const [verb, which] = args.trim().split(/\s+/u);
       if (verb === "enable" || verb === "disable") {
@@ -176,7 +176,7 @@ export default function builtins(g: Glrs): void {
         const said: Record<typeof outcome, string> = {
           written: `${which} will ${verb === "enable" ? "load" : "not load"} — reload or restart to apply`,
           already: `${which} is already ${verb === "enable" ? "enabled" : "disabled"}`,
-          unknown: `${which} is not an extension glrs ships`,
+          unknown: `${which} is not a first-party extension`,
           "not-allowed":
             'glrs may not write your config. Add "agentConfigAllowlist": ["extensions"] to ' +
             ".glrs/config.json, or edit extensions.load yourself.",
@@ -195,7 +195,7 @@ export default function builtins(g: Glrs): void {
       const offered = g.available().filter((one) => one.state !== "on");
       const { extensions } = g.inspect();
       if (extensions.length === 0) {
-        return g.print("No extensions loaded. See docs/published/3-customize/extensions.md.");
+        return g.print("No extensions loaded. See docs/published/3-customize/4-extensions.md.");
       }
       g.print([
         heading(g, "Extensions", "these run with your full permissions"),
@@ -211,7 +211,7 @@ export default function builtins(g: Glrs): void {
           ? []
           : [
               blank,
-              heading(g, "Ships with glrs, not loaded", "/extensions enable <name>"),
+              heading(g, "First-party, not loaded", "/extensions enable <name>"),
               ...table(
                 g,
                 offered.map((one) => ({

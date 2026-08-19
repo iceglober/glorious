@@ -9,6 +9,7 @@ export type CredentialSpec = {
   environment: readonly string[];
 };
 
+/** Model provider plus credential and catalogue metadata. */
 export type ProviderAdapter = ModelProvider & {
   credentials: CredentialSpec;
   metadata?: (
@@ -16,12 +17,14 @@ export type ProviderAdapter = ModelProvider & {
   ) => Promise<{ context?: number; inputPrice?: number; outputPrice?: number }>;
 };
 
+/** Mutable provider lookup used while composing an SDK host. */
 export type ProviderRegistry = {
   register: (provider: ProviderAdapter) => void;
   get: (id: string) => ProviderAdapter | undefined;
   list: () => readonly ProviderAdapter[];
 };
 
+/** Create an empty provider registry. */
 export const createProviderRegistry = (): ProviderRegistry => {
   const providers = new Map<string, ProviderAdapter>();
   return {

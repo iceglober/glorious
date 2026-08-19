@@ -18,7 +18,7 @@ without running extensions or opening the TUI. it never prints secret values.
 ## missing credentials
 
 find the required environment variable under
-[model providers](../2-use/providers.md). export it in the shell that starts glrs.
+[model providers](../2-use/4-providers.md). export it in the shell that starts glrs.
 
 ## wrong model
 
@@ -26,16 +26,18 @@ find the required environment variable under
 glrs --model provider/model-id doctor
 ```
 
-precedence is CLI, environment, Project-User, Project, User, then default.
-`GLRS_MODEL` overrides every config file.
+precedence is CLI, environment, Project-User, Project, then User. there is no
+default; glrs exits when none provides a model. `GLRS_MODEL` overrides every
+config file.
 
-`model` must be a string:
+`model` must be a fully qualified string:
 
 ```json
 { "model": "azure/gpt-5.6-sol" }
 ```
 
-`{"model":{"selected":"..."}}` is ignored and reported. providers are selected
+bare IDs and `{"model":{"selected":"..."}}` are rejected or ignored and
+reported. providers are selected
 by the model prefix; `"enabled": true` has no effect.
 
 ## config is ignored

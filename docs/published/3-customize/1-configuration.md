@@ -4,7 +4,8 @@ title: configuration
 
 # configuration
 
-config is JSON in three scopes. the nearest value wins, one key at a time.
+config is JSON in three scopes. the nearest value wins, one key at a time. a
+model is required before glrs can run.
 
 ## scopes
 
@@ -49,12 +50,12 @@ older `~/.glrs`, `.glorious`, and `~/.config/glorious` paths are not read.
 
 | setting | value |
 | --- | --- |
-| `model` | `provider/model-id`; a bare ID uses Azure |
+| `model` | required as `provider/model-id`; no default or bare-ID fallback |
 | `variant` | reasoning effort when the model supports it |
 | `tool_timeout_ms` | built-in shell/search timeout in milliseconds |
 | `steering_mode` | `one-at-a-time` or `all` |
 | `follow_up_mode` | `one-at-a-time` or `all` |
-| `extensions.load` | shipped extension names or paths |
+| `extensions.load` | first-party extension names or paths |
 | `extensions.disable` | extension names that must not load |
 | `tools.disable` | tool names withheld from the model |
 | `agentConfigAllowlist` | sections glrs may write; currently only `extensions` |
@@ -73,8 +74,8 @@ extension and tool lists are sets: they add up across all three files.
 
 ## letting glrs write one answer
 
-config is hand-edited by default. opt in when glrs may record whether a shipped
-extension should load:
+config is hand-edited by default. opt in when glrs may record whether a
+first-party extension should load:
 
 ```json
 { "agentConfigAllowlist": ["extensions"] }

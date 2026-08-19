@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { availableLines } from "./available";
-import { shippedExtensions } from "./extensions";
+import { firstPartyExtensions } from "./extensions";
 
 // The three states come from config rather than a store of their own: named in
 // `extensions.load` is a yes, named in `extensions.disable` is a no, in neither
 // is a question nobody has answered.
-describe("which shipped extensions are still undecided", () => {
-  const state = (name: string, settings?: Parameters<typeof shippedExtensions>[0]): string =>
-    shippedExtensions(settings).find((one) => one.name === name)?.state ?? "missing";
+describe("which first-party extensions are still undecided", () => {
+  const state = (name: string, settings?: Parameters<typeof firstPartyExtensions>[0]): string =>
+    firstPartyExtensions(settings).find((one) => one.name === name)?.state ?? "missing";
 
   test("with no config, builtins is on and the rest are undecided", () => {
     expect(state("builtins")).toBe("on");
@@ -93,7 +93,7 @@ describe("where the advertisement is allowed to go", () => {
     // prompt.ts, the cache is gone and nothing else would say so.
     const prompt = readFileSync(join(import.meta.dir, "prompt.ts"), "utf8");
     expect(prompt).not.toContain("availableLines");
-    expect(prompt).not.toContain("shippedExtensions");
+    expect(prompt).not.toContain("firstPartyExtensions");
   });
 
   // <extensions> is already a PREAMBLE_TAG, which is what strips the block from

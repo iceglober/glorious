@@ -37,9 +37,9 @@ import {
 } from "./extension-api";
 import {
   type ExtensionSettings,
+  firstPartyExtensions,
   loadExtensions,
   resolveExtensions,
-  shippedExtensions,
 } from "./extensions";
 import { expandMentions, fileCandidates } from "./mentions";
 import { runPrint } from "./print";
@@ -362,7 +362,7 @@ const main = async (): Promise<void> => {
     extensionPrompt: () => [
       ...registry.promptLines,
       ...availableLines(
-        shippedExtensions(config.config.extensions),
+        firstPartyExtensions(config.config.extensions),
         (config.config.agentConfigAllowlist ?? []).some(
           (one) => one.trim().toLowerCase() === "extensions",
         ),
@@ -778,11 +778,11 @@ const main = async (): Promise<void> => {
     root,
     exec: (command, args) => runShell(root, command, args),
     mode: "tui" as const,
-    available: () => shippedExtensions(config.config.extensions),
+    available: () => firstPartyExtensions(config.config.extensions),
     // Writes only where agentConfigAllowlist says it may; otherwise it says so
     // and the model tells the user which line to add.
     setExtension: async (name, on) => {
-      if (!shippedExtensions().some((one) => one.name === name)) return "unknown";
+      if (!firstPartyExtensions().some((one) => one.name === name)) return "unknown";
       const outcome = await recordExtensionChoice(root, config.config, name, on);
       if (outcome !== "written") return outcome;
       // The in-memory config is what the advertisement and the next reload read,

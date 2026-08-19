@@ -40,22 +40,22 @@ loaded in order; first name wins:
 | `.glrs/extensions/<name>/index.ts` | Project, multi-file |
 | `<User>/extensions/*.ts` | User |
 | `<User>/extensions/<name>/index.ts` | User, multi-file |
-| enabled shipped extensions | bundled |
+| enabled first-party extensions | first-party |
 | other `extensions.load` paths (after resolution) | configured |
 
-`<User>` is defined under [configuration](../1-start/configuration.md). relative config
+`<User>` is defined under [configuration](./1-configuration.md). relative config
 paths resolve from the config file. a directory entry point is `index.ts`.
 
 an extension that fails to import or initialize is reported without stopping
 other extensions. `/extensions` shows what loaded and what each registered.
 
-## shipped extensions
+## first-party extensions
 
-| name | provides | default |
-| --- | --- | --- |
-| `builtins` | six machine tools and all bundled slash commands | on |
-| `web-fetch` | `web_fetch` | off |
-| `ask-user` | `ask_user` in the TUI | off |
+| name | package | provides | default |
+| --- | --- | --- | --- |
+| `builtins` | `@glrs-dev/glrs-ext-builtins` | six machine tools and all first-party slash commands | on |
+| `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch` | off |
+| `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user` in the TUI | off |
 
 ```json
 {
@@ -67,7 +67,7 @@ other extensions. `/extensions` shows what loaded and what each registered.
 ```
 
 `disable` wins over `load`. lists add up across config scopes. a Project file can
-shadow a shipped extension by filename or replace one tool by registering the
+shadow a first-party extension by filename or replace one tool by registering the
 same tool name.
 
 ```text
@@ -77,7 +77,7 @@ same tool name.
 ```
 
 recording enable/disable choices requires `agentConfigAllowlist`; see
-[configuration](../1-start/configuration.md).
+[configuration](./1-configuration.md).
 
 ## permissions
 
@@ -140,7 +140,7 @@ g.on("tool_end", ({ result }) => result.replaceAll("secret", "[redacted]"));
 replace what the model reads. other hooks can rewrite input, context, and
 provider requests.
 
-see [lifecycle](../5-internals/lifecycle.md) for every event, payload, and return value.
+see [lifecycle](../5-internals/3-lifecycle.md) for every event, payload, and return value.
 
 ## shell and paths
 

@@ -42,7 +42,7 @@ directory contains `SKILL.md`, its children are treated as skill resources, not
 more skills.
 
 `<User>` and `<config base>` are defined under
-[configuration](../1-start/configuration.md).
+[configuration](./1-configuration.md).
 
 ## frontmatter
 

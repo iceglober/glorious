@@ -9,6 +9,7 @@ import type { ToolEvent } from "./toolkit";
 // Everything a turn reports, plus the one thing only the chat can be doing.
 export type ChatPhase = TurnPhase | "compacting" | null;
 
+/** Result of a manual or automatic conversation compaction. */
 export type Compaction =
   | { outcome: "compacted"; dropped: number; kept: number }
   | { outcome: "busy" }

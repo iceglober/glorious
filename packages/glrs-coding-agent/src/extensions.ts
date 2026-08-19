@@ -28,7 +28,7 @@ export type ExtensionLoad = {
   extensions: LoadedExtension[];
   failures: Array<{ origin: string; message: string }>;
   // Nothing is broken, but something is worth knowing — a file that took a
-  // shipped extension's name and the capability that went with it.
+  // first-party extension's name and the capability that went with it.
   notes: string[];
 };
 
@@ -64,8 +64,8 @@ const failureText = (thrown: unknown): string => {
   return /Cannot find module/u.test(thrown.message) ? "no index.ts" : thrown.message;
 };
 
-// What each shipped extension is worth saying about, when a file on disk takes
-// its name and the shipped one therefore does not load. Shadowing was always
+// What each first-party extension is worth saying about, when a file on disk takes
+// its name and the first-party one therefore does not load. Shadowing was always
 // supported and is still the point; `builtins` is the one whose loss is worth
 // interrupting for, because it now carries the six tools as well as the seven
 // commands and an agent without them cannot do anything at all.
@@ -105,17 +105,19 @@ const bundled = [
   },
 ];
 
-// Which of the shipped extensions is on, off, or has never been decided. The
+// Which of the first-party extensions is on, off, or has never been decided. The
 // three states fall out of the two config lists rather than needing a store of
 // their own: named in `load` is a yes, named in `disable` is a no, and in
 // neither is a question nobody has answered.
-export type Shipped = {
+/** First-party extension metadata and its configured activation state. */
+export type FirstPartyExtension = {
   name: string;
   summary: string;
   state: "on" | "off" | "undecided";
 };
 
-export const shippedExtensions = (settings?: ExtensionSettings): Shipped[] => {
+/** Resolve activation state for every first-party extension. */
+export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyExtension[] => {
   const on = new Set((settings?.load ?? []).map(key));
   const off = new Set((settings?.disable ?? []).map(key));
   return bundled.map(({ name, origin, defaultOn, summary }) => {
@@ -133,6 +135,7 @@ export const shippedExtensions = (settings?: ExtensionSettings): Shipped[] => {
 // imported from provider-registry for the same reason QueueMode is declared
 // twice: extension loading has no business depending on the model registry,
 // and a structural type costs three lines.
+/** Config lists controlling extension activation. */
 export type ExtensionSettings = {
   load?: readonly string[];
   disable?: readonly string[];
@@ -217,7 +220,7 @@ export const resolveExtensions = async (
       const near = bundled.map((one) => one.name).join(", ");
       failures.push({
         origin: entry,
-        message: `no extension by that name is bundled or on disk — glrs ships ${near}`,
+        message: `no extension by that name is first-party or on disk — available first-party extensions: ${near}`,
       });
       continue;
     }
@@ -243,7 +246,7 @@ export const resolveExtensions = async (
 
 // Each extension is loaded and invoked on its own, so one that throws on import
 // or in its factory costs only itself. Files on disk are walked first and a
-// project can shadow a shipped extension by name — replacing web_fetch is a
+// project can shadow a first-party extension by name — replacing web_fetch is a
 // supported thing to do. (An older comment here claimed bundled ones came
 // first; they never have.)
 export const loadExtensions = async (

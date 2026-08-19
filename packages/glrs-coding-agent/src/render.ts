@@ -1,8 +1,10 @@
 import type { SessionEvent } from "../../glrs-core/src/events";
 import { resultSummary } from "./toolkit";
 
+/** Semantic terminal color used by extension-rendered spans. */
 export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
 
+/** One styled text fragment in a terminal line. */
 export type Span = {
   text: string;
   tone?: Tone;
@@ -12,6 +14,7 @@ export type Span = {
   fill?: boolean;
 };
 
+/** One terminal row composed of styled spans. */
 export type Line = Span[];
 
 // Runtime and provider messages that mean something to whoever wrote them and
@@ -511,6 +514,7 @@ export const elapsed = (ms: number): string => {
 // terminal clips the fixed hint rather than the live reading.
 // What the turn is doing, and how to stop it. The state an extension replacing
 // this row is handed.
+/** Current state passed to an extension activity renderer. */
 export type Activity = {
   busy: boolean;
   queued: number;

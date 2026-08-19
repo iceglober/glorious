@@ -10,9 +10,11 @@ title: quickstart
 curl -fsSL https://glrs.dev/install.sh | bash
 ```
 
-more options on [installation](./installation.md)
+more options on [installation](./2-installation.md)
 
 ## configure a model
+
+a model is required. use a fully qualified `provider/model-id`.
 
 ### anthropic
 
@@ -28,7 +30,7 @@ export OPENAI_API_KEY=...
 export GLRS_MODEL=openai/gpt-5.6-sol
 ```
 
-see [models](../2-use/models.md) for every provider and configuration-file options.
+see [models](./2-use/3-models.md) for every provider and configuration-file options.
 
 ## run a session
 
@@ -55,7 +57,7 @@ glrs --resume <id>
 ```
 
 run `glrs --resume` without an ID to choose from earlier sessions. learn more
-about [sessions](../2-use/sessions.md).
+about [sessions](./2-use/2-sessions.md).
 
 ## slash commands
 
@@ -89,4 +91,4 @@ about [sessions](../2-use/sessions.md).
 | mouse drag | select and copy through OSC 52 |
 
 on Windows Terminal, `alt+enter` needs a one-time remap. see
-[terminal setup](../4-reference/terminal-setup.md).
+[terminal setup](./4-reference/2-terminal-setup.md).

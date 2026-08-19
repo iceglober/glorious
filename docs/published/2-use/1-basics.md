@@ -60,5 +60,5 @@ rules are read first. `read` also returns guidance beside the target file.
 - a **skill** is instructions the model can choose to load
 - an **extension** is TypeScript that adds tools, hooks, commands, or UI
 
-see [commands](../3-customize/commands.md), [skills](../3-customize/skills.md), and
-[extensions](../3-customize/extensions.md).
+see [commands](../3-customize/2-commands.md), [skills](../3-customize/3-skills.md), and
+[extensions](../3-customize/4-extensions.md).

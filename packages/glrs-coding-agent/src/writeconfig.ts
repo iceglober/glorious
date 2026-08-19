@@ -11,6 +11,7 @@ import type { Config } from "../../provider-registry/src";
 // work needs; without somewhere to record your answer, a decline lasts until
 // the next turn and you are asked the same question forever.
 
+/** Result of attempting an allowlisted Project-config update. */
 export type WriteOutcome = "written" | "not-allowed" | "already" | "failed";
 
 const permitted = (config: Config, section: string): boolean =>

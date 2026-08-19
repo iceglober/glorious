@@ -131,11 +131,13 @@ export type ExtensionContext = {
 export type Glrs = ExtensionContext;
 export type Extension = (context: Glrs) => void | Promise<void>;
 
+/** Provider adapter capable of constructing one model. */
 export type ModelProvider = {
   id: string;
   model: (modelId: string, options?: Record<string, unknown>) => unknown;
 };
 
+/** Minimal provider-neutral agent runtime used by SDK hosts. */
 export type AgentCore = {
   session: Session;
   runTurn: (input: string) => Promise<Turn>;
@@ -144,6 +146,7 @@ export type AgentCore = {
 
 export type AgentCoreOptions = AgentCore;
 
+/** Create an agent core from host-supplied turn and extension behavior. */
 export const createAgentCore = (options: AgentCoreOptions): AgentCore => ({
   session: options.session,
   runTurn: options.runTurn,

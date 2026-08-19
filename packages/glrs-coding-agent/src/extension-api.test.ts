@@ -289,7 +289,7 @@ describe("what the host tells an extension about the session", () => {
 // What lets an extension offer a capability the session does not have. The
 // three states come from config; recording a choice writes it, but only where
 // agentConfigAllowlist says glrs may.
-describe("the extensions glrs ships but has not loaded", () => {
+describe("first-party extensions that have not loaded", () => {
   test("available reports each one's state", () => {
     const { g } = harness();
     const offered = g.available();
@@ -438,13 +438,13 @@ describe("the request pipeline is interceptable", () => {
   });
 });
 
-// docs/published/5-internals/lifecycle.md is the page the model is pointed at to learn what
+// docs/published/5-internals/3-lifecycle.md is the page the model is pointed at to learn what
 // it can hook. A page that lists an event glrs does not have, or omits one
 // it does, is worse than no page.
 describe("the lifecycle page matches the code", () => {
   const page = (): string =>
     readFileSync(
-      join(here, "..", "..", "..", "docs", "published", "5-internals", "lifecycle.md"),
+      join(here, "..", "..", "..", "docs", "published", "5-internals", "3-lifecycle.md"),
       "utf8",
     );
 
@@ -471,7 +471,7 @@ describe("the lifecycle page matches the code", () => {
 // Every other one — commands, user commands, skills, the activity row — is
 // first-wins, and the exception ran backwards: the later an extension loaded,
 // the more it could take. Since the loader walks the project before anything
-// glrs ships, first-wins is what makes a project extension able to replace
+// first-party extensions, first-wins is what makes a project extension able to replace
 // a tool that ships in the box.
 describe("two extensions claiming one tool name", () => {
   const joining = (registry: Registry, origin: string): Glrs =>
@@ -500,7 +500,7 @@ describe("two extensions claiming one tool name", () => {
     const shipped = joining(registry, "@glrs-dev/glrs-ext-builtins");
     shipped.tool({
       name: "bash",
-      description: "the shipped one",
+      description: "the first-party one",
       input: shipped.z.object({}),
       execute: async () => "from the box",
     });
@@ -521,7 +521,7 @@ describe("two extensions claiming one tool name", () => {
     const shipped = joining(registry, "@glrs-dev/glrs-ext-builtins");
     shipped.tool({
       name: "bash",
-      description: "the shipped one",
+      description: "the first-party one",
       input: shipped.z.object({}),
       execute: async () => "ok",
       renderCall: () => [[{ text: "from the box" }]],
@@ -543,7 +543,7 @@ describe("two extensions claiming one tool name", () => {
     const shipped = joining(registry, "@glrs-dev/glrs-ext-builtins");
     shipped.tool({
       name: "bash",
-      description: "the shipped one",
+      description: "the first-party one",
       input: shipped.z.object({}),
       execute: async () => "ok",
     });

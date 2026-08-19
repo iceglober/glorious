@@ -4,7 +4,7 @@ import { runShell } from "../../glrs-core/src/shell";
 import { currentModel, envSetting, loadConfig, modelMetadata } from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { createRegistry, describeContribution, fire } from "./extension-api";
-import { loadExtensions, shippedExtensions } from "./extensions";
+import { firstPartyExtensions, loadExtensions } from "./extensions";
 import { expandMentions } from "./mentions";
 import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
 import { loadSkills } from "./skills";
@@ -101,7 +101,7 @@ export const runPrint = async (
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
       settings: () => ({ tool_timeout_ms: toolTimeoutMs }),
-      available: () => shippedExtensions(loadedConfig.config.extensions),
+      available: () => firstPartyExtensions(loadedConfig.config.extensions),
       // A headless run is one turn with no one to answer, so there is nobody to
       // agree to anything and nothing to record.
       setExtension: async () => {

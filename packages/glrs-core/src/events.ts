@@ -2,6 +2,7 @@ import type { ModelMessage } from "ai";
 
 export const PREAMBLE_TAGS = ["where-you-are", "skills", "extensions"] as const;
 
+/** Durable event variants stored in a session JSON record. */
 export type SessionEvent =
   // `steer` marks a message the user sent into a turn that was already running,
   // rather than one that started a turn. Optional so a session written before
@@ -64,6 +65,7 @@ export const messagesOf = (events: readonly SessionEvent[]): ModelMessage[] => {
 export const compactedPrompt = (summary: string): string =>
   `<earlier-conversation>\n${summary}\n</earlier-conversation>\n\nThe conversation above this point was compacted to stay within the context limit. Continue from the brief.`;
 
+/** Usage accumulated across every model call in a session. */
 export type UsageTotals = {
   input: number;
   output: number;

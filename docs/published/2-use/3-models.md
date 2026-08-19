@@ -13,7 +13,6 @@ highest precedence first:
 3. Project-User `.glrs/config.local.json`
 4. Project `.glrs/config.json`
 5. User `<User>/config.json`
-6. `azure/gpt-5.6-luna`
 
 ```json
 {
@@ -22,17 +21,18 @@ highest precedence first:
 }
 ```
 
-`model` is `provider/model-id`; a bare ID uses Azure. `variant` is reasoning
-effort when the model supports it.
+`model` must be `provider/model-id`. there is no default provider or model; a
+missing model or bare ID is an error. `variant` is reasoning effort when the
+model supports it.
 
-edit config or set an environment variable before starting. the core has no
+configure a model before starting with `--model`, `GLRS_MODEL`, or config. the core has no
 model picker. an extension can switch the next turn with `g.setModel()`.
 
 ## providers
 
 glrs includes fifteen providers and any OpenAI-compatible endpoint with a base
 URL. credentials come from environment variables. see
-[model providers](./providers.md).
+[model providers](./4-providers.md).
 
 ```json
 {

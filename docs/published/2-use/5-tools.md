@@ -28,7 +28,7 @@ blocked.
 | `web_fetch` | fetch up to ten pages as markdown; use Chrome for JavaScript pages | load `web-fetch` |
 | `ask_user` | ask selectable questions in the TUI | load `ask-user` |
 | `activate_skill` | load a skill body | appears when skills exist |
-| `configure_extension` | record an accepted/declined shipped extension | appears while one is undecided |
+| `configure_extension` | record an accepted/declined first-party extension | appears while one is undecided |
 
 ```json
 {
@@ -50,7 +50,7 @@ leaves every target unchanged.
 ## replace or restrict
 
 a Project extension registers first. register the same tool name to replace a
-shipped implementation.
+first-party implementation.
 
 ```ts
 export default function (g) {

@@ -469,7 +469,7 @@ describe("the extensions that ship with glrs", () => {
       notes: readonly string[];
     };
     await rm(dir, { recursive: true, force: true });
-    // Only what glrs ships. A developer may have User extensions installed, so
+    // Only first-party extensions. A developer may have User extensions installed, so
     // a temp project can still pick up files from the machine running these tests.
     return {
       ...result,
@@ -568,7 +568,7 @@ describe("what config says that does not resolve", () => {
   });
 });
 
-describe("replacing a tool glrs ships", () => {
+describe("replacing a first-party tool", () => {
   const bashFrom = async (dir: string): Promise<string> => {
     const registry = createRegistry();
     await loadExtensions(dir, registry, { ...host, root: dir }, () => {});
@@ -578,7 +578,7 @@ describe("replacing a tool glrs ships", () => {
     return entry.execute({ command: "unused" }, {});
   };
 
-  test("with no project extension, the shipped bash is what runs", async () => {
+  test("with no project extension, the first-party bash is what runs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "glrs-shipped-"));
     expect(await bashFrom(dir)).not.toContain("FROM-THE-PROJECT");
     await rm(dir, { recursive: true, force: true });

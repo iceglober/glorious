@@ -92,14 +92,18 @@ const mockCatalog = (): void => {
 };
 
 describe("model resolution", () => {
-  test("prefers the environment model, then config, then Azure", () => {
+  test("prefers the environment model, then config", () => {
     const selected = config({ model: "anthropic/claude" });
 
     expect(currentModel(selected)).toMatchObject({ provider: "anthropic", modelId: "claude" });
     process.env.GLRS_MODEL = "openai/gpt";
     expect(currentModel(selected)).toMatchObject({ provider: "openai", modelId: "gpt" });
-    delete process.env.GLRS_MODEL;
-    expect(currentModel()).toMatchObject({ provider: "azure", modelId: "gpt-5.6-luna" });
+  });
+
+  test("requires an explicitly configured provider and model", () => {
+    expect(() => currentModel()).toThrow("No model configured");
+    expect(() => currentModel({ model: "gpt-5.6" })).toThrow('Model must be "provider/model-id"');
+    expect(() => currentModel({ model: "openai/" })).toThrow('Model must be "provider/model-id"');
   });
 
   test("resolves Bedrock and Vertex settings from config and environment", () => {
@@ -209,7 +213,7 @@ describe("finding the api key", () => {
   });
 
   test("the startup model carries the names, so the fallback can fire", () => {
-    expect(currentModel().env.length).toBeGreaterThan(0);
+    expect(currentModel({ model: "azure/gpt-4o" }).env.length).toBeGreaterThan(0);
   });
 });
 
