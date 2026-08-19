@@ -17,7 +17,12 @@
   "router": "structure-dir",
   "customCss": "./theme/glrs.css",
   "name": "glrs",
-  "includeVersion": false,
+  "includeVersion": true,
+  "navigationLinks": {
+    "github": "https://github.com/iceglober/glorious",
+    "ci": "https://github.com/iceglober/glorious/actions/workflows/ci.yml",
+    "npm": "https://www.npmjs.com/package/@glrs-dev/glrs"
+  },
   "readme": "./homepage.md",
   "projectDocuments": [
     "../docs/published/**/*.md"
