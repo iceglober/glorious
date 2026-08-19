@@ -7,7 +7,7 @@ date, the branch, the dirty-file count — which is what happens whenever a
 session is resumed. Turn 2 reports how much of its input the provider served
 from cache.
 
-- **A** — environment block at the tail of the system prompt, the way glorious
+- **A** — environment block at the tail of the system prompt, the way glrs
   used to assemble it.
 - **B** — static system prompt, environment inside the user message and frozen
   into history. What it does now.

@@ -7,35 +7,35 @@ keeping one repository, one test strategy, and one release workflow.
 
 ```text
 packages/
-  glorious-core/          # SDK/runtime: turns, sessions, events, tools, extensions
-  glorious-coding-agent/  # terminal product: TUI, CLI, coding defaults, bundled UX
+  glrs-core/          # SDK/runtime: turns, sessions, events, tools, extensions
+  glrs-coding-agent/  # terminal product: TUI, CLI, coding defaults, bundled UX
   provider-registry/      # provider adapters, credentials, and model metadata
   extensions/
     builtins/             # first-party commands and default capabilities
     web-fetch/            # browser-backed web_fetch extension
 ```
 
-The internal package names are `glorious-core` and `glorious-coding-agent`.
-`@glrs-dev/glorious` remains the only published distribution and bundles the
+The internal package names are `glrs-core` and `glrs-coding-agent`.
+`@glrs-dev/glrs` remains the only published distribution and bundles the
 internal package sources. Independent package publishing is deferred until the
 SDK contracts stabilize.
 
 ## Boundaries
 
-### glorious-core
+### glrs-core
 
 Core owns the SDK contract and runtime primitives:
 
 - provider-neutral model ports and turn execution
 - tool registration and tool lifecycle events
-- extension loading and the `Glorious` API
+- extension loading and the `Glrs` API
 - session repository ports, transcript events, compaction, usage, and configuration primitives
 - stable types for tools, commands, hooks, render lines, and host capabilities
 
 Core does not know about OpenTUI, terminal keybindings, coding-specific prompts,
 package-manager installation, or bundled product commands.
 
-### glorious-coding-agent
+### glrs-coding-agent
 
 The coding agent owns the product experience:
 
@@ -43,7 +43,7 @@ The coding agent owns the product experience:
 - CLI entry points, `-p`, `doctor`, `update`, and resume UX
 - coding-agent system prompt and repository context
 - default tools for files, shell, search, mentions, and skills
-- the default package and executable named `glorious`
+- the default package and executable named `glrs`
 
 The coding agent depends on core and the provider registry. Core never imports
 products, provider implementations, or extensions.
@@ -68,11 +68,11 @@ usable through the same extension API as a user extension.
 ## Implementation status
 
 - Workspace and publishable package manifests are in place.
-- The coding-agent source and tests live in `packages/glorious-coding-agent`.
+- The coding-agent source and tests live in `packages/glrs-coding-agent`.
 - Provider configuration, adapters, metadata, and tests live in `packages/provider-registry`.
-- Canonical events and JSON session persistence live in `packages/glorious-core`.
+- Canonical events and JSON session persistence live in `packages/glrs-core`.
 - Built-in commands, `ask_user`, and `web_fetch` are independent extension packages.
-- The root package remains the public distribution for the `glorious` executable.
+- The root package remains the public distribution for the `glrs` executable.
 - Boundary checks are enforced; Changesets versions and publishes only the root package.
 
 ## Migration phases
@@ -85,13 +85,13 @@ usable through the same extension API as a user extension.
    TypeScript/Biome configuration, and package-level test commands while the
    root package remains the only install and release unit.
 3. **Extract core** — move `extension-api`, events, sessions, model plumbing,
-   extension loading, and shared render types into `glorious-core`; preserve
+   extension loading, and shared render types into `glrs-core`; preserve
    behavior through moved tests before changing APIs.
 4. **Move the product** — move the TUI, CLI, coding tools, prompt, guidance,
-   mentions, and skills integration into `glorious-coding-agent`.
+   mentions, and skills integration into `glrs-coding-agent`.
 5. **Extract built-ins** — move bundled commands and web fetch into extension
    packages; load them from the coding agent without privileged code paths.
-6. **Release transition** — publish the root `@glrs-dev/glorious` distribution
+6. **Release transition** — publish the root `@glrs-dev/glrs` distribution
    with all internal package sources bundled. Keep the existing executable and
    configuration paths unchanged. Independent package releases are deferred.
 7. **Enforce boundaries** — add dependency checks and package-level API tests so
@@ -105,4 +105,4 @@ usable through the same extension API as a user extension.
 - Core owns event schemas and the JSON session adapter, including fork support.
 - Core exposes neutral UI and `Line[]` contracts; hosts may omit interactive capabilities.
 - Internal workspace packages are private and are not versioned or published independently.
-- `@glrs-dev/glorious` remains the sole public distribution during the transition.
+- `@glrs-dev/glrs` remains the sole public distribution during the transition.

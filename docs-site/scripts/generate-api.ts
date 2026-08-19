@@ -6,7 +6,7 @@ const source = join(
   "..",
   "..",
   "packages",
-  "glorious-coding-agent",
+  "glrs-coding-agent",
   "src",
   "extension-api.ts",
 );

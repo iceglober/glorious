@@ -13,7 +13,7 @@ that, so this page cannot drift from the code.
 sequenceDiagram
     autonumber
     actor You
-    participant G as glorious
+    participant G as glrs
     participant X as extensions
     participant M as model
 
@@ -62,7 +62,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     actor You
-    participant G as glorious
+    participant G as glrs
     participant X as extensions
 
     You->>G: `!command`

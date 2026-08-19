@@ -1,6 +1,6 @@
 # Architecture
 
-The coding-agent implementation is TypeScript in `packages/glorious-coding-agent/src/`,
+The coding-agent implementation is TypeScript in `packages/glrs-coding-agent/src/`,
 run by Bun with no build step. The
 public extension API is documented separately from implementation details.
 
@@ -13,7 +13,7 @@ index.ts            owns the session: wiring, state, paint
   tools.ts          the tools the model can call, and the gate around them
   extension-api.ts  the surface extensions are written against
   extensions.ts     finds and loads them
-  bundled/          the extensions glorious ships: builtins, web-fetch
+  bundled/          the extensions glrs ships: builtins, web-fetch
   render.ts         everything -> Line[]
   ui/               Line[] -> the terminal, via opentui
 ```
@@ -79,10 +79,10 @@ covers built-ins, bundled extensions and third-party tools alike.
 
 ## Two entry points
 
-`glorious` opens the TUI. `glorious -p "<prompt>"` runs one turn headless:
+`glrs` opens the TUI. `glrs -p "<prompt>"` runs one turn headless:
 assistant text to stdout, the tool trail to stderr, extensions loaded the same
 way, `ask_user` withheld because nobody is there. Print mode is how the agent
-verifies changes to itself, how anything scripts glorious, and how one glorious
+verifies changes to itself, how anything scripts glrs, and how one glrs
 spawns another through `bash`.
 
 ## What is deliberately absent

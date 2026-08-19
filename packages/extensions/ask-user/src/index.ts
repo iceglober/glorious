@@ -1,8 +1,8 @@
-import type { Glorious, Key, Line } from "../../../glorious-core/src";
+import type { Glrs, Key, Line } from "../../../glrs-core/src";
 
 // The `ask_user` tool, and the widget it opens. Both used to be in the core:
 // the tool in tools.ts, and 234 lines of renderer code in ui/questions.ts. That
-// put an opinion about what a question looks like in the part of glorious that
+// put an opinion about what a question looks like in the part of glrs that
 // cannot be replaced, for the sake of one tool.
 //
 // Everything here is written against `g` — `g.tool` to register, `g.ui.capture`
@@ -26,7 +26,7 @@ const HINT_NOTE = "Enter accept · Esc back to the options";
 // The widget, as lines. Everything is `Line[]` — the same span structure the
 // transcript uses — so this survives the renderer being replaced.
 const draw = (
-  g: Glorious,
+  g: Glrs,
   state: { items: Question[]; at: number; choice: number; note: string; typing: boolean },
   columns: number,
 ): Line[] => {
@@ -73,7 +73,7 @@ const report = (answers: Answer[]): string =>
     })
     .join("\n\n");
 
-const askAll = (g: Glorious, items: Question[]): Promise<string> =>
+const askAll = (g: Glrs, items: Question[]): Promise<string> =>
   new Promise((resolve) => {
     const answers: Answer[] = [];
     const state = { items, at: 0, choice: 0, note: "", typing: false };
@@ -140,7 +140,7 @@ const askAll = (g: Glorious, items: Question[]): Promise<string> =>
     held = g.ui.capture({ render: (columns) => draw(g, state, columns), onKey });
   });
 
-export default function askUser(g: Glorious): void {
+export default function askUser(g: Glrs): void {
   if (!g.hasUI) return;
 
   g.tool({

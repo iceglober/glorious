@@ -7,13 +7,13 @@ wrong, that is a bug.
 
 | | |
 | --- | --- |
-| `glorious` | the chat TUI, in any git repo |
-| `glorious -p "<prompt>"` | one turn, headless — answer on stdout, tool trail on stderr |
-| `cat log \| glorious -p "what failed?"` | piped input joins the prompt, fenced as material |
-| `glorious --resume [id]` | reopen a session; no id opens the picker |
-| `glorious --model provider/model` | for this run |
-| `glorious doctor [--json]` | model, provider, credentials, config diagnostics |
-| `glorious --version` · `glorious update` | |
+| `glrs` | the chat TUI, in any git repo |
+| `glrs -p "<prompt>"` | one turn, headless — answer on stdout, tool trail on stderr |
+| `cat log \| glrs -p "what failed?"` | piped input joins the prompt, fenced as material |
+| `glrs --resume [id]` | reopen a session; no id opens the picker |
+| `glrs --model provider/model` | for this run |
+| `glrs doctor [--json]` | model, provider, credentials, config diagnostics |
+| `glrs --version` · `glrs update` | |
 
 ## Tools the model can call
 
@@ -24,7 +24,7 @@ extension registers — including `ask_user`, which is a bundled extension rathe
 `edit` changes many files in one call and resolves every replacement before
 writing, so a failure leaves the tree untouched. Output is capped at 30,000
 characters. Paths stay inside the project, except that reads also reach
-glorious's own `docs/`.
+glrs's own `docs/`.
 
 There are no permission prompts. An extension can add them — see
 `tools.md` and `extensions.md`.
@@ -50,7 +50,7 @@ reason. A tool describes its own result through `renderResult`; see
 | `Ctrl+C` | clear the composer · interrupt · again to quit |
 | `↑` `↓` | prompt history at the edges of the draft; `Ctrl+P`/`Ctrl+N` always |
 
-On Windows Terminal, `Alt+Enter` toggles fullscreen before glorious ever sees
+On Windows Terminal, `Alt+Enter` toggles fullscreen before glrs ever sees
 it. [terminal-setup](/terminal-setup) has the remap.
 
 ## The message queue
@@ -127,7 +127,7 @@ described by a message about it.
 
 Automatic compaction needs the model's context size to know what 75% means.
 When the catalogue does not publish it the status line reads `ctx …(unknown)`
-and only `/compact` will run — `/session` shows what glorious thinks the
+and only `/compact` will run — `/session` shows what glrs thinks the
 window is.
 
 `/clear` drops what the model replays and keeps the transcript. A resumed
@@ -138,14 +138,15 @@ session inherits whichever happened.
 | Path | |
 | --- | --- |
 | `AGENTS.md` / `AGENT.md` / `CLAUDE.md` | project rules, from the root down |
-| `.glorious/extensions/*.ts` | extensions — tools, commands, hooks, rendering |
-| `.glorious/commands/*.md` | `/name` prompts |
+| `.glrs/extensions/*.ts` | extensions — tools, commands, hooks, rendering |
+| `.glrs/commands/*.md` | `/name` prompts |
 | `.agents/skills/*/SKILL.md` | skills, listed to the model and loaded on demand — see `skills.md` |
-| `.glorious/config.json` | model, variant, provider settings |
-| `~/.glorious/config.json` | the same, for you rather than the project |
+| `.glrs/config.json` | model, variant, provider settings |
+| `~/.glrs/config.json` | the same, for you rather than the project |
 
-Also `~/.agents/` and `~/.config/agents/`. Nothing reads another tool's
-directories.
+Also `~/.agents/` and `~/.config/agents/`, and `.glorious/` everywhere `.glrs/`
+appears above — the name before the rename, still read at lower precedence so
+nothing has to be moved by hand. Nothing reads another tool's directories.
 
 ## Providers
 
@@ -160,13 +161,13 @@ Model metadata is cached, so context windows and prices survive being offline.
 
 ## Sessions
 
-Plain JSON under `$XDG_DATA_HOME/glorious/sessions`. Every turn is recorded;
+Plain JSON under `$XDG_DATA_HOME/glrs/sessions`. Every turn is recorded;
 `--resume` replays the transcript and restores the model's context. `/session`
 reports id, size, tokens, cache hits and cost.
 
 ## Extensions
 
-The core registers no commands and no tools of its own — everything glorious
+The core registers no commands and no tools of its own — everything glrs
 ships is written against the same API you get. Tools, slash commands, keys, CLI
 flags, lifecycle hooks, tool gating, model switching, status and footer
 widgets, custom row rendering, and the activity row. See `extensions.md`.

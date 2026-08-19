@@ -12,7 +12,7 @@ const SEEDS = Number(process.env.SEEDS ?? 3);
 const STEP_LIMIT = 30;
 
 const model = createAzure({ apiKey: process.env.AZURE_OPENAI_API_KEY })(
-  process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna",
+  process.env.GLRS_MODEL ?? "gpt-5.6-luna",
 );
 
 const here = new URL(".", import.meta.url).pathname;

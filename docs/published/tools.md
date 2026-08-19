@@ -34,14 +34,14 @@ switching. The agent operates on the git repository you launched it in.
 ## Extensions
 
 `web_fetch` is not a built-in: it is an extension that ships enabled. A `.ts`
-file in `.glorious/extensions/` can register tools of its own, and they arrive
+file in `.glrs/extensions/` can register tools of its own, and they arrive
 alongside these with the same event stream, output cap and error handling. A
 project extension wins a name collision, so you can replace `web_fetch` with
 your own.
 
 ## Permissions
 
-There are none. glorious runs in YOLO mode, which is the only mode: once an
+There are none. glrs runs in YOLO mode, which is the only mode: once an
 agent can write and run code, a confirmation dialog is not a boundary. What is
 enforced, silently and without asking, is that file operations stay inside the
 project root, output is capped, and a killed command takes its process group

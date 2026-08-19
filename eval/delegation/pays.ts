@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, stepCountIs, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { systemPrompt } from "../../packages/glorious-coding-agent/src/prompt";
+import { systemPrompt } from "../../packages/glrs-coding-agent/src/prompt";
 
 // The subagent instructions as of adbd6fa, the commit whose numbers the README
 // reports. They used to be the coding agent prompt's craftRules export; run_subagent and
@@ -36,7 +36,7 @@ const craftRules = `<non-negotiables>
 // top, and whether the answer was right. A win has to survive the total.
 
 const model = createAzure({ apiKey: process.env.AZURE_OPENAI_API_KEY })(
-  process.env.GLORIOUS_MODEL ?? "gpt-5.6-luna",
+  process.env.GLRS_MODEL ?? "gpt-5.6-luna",
 );
 
 const SEEDS = Number(process.env.SEEDS ?? 4);
@@ -85,7 +85,7 @@ const fileTools = (root: string): ToolSet =>
   }) as ToolSet;
 
 const subagentInstructions = `<identity>
-  You are a dedicated subagent working for Glorious.
+  You are a dedicated subagent working for Glrs.
 </identity>
 
 ${craftRules}
@@ -97,7 +97,7 @@ The brief you are given is your complete starting context; do not assume access 
 // explanation. The question is whether specialising closes the cost gap that
 // the generic subagent loses on.
 const librarianInstructions = `<identity>
-  You are the Librarian, a search subagent working for Glorious.
+  You are the Librarian, a search subagent working for Glrs.
 </identity>
 
 You locate things in a codebase and report where they are. You do not explain,

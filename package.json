@@ -1,8 +1,8 @@
 {
-  "name": "@glrs-dev/glorious",
+  "name": "@glrs-dev/glrs",
   "version": "1.0.0-next.50",
   "private": false,
-  "description": "glorious monorepo: a provider-neutral agent core and the glorious coding-agent product.",
+  "description": "glrs monorepo: a provider-neutral agent core and the glrs coding-agent product.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,11 +12,11 @@
   "homepage": "https://glrs.dev",
   "files": [
     "bin",
-    "packages/glorious-coding-agent/package.json",
-    "packages/glorious-coding-agent/src",
-    "!packages/glorious-coding-agent/src/**/*.test.ts",
-    "packages/glorious-core/src",
-    "!packages/glorious-core/src/**/*.test.ts",
+    "packages/glrs-coding-agent/package.json",
+    "packages/glrs-coding-agent/src",
+    "!packages/glrs-coding-agent/src/**/*.test.ts",
+    "packages/glrs-core/src",
+    "!packages/glrs-core/src/**/*.test.ts",
     "packages/provider-registry/src",
     "!packages/provider-registry/src/**/*.test.ts",
     "packages/extensions/ask-user/src",
@@ -33,12 +33,13 @@
     "tag": "next"
   },
   "bin": {
-    "glorious": "bin/glorious"
+    "glrs": "bin/glrs",
+    "glorious": "bin/glrs"
   },
   "packageManager": "bun@1.3.14",
   "scripts": {
-    "dev": "bun packages/glorious-coding-agent/src/index.ts",
-    "glorious": "bun packages/glorious-coding-agent/src/index.ts",
+    "dev": "bun packages/glrs-coding-agent/src/index.ts",
+    "glrs": "bun packages/glrs-coding-agent/src/index.ts",
     "test": "bun test --timeout 60000",
     "typecheck": "tsc --noEmit",
     "typecheck:packages": "tsc --noEmit -p packages/tsconfig.json",

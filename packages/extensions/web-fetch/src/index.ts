@@ -1,11 +1,11 @@
-import type { Glorious } from "../../../glorious-core/src";
+import type { Glrs } from "../../../glrs-core/src";
 
 // Bundled, enabled by default, and written the way any extension is: it reaches
 // for nothing but Bun globals and the API object. That is the point — this is
-// the largest tool glorious has, and if the extension API could not express it
+// the largest tool glrs has, and if the extension API could not express it
 // the API would be a toy.
 //
-// Delete it, shadow it with your own .glorious/extensions/web-fetch.ts, or
+// Delete it, shadow it with your own .glrs/extensions/web-fetch.ts, or
 // leave it alone; none of that touches the core.
 
 const CACHE_MS = 15 * 60_000;
@@ -113,7 +113,7 @@ const probe = async (url: string, caller: AbortSignal | undefined): Promise<Prob
   const response = await fetch(url, {
     redirect: "manual",
     signal: caller,
-    headers: { "user-agent": "glorious" },
+    headers: { "user-agent": "glrs" },
   }).catch(() => null);
   if (!response) return { status: 0, redirect: null };
   if (response.status < 300 || response.status >= 400)
@@ -165,7 +165,7 @@ const render = async (
     if (out.trim() !== "") return { html: out, failed: "" };
     if (caller?.aborted) return { html: "", failed };
   }
-  const response = await fetch(url, { signal: caller, headers: { "user-agent": "glorious" } })
+  const response = await fetch(url, { signal: caller, headers: { "user-agent": "glrs" } })
     .then((got) => (got.ok ? got.text() : Promise.reject(new Error(`HTTP ${got.status}`))))
     .catch((thrown: unknown) => (thrown instanceof Error ? thrown : new Error(String(thrown))));
   return response instanceof Error
@@ -228,7 +228,7 @@ export const fetchPages = async (
 
 export const clearWebCache = (): void => cache.clear();
 
-export default function webFetch(g: Glorious): void {
+export default function webFetch(g: Glrs): void {
   g.tool({
     name: "web_fetch",
     description: `Fetch web pages and return their main content as markdown, with navigation, boilerplate and markup removed. Read-only: it retrieves public pages and sends nothing. Renders with headless Chrome when one is installed, so pages that build their content with JavaScript work. Pass up to ${MAX_PAGES} URLs to fetch them together. A URL that redirects to a different host is reported rather than followed, so a login wall or shortener does not silently become the answer. Results are cached for 15 minutes.`,

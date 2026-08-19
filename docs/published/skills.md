@@ -6,7 +6,7 @@ are loaded at startup — the body arrives when the skill is actually used, so a
 long skill costs nothing until it is needed.
 
 ```
-.glorious/skills/changelog/
+.glrs/skills/changelog/
   SKILL.md          the frontmatter and the instructions
   references/       detail the model reads only if it needs to
   scripts/          anything the skill runs
@@ -23,7 +23,7 @@ Read the commits with `git log $(git describe --tags --abbrev=0)..HEAD`.
 Group them by what a reader would care about, not by commit order.
 ```
 
-Paths inside the body are relative to the skill's own directory, which glorious
+Paths inside the body are relative to the skill's own directory, which glrs
 tells the model when it loads the skill. That is what makes `references/` work:
 put the detail there and mention the file, and it gets read only when it matters.
 
@@ -37,7 +37,7 @@ with the same name says so rather than quietly losing.
 | `~/.config/agents/skills/` | you, everywhere |
 | `~/.agents/skills/` | you, everywhere |
 | `<any ancestor>/.agents/skills/` | shared, walking up to your home directory |
-| `.glorious/skills/` | this project |
+| `.glrs/skills/` | this project |
 
 Directories are searched recursively, so grouping skills into folders works —
 `skills/writing/changelog/SKILL.md` is the `changelog` skill. A directory that
@@ -55,15 +55,15 @@ Nothing reads another agent's directories. Symlink one in if you want it here.
 | `license` | a licence name, or a file in the skill directory |
 | `compatibility` | up to 500 characters on what it needs to run |
 | `metadata` | any key/value mapping you like |
-| `allowed-tools` | space-separated tools the skill expects. Parsed and shown; glorious does not yet restrict anything to it |
-| `trigger` | glorious's own: renames the part after `skill:`. Without it that is the skill's name |
+| `allowed-tools` | space-separated tools the skill expects. Parsed and shown; glrs does not yet restrict anything to it |
+| `trigger` | glrs's own: renames the part after `skill:`. Without it that is the skill's name |
 | `disable-model-invocation` | **not part of the standard** — see below |
 
 The description is the whole of what the model sees until the skill is used, so
 it has to say *when* to reach for the skill, not only what it does. It is paid
 for on every turn of every session where the skill is installed.
 
-Fields glorious does not recognise are ignored, so a skill written for another
+Fields glrs does not recognise are ignored, so a skill written for another
 agent loads here unchanged.
 
 Validation is lenient and loud. A name with a capital in it, a description over
@@ -84,7 +84,7 @@ The skill is not listed in the system prompt, is not reachable through
 
 **This field is not in the Agent Skills specification.** It is a convention that
 several agents arrived at independently, and it is now common enough that a
-skill carrying it expects it to be honoured — so glorious honours it. Treat it
+skill carrying it expects it to be honoured — so glrs honours it. Treat it
 as a de-facto extension to the format rather than something the standard
 promises, and do not be surprised if a tool that reads the specification
 strictly ignores it.
@@ -108,7 +108,7 @@ model — a skill that opted out is tagged `you only`.
 ## Skills, commands, and extensions
 
 - A **skill** is for the model: it decides when the skill applies. Reach for one when the *model* should know how to do something.
-- A **command** (`.glorious/commands/*.md`) is for you: a prompt you send by typing `/name`. See `commands.md`.
+- A **command** (`.glrs/commands/*.md`) is for you: a prompt you send by typing `/name`. See `commands.md`.
 - An **extension** is code — a tool, a hook, a widget. See `extensions.md`.
 
 A skill that only ever gets used because you typed it is a command. A command

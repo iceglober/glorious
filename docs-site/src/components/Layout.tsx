@@ -44,7 +44,7 @@ export function Layout() {
         <Sidebar />
         <div className="page-content"><Outlet /></div>
       </div>
-      <footer className="site-footer"><span className="footer-mark">glorious</span><span className="footer-separator">·</span><span>next</span></footer>
+      <footer className="site-footer"><span className="footer-mark">glrs</span><span className="footer-separator">·</span><span>next</span></footer>
     </>
   );
 }

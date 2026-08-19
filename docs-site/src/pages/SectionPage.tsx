@@ -3,8 +3,8 @@ import { Link } from "react-router";
 import { SECTIONS } from "~/components/Layout";
 
 const INTRO: Record<string, string> = {
-  "/get-started": "Install glorious, configure a provider, and make your first useful turn.",
-  "/concepts": "The language and design commitments behind glorious.",
+  "/get-started": "Install glrs, configure a provider, and make your first useful turn.",
+  "/concepts": "The language and design commitments behind glrs.",
   "/extend": "Add tools, commands, skills, and behavior without forking the core.",
   "/reference": "The complete reference for daily use and extension authors.",
   "/help": "Diagnose setup problems and follow what changed.",
@@ -16,7 +16,7 @@ export function SectionPage({ path }: { path: string }) {
   if (!section) return null;
   return (
     <main className="site-main section-page">
-      <p className="eyebrow">glorious / {section.label}</p>
+      <p className="eyebrow">glrs / {section.label}</p>
       <h1>{section.label}</h1>
       <p className="section-intro">{INTRO[path]}</p>
       <div className="section-links">

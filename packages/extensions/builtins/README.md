@@ -1,4 +1,4 @@
-# @glrs-dev/glorious-builtins
+# @glrs-dev/glrs-ext-builtins
 
-First-party commands and interactive tools loaded by the glorious coding agent
+First-party commands and interactive tools loaded by the glrs coding agent
 through the public extension API.

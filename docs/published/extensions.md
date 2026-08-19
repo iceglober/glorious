@@ -1,11 +1,11 @@
 # Extensions
 
 An extension is a TypeScript file that default-exports a function taking the
-glorious API. It is how glorious grows: everything the core refuses to build —
+glrs API. It is how glrs grows: everything the core refuses to build —
 custom tools, project-specific commands, hooks, status widgets — lives here.
 
 ```ts
-// .glorious/extensions/git-branch.ts
+// .glrs/extensions/git-branch.ts
 export default function (g) {
   let branch = "";
 
@@ -41,17 +41,17 @@ Loaded in this order; the first file to claim a name wins.
 
 | Path | Scope |
 | --- | --- |
-| `.glorious/extensions/*.ts` | this project |
-| `.glorious/extensions/<name>/index.ts` | this project, multi-file |
+| `.glrs/extensions/*.ts` | this project |
+| `.glrs/extensions/<name>/index.ts` | this project, multi-file |
 | `~/.config/agents/extensions/*.ts` | you, everywhere |
-| bundled with glorious | shipped, enabled by default |
+| bundled with glrs | shipped, enabled by default |
 
-Because project files load first, `.glorious/extensions/web-fetch.ts` replaces
+Because project files load first, `.glrs/extensions/web-fetch.ts` replaces
 the bundled `web_fetch` rather than colliding with it.
 
 Two extensions ship enabled: `web-fetch` (the `web_fetch` tool) and `builtins`
 (`/help`, `/clear`, `/skills`, `/extensions`, `/reload`). **The core registers no
-slash commands and no tools of its own** — everything glorious ships is written
+slash commands and no tools of its own** — everything glrs ships is written
 against the API on this page. Shadow either by name, or delete them.
 
 `/extensions` lists what loaded, what each one registered, and the file it came
@@ -61,7 +61,7 @@ disappearing — and takes nothing else down with it.
 ## No approval prompt
 
 Extensions run with your full permissions and there is no gate. That is
-deliberate and it is the same bet the rest of glorious makes: an agent that can
+deliberate and it is the same bet the rest of glrs makes: an agent that can
 write files and run commands has already crossed the line a confirmation dialog
 would pretend to defend. The honest thing is to say so, keep what loaded
 visible, and let you use a container or a worktree when the blast radius matters.
@@ -90,7 +90,7 @@ g.tool({
 
 **The first extension to claim a tool name keeps it**, the same rule the table
 above states for file names. Extensions load project-first, so registering
-`bash` in `.glorious/extensions/` replaces the one glorious ships — you do not
+`bash` in `.glrs/extensions/` replaces the one glrs ships — you do not
 have to shadow the whole extension that provides it. A later registration of a
 name already taken is refused and reported by `/extensions` as `shadowed`,
 rather than silently winning or silently vanishing.
@@ -114,7 +114,7 @@ g.command("todo", {
 ```
 
 For a command that should instead become a prompt, write a markdown file in
-`.glorious/commands/` — see `commands.md`. For one that runs a shell command and
+`.glrs/commands/` — see `commands.md`. For one that runs a shell command and
 then feeds its output to the model, use `g.send` from an extension.
 
 ### `g.on(event, handler)`
@@ -158,7 +158,7 @@ talked into running.
 
 **Be careful blocking a tool headlessly.** `g.ui.capture` needs a person, so a gate
 that asks for confirmation has to decide what to do when `g.hasUI` is false.
-Refusing every `bash` in print mode makes `glorious -p` unusable — including the
+Refusing every `bash` in print mode makes `glrs -p` unusable — including the
 run the agent uses to verify its own work, which will then retry until something
 times out. Either allow the call when there is no UI, or narrow the gate to the
 commands that actually warrant it:
@@ -271,7 +271,7 @@ bundled `builtins` extension draws `/help`.
 ### `g.inspect()` / `g.clear()` / `g.reload()`
 
 `inspect()` returns what is loaded right now — `{ commands, skills,
-extensions }`. Every listing glorious ships is a view over it and nothing more,
+extensions }`. Every listing glrs ships is a view over it and nothing more,
 which is why none of them are built in:
 
 ```ts
@@ -327,7 +327,7 @@ g.flag("greet", { description: "Say hello", run: (value) => g.print(value) });
 ```
 
 A binding runs before the composer sees the key. A flag is claimed after
-extensions load, so `glorious --greet world` reaches yours; one nothing claims
+extensions load, so `glrs --greet world` reaches yours; one nothing claims
 is reported rather than ignored.
 
 ### Tools and models
@@ -406,7 +406,7 @@ never the system prompt, which has to stay byte-identical for the prompt cache.
 
 `activity` replaces the row that says what the turn is doing — the phase, how
 long it has been in it, the queued count and how to interrupt. Return `null` to
-leave glorious's own.
+leave glrs's own.
 
 ```ts
 g.activity(({ busy, queued, phase, columns }) =>
@@ -427,7 +427,7 @@ loses its contribution for that frame and nothing else.
 
 ## Rendering
 
-Renderers return `Line[]`, glorious's own span structure:
+Renderers return `Line[]`, glrs's own span structure:
 
 ```ts
 type Span = { text: string; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean };
@@ -466,7 +466,7 @@ g.tool({
 ```
 
 There is deliberately no second mechanism for this — one seam, so the row and
-anything else reading a result cannot drift apart. glorious keeps the `✓`/`✗`,
+anything else reading a result cannot drift apart. glrs keeps the `✓`/`✗`,
 the call, and the elapsed time, so those mean the same thing on every row
 whoever wrote the tool. Print mode renders the identical row and the identical
 footer to stderr.
@@ -474,7 +474,7 @@ footer to stderr.
 ## Testing one
 
 ```sh
-glorious -p "use the count_todos tool on src and report the number"
+glrs -p "use the count_todos tool on src and report the number"
 ```
 
 Print mode loads extensions exactly as the TUI does, so this is the fastest way

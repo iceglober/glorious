@@ -16,7 +16,7 @@ function MdLink({ href, children }: { href?: string; children?: any }) {
 
 function cleanChangelog(raw: string): string {
   return raw
-    // Strip the h1 title line (e.g. "# @glrs-dev/glorious")
+    // Strip the h1 title line (e.g. "# @glrs-dev/glrs")
     .replace(/^#\s+@glrs-dev\/.*\n+/, "")
     // Remove empty version sections (just "## X.Y.Z" with no content before next heading)
     .replace(/^(## \d+\.\d+\.\d+)\n+(## )/gm, "$2");
