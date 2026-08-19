@@ -10,7 +10,7 @@ config is JSON in three scopes. the nearest value wins, one key at a time.
 
 | scope | path | purpose |
 | --- | --- | --- |
-| Project-User | `<project>/.glrs/config.local.json` | yours for this project; gitignored |
+| Project-User | `<project>/.glrs/config.local.json` | yours for this project; keep it gitignored |
 | Project | `<project>/.glrs/config.json` | committed with the project |
 | User | `<User>/config.json` | yours across every project |
 
@@ -62,6 +62,8 @@ older `~/.glrs`, `.glorious`, and `~/.config/glorious` paths are not read.
 | `providers.<name>.region` | AWS Bedrock region |
 | `providers.<name>.project` | Google Vertex project |
 | `providers.<name>.location` | Google Vertex location |
+
+`extensions` may also be an array, shorthand for `extensions.load`.
 
 `steeringMode` and `followUpMode` are accepted aliases. both queue modes default
 to `one-at-a-time`.

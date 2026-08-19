@@ -4,8 +4,9 @@ title: lifecycle
 
 # lifecycle
 
-subscribe with `g.on(name, handler)`. async handlers are awaited. a thrown
-handler is reported without stopping the turn.
+subscribe with `g.on(name, handler)`. handlers for one event run in registration
+order. modifying hooks and shutdown are awaited; notification hooks may finish
+asynchronously. a thrown handler is reported without stopping the turn.
 
 ## turn order
 
@@ -22,8 +23,7 @@ session_start
       tool_start
       tool_end *
     usage
-  idle
-  turn_end
+  turn_end / idle
 session_end
 ```
 
@@ -60,7 +60,7 @@ session_end
 turn starts. steering enters an existing turn and does not fire another
 `turn_start`.
 
-`user_bash`, `input`, and model-selection UI events do not exist in print mode.
+`input`, `user_bash`, `model_select`, and `compact` do not fire in print mode.
 
 ## request layers
 
@@ -86,5 +86,6 @@ what the model and transcript receive.
 `usage` fires once per model call. a turn that runs three rounds of tools may
 fire it four times.
 
-`idle` fires after the queue drains. `turn_end` then contains the final assistant
-text. `session_end` is awaited so extensions can flush state.
+`turn_end` contains the final assistant text; `idle` means the queue drained.
+print mode fires `turn_end` then `idle`; the TUI currently fires `idle` then
+`turn_end`. `session_end` is awaited so extensions can flush state.

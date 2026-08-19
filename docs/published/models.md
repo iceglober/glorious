@@ -64,7 +64,7 @@ export GLRS_PRICE_MULTIPLIERS=azure=1.1,openai=1
 
 ## failed connections
 
-a connection lost before output starts is retried three times. a mid-response
+a connection lost before output starts is attempted up to three times. a mid-response
 disconnect cannot be retried without duplicating output; send `continue`.
 
 ## diagnostics

@@ -77,13 +77,16 @@ about [sessions](./advanced/4-sessions.md).
 | `alt+enter` | steer the running turn at its next step |
 | `shift+enter` | insert a newline |
 | `alt+↑` | return the newest queued message to the composer |
-| `esc` | stop the turn and hold queued messages |
+| `esc` | close completion; otherwise stop the turn and hold queued messages |
 | `ctrl+c` | clear; interrupt; press again to exit |
-| `↑` / `↓` | move through prompt history at the draft edges |
+| `↑` / `↓` | move through completion or prompt history at the draft edges |
 | `ctrl+p` / `ctrl+n` | move through prompt history anywhere |
+| `tab` | fill the selected completion |
 | `/` | complete a slash command |
 | `@` | attach a file or directory |
-| `!` | run a shell command |
+| `!` | enter direct shell mode |
+| `backspace` | leave an empty direct shell composer |
+| mouse drag | select and copy through OSC 52 |
 
 on Windows Terminal, `alt+enter` needs a one-time remap. see
 [terminal setup](./terminal-setup.md).

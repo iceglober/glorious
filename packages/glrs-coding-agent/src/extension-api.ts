@@ -299,9 +299,9 @@ export type Glrs = {
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
   /**
-   * This session's resolved settings, merged from every config file that
-   * applied. Provider blocks are absent: they hold API keys, and an extension
-   * that wants them can read the files itself rather than be handed them.
+   * This session's resolved runtime settings, merged from every config file
+   * that applied. Provider connection settings are not part of this compact
+   * runtime view; an extension that needs them can read config itself.
    */
   settings: () => Readonly<Settings>;
   /**
@@ -327,7 +327,7 @@ export type Glrs = {
    * tokens of recent turns to leave verbatim.
    */
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
-  /** Re-read skills, commands, and extensions from disk. */
+  /** Re-read skills, commands, extensions, and extension/tool config. */
   reload: () => Promise<void>;
 
   /** "tui" when a terminal is attached, "print" for a headless -p run. */
@@ -375,7 +375,7 @@ export type Glrs = {
 
   /** This session: id, file on disk, title, event count. */
   session: () => SessionInfo;
-  /** Rename the session, as the resume picker shows it. */
+  /** Rename the session for this process. Stored titles are derived from user messages. */
   setSessionName: (title: string) => void;
   /** Persist your own data in the session file. Never sent to the model. */
   appendEntry: (type: string, data: unknown) => void;

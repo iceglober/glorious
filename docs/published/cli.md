@@ -9,7 +9,7 @@ title: cli
 | command | action |
 | --- | --- |
 | `glrs` | start a new TUI session |
-| `glrs -p "<prompt>"` | run one headless turn |
+| `glrs -p "<prompt>"` / `glrs --print "<prompt>"` | run one headless turn |
 | `cat log \| glrs -p "what failed?"` | add piped input to the prompt |
 | `glrs --resume` | choose a session to resume |
 | `glrs --resume <id>` | resume one session |
@@ -19,6 +19,7 @@ title: cli
 | `glrs update` | install the newest `next` release |
 
 in print mode, assistant text goes to stdout and tool activity goes to stderr.
+extensions can register additional `--name value` flags.
 
 ## environment
 

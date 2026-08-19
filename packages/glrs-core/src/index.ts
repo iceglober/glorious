@@ -79,9 +79,9 @@ export type Usage = {
   total: { input: number; output: number; cached: number; cost: number; steps: number };
 };
 
-// This session's resolved settings, merged from every config file that applied.
-// Provider blocks are deliberately absent: they hold API keys, and an extension
-// that wants them can read the files itself rather than being handed them.
+// This session's resolved runtime settings, merged from every config file that
+// applied. Provider connection settings are deliberately outside this compact
+// view; an extension that needs them can read config itself.
 export type Settings = {
   tool_timeout_ms?: number;
   steering_mode?: "one-at-a-time" | "all";

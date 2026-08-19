@@ -11,6 +11,7 @@ export type {
   Compaction,
   EventName,
   EventPayload,
+  ExtensionChoice,
   FlagSpec,
   Glrs,
   Handler,
@@ -29,7 +30,9 @@ export type {
   Usage,
   Verdict,
 } from "./extension-api";
+export type { Shipped } from "./extensions";
 export type { SkillSummary } from "./skills";
+export type { WriteOutcome } from "./writeconfig";
 
 /** A deployable extension module. */
 export type Extension = (glrs: Glrs) => void | Promise<void>;

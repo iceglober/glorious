@@ -13,7 +13,8 @@ context, usage, and extension entries.
 glrs
 ```
 
-each run without `--resume` creates a session.
+each TUI run without `--resume` creates a session. `glrs -p` is one-shot and
+does not create a session file.
 
 ## resume
 

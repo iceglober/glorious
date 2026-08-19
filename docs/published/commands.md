@@ -53,9 +53,11 @@ or another command. fuzzy completion means typing `/deploy` can still find
 ## project rules
 
 glrs reads the first of `AGENTS.md`, `AGENT.md`, or `CLAUDE.md` in each directory
-from the filesystem root to the project. nearer files come later in the prompt.
+from your home directory down to the project. for projects outside home, the
+walk starts at the filesystem root. nearer files come later in the prompt.
 
-User rules also come from the platform config base's `agents/` directory.
+User rules come from `~/.config/AGENTS.md` and `~/.config/amp/AGENTS.md`.
+system-wide AmpCode rule files are read first when present.
 
 rules are part of the stable prompt prefix. use them for short standing
 instructions; use a skill for procedures loaded only when needed.

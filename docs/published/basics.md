@@ -50,8 +50,9 @@ press `enter` on an empty composer to release a held queue.
 ## rules
 
 glrs reads the first `AGENTS.md`, `AGENT.md`, or `CLAUDE.md` in each directory
-from the filesystem root to the project. nearer rules come later. `read` also
-returns guidance beside the file being read.
+from your home directory down to the project. for projects outside home, the
+walk starts at the filesystem root. nearer rules come later. system and User
+rules are read first. `read` also returns guidance beside the target file.
 
 ## reusable behavior
 

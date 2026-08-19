@@ -17,7 +17,8 @@ title: features
 ## tools
 
 `bash` · `read` · `write` · `edit` · `grep` · `glob` · `activate_skill`, plus
-extension tools.
+extension tools. `configure_extension` also appears while a shipped extension
+is undecided.
 
 `builtins` supplies the six machine tools. `activate_skill` exists only when a
 skill is available. `web_fetch` and `ask_user` ship off by default:

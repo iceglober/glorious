@@ -40,11 +40,11 @@ loaded in order; first name wins:
 | `.glrs/extensions/<name>/index.ts` | Project, multi-file |
 | `<User>/extensions/*.ts` | User |
 | `<User>/extensions/<name>/index.ts` | User, multi-file |
-| `extensions.load` paths | configured |
-| shipped extensions | bundled |
+| enabled shipped extensions | bundled |
+| other `extensions.load` paths (after resolution) | configured |
 
-relative config paths resolve from the config file. a directory entry point is
-`index.ts`.
+`<User>` is defined under [configuration](./3-configuration.md). relative config
+paths resolve from the config file. a directory entry point is `index.ts`.
 
 an extension that fails to import or initialize is reported without stopping
 other extensions. `/extensions` shows what loaded and what each registered.
@@ -123,7 +123,8 @@ export default function (g) {
 ```
 
 commands and key handlers may be async. extension flags are claimed after
-extensions load; unknown flags are errors.
+extensions load in the TUI; unknown flags are errors. commands, keys, and flags
+are not invoked by one-shot print mode.
 
 ## hooks
 
@@ -182,7 +183,9 @@ unavailable in print mode. `g.ui.setInput(text)` fills the normal composer.
 | `g.events.emit()` / `g.events.on()` | extension-to-extension events |
 
 `g.mode` is `tui` or `print`. `g.idle()`, `g.pending()`, `g.abort()`, and
-`g.shutdown()` control the running host.
+`g.shutdown()` control the running host. print mode has no session file, queue,
+composer, model switching/catalogue, compaction, or reload; those calls return an empty
+result, report a no-op, or throw as their API signatures describe.
 
 ## tools and models
 
@@ -222,8 +225,9 @@ type Span = {
 type Line = Span[];
 ```
 
-renderers are synchronous and called during paint. do work in a hook and render
-from stored state.
+renderers are synchronous and called during TUI paint. do work in a hook and
+render from stored state. status, footer, activity, key, capture, and markdown
+contributions have no visible host in print mode.
 
 ## test
 

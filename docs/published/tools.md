@@ -28,6 +28,7 @@ blocked.
 | `web_fetch` | fetch up to ten pages as markdown; use Chrome for JavaScript pages | load `web-fetch` |
 | `ask_user` | ask selectable questions in the TUI | load `ask-user` |
 | `activate_skill` | load a skill body | appears when skills exist |
+| `configure_extension` | record an accepted/declined shipped extension | appears while one is undecided |
 
 ```json
 {
@@ -35,7 +36,8 @@ blocked.
 }
 ```
 
-`ask_user` is absent in print mode.
+`ask_user` is absent in print mode. `configure_extension` can write only when
+`agentConfigAllowlist` permits `extensions`.
 
 ## output
 

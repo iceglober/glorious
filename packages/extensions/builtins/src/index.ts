@@ -124,7 +124,7 @@ export default function builtins(g: Glrs): void {
         ...table(g, [
           {
             name: "Esc",
-            note: "interrupt the turn · with none running, take back the newest queued message",
+            note: "interrupt the turn and hold queued messages",
           },
           { name: "Ctrl+C", note: "clear the composer · interrupt · again to quit" },
           { name: "!", note: "run the rest of the line as a shell command" },
