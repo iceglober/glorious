@@ -15,4 +15,4 @@ bun run build
 bun run dev
 ```
 
-The local server runs at `http://127.0.0.1:4180/`.
+The local server runs at `http://127.0.0.1:4180/`. `bun run dev` watches External Documents, API entry points, TypeDoc configuration, theme files, and public assets; successful rebuilds reload connected browsers automatically.
