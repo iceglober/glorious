@@ -24,6 +24,7 @@ import {
 import { createAgent } from "./agent";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
+import { cleanShellChunk, shellCompletion } from "./direct-shell";
 import {
   createRegistry,
   describeContribution,
@@ -232,6 +233,8 @@ const main = async (): Promise<void> => {
     input: Record<string, unknown>;
     since: number;
   }> = [];
+  let userShellId = 0;
+  const userShells: Array<{ id: number; command: string; since: number }> = [];
 
   // A renderer is third-party code running on every frame. One that throws
   // would otherwise take the paint loop down 11 times a second, so it loses its
@@ -274,6 +277,8 @@ const main = async (): Promise<void> => {
         ),
       );
     }
+    for (const shell of userShells)
+      progress.push(...runningRow("shell", shell.command, undefined, screen.columnsNow()));
     for (const entry of chat.queued)
       progress.push(queuedRow({ kind: entry.kind, text: entry.label ?? entry.text }));
     if (chat.held) progress.push(heldRow(chat.queued.length));
@@ -515,10 +520,74 @@ const main = async (): Promise<void> => {
     onShell: (command) => {
       screen.print(userBlock(`!${command}`), true);
       void fire(registry, "user_bash", { command }, onExtensionFailure);
-      void runShell(root, command).then(({ output, ok }) => {
-        if (output !== "") screen.print(noticeBlock(output, ok ? "muted" : "danger"), false);
+      const shell = { id: ++userShellId, command, since: Date.now() };
+      userShells.push(shell);
+      repaint();
+
+      let shown = 0;
+      let clipped = false;
+      let hadOutput = false;
+      let flushTimer: ReturnType<typeof setTimeout> | undefined;
+      const buffered = { stdout: "", stderr: "" };
+      const flush = (): void => {
+        clearTimeout(flushTimer);
+        flushTimer = undefined;
+        for (const stream of ["stdout", "stderr"] as const) {
+          const text = buffered[stream].trimEnd();
+          buffered[stream] = "";
+          if (text === "") continue;
+          screen.print(
+            noticeBlock(
+              stream === "stderr" ? `stderr:\n${text}` : text,
+              stream === "stderr" ? "warning" : "muted",
+            ),
+            false,
+          );
+        }
         repaint();
-      });
+      };
+      const display = (text: string, stream: "stdout" | "stderr"): void => {
+        const clean = cleanShellChunk(text);
+        if (clean === "") return;
+        hadOutput = true;
+        if (shown >= 30_000) {
+          if (!clipped) {
+            clipped = true;
+            buffered.stderr += "\n[output truncated at 30,000 characters]";
+            flush();
+          }
+          return;
+        }
+        const remaining = 30_000 - shown;
+        buffered[stream] += clean.slice(0, remaining);
+        shown += Math.min(clean.length, remaining);
+        if (!clipped && clean.length > remaining) {
+          clipped = true;
+          buffered.stderr += "\n[output truncated at 30,000 characters]";
+        }
+        clearTimeout(flushTimer);
+        flushTimer = setTimeout(flush, 80);
+      };
+      const finish = (): void => {
+        flush();
+        const slot = userShells.findIndex((entry) => entry.id === shell.id);
+        if (slot >= 0) userShells.splice(slot, 1);
+      };
+      void runShell(root, command, [], display)
+        .then((result) => {
+          finish();
+          const completion = shellCompletion(result, hadOutput);
+          if (completion) screen.print(noticeBlock(completion.text, completion.tone), false);
+          repaint();
+        })
+        .catch((thrown) => {
+          finish();
+          screen.print(
+            noticeBlock(`(shell command failed to run — ${errorText(thrown)})`, "danger"),
+            false,
+          );
+          repaint();
+        });
     },
     cwd: root,
     onCommand: (name, args) => {

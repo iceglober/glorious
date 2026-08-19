@@ -1,3 +1,7 @@
+---
+title: Extensions
+---
+
 # Extensions
 
 An extension is a TypeScript file that default-exports a function taking the

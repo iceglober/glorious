@@ -9,7 +9,8 @@
     "glrs": "bin/glrs"
   },
   "exports": {
-    ".": "./src/sdk.ts"
+    ".": "./src/sdk.ts",
+    "./extension-api": "./src/public-extension-api.ts"
   },
   "scripts": {
     "prepack": "bun scripts/sync-docs.ts"

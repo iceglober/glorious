@@ -1,19 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
-    "paths": {
-      "~/*": ["./src/*"]
-    }
+    "types": ["bun"]
   },
-  "include": ["src", "vite-env.d.ts"]
+  "include": ["plugins/**/*.ts", "scripts/**/*.ts", "theme/**/*.ts"]
 }

@@ -4,7 +4,7 @@ import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import { clip, type Line, type Tone } from "./render";
 import type { SkillSummary } from "./skills";
-import type { ToolEvent, ShellResult as ToolShellResult } from "./tools";
+import type { ToolEvent } from "./tools";
 import { wrapTool } from "./tools";
 
 // The public surface an extension is written against. Everything on it is a
@@ -22,10 +22,13 @@ export type { Activity, Line, Span, Tone } from "./render";
 
 import type { Activity } from "./render";
 
-// Re-exported from tools.ts rather than declared again: two copies of one
-// shape is two things to remember to change, and the last one had already
-// fallen behind.
-export type ShellResult = ToolShellResult;
+export type ShellResult = {
+  output: string;
+  stdout: string;
+  stderr: string;
+  code: number;
+  ok: boolean;
+};
 
 export type EventName =
   | "session_start"

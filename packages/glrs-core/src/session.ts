@@ -49,7 +49,16 @@ type LegacySession = Omit<StoredSession, "schema" | "events"> & {
   messages: ModelMessage[];
 };
 
-export type Session = StoredSession & { title: string };
+export type Session = {
+  schema: 2;
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  cwd: string;
+  events: SessionEvent[];
+  contextTokens?: number;
+  title: string;
+};
 
 const titleOf = (events: readonly SessionEvent[]): string => {
   const last = events.findLast((event) => event.type === "user");
@@ -135,7 +144,7 @@ export const createSession = async (cwd: string): Promise<Session> => {
   return { ...session, title: titleOf(session.events) };
 };
 
-export const saveSession = async (session: StoredSession): Promise<void> => {
+export const saveSession = async (session: Omit<Session, "title"> | Session): Promise<void> => {
   await mkdir(directory(), { recursive: true });
   const { id, createdAt, updatedAt, cwd, events } = session;
   const contextTokens = session.contextTokens ?? contextTokensOf(events);

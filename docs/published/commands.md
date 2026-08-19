@@ -1,3 +1,7 @@
+---
+title: Commands
+---
+
 # Commands
 
 ## Slash commands from markdown

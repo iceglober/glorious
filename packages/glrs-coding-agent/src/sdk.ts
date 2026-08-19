@@ -1,16 +1,35 @@
-import type {
-  AgentCore,
-  ExtensionContext,
-  ModelProvider,
-  SessionRepository,
-} from "../../glrs-core/src";
+/** @module SDK
+ *  @group Reference
+ */
+
+import type { AgentCore, ModelProvider, SessionRepository } from "../../glrs-core/src";
 import type { ProviderRegistry } from "../../provider-registry/src";
+import type { Extension } from "./public-extension-api";
+
+export type {
+  AgentCore,
+  ModelProvider,
+  Session,
+  SessionEvent,
+  SessionRepository,
+  Turn,
+} from "../../glrs-core/src";
+export {
+  createAgentCore,
+  jsonSessionRepository,
+} from "../../glrs-core/src";
+export type {
+  ProviderAdapter,
+  ProviderRegistry,
+} from "../../provider-registry/src";
+export { createProviderRegistry } from "../../provider-registry/src";
+export type { Extension } from "./public-extension-api";
 
 export type CodingAgentDependencies = {
   runtime: AgentCore;
   sessionRepository: SessionRepository;
   providers: ProviderRegistry;
-  extensions?: readonly ((context: ExtensionContext) => void | Promise<void>)[];
+  extensions?: readonly Extension[];
   model?: ModelProvider;
 };
 

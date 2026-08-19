@@ -1,3 +1,7 @@
+---
+title: Lifecycle
+---
+
 # Lifecycle
 
 Every event an extension can subscribe to, in the order it fires. A `◆` marks an

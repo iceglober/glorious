@@ -1,9 +1,13 @@
+---
+title: Quickstart
+---
+
 # Quickstart
 
 ## Install
 
 Installation options, package-manager commands, and update instructions live on
-the [Install](/install) page.
+the [Install](./2-install.md) page.
 
 ## Set the model key
 
@@ -55,5 +59,5 @@ only the name and description are loaded until the agent activates one.
 
 ## Next
 
-- [tools](/tools)
-- [cli](/cli)
+- [Tools](./tools.md)
+- [CLI](./cli.md)

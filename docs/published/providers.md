@@ -1,4 +1,8 @@
-# Providers
+---
+title: Model Providers
+---
+
+# Model Providers
 
 Fifteen providers glrs knows without being told, plus any endpoint that
 speaks the OpenAI API.

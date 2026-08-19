@@ -92,6 +92,7 @@ const drain = async (
   stream: ReadableStream<Uint8Array>,
   lineCap = Number.POSITIVE_INFINITY,
   onCap: () => void = () => {},
+  onChunk: (text: string) => void = () => {},
 ): Promise<string> => {
   const utf8 = new TextDecoder();
   let text = "";
@@ -99,6 +100,7 @@ const drain = async (
   for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
     const piece = utf8.decode(chunk, { stream: true });
     text += piece;
+    onChunk(piece);
     rows += piece.split("\n").length - 1;
     if (rows < lineCap) continue;
     onCap();
@@ -113,6 +115,7 @@ const launch = async (
   caller: AbortSignal | undefined,
   lineCap?: number,
   timeoutMs = COMMAND_MS,
+  onOutput?: (text: string, stream: "stdout" | "stderr") => void,
 ): Promise<Capture> => {
   if (caller?.aborted) return { out: "", err: "", code: 130, note: STOPPED };
   const child = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe", detached: true });
@@ -128,14 +131,22 @@ const launch = async (
   };
   const bail = (): void => strike(caller?.aborted ? STOPPED : expired(timeoutMs));
   stopper.addEventListener("abort", bail, { once: true, signal: settled.signal });
-  const [out, err] = await Promise.all([drain(child.stdout, lineCap, strike), drain(child.stderr)]);
+  const [out, err] = await Promise.all([
+    drain(child.stdout, lineCap, strike, (text) => onOutput?.(text, "stdout")),
+    drain(
+      child.stderr,
+      Number.POSITIVE_INFINITY,
+      () => {},
+      (text) => onOutput?.(text, "stderr"),
+    ),
+  ]);
   const code = await child.exited;
   settled.abort();
   clearTimeout(escalation);
   return { out, err, code, note };
 };
 
-// `output` is everything, for the transcript. `stdout` is kept apart because an
+// `output` is everything, for the transcript. `stdout` is kept apart because
 // diagnostics on stderr would read as part of the request. Arguments are handed
 // to bash as real positional parameters rather than pasted into the command
 // text, so `$1` and `$@` mean what a script author expects and nothing has to
@@ -144,8 +155,16 @@ export const runShell = async (
   root: string,
   command: string,
   args: readonly string[] = [],
+  onOutput?: (text: string, stream: "stdout" | "stderr") => void,
 ): Promise<ShellResult> => {
-  const got = await launch(["bash", "-lc", command, "glrs", ...args], resolve(root), undefined);
+  const got = await launch(
+    ["bash", "-lc", command, "glrs", ...args],
+    resolve(root),
+    undefined,
+    undefined,
+    COMMAND_MS,
+    onOutput,
+  );
   const parts = [got.out.trimEnd(), got.err.trimEnd()].filter((part) => part.length > 0);
   if (got.note) parts.push(got.note);
   else if (got.code !== 0) parts.push(`[exit ${got.code}]`);

@@ -1,3 +1,7 @@
+---
+title: CLI
+---
+
 # CLI
 
 ## Commands

@@ -6,7 +6,7 @@ glrs can see it, and what to do about it.
 
 ## `Alt+Enter` on Windows Terminal
 
-`Alt+Enter` queues a [steering message](/features#the-message-queue) — the one
+`Alt+Enter` queues a [steering message](./features.md#the-message-queue) — the one
 that joins the turn already running. Windows Terminal binds the same chord to
 fullscreen by default and consumes it, so glrs never receives the keystroke
 and pressing it appears to do nothing but resize your window.
@@ -84,4 +84,4 @@ terminal's own keybinding settings first — a terminal that consumes a key neve
 passes it on, and glrs cannot tell the difference between that and the key
 not being pressed.
 
-See [troubleshooting](/troubleshooting) for anything that is not a key.
+See [Troubleshooting](./troubleshooting.md) for anything that is not a key.

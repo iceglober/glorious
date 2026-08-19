@@ -1,0 +1,54 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "../packages/glrs-coding-agent/src/public-extension-api.ts",
+    "../packages/glrs-coding-agent/src/sdk.ts"
+  ],
+  "entryPointStrategy": "resolve",
+  "alwaysCreateEntryPointModule": true,
+  "tsconfig": "../packages/tsconfig.json",
+  "out": "./dist",
+  "plugin": [
+    "./theme/index.ts",
+    "./plugins/group-documents.ts",
+    "@boneskull/typedoc-plugin-mermaid"
+  ],
+  "theme": "glrs",
+  "router": "structure-dir",
+  "customCss": "./theme/glrs.css",
+  "name": "glrs",
+  "includeVersion": false,
+  "readme": "none",
+  "projectDocuments": [
+    "../docs/published/**/*.md"
+  ],
+  "sortEntryPoints": false,
+  "searchInComments": true,
+  "searchInDocuments": true,
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeInternal": true,
+  "excludeReferences": true,
+  "githubPages": false,
+  "hideGenerator": true,
+  "markdownLinkExternal": true,
+  "highlightLanguages": [
+    "bash",
+    "console",
+    "css",
+    "html",
+    "javascript",
+    "json",
+    "jsonc",
+    "markdown",
+    "tsx",
+    "typescript",
+    "yaml"
+  ],
+  "ignoredHighlightLanguages": ["mermaid"],
+  "mermaidSource": "local",
+  "headings": {
+    "readme": true,
+    "document": false
+  }
+}

@@ -1,3 +1,7 @@
+---
+title: Using Glrs
+---
+
 # Features
 
 The built-in feature set, in one place. Kept current: if something here is
@@ -5,7 +9,7 @@ wrong, that is a bug.
 
 ## Running it
 
-| | |
+| Command | Behavior |
 | --- | --- |
 | `glrs` | the chat TUI, in any git repo |
 | `glrs -p "<prompt>"` | one turn, headless — answer on stdout, tool trail on stderr |
@@ -13,7 +17,7 @@ wrong, that is a bug.
 | `glrs --resume [id]` | reopen a session; no id opens the picker |
 | `glrs --model provider/model` | for this run |
 | `glrs doctor [--json]` | model, provider, credentials, config diagnostics |
-| `glrs --version` · `glrs update` | |
+| `glrs --version` · `glrs update` | print the installed version or update to the newest `next` release |
 
 ## Tools the model can call
 
@@ -37,7 +41,7 @@ reason. A tool describes its own result through `renderResult`; see
 
 ## Typing
 
-| | |
+| Input | Behavior |
 | --- | --- |
 | `/name` | a command — `Tab` completes, `↑↓` move. Skills answer to `/skill:name` |
 | `@path` | reference a file or directory; a file's contents travel with the message, a directory's listing does. Completion searches the whole tree, respects `.gitignore`, and scrolls |
@@ -51,7 +55,7 @@ reason. A tool describes its own result through `renderResult`; see
 | `↑` `↓` | prompt history at the edges of the draft; `Ctrl+P`/`Ctrl+N` always |
 
 On Windows Terminal, `Alt+Enter` toggles fullscreen before glrs ever sees
-it. [terminal-setup](/terminal-setup) has the remap.
+it. [Terminal Setup](./terminal-setup.md) has the remap.
 
 ## The message queue
 
@@ -135,7 +139,7 @@ session inherits whichever happened.
 
 ## What it reads from disk
 
-| Path | |
+| Path | Purpose |
 | --- | --- |
 | `AGENTS.md` / `AGENT.md` / `CLAUDE.md` | project rules, from the root down |
 | `.glrs/extensions/*.ts` | extensions — tools, commands, hooks, rendering |

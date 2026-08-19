@@ -1,3 +1,7 @@
+---
+title: Configuration
+---
+
 # Configuration
 
 Configuration is read-only JSON. The nearest value wins, one key at a time.
@@ -81,7 +85,7 @@ about is not a broken config.
 model answer what you said before it reads what you said next. `all` is for
 when the messages are one thought split across three Enters — it joins them
 with a blank line and delivers them as a single message. See
-[features](/features#the-message-queue) for what the two kinds of message are.
+[Using Glrs](./features.md#the-message-queue) for what the two kinds of message are.
 
 Both are also read under their camelCase spellings, `steeringMode` and
 `followUpMode`.
@@ -103,6 +107,6 @@ written before the rename keeps working.
 - `NO_COLOR` — disable color when set.
 - `TERM=dumb` — also disables color.
 
-Provider credential and region variables are listed on the [providers](/providers)
+Provider credential and region variables are listed on the [Model Providers](./providers.md)
 page. Use `glrs doctor --json` to inspect model, provider, credentials, and
 configuration diagnostics.

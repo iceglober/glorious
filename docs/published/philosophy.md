@@ -1,3 +1,7 @@
+---
+title: Philosophy
+---
+
 # Philosophy
 
 glrs is a simple coding agent for developers and technical problem solvers.
