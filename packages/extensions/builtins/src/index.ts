@@ -65,7 +65,12 @@ const blank: Line = [{ text: "" }];
 // part that actually matters is whether this is yours, the project's, or
 // glrs's own.
 const originOf = (g: Glrs, path: string): string => {
-  if (path.includes("/v2/bundled/")) return "bundled";
+  // A shipped extension reports its package specifier as its origin, and a skill
+  // it ships sits under packages/extensions/<name>/. Neither is a path under
+  // your project, so both used to fall through to "other". This tested for
+  // "/v2/bundled/" — a directory that stopped existing when the repo became a
+  // monorepo, so nothing had matched it in months.
+  if (path.startsWith("@glrs-dev/") || path.includes("/packages/extensions/")) return "bundled";
   if (path.startsWith(g.root)) return "project";
   // Spelled out rather than defaulting HOME to a sentinel. It defaulted to a
   // NUL byte — chosen because nothing starts with one — which made this whole

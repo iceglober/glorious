@@ -8,6 +8,7 @@ import {
   type ExtensionHost,
   fire,
   type Glrs,
+  promptContributions,
   type Registry,
 } from "./extension-api";
 
@@ -353,6 +354,47 @@ describe("subcommands an extension adds to the executable", () => {
     const { g, registry } = harness();
     g.cli("wt", { description: "d", run: () => {} });
     expect(describeContribution(registry, "test-extension")).toContain("cli: glrs wt");
+  });
+});
+
+// A contribution can be a string decided at registration or a function asked
+// fresh each turn. The second is what lets an extension say something about the
+// session rather than only about itself.
+describe("what an extension contributes to the per-turn preamble", () => {
+  test("a string is carried through as written", () => {
+    const { g, registry } = harness();
+    g.prompt("use bun, not npm");
+    expect(promptContributions(registry.promptLines)).toEqual(["use bun, not npm"]);
+  });
+
+  test("a function is asked each time, so it can change between turns", () => {
+    const { g, registry } = harness();
+    let count = 0;
+    g.prompt(() => {
+      count += 1;
+      return `asked ${count} time(s)`;
+    });
+    expect(promptContributions(registry.promptLines)).toEqual(["asked 1 time(s)"]);
+    expect(promptContributions(registry.promptLines)).toEqual(["asked 2 time(s)"]);
+  });
+
+  // Saying nothing has to be possible, or a contribution that is only sometimes
+  // relevant costs a blank line in every turn that does not need it.
+  test("an empty string says nothing at all", () => {
+    const { g, registry } = harness();
+    g.prompt("");
+    g.prompt(() => "");
+    expect(promptContributions(registry.promptLines)).toEqual([]);
+  });
+
+  test("one that throws costs its own line, not the turn", () => {
+    const { g, registry } = harness();
+    g.prompt("before");
+    g.prompt(() => {
+      throw new Error("no");
+    });
+    g.prompt("after");
+    expect(promptContributions(registry.promptLines)).toEqual(["before", "after"]);
   });
 });
 

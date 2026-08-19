@@ -420,7 +420,13 @@ export type Glrs = {
     on: (name: string, handler: (payload: unknown) => void) => void;
   };
   /** Append a line to the per-turn preamble the model reads. */
-  prompt: (text: string) => void;
+  /**
+   * Contribute a line to the per-turn preamble. Pass a function to have it
+   * rendered fresh each turn — that is how a contribution reflects something
+   * that happened during the session rather than only what was true at load.
+   * Return "" to say nothing this turn.
+   */
+  prompt: (text: string | (() => string)) => void;
   /** Contribute a segment to the status line. Return null to show nothing. */
   status: (render: () => string | null) => void;
   /** Draw extra rows above the status line. Return [] to show nothing. */
@@ -490,7 +496,8 @@ export type Registry = {
   statuses: Array<() => string | null>;
   footers: Array<() => Line[]>;
   activities: Array<(state: Activity) => Line[] | null>;
-  promptLines: string[];
+  // A string was decided at registration; a function is asked each turn.
+  promptLines: Array<string | (() => string)>;
   keys: KeySpec[];
   flags: Map<string, FlagSpec>;
   markdown: Array<(text: string) => string>;
@@ -552,6 +559,24 @@ export const createRegistry = (): Registry => ({
   bus: new Map(),
   contributions: new Map(),
 });
+
+// What the per-turn preamble actually says, resolved from what extensions
+// contributed. A function is asked fresh each turn, so a contribution can
+// reflect the session rather than only what was true at load; one that throws
+// loses its own line rather than the turn, and one that returns "" says nothing.
+//
+// Shared by both hosts on purpose. This is the third thing index.ts and print.ts
+// each have to do identically, and the previous two drifted.
+export const promptContributions = (lines: ReadonlyArray<string | (() => string)>): string[] =>
+  lines.flatMap((line) => {
+    if (typeof line === "string") return line === "" ? [] : [line];
+    try {
+      const said = line();
+      return said === "" ? [] : [said];
+    } catch {
+      return [];
+    }
+  });
 
 export const describeContribution = (registry: Registry, origin: string): string => {
   const entry = registry.contributions.get(origin);
@@ -662,7 +687,9 @@ export const createApi = (
     clear: host.clear,
     compact: host.compact,
     reload: host.reload,
-    prompt: (text) => registry.promptLines.push(text),
+    prompt: (text) => {
+      registry.promptLines.push(text);
+    },
     mode: host.mode,
     hasUI: host.mode === "tui",
     ui: {

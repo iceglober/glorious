@@ -339,3 +339,66 @@ describe("skills under the name from before the rename", () => {
     await rm(dir, { recursive: true, force: true });
   });
 });
+
+// Two things the roots list gets wrong or newly gets right. Both need a project
+// that sits *inside* the home being used, which every other test in this file
+// deliberately avoids — a scratch home outside the tree is what keeps them from
+// reading whatever skills the machine happens to have.
+describe("where skills are looked for", () => {
+  const nested = async (): Promise<{ home: string; root: string }> => {
+    const home = await mkdtemp(join(tmpdir(), "glrs-home-"));
+    const root = join(home, "repo");
+    await mkdir(root, { recursive: true });
+    return { home, root };
+  };
+
+  const skillAt = async (dir: string, name: string): Promise<void> => {
+    await mkdir(join(dir, name), { recursive: true });
+    await writeFile(
+      join(dir, name, "SKILL.md"),
+      `---\nname: ${name}\ndescription: A skill for testing where roots are read from.\n---\n\nbody\n`,
+    );
+  };
+
+  // ~/.agents/skills was listed explicitly and reached again by the ancestor
+  // walk, so every personal skill was found twice and warned that it collided
+  // with itself — naming the same path on both sides of the sentence.
+  test("a personal skill is found once, not once per path that reaches it", async () => {
+    const { home, root } = await nested();
+    await skillAt(join(home, ".agents", "skills"), "zz-personal");
+    const skills = await loadSkills(root, home);
+    expect(skills.summaries.filter((one) => one.name === "zz-personal")).toHaveLength(1);
+    expect(skills.warnings.join("\n")).not.toContain("two skills are named");
+    await rm(home, { recursive: true, force: true });
+  });
+
+  test("a skill in an extension's own directory is found", async () => {
+    const { home, root } = await nested();
+    const extension = join(home, "ext");
+    await skillAt(join(extension, "skills"), "zz-from-extension");
+    const skills = await loadSkills(root, home, [join(extension, "skills")]);
+    expect(skills.summaries.map((one) => one.name)).toContain("zz-from-extension");
+    await rm(home, { recursive: true, force: true });
+  });
+
+  // Appended last, so the first root to claim a name still wins. An extension
+  // shipping a skill must not be able to take a name the project uses.
+  test("a project skill of the same name beats the extension's", async () => {
+    const { home, root } = await nested();
+    const extension = join(home, "ext");
+    await skillAt(join(root, ".glrs", "skills"), "zz-contested");
+    await skillAt(join(extension, "skills"), "zz-contested");
+    const skills = await loadSkills(root, home, [join(extension, "skills")]);
+    const found = skills.summaries.filter((one) => one.name === "zz-contested");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.location).toStartWith(root);
+    await rm(home, { recursive: true, force: true });
+  });
+
+  test("an extension directory with no skills is not an error", async () => {
+    const { home, root } = await nested();
+    const skills = await loadSkills(root, home, [join(home, "ext", "nothing-here")]);
+    expect(skills.warnings).toEqual([]);
+    await rm(home, { recursive: true, force: true });
+  });
+});

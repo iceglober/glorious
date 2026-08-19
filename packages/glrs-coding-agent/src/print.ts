@@ -3,8 +3,8 @@ import { loadAgentRules } from "../../glrs-core/src/guidance";
 import { runShell } from "../../glrs-core/src/shell";
 import { currentModel, envSetting, loadConfig, modelMetadata } from "../../provider-registry/src";
 import { createAgent } from "./agent";
-import { createRegistry, describeContribution, fire } from "./extension-api";
-import { loadExtensions, shippedExtensions } from "./extensions";
+import { createRegistry, describeContribution, fire, promptContributions } from "./extension-api";
+import { loadExtensions, resolveExtensions, shippedExtensions, skillRootsFor } from "./extensions";
 import { expandMentions } from "./mentions";
 import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
 import { loadSkills } from "./skills";
@@ -29,11 +29,19 @@ export const runPrint = async (
   // every cost as zero — and scripting a cost report is exactly what -p is for,
   // so the one place it must work is the one place it did not. Silent on
   // failure: offline you get tokens without prices, as in the TUI.
-  const [rules, skills, loadedConfig] = await Promise.all([
+  const [rules, loadedConfig] = await Promise.all([
     loadAgentRules(where.root),
-    loadSkills(where.root),
     loadConfig(where.root),
   ]);
+  // Same as the TUI: an extension's skills/ directory joins the roots, worked
+  // out from the inert plan rather than by running anything. Without this a
+  // skill an extension ships would be invisible to `-p` — which is the path the
+  // skills themselves tell the agent to verify its work with.
+  const skills = await loadSkills(
+    where.root,
+    undefined,
+    skillRootsFor((await resolveExtensions(where.root, loadedConfig.config.extensions)).plan),
+  );
   // Built from the config, which it was not: currentModel() was called with no
   // arguments here, so a model set in .glrs/config.json worked in the TUI
   // and was ignored by every headless run — including the ones the agent uses to
@@ -70,7 +78,7 @@ export const runPrint = async (
       toolSink = onTool;
       return registry.tools;
     },
-    extensionPrompt: () => registry.promptLines,
+    extensionPrompt: () => promptContributions(registry.promptLines),
     onContext: async (messages, step) => {
       const said = await fire(registry, "context", { messages, step }, note);
       return Array.isArray(said) ? said : undefined;

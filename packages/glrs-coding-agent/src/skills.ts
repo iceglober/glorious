@@ -92,15 +92,25 @@ const ancestors = (root: string, home: string): string[] => {
 // tool's whole skill surface arrived as glrs slash commands, and every one
 // of those names and descriptions was paid for in the per-turn preamble. Put a
 // symlink in .agents/skills/ if you want one of them here.
-const skillRoots = (root: string, home: string): string[] => {
-  return [
+//
+// `extra` is where an extension's own skills/ directory lands. Appended last on
+// purpose: the first root to claim a name wins, so a project or personal skill
+// of the same name still beats one that arrived with an extension.
+//
+// Deduped because the ancestor walk reaches ~/.agents/skills again whenever the
+// project sits under $HOME, which listed every personal skill twice and warned
+// `two skills are named "X"` naming the same path on both sides of the sentence.
+// The tests never saw it: they all pass a scratch home outside the tree.
+const skillRoots = (root: string, home: string, extra: readonly string[] = []): string[] => [
+  ...new Set([
     join(home, ".config", "agents", "skills"),
     join(home, ".agents", "skills"),
     ...ancestors(root, home).map((directory) => join(directory, ".agents", "skills")),
     join(root, ".glrs", "skills"),
     join(root, ".glorious", "skills"),
-  ];
-};
+    ...extra,
+  ]),
+];
 
 const scalar = (value: string): string => {
   const trimmed = value.trim();
@@ -254,11 +264,12 @@ const skillFiles = async (base: string, depth = 0): Promise<string[]> => {
 const discover = async (
   root: string,
   home: string,
+  extra: readonly string[] = [],
 ): Promise<{ skills: Skill[]; warnings: string[] }> => {
   const found: Skill[] = [];
   const warnings: string[] = [];
   const seen = new Map<string, string>();
-  for (const base of skillRoots(root, home)) {
+  for (const base of skillRoots(root, home, extra)) {
     for (const location of await skillFiles(resolve(base))) {
       const text = await Bun.file(location)
         .text()
@@ -322,8 +333,12 @@ const createSkillTool = (skills: Skill[]) => {
 // search somewhere empty. It could not: homedir() ignores $HOME on Bun, so the
 // suite read whatever skills were actually installed on the machine running it
 // — green on CI, red on any laptop with skills of its own.
-export const loadSkills = async (root: string, home: string = homedir()): Promise<Skills> => {
-  const { skills, warnings } = await discover(root, home);
+export const loadSkills = async (
+  root: string,
+  home: string = homedir(),
+  extra: readonly string[] = [],
+): Promise<Skills> => {
+  const { skills, warnings } = await discover(root, home, extra);
   // What the model is told exists. A skill that opted out of model invocation is
   // absent from here — which is the whole of that field: it does not appear in
   // the preamble, it is not activatable, and the only way to it is typing its

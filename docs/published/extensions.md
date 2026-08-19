@@ -493,6 +493,39 @@ on `g.hasUI` and your extension works in both.
 Appends a line the model sees on every turn. It rides in the per-turn message,
 never the system prompt, which has to stay byte-identical for the prompt cache.
 
+Pass a **function** to have it rendered fresh each turn, so a contribution can
+say something about the session rather than only about your extension:
+
+```ts
+g.prompt(() => {
+  const open = g.entries("worktree") as Array<{ path: string }>;
+  return open.length === 0 ? "" : `Worktrees open: ${open.map((w) => w.path).join(", ")}`;
+});
+```
+
+Return `""` to say nothing this turn — a contribution that is only sometimes
+relevant should cost nothing when it is not. One that throws loses its own line
+rather than the turn.
+
+### Shipping a skill
+
+An extension package can carry a `skills/` directory beside its `src/`, laid out
+exactly like `.glrs/skills/`:
+
+```
+my-extension/
+  src/index.ts
+  skills/
+    deploy/SKILL.md
+```
+
+It is found without your extension running — glrs works out which extensions
+*would* load before it reads skills, so the directory is discovered at startup
+rather than needing a reload. Skills from extensions are searched **last**, so a
+skill of the same name in your project or your home directory still wins.
+
+See `skills.md` for the SKILL.md format.
+
 ### `g.status(render)` / `g.footer(render)` / `g.activity(render)`
 
 `status` contributes a segment to the status line; return `null` for nothing.

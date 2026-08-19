@@ -119,7 +119,13 @@ export type ExtensionContext = {
   reload: () => Promise<void>;
   usage: () => Usage;
   session: () => { id: string; file: string; title: string; events: number };
-  prompt: (text: string) => void;
+  // A string is decided at registration; a function is asked each turn, which is
+  // how a contribution says something about the session rather than about itself.
+  prompt: (text: string | (() => string)) => void;
+  // An extension's own data, kept in the session and never sent to the model.
+  // Written by one turn, read back by any later one, and survives a resume.
+  appendEntry: (type: string, data: unknown) => void;
+  entries: (type: string) => readonly unknown[];
   settings: () => Readonly<Settings>;
   available: () => ReadonlyArray<{
     name: string;
