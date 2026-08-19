@@ -1,7 +1,5 @@
-import { readFileSync } from "node:fs";
 import {
   Application,
-  Converter,
   DefaultTheme,
   DefaultThemeRenderContext,
   JSX,
@@ -9,12 +7,6 @@ import {
   type ProjectReflection,
 } from "typedoc";
 import { documentFolderNames } from "../plugins/group-documents.ts";
-
-const packageVersion = (
-  JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as {
-    version: string;
-  }
-).version;
 
 class GlrsRenderContext extends DefaultThemeRenderContext {
   constructor(...args: ConstructorParameters<typeof DefaultThemeRenderContext>) {
@@ -52,12 +44,5 @@ class GlrsTheme extends DefaultTheme {
 }
 
 export function load(application: Application): void {
-  application.converter.on(Converter.EVENT_RESOLVE_END, () => {
-    const links = application.options.getValue("navigationLinks");
-    application.options.setValue("navigationLinks", {
-      ...links,
-      [`v${packageVersion}`]: "https://www.npmjs.com/package/@glrs-dev/glrs",
-    });
-  });
   application.renderer.defineTheme("glrs", GlrsTheme);
 }
