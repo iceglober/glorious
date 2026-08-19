@@ -1,13 +1,25 @@
 import {
   Application,
   DefaultTheme,
+  DefaultThemeRenderContext,
+  JSX,
   type NavigationElement,
   type ProjectReflection,
 } from "typedoc";
 import { documentFolderNames } from "../plugins/group-documents.ts";
 
+class GlrsRenderContext extends DefaultThemeRenderContext {
+  constructor(...args: ConstructorParameters<typeof DefaultThemeRenderContext>) {
+    super(...args);
+    const pageNavigation = this.pageNavigation;
+    this.pageNavigation = (props) =>
+      props.model.isProject() ? JSX.createElement(JSX.Fragment, null) : pageNavigation(props);
+  }
+}
+
 /** glrs.dev uses TypeDoc's proven document structure with our visual system. */
 class GlrsTheme extends DefaultTheme {
+  override ContextClass = GlrsRenderContext;
   override buildNavigation(project: ProjectReflection): NavigationElement[] {
     const navigation = super.buildNavigation(project);
     const removeFolderLinks = (items: NavigationElement[]): NavigationElement[] =>
