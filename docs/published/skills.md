@@ -22,7 +22,6 @@ long skill costs nothing until it is needed.
 name: changelog
 description: Write a release note from the commits since the last tag. Use when asked for a changelog or release notes.
 ---
-
 Read the commits with `git log $(git describe --tags --abbrev=0)..HEAD`.
 Group them by what a reader would care about, not by commit order.
 ```
@@ -36,12 +35,12 @@ put the detail there and mention the file, and it gets read only when it matters
 Searched in this order; the first skill to claim a name wins, and a second one
 with the same name says so rather than quietly losing.
 
-| Path | Scope |
-| --- | --- |
-| `~/.config/agents/skills/` | you, everywhere |
-| `~/.agents/skills/` | you, everywhere |
+| Path                             | Scope                                     |
+| -------------------------------- | ----------------------------------------- |
+| `~/.config/agents/skills/`       | you, everywhere                           |
+| `~/.agents/skills/`              | you, everywhere                           |
 | `<any ancestor>/.agents/skills/` | shared, walking up to your home directory |
-| `.glorious/skills/` | this project |
+| `.glorious/skills/`              | this project                              |
 
 Directories are searched recursively, so grouping skills into folders works —
 `skills/writing/changelog/SKILL.md` is the `changelog` skill. A directory that
@@ -52,19 +51,19 @@ Nothing reads another agent's directories. Symlink one in if you want it here.
 
 ## Frontmatter
 
-| Field | Meaning |
-| --- | --- |
-| `name` | **required.** 1–64 characters, lowercase letters, numbers, single inner hyphens |
-| `description` | **required.** Up to 1024 characters: what it does *and when to use it* |
-| `license` | a licence name, or a file in the skill directory |
-| `compatibility` | up to 500 characters on what it needs to run |
-| `metadata` | any key/value mapping you like |
-| `allowed-tools` | space-separated tools the skill expects. Parsed and shown; glorious does not yet restrict anything to it |
-| `trigger` | glorious's own: renames the part after `skill:`. Without it that is the skill's name |
-| `disable-model-invocation` | **not part of the standard** — see below |
+| Field                      | Meaning                                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `name`                     | **required.** 1–64 characters, lowercase letters, numbers, single inner hyphens                          |
+| `description`              | **required.** Up to 1024 characters: what it does _and when to use it_                                   |
+| `license`                  | a licence name, or a file in the skill directory                                                         |
+| `compatibility`            | up to 500 characters on what it needs to run                                                             |
+| `metadata`                 | any key/value mapping you like                                                                           |
+| `allowed-tools`            | space-separated tools the skill expects. Parsed and shown; glorious does not yet restrict anything to it |
+| `trigger`                  | glorious's own: renames the part after `skill:`. Without it that is the skill's name                     |
+| `disable-model-invocation` | **not part of the standard** — see below                                                                 |
 
 The description is the whole of what the model sees until the skill is used, so
-it has to say *when* to reach for the skill, not only what it does. It is paid
+it has to say _when_ to reach for the skill, not only what it does. It is paid
 for on every turn of every session where the skill is installed.
 
 Fields glorious does not recognise are ignored, so a skill written for another
@@ -76,7 +75,7 @@ the transcript and loads anyway. Only a missing name or description stops a
 skill loading, because a skill nothing can describe is one nothing can choose.
 A skill that fails to load says so; it never just fails to appear.
 
-## `disable-model-invocation`
+## disable-model-invocation
 
 ```yaml
 disable-model-invocation: true
@@ -111,7 +110,7 @@ model — a skill that opted out is tagged `you only`.
 
 ## Skills, commands, and extensions
 
-- A **skill** is for the model: it decides when the skill applies. Reach for one when the *model* should know how to do something.
+- A **skill** is for the model: it decides when the skill applies. Reach for one when the _model_ should know how to do something.
 - A **command** (`.glorious/commands/*.md`) is for you: a prompt you send by typing `/name`. See `commands.md`.
 - An **extension** is code — a tool, a hook, a widget. See `extensions.md`.
 

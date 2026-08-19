@@ -1,17 +1,11 @@
-/** @module SDK */
+/** @module SDK
+ *  @group Reference
+ */
 
-import type {
-  AgentCore,
-  ModelProvider,
-  SessionRepository,
-} from "../../glorious-core/src";
+import type { AgentCore, ModelProvider, SessionRepository } from "../../glorious-core/src";
 import type { ProviderRegistry } from "../../provider-registry/src";
 import type { Extension } from "./public-extension-api";
 
-export {
-  createAgentCore,
-  jsonSessionRepository,
-} from "../../glorious-core/src";
 export type {
   AgentCore,
   ModelProvider,
@@ -20,11 +14,15 @@ export type {
   SessionRepository,
   Turn,
 } from "../../glorious-core/src";
-export { createProviderRegistry } from "../../provider-registry/src";
+export {
+  createAgentCore,
+  jsonSessionRepository,
+} from "../../glorious-core/src";
 export type {
   ProviderAdapter,
   ProviderRegistry,
 } from "../../provider-registry/src";
+export { createProviderRegistry } from "../../provider-registry/src";
 export type { Extension } from "./public-extension-api";
 
 export type CodingAgentDependencies = {

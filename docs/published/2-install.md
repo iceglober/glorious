@@ -29,7 +29,7 @@ export AZURE_RESOURCE_NAME=…
 glorious
 ```
 
-Continue with the [Quickstart](./quickstart.md).
+Continue with the [Quickstart](./1-quickstart.md).
 
 ## Update
 

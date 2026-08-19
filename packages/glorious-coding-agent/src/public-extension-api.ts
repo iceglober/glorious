@@ -1,4 +1,6 @@
-/** @module Extension API */
+/** @module Extension API
+ *  @group Reference
+ */
 
 import type { Glorious } from "./extension-api";
 
