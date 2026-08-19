@@ -60,6 +60,7 @@ Three ship in the box, and one of them loads by default:
 | --- | --- |
 | `builtins` | `bash`, `read`, `write`, `edit`, `grep`, `glob`, and `/help` `/clear` `/compact` `/session` `/skills` `/extensions` `/reload` — **always on** unless you disable it |
 | `web-fetch` | the `web_fetch` tool — off until named |
+| `worktree` | `glrs wt`, `/wt`, and a skill for working across worktrees — off until named |
 | `ask-user` | the `ask_user` tool, TUI only — off until named |
 
 ```json

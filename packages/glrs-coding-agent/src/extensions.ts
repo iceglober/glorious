@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
 import webFetch from "../../extensions/web-fetch/src";
+import worktree from "../../extensions/worktree/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import { describeThrown } from "./render";
 import type { ToolEvent } from "./toolkit";
@@ -96,6 +97,15 @@ const bundled = [
     defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "builtins"),
     summary: "the file, search and shell tools, and every slash command",
+  },
+  {
+    name: "worktree",
+    origin: "@glrs-dev/glrs-ext-worktree",
+    load: worktree,
+    defaultOn: false,
+    dir: join(import.meta.dir, "..", "..", "extensions", "worktree"),
+    summary:
+      "creates git worktrees, and audits which ones still have sessions working in them; adds `glrs wt`",
   },
   {
     name: "web-fetch",
