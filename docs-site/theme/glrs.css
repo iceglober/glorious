@@ -107,6 +107,13 @@ footer {
 footer::before { content: "glorious · next"; }
 footer > * { display: none; }
 
+@media (min-width: 1200px) {
+  .page-menu {
+    margin-left: -2rem;
+    padding-left: 0;
+  }
+}
+
 @media (max-width: 900px) {
   .col-sidebar { border-right: 0; }
   .col-content { max-width: none; }
