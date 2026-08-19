@@ -3,7 +3,7 @@ import {
   compareDocumentPaths,
   documentDirectories,
   documentPath,
-} from "./group-documents";
+} from "./group-documents-utils.ts";
 
 describe("external document directory grouping", () => {
   test("orders directory groups with top-level documents by path", () => {
