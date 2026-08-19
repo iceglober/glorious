@@ -265,11 +265,12 @@ describe("the API keeps its promises", () => {
     const chunks: string[] = [];
     const running = runShell(
       process.cwd(),
-      "printf 'ready\\n'; sleep 0.3; printf 'done\\n'",
+      "printf 'ready\\n'; sleep 1; printf 'done\\n'",
       [],
       (text) => chunks.push(text),
     );
-    await Bun.sleep(100);
+    for (let attempt = 0; attempt < 40 && !chunks.join("").includes("ready"); attempt += 1)
+      await Bun.sleep(25);
     expect(chunks.join("")).toContain("ready");
     expect(chunks.join("")).not.toContain("done");
     expect((await running).stdout).toContain("done");
