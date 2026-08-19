@@ -47,7 +47,6 @@ const host: ExtensionHost = {
     captured.push(spec);
     return { close: () => {}, repaint: () => {} };
   },
-  scope: () => ({ read: ["/tmp/readable"], write: ["/tmp/writable"] }),
   settings: () => ({ tool_timeout_ms: 1000 }),
   inspect: () => ({ commands: [], skills: [], extensions: [] }),
   clear: () => "cleared" as const,

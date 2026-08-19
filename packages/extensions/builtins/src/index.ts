@@ -76,8 +76,7 @@ const originOf = (g: Glrs, path: string): string => {
 };
 
 export default function builtins(g: Glrs): void {
-  for (const spec of createCodingTools(g.root, g.scope(), g.settings().tool_timeout_ms))
-    g.tool(spec);
+  for (const spec of createCodingTools(g.root, g.settings().tool_timeout_ms)) g.tool(spec);
 
   g.command("help", {
     description: "Show commands and keys",

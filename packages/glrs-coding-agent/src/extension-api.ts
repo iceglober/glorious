@@ -1,6 +1,6 @@
 import type { ModelMessage, ToolSet } from "ai";
 import { z } from "zod";
-import type { Scope, Settings } from "../../glrs-core/src";
+import type { Settings } from "../../glrs-core/src";
 import type { ShellResult as ToolShellResult } from "../../glrs-core/src/shell";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
@@ -293,14 +293,6 @@ export type Glrs = {
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
   /**
-   * What this session considers in scope beyond the project root: `write` is
-   * your agent directories, `read` is those plus glrs's own documentation,
-   * which the system prompt hands the model an absolute path to. A tool that
-   * confines paths widens to these. Nothing here enforces anything for you —
-   * the built-in tools are an extension too, and this is what they read.
-   */
-  scope: () => Scope;
-  /**
    * This session's resolved settings, merged from every config file that
    * applied. Provider blocks are absent: they hold API keys, and an extension
    * that wants them can read the files itself rather than be handed them.
@@ -412,7 +404,6 @@ export type ExtensionHost = {
   columns: () => number;
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
   setInput: (text: string) => void;
-  scope: () => Scope;
   settings: () => Readonly<Settings>;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
@@ -541,7 +532,6 @@ export const createApi = (
   registry.contributions.set(origin, ledger);
   return {
     root: host.root,
-    scope: () => host.scope(),
     settings: () => host.settings(),
     z,
     // First to claim a name keeps it, which is the rule every other namespace

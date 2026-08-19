@@ -45,7 +45,6 @@ const harness = () => {
   const host = {
     root: "/tmp/project",
     mode: "tui" as const,
-    scope: () => ({ read: ["/docs", "/home/me/.glrs/skills"], write: ["/home/me/.glrs/skills"] }),
     settings: () => ({ tool_timeout_ms: 4242, steering_mode: "all" as const }),
     exec: async (command: string) => {
       calls.push({ method: "exec", args: [command] });
@@ -264,20 +263,10 @@ describe("what an extension can reach", () => {
   });
 });
 
-// The two members the tools extension is written against. Without them the six
-// tools could not tell what is in scope or how long a command may run, and the
-// only way to find out would be to import the coding agent — which is exactly
-// what an extension may not do.
+// The one member the tools extension is written against. Without it the tools
+// could not tell how long a command may run, and the only way to find out would
+// be to import the coding agent — which is exactly what an extension may not do.
 describe("what the host tells an extension about the session", () => {
-  test("scope names what reads and writes may reach beyond the project", () => {
-    const { g } = harness();
-    const scope = g.scope();
-    expect(scope.write).toEqual(["/home/me/.glrs/skills"]);
-    // Reads reach one place writes do not: glrs's own documentation.
-    expect(scope.read).toContain("/docs");
-    expect(scope.write).not.toContain("/docs");
-  });
-
   test("settings carry the resolved config, without the provider blocks", () => {
     const { g } = harness();
     const settings = g.settings();

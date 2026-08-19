@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { chmod, rename, rm, stat } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { dirname, resolve } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { z } from "zod";
-import type { Scope, ToolSpec } from "../../../glrs-core/src";
+import type { ToolSpec } from "../../../glrs-core/src";
 import { loadAgentRules } from "../../../glrs-core/src/guidance";
 import { type Capture, COMMAND_MS, capText, launch } from "../../../glrs-core/src/shell";
 
@@ -80,29 +80,14 @@ const patch = (
 // widens every `input` to unknown.
 const spec = <Schema extends z.ZodType>(one: ToolSpec<Schema>): ToolSpec => one as ToolSpec;
 
-export const createCodingTools = (
-  root: string,
-  scope: Scope,
-  timeoutMs = COMMAND_MS,
-): ToolSpec[] => {
+export const createCodingTools = (root: string, timeoutMs = COMMAND_MS): ToolSpec[] => {
   const base = resolve(root);
 
-  const under = (full: string, dir: string): boolean =>
-    full === dir || full.startsWith(`${dir}${sep}`);
-
-  // The host decides what is in scope — only it knows where its own docs and
-  // configuration live — and this decides what to do about it. Confinement is
-  // enforced here, in something you can replace, which is worth saying out
-  // loud: it is a guard against the model wandering, not a boundary against an
-  // adversary. `bash` has never been confined at all.
-  const allowed = (target: string | undefined, dirs: readonly string[]): string => {
-    const full = resolve(base, target ?? ".");
-    if (under(full, base) || dirs.some((dir) => under(full, dir))) return full;
-    throw new Error(`path escapes root: ${target}`);
-  };
-
-  const within = (target?: string): string => allowed(target, scope.write);
-  const readable = (target?: string): string => allowed(target, scope.read);
+  // Relative paths resolve against the project root; absolute ones are taken as
+  // given. Nothing is refused. `bash` sits unconfined beside these five, so a
+  // path check here never bounded what the agent could touch — it only made the
+  // model reach a file the slow way after being told no on the direct one.
+  const target = (path?: string): string => resolve(base, path ?? ".");
 
   return [
     spec({
@@ -129,12 +114,12 @@ export const createCodingTools = (
         path: z.string().describe("File to read, relative to the project root or absolute"),
       }),
       execute: async ({ path }) => {
-        const target = readable(path);
-        const text = await Bun.file(target).text();
+        const file = target(path);
+        const text = await Bun.file(file).text();
         const numbered = text
           .split("\n")
           .reduce((all, row, n) => `${all}${n ? "\n" : ""}${n + 1}|${row}`, "");
-        const rules = await loadAgentRules(base, dirname(target));
+        const rules = await loadAgentRules(base, dirname(file));
         return rules === "" ? numbered : `${numbered}\n\nAGENTS.md guidance:\n${rules}`;
       },
     }),
@@ -147,7 +132,7 @@ export const createCodingTools = (
         content: z.string().describe("Full file contents"),
       }),
       execute: async ({ path, content }) => {
-        await Bun.write(within(path), content);
+        await Bun.write(target(path), content);
         return `wrote ${path}`;
       },
     }),
@@ -171,8 +156,8 @@ export const createCodingTools = (
         // half-changed the way separate per-file calls would
         const staged = await Promise.all(
           files.map(async (entry, n) => {
-            const target = within(entry.path);
-            const before = await Bun.file(target).text();
+            const file = target(entry.path);
+            const before = await Bun.file(file).text();
             const where =
               files.length === 1 ? "" : `file ${n + 1}/${files.length} (${entry.path}) `;
             const after = entry.edits.reduce(
@@ -180,7 +165,7 @@ export const createCodingTools = (
                 patch(text, swapped, `${where}edit ${i + 1}/${entry.edits.length}`, i > 0),
               before,
             );
-            return { target, after };
+            return { target: file, after };
           }),
         );
         for (const { target, after } of staged) await replaceFile(target, after);
@@ -209,7 +194,7 @@ export const createCodingTools = (
         if (input.fixedString) argv.push("--fixed-strings");
         if (input.includeIgnored) argv.push("--no-ignore", "--hidden");
         if (input.glob) argv.push("--glob", input.glob);
-        argv.push(...SKIP_GIT, "-e", input.pattern, readable(input.path));
+        argv.push(...SKIP_GIT, "-e", input.pattern, target(input.path));
         const got = await launch(argv, base, signal, input.maxResults + 1, timeoutMs);
         return rgReport(got, input.maxResults, "matches", "No matches.");
       },
@@ -225,7 +210,7 @@ export const createCodingTools = (
         maxResults: z.number().int().min(1).max(1000).default(200),
       }),
       execute: async ({ pattern, path, includeIgnored, maxResults }, signal) => {
-        const dir = readable(path);
+        const dir = target(path);
         if (!(await stat(dir).catch(() => null))?.isDirectory())
           return `ERROR: no such directory: ${path ?? dir}`;
         const argv = [rgPath, "--files", "--sortr", "modified"];

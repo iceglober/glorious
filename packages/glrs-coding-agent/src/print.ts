@@ -7,7 +7,6 @@ import { createRegistry, describeContribution, fire } from "./extension-api";
 import { loadExtensions } from "./extensions";
 import { expandMentions } from "./mentions";
 import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
-import { sessionScope } from "./scope";
 import { loadSkills } from "./skills";
 import { firstDetail, resultSummary, setToolGate, type ToolEvent } from "./toolkit";
 
@@ -101,7 +100,6 @@ export const runPrint = async (
     {
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
-      scope: sessionScope,
       settings: () => ({ tool_timeout_ms: toolTimeoutMs }),
       send: () => note("[extension] send() has no meaning in print mode; ignored"),
       print: (content) =>

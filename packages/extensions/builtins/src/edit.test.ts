@@ -5,11 +5,7 @@ import { join } from "node:path";
 import { createCodingTools } from "./tools";
 
 const dir = await mkdtemp(join(tmpdir(), "glrs-edit-"));
-// The tools take their scope rather than computing it, so a test hands them one
-// and never has to know where the host keeps its documentation.
-const tools = Object.fromEntries(
-  createCodingTools(dir, { read: [], write: [] }).map((spec) => [spec.name, spec]),
-);
+const tools = Object.fromEntries(createCodingTools(dir).map((spec) => [spec.name, spec]));
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true });

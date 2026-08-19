@@ -54,7 +54,6 @@ import {
   statusRow,
   userBlock,
 } from "./render";
-import { sessionScope } from "./scope";
 import { loadSkills } from "./skills";
 import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
@@ -746,9 +745,6 @@ const main = async (): Promise<void> => {
     root,
     exec: (command, args) => runShell(root, command, args),
     mode: "tui" as const,
-    // The tools that confine paths are an extension now, so what is in scope
-    // has to reach them the same way anything else does.
-    scope: sessionScope,
     settings: () => ({
       tool_timeout_ms: toolTimeoutMs,
       steering_mode: config.config.steering_mode,

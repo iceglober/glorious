@@ -22,7 +22,7 @@ a name keeps it — so replacing one means registering that name in
 - **edit** — exact string replacements across one or more files in a single
   call. Everything resolves before anything is written, so a failure leaves the
   whole tree untouched, and each file is swapped in by rename.
-- **grep** — ripgrep over file contents, confined to the project root.
+- **grep** — ripgrep over file contents.
 - **glob** — lists files matching a pattern, newest first.
 
 ## Shell
@@ -58,14 +58,10 @@ happens. To replace one tool, register that one name.
 ## Permissions
 
 There are none. glrs runs in YOLO mode, which is the only mode: once an
-agent can write and run code, a confirmation dialog is not a boundary.
+agent can write and run code, a confirmation dialog is not a boundary, and
+neither is a path check on the tools that sit beside `bash`.
 
-File operations stay inside the project root, output is capped, and a killed
-command takes its process group with it — silently, without asking. Be clear
-about what that first one is worth, though: the tools enforcing it are an
-extension, so an extension can replace them, and `bash` was never confined in
-the first place. It is a guard against the model wandering out of the project
-by accident, not a wall.
+Output is capped and a killed command takes its process group with it.
 
 ## Output cap
 

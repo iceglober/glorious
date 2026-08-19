@@ -110,10 +110,7 @@ describe("the prompt agrees with the tool registry", () => {
     // a live loadSkills(), which only found one because this repo happens to
     // ship a skill — in a checkout without one the guard quietly passed.
     const { createCodingTools } = await import("../../extensions/builtins/src/tools");
-    const registry = [
-      ...createCodingTools("/tmp", { read: [], write: [] }).map((spec) => spec.name),
-      "activate_skill",
-    ];
+    const registry = [...createCodingTools("/tmp").map((spec) => spec.name), "activate_skill"];
     const surfaces = [systemPrompt({ rules: "" }), skillsPrompt("PLACEHOLDER")];
     const named = new Set(
       surfaces.flatMap((text) =>

@@ -80,12 +80,8 @@ before anything shipped, so registering `bash` in `.glrs/extensions/` replaces
 the shipped one rather than racing it.
 
 Output caps and process-group kill live in `glrs-core/src/shell.ts`, which both
-sides use. **Path confinement does not:** it is enforced by the tools, which
-are an extension, which means it can be replaced. That is worth stating plainly
-rather than implying a boundary that is not there — `bash` has never been
-confined at all, so confinement was always a guard against the model wandering
-and never a defence against an adversary. The host decides what is in scope
-(`g.scope()`); the tool decides what to do about it.
+sides use. Paths are not checked: relative ones resolve against the project
+root and absolute ones are taken as given.
 
 `wrapTool` also carries the gate an extension's `tool_call`/`tool_end` handlers
 drive: refuse a call before it runs, or rewrite what the model is told came
