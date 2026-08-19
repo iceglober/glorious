@@ -17,6 +17,16 @@ glrs update               # update to the latest next release
 glrs <subcommand>         # anything an extension added with g.cli
 ```
 
+With the `worktree` extension enabled:
+
+```
+glrs wt new "fix the login bug"   # branch and worktree of that name, from origin/main
+glrs wt list [--all]              # this repo, or every repo that has worktrees
+glrs wt doctor                    # which are in use, stale, or safe to remove
+glrs wt rm <branch> [--force]     # refuses a dirty worktree without --force
+glrs wt clean [--dry-run|--yes]   # everything doctor calls safe
+```
+
 An extension can add subcommands of its own — `glrs wt list` and the like. They
 run without opening a session, so they cost nothing to start and need no model
 credentials. `glrs <unknown>` lists what is available. See
