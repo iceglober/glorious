@@ -14,6 +14,17 @@ class GlrsRenderContext extends DefaultThemeRenderContext {
     const pageNavigation = this.pageNavigation;
     this.pageNavigation = (props) =>
       props.model.isProject() ? JSX.createElement(JSX.Fragment, null) : pageNavigation(props);
+    this.indexTemplate = (props) =>
+      JSX.createElement(
+        JSX.Fragment,
+        null,
+        JSX.createElement(
+          "div",
+          { class: "tsd-panel tsd-typography" },
+          JSX.createElement(JSX.Raw, { html: this.markdown(props.model.readme ?? []) }),
+        ),
+        this.moduleReflection(props.model),
+      );
   }
 }
 

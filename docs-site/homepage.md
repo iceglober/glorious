@@ -1,3 +1,1 @@
-# glrs
-
 a simple agent.
