@@ -19,6 +19,7 @@
     "!packages/glorious-core/src/**/*.test.ts",
     "packages/provider-registry/src",
     "!packages/provider-registry/src/**/*.test.ts",
+    "packages/extensions/ask-user/src",
     "packages/extensions/builtins/src",
     "packages/extensions/web-fetch/src",
     "!packages/extensions/**/*.test.ts",

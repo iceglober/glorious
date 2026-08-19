@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
-import askUser from "../../extensions/builtins/src/ask-user";
 import webFetch from "../../extensions/web-fetch/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import { describeThrown } from "./render";
@@ -62,7 +62,7 @@ const failureText = (thrown: unknown): string => {
 };
 
 const bundled = [
-  { name: "ask-user", origin: "@glrs-dev/glorious-builtins/ask-user", load: askUser },
+  { name: "ask-user", origin: "@glrs-dev/glorious-ask-user", load: askUser },
   { name: "builtins", origin: "@glrs-dev/glorious-builtins", load: builtins },
   { name: "web-fetch", origin: "@glrs-dev/glorious-web-fetch", load: webFetch },
 ];

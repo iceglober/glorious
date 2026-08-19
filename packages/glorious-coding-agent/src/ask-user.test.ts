@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import askUser from "../../extensions/builtins/src/ask-user";
+import askUser from "../../extensions/ask-user/src";
 import {
   type Capture,
   createApi,

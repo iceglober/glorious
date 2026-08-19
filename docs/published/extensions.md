@@ -238,7 +238,7 @@ core does not need to know what asking is.
 
 The bundled `ask-user` extension is a full question widget — options, a cursor,
 free-text notes, several questions in a row — written against nothing but
-`g.ui.capture`. Read `v2/bundled/ask-user.ts`; yours starts the same way and is
+`g.ui.capture`. Read `packages/extensions/ask-user/src/index.ts`; yours starts the same way and is
 not competing with anything privileged.
 
 `g.ui.capture` throws in print mode, where there is no composer. Guard on
