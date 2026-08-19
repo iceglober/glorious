@@ -195,9 +195,7 @@ export default function builtins(g: Glrs): void {
       const offered = g.available().filter((one) => one.state !== "on");
       const { extensions } = g.inspect();
       if (extensions.length === 0) {
-        return g.print(
-          "No extensions loaded. See docs/published/coding-agent/3-customize/4-extensions.md.",
-        );
+        return g.print("No extensions loaded. See docs/published/3-customize/4-extensions.md.");
       }
       g.print([
         heading(g, "Extensions", "these run with your full permissions"),

@@ -7,23 +7,23 @@ Reviewed 2026-08-19 against the branch implementation.
 | Page | Code checked | Result |
 | --- | --- | --- |
 | root `README.md` | `install.sh`, `bin/glrs`, `package.json` | retained the terse landing page; corrected release channel and Bun/git requirements |
-| `coding-agent/1-quickstart.md` | `ui/screen.ts`, `composer.ts`, first-party commands, CLI startup | corrected install link, command inventory, queue/interrupt keys, exit/resume behavior |
-| `coding-agent/2-installation.md` | `docs-site/public/install.sh`, `bin/glrs`, `index.ts`, `package.json` | corrected `next` channel, Bun requirement, update behavior, uninstall commands, and artifact paths; removed nonexistent update/uninstall scripts |
-| `coding-agent/3-customize/1-configuration.md` | `provider-registry/config.ts`, `writeconfig.ts`, reload host | aligned all three scopes, platform paths, precedence, aliases, additive lists, shorthand, writable section, and restart/reload boundary |
-| `coding-agent/2-use/2-sessions.md` | `glrs-core/session.ts`, `/session`, compaction code, print host | added persistence/resume/storage/clear/compact details; clarified that print mode creates no session |
-| `coding-agent/2-use/1-basics.md` | composer, mentions, queue, direct shell, guidance loader | aligned attachments, shell mode, queue keys, and actual rule-file walk |
-| `coding-agent/2-use/4-providers.md` | `PROVIDERS`, `ALIASES`, `missingFor`, model provider settings | completed provider/alias lists and aligned environment/config fallbacks; documented doctor limitations |
-| `coding-agent/2-use/3-models.md` | model resolution, metadata cache, request retry loop | aligned required selection, precedence, cache, provider settings, and three-attempt retry behavior |
-| `coding-agent/4-reference/1-cli.md` | argument parser and print host | aligned every core command/alias, stream split, extension flags, precedence, and exit status |
-| `coding-agent/3-customize/2-commands.md` | command parser, first-party commands, user commands, guidance loader | aligned expansion, search order, collision order, skill namespace, and actual rule paths |
-| `coding-agent/3-customize/3-skills.md` | `skills.ts` | aligned all four roots, depth, validation, aliases, invocation, and model opt-out |
-| `coding-agent/3-customize/4-extensions.md` | extension resolver, API, both hosts, registry, toolkit | aligned discovery, first-party roster, collisions, permissions, mode differences, hooks, rendering, and host capabilities |
-| `coding-agent/2-use/5-tools.md` | builtins tools, toolkit wrapper, web/ask/configure extensions | added conditional tools and aligned timeout, paths, output cap, filters, and permissions |
-| `coding-agent/4-reference/3-troubleshooting.md` | doctor, config diagnostics, extension resolver, stores | aligned diagnostics, precedence, reload behavior, cache/session paths, and permissions |
-| `coding-agent/4-reference/2-terminal-setup.md` | OpenTUI setup, key normalization, color and selection code | aligned Windows remap, Alt conventions, color, OSC 52, and terminal-owned keys |
-| `coding-agent/5-internals/1-philosophy.md` | prompt construction, extension seams, permission model | factual; shortened to the implementation's current constraints |
-| `coding-agent/5-internals/2-architecture.md` | package boundaries, turn path, rendering, persistence | removed stale file map and replaced it with package/runtime boundaries that exist now |
-| `coding-agent/5-internals/3-lifecycle.md` | `EventName`, payload/verdict types, TUI host, print host | contains every event exactly once, return behavior, four print-mode exclusions, and the current host ordering difference |
+| `1-quickstart.md` | `ui/screen.ts`, `composer.ts`, first-party commands, CLI startup | corrected install link, command inventory, queue/interrupt keys, exit/resume behavior |
+| `2-installation.md` | `docs-site/public/install.sh`, `bin/glrs`, `index.ts`, `package.json` | corrected `next` channel, Bun requirement, update behavior, uninstall commands, and artifact paths; removed nonexistent update/uninstall scripts |
+| `3-customize/1-configuration.md` | `provider-registry/config.ts`, `writeconfig.ts`, reload host | aligned all three scopes, platform paths, precedence, aliases, additive lists, shorthand, writable section, and restart/reload boundary |
+| `2-use/2-sessions.md` | `glrs-core/session.ts`, `/session`, compaction code, print host | added persistence/resume/storage/clear/compact details; clarified that print mode creates no session |
+| `2-use/1-basics.md` | composer, mentions, queue, direct shell, guidance loader | aligned attachments, shell mode, queue keys, and actual rule-file walk |
+| `2-use/4-providers.md` | `PROVIDERS`, `ALIASES`, `missingFor`, model provider settings | completed provider/alias lists and aligned environment/config fallbacks; documented doctor limitations |
+| `2-use/3-models.md` | model resolution, metadata cache, request retry loop | aligned required selection, precedence, cache, provider settings, and three-attempt retry behavior |
+| `4-reference/1-cli.md` | argument parser and print host | aligned every core command/alias, stream split, extension flags, precedence, and exit status |
+| `3-customize/2-commands.md` | command parser, first-party commands, user commands, guidance loader | aligned expansion, search order, collision order, skill namespace, and actual rule paths |
+| `3-customize/3-skills.md` | `skills.ts` | aligned all four roots, depth, validation, aliases, invocation, and model opt-out |
+| `3-customize/4-extensions.md` | extension resolver, API, both hosts, registry, toolkit | aligned discovery, first-party roster, collisions, permissions, mode differences, hooks, rendering, and host capabilities |
+| `2-use/5-tools.md` | builtins tools, toolkit wrapper, web/ask/configure extensions | added conditional tools and aligned timeout, paths, output cap, filters, and permissions |
+| `4-reference/3-troubleshooting.md` | doctor, config diagnostics, extension resolver, stores | aligned diagnostics, precedence, reload behavior, cache/session paths, and permissions |
+| `4-reference/2-terminal-setup.md` | OpenTUI setup, key normalization, color and selection code | aligned Windows remap, Alt conventions, color, OSC 52, and terminal-owned keys |
+| `5-internals/1-philosophy.md` | prompt construction, extension seams, permission model | factual; shortened to the implementation's current constraints |
+| `5-internals/2-architecture.md` | package boundaries, turn path, rendering, persistence | removed stale file map and replaced it with package/runtime boundaries that exist now |
+| `5-internals/3-lifecycle.md` | `EventName`, payload/verdict types, TUI host, print host | contains every event exactly once, return behavior, four print-mode exclusions, and the current host ordering difference |
 
 `features.md` was removed because it duplicated quickstart, basics, tools, and
 configuration. `glossary.md` was removed because its short definitions added no
@@ -37,11 +37,6 @@ useful guidance beyond those pages.
 4. **customize** — configuration, commands, skills, extensions
 5. **reference** — CLI, terminal setup, troubleshooting
 6. **internals** — philosophy, architecture, lifecycle
-
-`docs/published/coding-agent/index.md` supplies the label and optional entry
-points. The build discovers every `docs/published/*/index.md` project, groups
-its guides and API entries in one shared navigation, and generates the root
-project list from those files.
 
 Numeric file and directory prefixes preserve page order and are removed from
 visible page/group titles by frontmatter and the document-groups plugin. Group
