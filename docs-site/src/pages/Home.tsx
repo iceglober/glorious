@@ -12,15 +12,15 @@ const links = [
 ] as const;
 
 export function Home() {
-  useEffect(() => { document.title = "glorious — glrs"; }, []);
+  useEffect(() => { document.title = "glrs — glrs"; }, []);
   const copyBash = () => navigator.clipboard.writeText("curl -fsSL https://glrs.dev/install.sh | bash");
   return (
     <main className="home">
-      <div className="home-hero"><h1>glorious</h1><p className="tagline">a simple coding agent · minimal core · maximum extensibility</p></div>
+      <div className="home-hero"><h1>glrs</h1><p className="tagline">a simple coding agent · minimal core · maximum extensibility</p></div>
       <NpmVersions />
       <div className="install-block">
         <div className="install-cmd" onClick={copyBash} title="copy to clipboard">curl -fsSL https://glrs.dev/install.sh | bash</div>
-        <div className="install-alt"><div className="install-or">or via package manager:</div><div className="install-alt-row"><PkgSwitcher /><Cmd action="install" pkg="@glrs-dev/glorious@next" /></div></div>
+        <div className="install-alt"><div className="install-or">or via package manager:</div><div className="install-alt-row"><PkgSwitcher /><Cmd action="install" pkg="@glrs-dev/glrs@next" /></div></div>
       </div>
       <hr />
       <div className="doc-map">{links.map(([label, to]) => <Link key={to} to={to}><strong>{label}</strong><span>Browse documentation →</span></Link>)}</div>

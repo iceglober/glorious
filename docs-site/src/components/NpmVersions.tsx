@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const PACKAGE = { name: "@glrs-dev/glorious", label: "glorious", tag: "next" };
+const PACKAGE = { name: "@glrs-dev/glrs", label: "glrs", tag: "next" };
 
 export function NpmVersions() {
   const [version, setVersion] = useState<string | null>(null);

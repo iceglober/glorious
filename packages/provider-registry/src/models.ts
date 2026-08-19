@@ -18,7 +18,7 @@ import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
-import type { Config } from "./config";
+import { type Config, envSetting } from "./config";
 import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
 
 export type ModelRef = {
@@ -50,7 +50,7 @@ const catalogUrl = "https://models.dev/api.json";
 // least able to fix it. Refreshed whenever the fetch succeeds; never trusted
 // over a live answer.
 const cachePath = (): string =>
-  join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "glorious", "models.dev.json");
+  join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "glrs", "models.dev.json");
 
 const cached = async (): Promise<unknown | null> => {
   try {
@@ -93,7 +93,7 @@ export const modelRef = (value: string, provider = "azure"): ModelRef => {
 export const modelLabel = (model: ModelRef): string => `${model.provider}/${model.modelId}`;
 
 export const priceMultiplier = (provider: string): number => {
-  const entry = (process.env.GLORIOUS_PRICE_MULTIPLIERS ?? "").split(",").find((item) => {
+  const entry = (envSetting("PRICE_MULTIPLIERS") ?? "").split(",").find((item) => {
     const [name] = item.split("=", 1);
     return name?.trim() === provider;
   });
@@ -134,13 +134,13 @@ const providerSettings = (
 };
 
 export const currentModel = (config?: Config): ModelOption => {
-  const model = process.env.GLORIOUS_MODEL ?? config?.model ?? "gpt-5.6-luna";
+  const model = envSetting("MODEL") ?? config?.model ?? "gpt-5.6-luna";
   const ref = modelRef(model);
   return {
     ...ref,
     ...providerSettings(ref.provider, config),
     name: model,
-    variant: process.env.GLORIOUS_VARIANT ?? config?.variant,
+    variant: envSetting("VARIANT") ?? config?.variant,
     // From the provider table, so every provider declares its own names rather
     // than azure being special-cased and the rest falling through to whatever
     // their SDK happens to read.

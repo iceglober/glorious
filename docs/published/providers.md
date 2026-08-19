@@ -1,10 +1,10 @@
 # Providers
 
-Fifteen providers glorious knows without being told, plus any endpoint that
+Fifteen providers glrs knows without being told, plus any endpoint that
 speaks the OpenAI API.
 
-Pick one with `--model provider/model-id`, `GLORIOUS_MODEL`, or `model` in
-config. `glorious doctor` names the provider and anything missing.
+Pick one with `--model provider/model-id`, `GLRS_MODEL`, or `model` in
+config. `glrs doctor` names the provider and anything missing.
 
 ## Built in
 
@@ -35,13 +35,13 @@ Azure accepts three names because the portal, the CLI and the SDK each use a
 different one, and the SDK reads only its own — a key sitting in the environment
 under the wrong name used to fail a session with no explanation.
 
-Provider settings can sit in the project's `.glorious/config.json`, in
-`~/.glorious/config.json`, or in `~/.config/glorious/config.json` — merged
+Provider settings can sit in the project's `.glrs/config.json`, in
+`~/.glrs/config.json`, or in `~/.config/glrs/config.json` — merged
 nearest-first, so a project overrides one key without restating the rest.
 
 ## Anything else
 
-An id glorious does not recognise is treated as an OpenAI-compatible endpoint.
+An id glrs does not recognise is treated as an OpenAI-compatible endpoint.
 It needs a base URL, which is the one thing that cannot be guessed:
 
 ```json
@@ -75,17 +75,17 @@ usually enough.
 
 Model metadata — context window, per-token prices, reasoning levels — comes from
 [models.dev](https://models.dev) at startup, and is cached to
-`~/.cache/glorious/models.dev.json`. After the first successful fetch it works
+`~/.cache/glrs/models.dev.json`. After the first successful fetch it works
 offline; you keep the context percentage and cost, refreshed whenever a fetch
 succeeds.
 
-`GLORIOUS_PRICE_MULTIPLIERS=azure=1.1` scales the published rates when your
+`GLRS_PRICE_MULTIPLIERS=azure=1.1` scales the published rates when your
 contract differs.
 
 ## Checking it
 
 ```sh
-$ glorious --model anthropic/claude-opus-5 doctor
+$ glrs --model anthropic/claude-opus-5 doctor
 model: anthropic/claude-opus-5
 provider: Anthropic
 missing: ANTHROPIC_API_KEY

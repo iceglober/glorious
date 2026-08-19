@@ -1,10 +1,10 @@
-# Glorious domain model
+# Glrs domain model
 
 ## Product boundary
 
-glorious is a general agent runtime whose first product is a coding agent.
-The runtime is `glorious-core`; the terminal product is
-`glorious-coding-agent`. First-party capabilities are extensions, whether they
+glrs is a general agent runtime whose first product is a coding agent.
+The runtime is `glrs-core`; the terminal product is
+`glrs-coding-agent`. First-party capabilities are extensions, whether they
 ship with the product or are installed by a user.
 
 ## Ubiquitous language
@@ -41,12 +41,12 @@ ship with the product or are installed by a user.
 
 ```text
                               ┌────────────────────────┐
-                              │ glorious-coding-agent  │
+                              │ glrs-coding-agent  │
                               │ CLI · TUI · coding UX  │
                               └───────────┬────────────┘
                                           │ depends on
                               ┌───────────▼────────────┐
-                              │ glorious-core           │
+                              │ glrs-core           │
                               │ sessions · turns       │
                               │ events · tools · API   │
                               │ optional UI ports      │
@@ -129,10 +129,10 @@ capability.
 
 ## Public API and versioning
 
-`glorious-core` exports the full domain model, stable ports, and extension API
+`glrs-core` exports the full domain model, stable ports, and extension API
 from explicit package entrypoints. Deep implementation imports are not public.
 The internal packages remain private implementation boundaries. The root
-`@glrs-dev/glorious` distribution is the only package versioned and published
+`@glrs-dev/glrs` distribution is the only package versioned and published
 until the SDK contracts stabilize.
 
 The extraction begins after this artifact and public API tests are established.

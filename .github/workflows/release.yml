@@ -74,17 +74,17 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           version=$(node -p "require('./package.json').version")
           for _ in $(seq 1 30); do
-            npm view "@glrs-dev/glorious@$version" version >/dev/null 2>&1 && break
+            npm view "@glrs-dev/glrs@$version" version >/dev/null 2>&1 && break
             sleep 5
           done
-          if ! npm view "@glrs-dev/glorious@$version" version >/dev/null 2>&1; then
+          if ! npm view "@glrs-dev/glrs@$version" version >/dev/null 2>&1; then
             echo "version $version is not on the registry; nothing to tag"
             exit 0
           fi
-          latest=$(npm view @glrs-dev/glorious dist-tags.latest 2>/dev/null || true)
+          latest=$(npm view @glrs-dev/glrs dist-tags.latest 2>/dev/null || true)
           echo "version=$version latest=$latest"
           if [ "$version" != "$latest" ]; then
-            npm dist-tag add "@glrs-dev/glorious@$version" latest
+            npm dist-tag add "@glrs-dev/glrs@$version" latest
           fi
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

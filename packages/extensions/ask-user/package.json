@@ -1,8 +1,8 @@
 {
-  "name": "@glrs-dev/glorious-ask-user",
+  "name": "@glrs-dev/glrs-ext-ask-user",
   "version": "1.0.0-next.38",
   "private": true,
-  "description": "The ask_user question widget for glorious products, as an extension.",
+  "description": "The ask_user question widget for glrs products, as an extension.",
   "license": "MIT",
   "type": "module",
   "exports": {

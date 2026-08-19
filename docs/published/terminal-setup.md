@@ -1,14 +1,14 @@
 # Terminal setup
 
-glorious runs in whatever terminal you already use and needs no setup in most
+glrs runs in whatever terminal you already use and needs no setup in most
 of them. This page covers the two places where a terminal takes a key before
-glorious can see it, and what to do about it.
+glrs can see it, and what to do about it.
 
 ## `Alt+Enter` on Windows Terminal
 
 `Alt+Enter` queues a [steering message](/features#the-message-queue) — the one
 that joins the turn already running. Windows Terminal binds the same chord to
-fullscreen by default and consumes it, so glorious never receives the keystroke
+fullscreen by default and consumes it, so glrs never receives the keystroke
 and pressing it appears to do nothing but resize your window.
 
 Remap or unbind it in Windows Terminal's `settings.json` — open the settings UI
@@ -16,7 +16,7 @@ and choose **Open JSON file**, or edit
 `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`
 directly.
 
-To move fullscreen to `F11` and leave `Alt+Enter` for glorious:
+To move fullscreen to `F11` and leave `Alt+Enter` for glrs:
 
 ```json
 {
@@ -32,7 +32,7 @@ its default binding alongside your new one, and `Alt+Enter` still goes to
 fullscreen.
 
 Save the file — Windows Terminal reloads settings on write — and restart
-glorious.
+glrs.
 
 ### If you would rather not remap
 
@@ -49,7 +49,7 @@ answers to "what is the shortcut", which is worse than remapping once.
 
 ## Terminals that report `Alt` differently
 
-glorious accepts `Alt` under both conventions terminals use for it: the older
+glrs accepts `Alt` under both conventions terminals use for it: the older
 one, where the terminal prefixes the key with `ESC`, and the
 [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/),
 where it arrives as an explicit modifier bit. You do not have to choose, and
@@ -70,18 +70,18 @@ Both are read at startup.
 
 ## Mouse and selection
 
-glorious enables mouse reporting, which is what lets it capture a drag as a
+glrs enables mouse reporting, which is what lets it capture a drag as a
 selection and copy it to your clipboard over OSC 52. In a terminal that does
 not support OSC 52, or one where it is disabled, the selection is made but the
 copy silently does not happen — hold `Shift` while dragging to fall back to
 your terminal's own selection instead.
 
-## When something still is not reaching glorious
+## When something still is not reaching glrs
 
-`glorious doctor` reports model, provider, credentials, and configuration, but
+`glrs doctor` reports model, provider, credentials, and configuration, but
 it cannot see your terminal's key bindings. If a chord does nothing, check your
 terminal's own keybinding settings first — a terminal that consumes a key never
-passes it on, and glorious cannot tell the difference between that and the key
+passes it on, and glrs cannot tell the difference between that and the key
 not being pressed.
 
 See [troubleshooting](/troubleshooting) for anything that is not a key.

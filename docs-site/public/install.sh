@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# glorious bootstrap — installs bun, offers gh, then @glrs-dev/glorious
+# glrs bootstrap — installs bun, offers gh, then @glrs-dev/glrs
 # usage: curl -fsSL https://glrs.dev/install.sh | bash
 
 RED='\033[0;31m'
@@ -9,13 +9,13 @@ BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
 
-log()   { printf "${BOLD}glorious${RESET} %s\n" "$*"; }
-ok()    { printf "${BOLD}glorious${RESET} ✓ %s\n" "$*"; }
-warn()  { printf "${BOLD}glorious${RESET} ${RED}!${RESET} %s\n" "$*"; }
+log()   { printf "${BOLD}glrs${RESET} %s\n" "$*"; }
+ok()    { printf "${BOLD}glrs${RESET} ✓ %s\n" "$*"; }
+warn()  { printf "${BOLD}glrs${RESET} ${RED}!${RESET} %s\n" "$*"; }
 dim()   { printf "${DIM}     %s${RESET}\n" "$*"; }
 
 confirm() {
-  printf "${BOLD}glorious${RESET} %s [y/N] " "$1"
+  printf "${BOLD}glrs${RESET} %s [y/N] " "$1"
   read -r ans
   case "$ans" in
     [yY]|[yY][eE][sS]) return 0 ;;
@@ -59,24 +59,24 @@ fi
 if command -v gh &>/dev/null; then
   ok "gh $(gh --version | head -1 | awk '{print $3}')"
 else
-  dim "gh (GitHub CLI) not found — optional; glorious works without it, but GitHub tasks are smoother with it"
+  dim "gh (GitHub CLI) not found — optional; glrs works without it, but GitHub tasks are smoother with it"
 fi
 
-# ── @glrs-dev/glorious ─────────────────────────────────────────────
+# ── @glrs-dev/glrs ─────────────────────────────────────────────
 
-log "installing @glrs-dev/glorious (next channel)..."
-bun add --global @glrs-dev/glorious@next
+log "installing @glrs-dev/glrs (next channel)..."
+bun add --global @glrs-dev/glrs@next
 
-if command -v glorious &>/dev/null; then
-  ok "glorious $(glorious --version 2>/dev/null || echo 'installed')"
+if command -v glrs &>/dev/null; then
+  ok "glrs $(glrs --version 2>/dev/null || echo 'installed')"
 else
-  warn "glorious installed but not on PATH — check your bun global bin directory"
+  warn "glrs installed but not on PATH — check your bun global bin directory"
   dim "try: bun pm bin -g"
   exit 1
 fi
 
 log ""
-ok "done. set your model key, then run 'glorious' in any git repo:"
+ok "done. set your model key, then run 'glrs' in any git repo:"
 dim "export AZURE_OPENAI_API_KEY=..."
 dim "export AZURE_RESOURCE_NAME=..."
-dim "glorious"
+dim "glrs"

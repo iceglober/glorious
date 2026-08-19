@@ -12,18 +12,18 @@ import {
 
 describe("model pricing", () => {
   test("reads provider-specific multipliers", () => {
-    const previous = process.env.GLORIOUS_PRICE_MULTIPLIERS;
-    process.env.GLORIOUS_PRICE_MULTIPLIERS = "azure=1.1, openai=1";
+    const previous = process.env.GLRS_PRICE_MULTIPLIERS;
+    process.env.GLRS_PRICE_MULTIPLIERS = "azure=1.1, openai=1";
     expect(priceMultiplier("azure")).toBe(1.1);
     expect(priceMultiplier("openai")).toBe(1);
     expect(priceMultiplier("unknown")).toBe(1);
-    if (previous === undefined) delete process.env.GLORIOUS_PRICE_MULTIPLIERS;
-    else process.env.GLORIOUS_PRICE_MULTIPLIERS = previous;
+    if (previous === undefined) delete process.env.GLRS_PRICE_MULTIPLIERS;
+    else process.env.GLRS_PRICE_MULTIPLIERS = previous;
   });
 
   test("applies the multiplier to models.dev rates", async () => {
-    const previous = process.env.GLORIOUS_PRICE_MULTIPLIERS;
-    process.env.GLORIOUS_PRICE_MULTIPLIERS = "azure=1.1";
+    const previous = process.env.GLRS_PRICE_MULTIPLIERS;
+    process.env.GLRS_PRICE_MULTIPLIERS = "azure=1.1";
     const response = new Response(
       JSON.stringify({
         azure: {
@@ -37,8 +37,8 @@ describe("model pricing", () => {
       (async () => response) as unknown as typeof fetch,
     );
     expect(metadata).toMatchObject({ inputCost: 1.1, outputCost: 2.2 });
-    if (previous === undefined) delete process.env.GLORIOUS_PRICE_MULTIPLIERS;
-    else process.env.GLORIOUS_PRICE_MULTIPLIERS = previous;
+    if (previous === undefined) delete process.env.GLRS_PRICE_MULTIPLIERS;
+    else process.env.GLRS_PRICE_MULTIPLIERS = previous;
   });
 
   test("calculates input and output cost per million tokens", () => {
@@ -49,7 +49,7 @@ describe("model pricing", () => {
 
 const originalFetch = globalThis.fetch;
 const environment = [
-  "GLORIOUS_MODEL",
+  "GLRS_MODEL",
   "AWS_REGION",
   "AWS_DEFAULT_REGION",
   "GOOGLE_CLOUD_PROJECT",
@@ -96,9 +96,9 @@ describe("model resolution", () => {
     const selected = config({ model: "anthropic/claude" });
 
     expect(currentModel(selected)).toMatchObject({ provider: "anthropic", modelId: "claude" });
-    process.env.GLORIOUS_MODEL = "openai/gpt";
+    process.env.GLRS_MODEL = "openai/gpt";
     expect(currentModel(selected)).toMatchObject({ provider: "openai", modelId: "gpt" });
-    delete process.env.GLORIOUS_MODEL;
+    delete process.env.GLRS_MODEL;
     expect(currentModel()).toMatchObject({ provider: "azure", modelId: "gpt-5.6-luna" });
   });
 

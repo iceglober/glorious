@@ -1,6 +1,6 @@
-# glorious
+# glrs
 
-[![npm](https://img.shields.io/npm/v/@glrs-dev/glorious/next?label=npm%40next)](https://www.npmjs.com/package/@glrs-dev/glorious)
+[![npm](https://img.shields.io/npm/v/@glrs-dev/glrs/next?label=npm%40next)](https://www.npmjs.com/package/@glrs-dev/glrs)
 [![docs](https://img.shields.io/badge/docs-glrs.dev-67d4e8)](https://glrs.dev)
 
 A terminal-based coding agent.
@@ -10,12 +10,12 @@ curl -fsSL https://glrs.dev/install.sh | bash
 export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
 export AZURE_RESOURCE_NAME=…
 # Optional: account for provider-specific pricing differences.
-export GLORIOUS_PRICE_MULTIPLIERS=azure=1.1
-glorious
+export GLRS_PRICE_MULTIPLIERS=azure=1.1
+glrs
 ```
 
 The script checks for [Bun](https://bun.sh) and git, offering to install Bun if
-it is missing. To skip it: `bun add --global @glrs-dev/glorious@next`.
+it is missing. To skip it: `bun add --global @glrs-dev/glrs@next`.
 
 Documentation: [glrs.dev](https://glrs.dev)
 
@@ -23,21 +23,21 @@ A small core, extended by you. Eight built-in tools, a ~40-line system prompt,
 no permission prompts, and a TypeScript extension API for everything else.
 
 ```sh
-glorious                      # the chat TUI
-glorious -p "<prompt>"        # one turn, headless: answer on stdout, tools on stderr
-glorious --resume [id]        # pick a session back up
+glrs                      # the chat TUI
+glrs -p "<prompt>"        # one turn, headless: answer on stdout, tools on stderr
+glrs --resume [id]        # pick a session back up
 ```
 
 ## Extending it
 
-Ask it. "Add a tool that lists my open PRs" is a request glorious answers by
-writing `.glorious/extensions/prs.ts` — its [docs](docs/published/extensions.md) ship with
+Ask it. "Add a tool that lists my open PRs" is a request glrs answers by
+writing `.glrs/extensions/prs.ts` — its [docs](docs/published/extensions.md) ship with
 it and its system prompt says where they are.
 
 By hand, an extension is one file with no imports:
 
 ```ts
-// .glorious/extensions/prs.ts
+// .glrs/extensions/prs.ts
 export default function (g) {
   g.tool({
     name: "open_prs",
@@ -70,7 +70,7 @@ Deliberate, and where there is a number it was measured.
 - **No subagents.** ([`eval/delegation`](eval/delegation)) Our own eval says
   delegating cost ~1.8× the tokens and ~2.6× the wall clock for the same answers.
   Its one real benefit — keeping the child's reading out of the parent's context
-  — survives as `glorious -p` invoked through `bash`, where every step of the
+  — survives as `glrs -p` invoked through `bash`, where every step of the
   child is visible instead of hidden behind a keystroke.
 - **No MCP.** 7–9% of the context window for tool schemas you mostly do not
   call, paid on every turn. An extension registers the same tools with no
@@ -80,7 +80,7 @@ Deliberate, and where there is a number it was measured.
   containers, worktrees and `git diff` are. The status line still says what the
   model is doing and for how long — that is information, not decoration.
 - **`web_fetch` is a bundled extension, not a built-in.** It is the proof the
-  API is real: if the largest tool glorious has could not be written against it,
+  API is real: if the largest tool glrs has could not be written against it,
   the API would be a toy. Drives an already-installed Chrome rather than
   puppeteer's ~300MB Chromium; falls back to plain fetch, then to a tag strip.
 
@@ -90,7 +90,7 @@ Deliberate, and where there is a number it was measured.
 bun run test        # tests
 bun run typecheck   # tsc
 bun run check       # biome
-bun run glorious    # run from source
+bun run glrs    # run from source
 ```
 
 MIT

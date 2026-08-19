@@ -40,23 +40,39 @@ export type Config = {
 
 export type LoadedConfig = { config: Config; diagnostics: string[] };
 
-// Project first, then either personal location. `~/.glorious/` is read because
+// Project first, then either personal location. `~/.glrs/` is read because
 // that is where extensions and commands already come from — the
 // ancestor walk reaches it whenever a project sits under home — and having the
 // same directory hold resources but not config is a rule nobody should have to
-// learn. `~/.config/glorious/` stays for anyone following the XDG layout.
+// learn. `~/.config/glrs/` stays for anyone following the XDG layout.
 // `home` is a parameter rather than a call to homedir() for the same reason it
 // is one in skills.ts: without it a test reads whatever config happens to be
 // installed on the machine running it, and homedir() ignores $HOME on Bun so
 // there is no way to point it somewhere empty.
+// `.glorious` is still read everywhere `.glrs` is, so a checkout that predates
+// the rename keeps working without anyone editing anything. Project paths all
+// come before personal ones regardless of spelling — a project pinning a model
+// in `.glorious/` must still beat your personal `.glrs/`, or the rename would
+// quietly reorder precedence rather than just adding a name.
 export const configPaths = (root: string, home: string = homedir()): string[] => [
   // `.local.` is the conventional name for the copy you do not commit, so it is
-  // the first thing anyone tries and it was silently not a file glorious read.
+  // the first thing anyone tries and it was silently not a file glrs read.
+  join(root, ".glrs", "config.local.json"),
+  join(root, ".glrs", "config.json"),
   join(root, ".glorious", "config.local.json"),
   join(root, ".glorious", "config.json"),
+  join(home, ".glrs", "config.json"),
+  join(home, ".config", "glrs", "config.json"),
   join(home, ".glorious", "config.json"),
   join(home, ".config", "glorious", "config.json"),
 ];
+
+// Every setting the environment can carry, read as GLRS_<name> first and
+// GLORIOUS_<name> after. The rename kept every old variable working rather than
+// making a shell-profile edit the price of upgrading; the suffix is the same
+// either way, so there is one name here and not two lists to keep level.
+export const envSetting = (suffix: string): string | undefined =>
+  process.env[`GLRS_${suffix}`] ?? process.env[`GLORIOUS_${suffix}`];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -91,12 +107,12 @@ const KNOWN = [
 ];
 
 // Read what is recognised and ignore the rest — a config that has grown a key
-// glorious no longer knows about is not a broken config, and refusing to start
+// glrs no longer knows about is not a broken config, and refusing to start
 // over one would be the worse failure.
 //
 // But saying nothing is how `{"model": {"selected": "azure/gpt-5.6-sol"}}` ran
 // for a week as the default model. The key was recognised and the value was the
-// wrong type, so it was dropped exactly as silently as a typo. Anything glorious
+// wrong type, so it was dropped exactly as silently as a typo. Anything glrs
 // knows the name of and cannot use now says so, and a file where it recognised
 // nothing at all says that too.
 const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => {
@@ -145,11 +161,11 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     }
 
   // A file full of keys, none of which mean anything here, is almost always one
-  // written for something else — an older glorious, or another agent entirely.
+  // written for something else — an older glrs, or another agent entirely.
   const keys = Object.keys(raw);
   if (keys.length > 0 && !keys.some((key) => KNOWN.includes(key)))
     diagnostics.push(
-      `${where}: nothing here is a glorious setting (${keys.slice(0, 4).join(", ")}${keys.length > 4 ? ", …" : ""}) — the whole file is ignored`,
+      `${where}: nothing here is a glrs setting (${keys.slice(0, 4).join(", ")}${keys.length > 4 ? ", …" : ""}) — the whole file is ignored`,
     );
 
   return {

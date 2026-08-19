@@ -28,13 +28,13 @@ export function Install() {
         Requires <a href="https://bun.sh">Bun</a> ≥ 1.2 and git.
       </p>
 
-      <CodeBlock copy="bun add --global @glrs-dev/glorious@next">
-        bun add --global @glrs-dev/glorious@next
+      <CodeBlock copy="bun add --global @glrs-dev/glrs@next">
+        bun add --global @glrs-dev/glrs@next
       </CodeBlock>
 
       <pre>
         <code>
-          <Cmd action="install" pkg="@glrs-dev/glorious@next" />
+          <Cmd action="install" pkg="@glrs-dev/glrs@next" />
         </code>
       </pre>
 
@@ -44,7 +44,7 @@ export function Install() {
         <code>
           export AZURE_OPENAI_API_KEY=…{"\n"}
           export AZURE_RESOURCE_NAME=…{"\n"}
-          glorious
+          glrs
         </code>
       </pre>
 
@@ -56,7 +56,7 @@ export function Install() {
 
       <pre>
         <code>
-          <Cmd action="install" pkg="@glrs-dev/glorious@next" />
+          <Cmd action="install" pkg="@glrs-dev/glrs@next" />
         </code>
       </pre>
 
@@ -64,7 +64,7 @@ export function Install() {
 
       <pre>
         <code>
-          <Cmd action="remove" pkg="@glrs-dev/glorious" />
+          <Cmd action="remove" pkg="@glrs-dev/glrs" />
         </code>
       </pre>
     </main>
