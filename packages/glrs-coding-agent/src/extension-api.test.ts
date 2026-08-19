@@ -46,6 +46,14 @@ const harness = () => {
     root: "/tmp/project",
     mode: "tui" as const,
     settings: () => ({ tool_timeout_ms: 4242, steering_mode: "all" as const }),
+    available: () => [
+      { name: "builtins", summary: "the tools and commands", state: "on" as const },
+      { name: "web-fetch", summary: "fetches web pages", state: "undecided" as const },
+    ],
+    setExtension: async (...args: unknown[]) => {
+      calls.push({ method: "setExtension", args });
+      return "written" as const;
+    },
     exec: async (command: string) => {
       calls.push({ method: "exec", args: [command] });
       return { output: "", stdout: "", stderr: "", code: 0, ok: true };
@@ -275,6 +283,24 @@ describe("what the host tells an extension about the session", () => {
     // Provider settings hold API keys. An extension that wants them can read
     // the config files itself rather than being handed them.
     expect("providers" in settings).toBe(false);
+  });
+});
+
+// What lets an extension offer a capability the session does not have. The
+// three states come from config; recording a choice writes it, but only where
+// agentConfigAllowlist says glrs may.
+describe("the extensions glrs ships but has not loaded", () => {
+  test("available reports each one's state", () => {
+    const { g } = harness();
+    const offered = g.available();
+    expect(offered.map((one) => one.name)).toEqual(["builtins", "web-fetch"]);
+    expect(offered.find((one) => one.name === "web-fetch")?.state).toBe("undecided");
+  });
+
+  test("setExtension hands the choice to the host", async () => {
+    const { g, calls } = harness();
+    expect(await g.setExtension("web-fetch", true)).toBe("written");
+    expect(calls.at(-1)).toEqual({ method: "setExtension", args: ["web-fetch", true] });
   });
 });
 

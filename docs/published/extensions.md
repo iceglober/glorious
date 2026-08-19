@@ -78,7 +78,25 @@ A name in `load` that resolves to nothing is a failure and says so — you asked
 for it and it is not there. A name in `disable` that matches nothing is only a
 note, since nothing is broken and the usual cause is a typo.
 
-`glrs doctor` lists what would load, without running any of it.
+`glrs doctor` lists what would load, without running any of it. `/extensions`
+lists what did, and what ships but is not on; `/extensions enable <name>` and
+`/extensions disable <name>` change that.
+
+### Being offered one
+
+An extension that ships but has never been decided about is named to the model
+each turn, with a line saying what it is for — so glrs can notice that a task
+needs `web_fetch` and offer it, rather than failing at something it has no tool
+for. It is named in the per-turn message, never the system prompt, so nothing
+about it costs you a prompt-cache miss.
+
+Once you have answered, either way, it stops being offered. When every shipped
+extension has been decided the section disappears entirely — an agent that keeps
+offering something you already declined is worse than one that never offered.
+
+Recording the answer needs your permission: see `agentConfigAllowlist` in
+[configuration](/configuration). Without it glrs still suggests, and tells you
+the config line to add.
 
 **The core registers no slash commands and no tools of its own.** That was an
 aspiration for a while and is now literally true: the six tools that touch the

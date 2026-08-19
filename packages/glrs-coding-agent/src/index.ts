@@ -24,6 +24,7 @@ import {
   providerSpec,
 } from "../../provider-registry/src";
 import { createAgent } from "./agent";
+import { availableLines } from "./available";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { cleanShellChunk, shellCompletion } from "./direct-shell";
@@ -34,7 +35,12 @@ import {
   fire,
   resetRegistry,
 } from "./extension-api";
-import { type ExtensionSettings, loadExtensions, resolveExtensions } from "./extensions";
+import {
+  type ExtensionSettings,
+  loadExtensions,
+  resolveExtensions,
+  shippedExtensions,
+} from "./extensions";
 import { expandMentions, fileCandidates } from "./mentions";
 import { runPrint } from "./print";
 import { fence } from "./prompt";
@@ -58,6 +64,7 @@ import { loadSkills } from "./skills";
 import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
+import { recordExtensionChoice } from "./writeconfig";
 
 const TICK_MS = 100;
 const SETTLE_MS = 250;
@@ -348,7 +355,19 @@ const main = async (): Promise<void> => {
       toolSink = onTool;
       return registry.tools;
     },
-    extensionPrompt: () => registry.promptLines,
+    // The advertisement rides here, in the per-turn message, and never the
+    // system prompt: that has to stay byte-identical or the provider's cache
+    // misses every turn. `<extensions>` is already a PREAMBLE_TAG, so this is
+    // stripped from a replayed transcript without a new tag.
+    extensionPrompt: () => [
+      ...registry.promptLines,
+      ...availableLines(
+        shippedExtensions(config.config.extensions),
+        (config.config.agentConfigAllowlist ?? []).some(
+          (one) => one.trim().toLowerCase() === "extensions",
+        ),
+      ),
+    ],
     onContext: async (messages, step) => {
       const said = await fire(registry, "context", { messages, step }, onExtensionFailure);
       return Array.isArray(said) ? said : undefined;
@@ -759,6 +778,23 @@ const main = async (): Promise<void> => {
     root,
     exec: (command, args) => runShell(root, command, args),
     mode: "tui" as const,
+    available: () => shippedExtensions(config.config.extensions),
+    // Writes only where agentConfigAllowlist says it may; otherwise it says so
+    // and the model tells the user which line to add.
+    setExtension: async (name, on) => {
+      if (!shippedExtensions().some((one) => one.name === name)) return "unknown";
+      const outcome = await recordExtensionChoice(root, config.config, name, on);
+      if (outcome !== "written") return outcome;
+      // The in-memory config is what the advertisement and the next reload read,
+      // so it has to agree with the file straight away rather than at restart.
+      const block = { ...(config.config.extensions ?? {}) };
+      const load = new Set(block.load ?? []);
+      const disable = new Set(block.disable ?? []);
+      (on ? load : disable).add(name);
+      (on ? disable : load).delete(name);
+      config.config.extensions = { load: [...load], disable: [...disable] };
+      return outcome;
+    },
     settings: () => ({
       tool_timeout_ms: toolTimeoutMs,
       steering_mode: config.config.steering_mode,

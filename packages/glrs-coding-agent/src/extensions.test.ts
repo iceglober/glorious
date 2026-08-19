@@ -48,6 +48,8 @@ const host: ExtensionHost = {
     return { close: () => {}, repaint: () => {} };
   },
   settings: () => ({ tool_timeout_ms: 1000 }),
+  available: () => [],
+  setExtension: async () => "not-allowed" as const,
   inspect: () => ({ commands: [], skills: [], extensions: [] }),
   clear: () => "cleared" as const,
   compact: async () => ({ outcome: "too-short" as const }),

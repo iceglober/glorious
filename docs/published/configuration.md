@@ -81,6 +81,7 @@ about is not a broken config.
 - `extensions.load` — shipped extensions to turn on, by name or by the package they ship as, plus paths (relative to this file, or absolute). `builtins` is on without being named; `web-fetch` and `ask-user` are not.
 - `extensions.disable` — names that must not load, whichever layer asked for them. Beats `load`.
 - `tools.disable` — tool names withheld from the model, whichever extension registered them.
+- `agentConfigAllowlist` — config sections glrs may write for you. Only `"extensions"` is understood. Absent, nothing glrs does writes this file.
 - `providers.<name>.api` — base URL for an OpenAI-compatible endpoint.
 - `providers.<name>.region` — AWS Bedrock region.
 - `providers.<name>.project` — Google Vertex project.
@@ -94,6 +95,25 @@ with a blank line and delivers them as a single message. See
 
 Both are also read under their camelCase spellings, `steeringMode` and
 `followUpMode`.
+
+## Letting glrs record an answer
+
+Config is yours to edit; nothing glrs does writes it. The exception is opt-in:
+
+```json
+{ "agentConfigAllowlist": ["extensions"] }
+```
+
+With that, when glrs suggests turning on an extension the work needs and you
+say yes or no, it records the answer in `extensions.load` or
+`extensions.disable` rather than asking again next session. Without it the
+suggestion still happens; glrs just tells you the line to add.
+
+It writes the project's `.glrs/config.json`, keeps every other key, and takes
+effect after a reload or restart. A JSON round-trip does not preserve comments
+or your formatting, which is worth knowing if you hand-format the file. Unlike
+the lists below, this key is nearest-wins — permission to write your config is
+not something a project you cloned should be able to widen.
 
 Unlike every other setting, the three lists **add up across all four files**
 rather than the nearest one winning. They are sets, not values: a project

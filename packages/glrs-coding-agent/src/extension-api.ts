@@ -1,6 +1,12 @@
 import type { ModelMessage, ToolSet } from "ai";
 import { z } from "zod";
 import type { Settings } from "../../glrs-core/src";
+import type { Shipped } from "./extensions";
+import type { WriteOutcome } from "./writeconfig";
+
+// What recording a choice about a shipped extension can come back as.
+export type ExtensionChoice = WriteOutcome | "unknown";
+
 import type { ShellResult as ToolShellResult } from "../../glrs-core/src/shell";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
@@ -298,6 +304,19 @@ export type Glrs = {
    * that wants them can read the files itself rather than be handed them.
    */
   settings: () => Readonly<Settings>;
+  /**
+   * The extensions glrs ships, and whether each is on, off, or has never been
+   * decided. The three states come from config: named in `extensions.load`,
+   * named in `extensions.disable`, or in neither.
+   */
+  available: () => readonly Shipped[];
+  /**
+   * Record that one should or should not load, by writing `extensions.load` or
+   * `extensions.disable` in the project's config. Returns `"not-allowed"` unless
+   * `agentConfigAllowlist` names `"extensions"` — config is hand-edited unless
+   * you have said otherwise.
+   */
+  setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
   /** What is loaded: commands, skills, extensions. */
   inspect: () => Loaded;
   /** Drop the conversation the model replays. The transcript is untouched. */
@@ -405,6 +424,8 @@ export type ExtensionHost = {
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
   setInput: (text: string) => void;
   settings: () => Readonly<Settings>;
+  available: () => readonly Shipped[];
+  setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";
   compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
@@ -533,6 +554,8 @@ export const createApi = (
   return {
     root: host.root,
     settings: () => host.settings(),
+    available: () => host.available(),
+    setExtension: (name, on) => host.setExtension(name, on),
     z,
     // First to claim a name keeps it, which is the rule every other namespace
     // here already follows — commands, user commands, skills, and the activity

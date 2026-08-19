@@ -117,6 +117,15 @@ export type ExtensionContext = {
   session: () => { id: string; file: string; title: string; events: number };
   prompt: (text: string) => void;
   settings: () => Readonly<Settings>;
+  available: () => ReadonlyArray<{
+    name: string;
+    summary: string;
+    state: "on" | "off" | "undecided";
+  }>;
+  setExtension: (
+    name: string,
+    on: boolean,
+  ) => Promise<"written" | "not-allowed" | "already" | "failed" | "unknown">;
 };
 
 export type Glrs = ExtensionContext;
