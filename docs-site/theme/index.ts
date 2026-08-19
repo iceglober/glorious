@@ -2,6 +2,7 @@ import {
   Application,
   DefaultTheme,
   DefaultThemeRenderContext,
+  DocumentReflection,
   JSX,
   type NavigationElement,
   type ProjectReflection,
@@ -25,6 +26,30 @@ class GlrsRenderContext extends DefaultThemeRenderContext {
         ),
         this.moduleReflection(props.model),
       );
+    const moduleMemberSummary = this.moduleMemberSummary;
+    this.moduleMemberSummary = (member) => {
+      const isFolder =
+        member instanceof DocumentReflection &&
+        member.children !== undefined &&
+        documentFolderNames.has(member.name);
+      if (!isFolder) return moduleMemberSummary(member);
+      const classes = `tsd-member-summary ${this.getReflectionClasses(member)}`;
+      return JSX.createElement(
+        JSX.Fragment,
+        null,
+        JSX.createElement(
+          "dt",
+          { class: classes },
+          JSX.createElement(
+            "span",
+            { class: "tsd-member-summary-name" },
+            this.reflectionIcon(member),
+            JSX.createElement("span", null, member.name),
+          ),
+        ),
+        JSX.createElement("dd", { class: classes }, this.commentShortSummary(member)),
+      );
+    };
   }
 }
 
