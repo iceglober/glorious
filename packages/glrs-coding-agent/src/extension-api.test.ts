@@ -68,6 +68,13 @@ const harness = () => {
       calls.push({ method: "capture", args: [spec] });
       return { close: () => {}, repaint: () => {} };
     },
+    mount: (spec: unknown) => {
+      calls.push({ method: "mount", args: [spec] });
+      return { close: () => {}, repaint: () => {} };
+    },
+    notify: record("notify"),
+    setTheme: () => ({ restore: () => {} }),
+    autocomplete: () => ({ dispose: () => {} }),
     setInput: record("setInput"),
     inspect: () => ({ commands: [], skills: [], extensions: [] }),
     clear: () => "cleared" as const,
@@ -82,6 +89,11 @@ const harness = () => {
     setModel: async (...args: unknown[]) => {
       calls.push({ method: "setModel", args });
     },
+    registerProvider: () => ({ dispose: () => {} }),
+    history: () => [],
+    forkSession: async () => ({ id: "fork", file: "/fork", title: "fork", events: 0 }),
+    switchSession: async () => true,
+    setLabel: record("setLabel"),
     idle: () => true,
     pending: () => 0,
     abort: () => true,
@@ -265,6 +277,20 @@ describe("what an extension can reach", () => {
     expect(calls.some((one) => one.method === "setInput")).toBe(true);
   });
 
+  test("advanced provider, rendering, history, and session controls", async () => {
+    const { g } = harness();
+    expect(g.truncateHead("abcdef", 3)).toBe("…def");
+    g.autocomplete({ sigil: "#", complete: () => [] });
+    g.provider({ id: "custom", create: () => ({}) as never });
+    g.messageRenderer(() => undefined);
+    g.entryRenderer("mine", () => undefined);
+    expect(g.history()).toEqual([]);
+    await g.forkSession();
+    await g.switchSession("other");
+    g.setLabel(0, "saved");
+    await g.setThinkingLevel("high");
+  });
+
   test("extensions can talk to each other", () => {
     const { g } = harness();
     const heard: unknown[] = [];
@@ -423,6 +449,9 @@ describe("every event fires in both hosts", () => {
     user_bash: "`!` is a composer key",
     model_select: "a one-shot run cannot switch models",
     compact: "a one-shot run never compacts",
+    session_before_compact: "a one-shot run never compacts",
+    session_before_switch: "a one-shot run has no session to switch",
+    session_before_fork: "a one-shot run has no session to fork",
   };
 
   const names = (): string[] => {

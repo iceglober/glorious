@@ -1,5 +1,4 @@
 import type { Glrs, Line } from "../../../glrs-core/src";
-import { forkSession } from "../../../glrs-core/src/session";
 import { createCodingTools } from "./tools";
 
 // Every first-party capability that a third party could have written: the six tools
@@ -283,18 +282,12 @@ export default function builtins(g: Glrs): void {
     },
   });
 
-  // Forking was written and wired to nothing. `forkSession` copies a session's
-  // events up to a point into a fresh id, which is the whole of what a branch
-  // point needs — it was reachable only through a repository object whose one
-  // consumer was the unreachable SDK entry.
-  //
-  // Nothing about this needs a new API member: `g.session()` already names the
-  // session, and an extension may reach glrs-core. A first-party command has
-  // the surface a third-party one has.
+  // Routed through the extension API so session_before_fork gates apply to the
+  // first-party command exactly as they do to a third-party session workflow.
   g.command("fork", {
     description: "Copy this session to a new id, so you can branch and come back",
     run: async (args) => {
-      const { id, events } = g.session();
+      const { events } = g.session();
       const at = args.trim() === "" ? undefined : Number(args.trim());
       if (at !== undefined && (!Number.isInteger(at) || at < 1 || at > events)) {
         g.print(
@@ -304,7 +297,7 @@ export default function builtins(g: Glrs): void {
         return;
       }
       try {
-        const forked = await forkSession(id, at);
+        const forked = await g.forkSession(at);
         g.print(
           [
             heading(g, "Forked", forked.id),

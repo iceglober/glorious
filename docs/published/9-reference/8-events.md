@@ -44,6 +44,14 @@ export default (g) => {
 | `context` | `{messages, step}` | `ModelMessage[]` replaces what this call sends |
 | `before_provider_request` | `{url, headers, body}` | `headers` merge over the request's, `body` replaces it |
 | `after_provider_response` | `{url, status, headers}` | |
+| `agent_start` | `{ prompt }` | nothing |
+| `agent_end` | `{ text }` | nothing |
+| `before_agent_start` | `{ prompt, systemPrompt }` | a string replaces the prompt, `false` cancels the turn, an object replaces either field |
+| `project_trust` | `{ root }` | `trusted`, `denied` or `deferred` |
+| `session_before_compact` | `{ automatic, instruction? }` | `false` cancels it, an object supplies the summary or the instruction |
+| `session_before_fork` | `{ id, at? }` | `false` cancels the fork |
+| `session_before_switch` | `{ from, to }` | `false` cancels the switch |
+| `session_shutdown` | `{ root }` | nothing, awaited before the process exits |
 
 ## print mode
 

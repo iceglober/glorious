@@ -76,9 +76,8 @@ describe("loadConfig", () => {
   // running it happens to have in ~/.config/glrs/config.json. It passed on CI,
   // which has none, and failed on any machine that had configured a model.
   test("a non-string value is dropped rather than trusted", async () => {
-    const home = await mkdtemp(join(tmpdir(), "glrs-home-"));
-    roots.push(home);
-    const { config } = await loadConfig(await project(`{"model":42,"variant":""}`), home);
+    const root = await project(`{"model":42,"variant":""}`);
+    const { config } = await loadConfig(root, join(root, "nohome"), {});
     expect(config.model).toBeUndefined();
     expect(config.variant).toBeUndefined();
   });

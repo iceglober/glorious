@@ -25,79 +25,79 @@ an eighth.
 
 ## 1. install
 
-| term | means |
-| --- | --- |
-| **binary** | `glrs`, and `glorious`, the same executable under two names |
-| **channel** | the npm dist-tag installed from. `next` today |
-| **update** | reinstalling the channel's latest, `glrs update` |
-| **doctor** | the command that reports what *would* run, without running it |
+| term        | means                                                         |
+| ----------- | ------------------------------------------------------------- |
+| **binary**  | `glrs`, and `glorious`, the same executable under two names   |
+| **channel** | the npm dist-tag installed from. `next` today                 |
+| **update**  | reinstalling the channel's latest, `glrs update`              |
+| **doctor**  | the command that reports what _would_ run, without running it |
 
 The lifecycle is install, update, uninstall. Naming one implies the other two.
 
 ## 2. model
 
-| term | means |
-| --- | --- |
-| **provider** | who serves the model. `anthropic`, `azure`, `ollama` |
-| **model id** | `provider/model-id`. Always both halves; there is no default |
-| **variant** | reasoning effort: `minimal`, `low`, `medium`, `high` |
-| **credential** | the environment variable a provider reads |
-| **catalogue** | context window and prices, fetched from models.dev and cached |
+| term           | means                                                         |
+| -------------- | ------------------------------------------------------------- |
+| **provider**   | who serves the model. `anthropic`, `azure`, `ollama`          |
+| **model id**   | `provider/model-id`. Always both halves; there is no default  |
+| **variant**    | reasoning effort: `minimal`, `low`, `medium`, `high`          |
+| **credential** | the environment variable a provider reads                     |
+| **catalogue**  | context window and prices, fetched from models.dev and cached |
 
-Say **set a model**, not *name* or *choose*. It is set in one of four places and
+Say **set a model**, not _name_ or _choose_. It is set in one of four places and
 the nearest wins: `--model`, `GLRS_MODEL`, project config, user config.
 
 ## 3. session
 
-| term | means |
-| --- | --- |
-| **session** | one conversation, with an id, stored as a JSON event log |
-| **event** | one entry in that log: `user`, `assistant`, `tool`, `usage`, … |
-| **transcript** | what you see on screen. The event log is what is stored |
-| **resume** | reopening a session by id, or picking one from a list |
-| **fork** | copying a session, whole or up to an event, into a new id |
-| **context** | how much of the model's window the conversation currently uses |
-| **compaction** | replacing the older part of the conversation with a summary |
+| term           | means                                                          |
+| -------------- | -------------------------------------------------------------- |
+| **session**    | one conversation, with an id, stored as a JSON event log       |
+| **event**      | one entry in that log: `user`, `assistant`, `tool`, `usage`, … |
+| **transcript** | what you see on screen. The event log is what is stored        |
+| **resume**     | reopening a session by id, or picking one from a list          |
+| **fork**       | copying a session, whole or up to an event, into a new id      |
+| **context**    | how much of the model's window the conversation currently uses |
+| **compaction** | replacing the older part of the conversation with a summary    |
 
 **Clear** drops what the model replays and keeps the transcript. **Compact**
 summarises it. They are not synonyms.
 
 ## 4. turn
 
-| term | means |
-| --- | --- |
-| **turn** | one exchange: your message, the model's work, its answer |
-| **step** | one model call inside a turn. A turn with three tool calls has several |
-| **follow-up** | a message queued to arrive after the turn drains. `enter` |
-| **steering** | a message that joins the running turn at its next step. `alt+enter` |
-| **queue** | where either waits. Two of them, delivered one at a time or all at once |
-| **interrupt** | stopping the running turn, `esc` |
+| term          | means                                                                   |
+| ------------- | ----------------------------------------------------------------------- |
+| **turn**      | one exchange: your message, the model's work, its answer                |
+| **step**      | one model call inside a turn. A turn with three tool calls has several  |
+| **follow-up** | a message queued to arrive after the turn drains. `enter`               |
+| **steering**  | a message that joins the running turn at its next step. `alt+enter`     |
+| **queue**     | where either waits. Two of them, delivered one at a time or all at once |
+| **interrupt** | stopping the running turn, `esc`                                        |
 
 **Follow-up** and **steering** are the two queue kinds in the code. Do not write
-*inject*, *interject* or *mid-turn message*.
+_inject_, _interject_ or _mid-turn message_.
 
 ## 5. tool
 
-| term | means |
-| --- | --- |
-| **tool** | something the model can call: `read`, `edit`, `bash`, … |
-| **builtin** | a tool from the `builtins` extension. Not "built in" to the core |
-| **withhold** | removing a tool from what the model sees, `tools.disable` |
-| **timeout** | the deadline a tool runs under, `toolTimeoutMs` |
+| term         | means                                                            |
+| ------------ | ---------------------------------------------------------------- |
+| **tool**     | something the model can call: `read`, `edit`, `bash`, …          |
+| **builtin**  | a tool from the `builtins` extension. Not "built in" to the core |
+| **withhold** | removing a tool from what the model sees, `tools.disable`        |
+| **timeout**  | the deadline a tool runs under, `toolTimeoutMs`                  |
 
 Every tool comes from an extension. The core registers none. Say **withhold**,
-not *block* or *disable*, for keeping a tool from the model: disabling is what
+not _block_ or _disable_, for keeping a tool from the model: disabling is what
 you do to an extension.
 
 ## 6. instruction
 
 What you teach glrs without writing code. Three kinds, one discovery rule.
 
-| term | means | you |
-| --- | --- | --- |
-| **command** | a prompt you invoke with `/name` | invoke it |
-| **skill** | instructions the model loads when it judges them relevant | it chooses |
-| **rules** | `AGENTS.md`, in the system prompt every turn | never invoke it |
+| term        | means                                                     | you             |
+| ----------- | --------------------------------------------------------- | --------------- |
+| **command** | a prompt you invoke with `/name`                          | invoke it       |
+| **skill**   | instructions the model loads when it judges them relevant | it chooses      |
+| **rules**   | `AGENTS.md`, in the system prompt every turn              | never invoke it |
 
 Commands come in three kinds: **built-in** (ship with glrs), **markdown**
 (a file you write), and **skill commands** (`/skill:name`, every skill has one).
@@ -110,27 +110,27 @@ and rules apply unasked.
 One noun. A TypeScript file that default-exports a function taking the glrs API.
 Everything below is something one **registers**; none is a separate concept.
 
-| registers | means |
-| --- | --- |
-| **tool** | something the model can call |
-| **command** | a slash command |
-| **subcommand** | a word on the `glrs` binary, `glrs wt …` |
-| **hook** | a handler for a lifecycle **event** |
-| **renderer** | how a tool's call and result are drawn |
-| **widget** | takes over the composer and receives keys |
-| **status**, **footer**, **activity** | parts of the screen it can own |
-| **prompt line** | a line added to the system prompt each turn |
+| registers                            | means                                       |
+| ------------------------------------ | ------------------------------------------- |
+| **tool**                             | something the model can call                |
+| **command**                          | a slash command                             |
+| **subcommand**                       | a word on the `glrs` binary, `glrs wt …`    |
+| **hook**                             | a handler for a lifecycle **event**         |
+| **renderer**                         | how a tool's call and result are drawn      |
+| **widget**                           | takes over the composer and receives keys   |
+| **status**, **footer**, **activity** | parts of the screen it can own              |
+| **prompt line**                      | a line added to the system prompt each turn |
 
 **Bundled** extensions ship in the box. **Disk** extensions are files you drop in
 `.glrs/extensions/`. Both are extensions; the word does not change.
 
 ## cross-cutting
 
-| term | means |
-| --- | --- |
-| **mode** | the surface glrs is running as: `tui`, `print`, `cli`. This is `g.mode` |
-| **scope** | which config file a setting came from: Project-User, Project, User |
-| **host** | the implementation behind a mode. Internal. Not for published docs |
+| term      | means                                                                   |
+| --------- | ----------------------------------------------------------------------- |
+| **mode**  | the surface glrs is running as: `tui`, `print`, `cli`. This is `g.mode` |
+| **scope** | which config file a setting came from: Project-User, Project, User      |
+| **host**  | the implementation behind a mode. Internal. Not for published docs      |
 
 Say **mode** in published docs. **Host** is a word for the codebase.
 

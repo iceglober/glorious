@@ -1,5 +1,5 @@
 import { runShell } from "../../glrs-core/src/shell";
-import { loadConfig } from "../../provider-registry/src";
+import { loadConfig, registerExtensionProvider } from "../../provider-registry/src";
 import { createRegistry, type ExtensionHost, type Line } from "./extension-api";
 import { firstPartyExtensions, loadExtensions } from "./extensions";
 import { clip, width } from "./render";
@@ -81,6 +81,10 @@ export const runCli = async (
     send: () => needsSession("send"),
     setInput: () => needsSession("setInput"),
     capture: () => needsSession("ui.capture"),
+    mount: () => needsSession("ui.mount"),
+    notify: (message) => process.stdout.write(`${message}\n`),
+    setTheme: () => ({ restore: () => {} }),
+    autocomplete: () => ({ dispose: () => {} }),
     clear: () => needsSession("clear"),
     compact: () => needsSession("compact"),
     reload: () => needsSession("reload"),
@@ -89,6 +93,11 @@ export const runCli = async (
     model: () => needsSession("model"),
     models: () => needsSession("models"),
     setModel: () => needsSession("setModel"),
+    registerProvider: registerExtensionProvider,
+    history: () => needsSession("history"),
+    forkSession: () => needsSession("forkSession"),
+    switchSession: () => needsSession("switchSession"),
+    setLabel: () => needsSession("setLabel"),
     idle: () => needsSession("idle"),
     pending: () => needsSession("pending"),
     abort: () => needsSession("abort"),

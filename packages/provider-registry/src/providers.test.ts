@@ -72,8 +72,9 @@ describe("OpenAI-compatible endpoints", () => {
     expect(() => createModel(model)).not.toThrow();
   });
 
-  test("without one, the error says exactly what to add", () => {
-    expect(() => createModel(currentModel({ model: "mystery/x" }))).toThrow(/base URL/u);
+  test("without one, resolution waits for an extension provider", () => {
+    const model = createModel(currentModel({ model: "mystery/x" }));
+    expect(() => model.provider).toThrow(/g\.provider/u);
   });
 
   test("a built-in provider is never diverted to the compatible path", () => {

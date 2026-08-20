@@ -18,10 +18,13 @@ import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
+import type { ExtensionProvider } from "../../glrs-core/src";
 import { type Config, envSetting, type JsonObject, type ModelSettings } from "./config";
 import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
 
 export { PROVIDER_SETTINGS, settingsFor } from "./providers";
+
+type ResolvedLanguageModel = Extract<LanguageModel, { specificationVersion: "v4" }>;
 
 export type ModelRef = {
   provider: string;
@@ -315,7 +318,42 @@ export const modelMetadata = async (
   };
 };
 
-type ProviderFactory = (options?: Record<string, unknown>) => (id: string) => LanguageModel;
+type ProviderFactory = (options?: Record<string, unknown>) => (id: string) => ResolvedLanguageModel;
+
+const extensionProviders = new Map<string, ExtensionProvider>();
+
+export const registerExtensionProvider = (provider: ExtensionProvider): { dispose: () => void } => {
+  if (extensionProviders.has(provider.id)) return { dispose: () => {} };
+  extensionProviders.set(provider.id, provider);
+  return {
+    dispose: () => {
+      if (extensionProviders.get(provider.id) === provider) extensionProviders.delete(provider.id);
+    },
+  };
+};
+
+const lateExtensionModel = (option: ModelOption): ResolvedLanguageModel => {
+  const resolved = (): ResolvedLanguageModel => {
+    const provider = extensionProviders.get(option.provider);
+    if (!provider)
+      throw new Error(
+        `Provider "${option.provider}" has not registered yet. Load an extension that calls g.provider().`,
+      );
+    return provider.create(option.modelId, option.factoryOptions);
+  };
+  return {
+    specificationVersion: "v4",
+    modelId: option.modelId,
+    get provider() {
+      return resolved().provider;
+    },
+    get supportedUrls() {
+      return resolved().supportedUrls;
+    },
+    doGenerate: (settings) => resolved().doGenerate(settings),
+    doStream: (settings) => resolved().doStream(settings),
+  } as ResolvedLanguageModel;
+};
 
 const factories: Record<string, ProviderFactory> = {
   "amazon-bedrock": createAmazonBedrock as ProviderFactory,
@@ -344,7 +382,16 @@ export const resolveApiKey = (option: {
 }): string | undefined =>
   option.apiKey ?? option.env?.map((name) => process.env[name]).find((value) => Boolean(value));
 
-export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch): LanguageModel => {
+export const createModel = (
+  option: ModelOption,
+  fetcher: typeof fetch = fetch,
+): ResolvedLanguageModel => {
+  const extension = extensionProviders.get(option.provider);
+  if (extension)
+    return extension.create(option.modelId, {
+      ...(option.factoryOptions ?? {}),
+      fetch: fetcher,
+    });
   const configured = { ...(option.factoryOptions ?? {}) } as Record<string, unknown>;
   const configuredKey = typeof configured.apiKey === "string" ? configured.apiKey : undefined;
   const apiKey = configuredKey ?? resolveApiKey(option);
@@ -386,12 +433,8 @@ export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch):
   if (option.npm === "@ai-sdk/openai-compatible" || !factory) {
     if (!option.api && typeof configured.baseURL !== "string") {
       const near = nearestProvider(option.provider);
-      throw new Error(
-        near === undefined
-          ? `${option.provider} is not a built-in provider. Give it a base URL to use it as an ` +
-              `OpenAI-compatible endpoint: {"providers":{"${option.provider}":{"api":"…"}}}`
-          : `Unknown provider "${option.provider}", did you mean "${near}"?`,
-      );
+      if (near === undefined) return lateExtensionModel(option);
+      throw new Error(`Unknown provider "${option.provider}", did you mean "${near}"?`);
     }
     return createOpenAICompatible({
       name: option.provider,

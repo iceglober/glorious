@@ -8,6 +8,7 @@ import {
   modelCost,
   modelMetadata,
   priceMultiplier,
+  registerExtensionProvider,
   resolveApiKey,
 } from "./models";
 
@@ -296,6 +297,44 @@ describe("finding the api key", () => {
 
   test("the startup model carries the names, so the fallback can fire", () => {
     expect(currentModel({ model: "azure/gpt-4o" }).env.length).toBeGreaterThan(0);
+  });
+});
+
+describe("extension providers", () => {
+  test("a provider may register after the agent has resolved its model", async () => {
+    const model = createModel({
+      provider: "late-provider",
+      modelId: "model",
+      name: "late-provider/model",
+      env: [],
+    });
+    let called = false;
+    const registration = registerExtensionProvider({
+      id: "late-provider",
+      create: () =>
+        ({
+          specificationVersion: "v4",
+          provider: "late-provider",
+          modelId: "model",
+          supportedUrls: {},
+          doGenerate: async () => {
+            called = true;
+            return {
+              content: [{ type: "text", text: "from extension" }],
+              finishReason: "stop",
+              usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+              warnings: [],
+            };
+          },
+          doStream: async () => {
+            throw new Error("not used");
+          },
+        }) as never,
+    });
+    const result = await generateText({ model, prompt: "hi", maxRetries: 0 });
+    expect(result.text).toBe("from extension");
+    expect(called).toBe(true);
+    registration.dispose();
   });
 });
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
+import { generateText, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import {
   createModel,
   type JsonObject,
@@ -125,7 +125,9 @@ type Setup = Parameters<typeof systemPrompt>[0] &
     // is: an extension's tools are built once at load, so this is what lets
     // their rows reach the turn that is actually running.
     extensionTools?: (onTool: (event: ToolEvent) => void) => import("ai").ToolSet;
+    terminatingTools?: () => ReadonlySet<string>;
     extensionPrompt?: () => readonly string[];
+    systemPromptOverride?: () => string | undefined;
     // Every message about to be sent, per model call. Returning an array
     // replaces what is sent for that call only; the stored conversation is
     // untouched, so filtering here never rewrites history.
@@ -199,6 +201,14 @@ export const requestSettings = (
   ...(model.requestOptions ?? {}),
   providerOptions: providerOptions(model, cacheKey) as JsonObject,
 });
+
+export const terminatingToolCalled = (
+  steps: readonly {
+    toolCalls?: readonly ({ toolName?: string; name?: string } | undefined)[];
+  }[],
+  names: ReadonlySet<string>,
+): boolean =>
+  (steps.at(-1)?.toolCalls ?? []).some((call) => names.has(call?.toolName ?? call?.name ?? ""));
 
 export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
   Promise.resolve(value).catch(() => fallback);
@@ -280,12 +290,20 @@ export const createAgent = (setup: Setup) => {
     );
   };
 
+  const stopAfterTerminatingTool: import("ai").StopCondition<ToolSet> = ({ steps }) =>
+    terminatingToolCalled(
+      steps as Array<{
+        toolCalls?: Array<{ toolName?: string; name?: string } | undefined>;
+      }>,
+      setup.terminatingTools?.() ?? new Set(),
+    );
+
   const settings = () => ({
     maxRetries: 5,
     ...requestSettings(setup.model, cacheKey(setup.sessionId)),
     model,
-    instructions: systemPrompt(setup),
-    stopWhen: [stepCountIs(STEP_LIMIT)],
+    instructions: setup.systemPromptOverride?.() ?? systemPrompt(setup),
+    stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool],
   });
 
   return {

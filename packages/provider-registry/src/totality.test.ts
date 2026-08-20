@@ -88,12 +88,13 @@ describe("the base URL reaches the model option for every provider that takes on
       await rm(root, { recursive: true, force: true });
     });
 
-  // The one construction worth asserting: an unknown provider with no base URL
-  // is refused with a message naming the key to set, and given one it is built.
-  test("an unknown provider is refused without a base URL and accepted with one", async () => {
+  // Without a base URL, construction waits for an extension provider; with one,
+  // the OpenAI-compatible provider is built immediately.
+  test("an unknown provider waits for an extension or accepts a base URL", async () => {
     const bare = await project({ model: "mystery/x" });
     const without = currentModel((await loadConfig(bare)).config);
-    expect(() => createModel(without)).toThrow(/base URL/u);
+    const deferred = createModel(without);
+    expect(() => deferred.provider).toThrow(/g\.provider/u);
     const given = await project({
       model: "mystery/x",
       providers: { mystery: { api: VALUES.api } },
