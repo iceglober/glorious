@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { PROVIDER_ALIASES, PROVIDERS } from "../../packages/provider-registry/src/providers";
 import schema from "../public/config.schema.json";
-import { configReference, providerReference } from "./generated-documents";
+import { configReference, generatedRegion, providerReference } from "./generated-documents";
 
 describe("generated documentation", () => {
+  test("marks the start and end of generated content", () => {
+    expect(generatedRegion("example", "generated\n")).toBe(
+      "<!-- generated:example:start -->\ngenerated\n<!-- generated:example:end -->",
+    );
+  });
+
   test("configuration reference comes from the hosted schema", () => {
     const markdown = configReference(schema);
     expect(markdown).toContain(

@@ -103,10 +103,26 @@ export const providerReference = (
   return `${lines.join("\n")}\n`;
 };
 
-const inject = (document: DocumentReflection, marker: string, markdown: string): void => {
-  const part = document.content.find((entry) => entry.kind === "text" && entry.text.includes(marker));
-  if (part?.kind === "text") part.text = part.text.replace(marker, markdown);
-  else document.content.push({ kind: "text", text: `\n${markdown}` });
+export const generatedRegion = (name: string, markdown: string): string =>
+  `<!-- generated:${name}:start -->\n${markdown.trimEnd()}\n<!-- generated:${name}:end -->`;
+
+const inject = (document: DocumentReflection, name: string, markdown: string): void => {
+  const start = `<!-- generated:${name}:start -->`;
+  const end = `<!-- generated:${name}:end -->`;
+  const legacy = `<!-- generated:${name} -->`;
+  const part = document.content.find(
+    (entry) => entry.kind === "text" && (entry.text.includes(start) || entry.text.includes(legacy)),
+  );
+  const region = generatedRegion(name, markdown);
+  if (part?.kind !== "text") {
+    document.content.push({ kind: "text", text: `\n${region}\n` });
+    return;
+  }
+  const from = part.text.indexOf(start);
+  const to = part.text.indexOf(end, from + start.length);
+  if (from >= 0 && to >= 0)
+    part.text = `${part.text.slice(0, from)}${region}${part.text.slice(to + end.length)}`;
+  else part.text = part.text.replace(legacy, region);
 };
 
 export function load(application: Application): void {
@@ -115,11 +131,11 @@ export function load(application: Application): void {
     (_context: undefined, document: DocumentReflection) => {
       const generated = document.frontmatter.generate;
       if (generated === "config-schema")
-        inject(document, "<!-- generated:config-schema -->", configReference(schema as Schema));
+        inject(document, "config-schema", configReference(schema as Schema));
       if (generated === "providers")
         inject(
           document,
-          "<!-- generated:providers -->",
+          "providers",
           providerReference(PROVIDERS, PROVIDER_ALIASES),
         );
     },
