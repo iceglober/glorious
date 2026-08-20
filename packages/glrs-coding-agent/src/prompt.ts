@@ -1,6 +1,5 @@
 export { PREAMBLE_TAGS } from "../../glrs-core/src/events";
 
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 export const fence = (tag: string, body: string): string =>
@@ -16,10 +15,11 @@ export const fence = (tag: string, body: string): string =>
 // to change. tools.ts lets the read-only tools reach this directory and no
 // further.
 const here = import.meta.dir;
-export const docsPath = (): string => {
-  const packaged = join(here, "..", "docs");
-  return existsSync(packaged) ? packaged : join(here, "..", "..", "..", "docs", "published");
-};
+// One path. There was a `<pkg>/docs` branch first, filled by a `prepack` on a
+// package that is `private: true` and never packed — the release publishes the
+// root package, which has no prepack. So the branch could not be satisfied and
+// the fallback below was always the live one.
+export const docsPath = (): string => join(here, "..", "..", "..", "docs", "published");
 
 // Every block the agent prepends to a user turn. events.ts strips these when
 // replaying a transcript, so a new preamble block must be named here or it will

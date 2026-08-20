@@ -5,8 +5,8 @@ const site = join(import.meta.dir, "..");
 const root = join(site, "..");
 const watched = [
   join(root, "docs", "published"),
-  join(root, "packages", "glorious-core", "src"),
-  join(root, "packages", "glorious-coding-agent", "src", "sdk.ts"),
+  join(root, "packages", "glrs-core", "src"),
+  join(root, "packages", "glrs-coding-agent", "src", "sdk.ts"),
   join(root, "packages", "provider-registry", "src"),
   join(site, "api"),
   join(site, "plugins"),

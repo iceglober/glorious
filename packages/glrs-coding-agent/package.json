@@ -5,26 +5,10 @@
   "description": "Terminal coding-agent product built on glrs-core.",
   "license": "MIT",
   "type": "module",
-  "bin": {
-    "glrs": "bin/glrs"
-  },
-  "exports": {
-    ".": "./src/sdk.ts",
-    "./extension-api": "./src/public-extension-api.ts"
-  },
-  "scripts": {
-    "prepack": "bun scripts/sync-docs.ts"
-  },
   "dependencies": {
     "@opentui/core": "0.4.5",
     "@vscode/ripgrep": "^1.18.0",
     "ai": "^7.0.22",
     "zod": "^4.4.3"
-  },
-  "files": [
-    "bin",
-    "docs",
-    "src",
-    "README.md"
-  ]
+  }
 }

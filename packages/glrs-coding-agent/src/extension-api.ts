@@ -1,15 +1,12 @@
-import type { ModelMessage, ToolSet } from "ai";
+import type { ToolSet } from "ai";
 import { z } from "zod";
 import type { Settings } from "../../glrs-core/src";
-import type { ShellResult as ToolShellResult } from "../../glrs-core/src/shell";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import type { Shipped } from "./extensions";
 import { clip, type Line, type Tone } from "./render";
-import type { SkillSummary } from "./skills";
 import type { ToolEvent } from "./toolkit";
 import { wrapTool } from "./toolkit";
-import type { WriteOutcome } from "./writeconfig";
 
 // The public surface an extension is written against. Everything on it is a
 // facade over a seam that already exists inside glrs — `tool` lands where
