@@ -71,3 +71,33 @@ describe("a tool is timed once", () => {
     expect(read("chat.ts")).not.toContain("started.set");
   });
 });
+
+// A resumed transcript is printed once into scrollback, so whatever rendering
+// it gets at replay is the rendering it keeps for the session. Replaying before
+// the extensions loaded meant `renderTool` returned undefined and the markdown
+// chain was the identity — a custom tool renderer simply never applied to
+// history, however many an extension had registered.
+//
+// No output assertion can catch this: both orders produce a transcript, and the
+// wrong one produces glrs's own perfectly valid default. Only the order is the
+// bug, so the order is what is pinned.
+describe("a resumed transcript is rendered by the extensions that are loaded", () => {
+  const index = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
+
+  test("extensions load before the replay loop, not hundreds of lines after it", () => {
+    const load = index.indexOf("let loaded = await loadAllExtensions();");
+    const replay = index.indexOf("for (const event of session.events) {");
+    expect(load).toBeGreaterThan(-1);
+    expect(replay).toBeGreaterThan(-1);
+    expect(load).toBeLessThan(replay);
+  });
+
+  test("the replay still precedes the startup notices, so the transcript reads first", () => {
+    const replay = index.indexOf("for (const event of session.events) {");
+    // Searched from the replay: `/reload` has its own copy of this loop earlier
+    // in the file, and matching that one would compare against the wrong site.
+    const notices = index.indexOf("for (const failure of loaded.failures)", replay);
+    expect(notices).toBeGreaterThan(-1);
+    expect(replay).toBeLessThan(notices);
+  });
+});

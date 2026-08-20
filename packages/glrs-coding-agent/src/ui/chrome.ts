@@ -4,21 +4,22 @@ import { type Line, type Span, type Tone, width } from "../render";
 export type Tui = typeof import("@opentui/core");
 export type Renderer = Awaited<ReturnType<Tui["createCliRenderer"]>>;
 
-export const tones: Record<Tone, [string, string]> = {
-  accent: ["#67d4e8", "36"],
-  highlight: ["#c792ea", "35"],
-  muted: ["#8b929c", "2"],
-  prompt: ["#d8dee9", "37"],
-  success: ["#74d99a", "32"],
-  warning: ["#f2c46d", "33"],
-  danger: ["#f08080", "31"],
+// One colour per tone. Each was a [hex, ANSI-SGR] pair, and the second half was
+// read by nothing — residue of an ANSI renderer that no longer exists. Anything
+// still reaching for an SGR code would have been drawing against a renderer
+// that paints with RGBA.
+export const tones: Record<Tone, string> = {
+  accent: "#67d4e8",
+  highlight: "#c792ea",
+  muted: "#8b929c",
+  prompt: "#d8dee9",
+  success: "#74d99a",
+  warning: "#f2c46d",
+  danger: "#f08080",
 };
 
 export const fillHex = "#383f47";
 export const panelHex = "#20252b";
-export const edgeHex = "#4b5563";
-export const dimHex = "#8b929c";
-export const accentHex = tones.accent[0];
 
 export type Chrome = ReturnType<typeof createChrome>;
 
@@ -55,7 +56,7 @@ export const createChrome = (tui: Tui, renderer: Renderer) => {
     if (span.italic) bits |= tui.TextAttributes.ITALIC;
     if (span.underline) bits |= tui.TextAttributes.UNDERLINE;
     const piece: TextChunk = { __isChunk: true, text, attributes: bits };
-    if (span.tone) piece.fg = tui.RGBA.fromHex(tones[span.tone][0]);
+    if (span.tone) piece.fg = tui.RGBA.fromHex(tones[span.tone]);
     if (span.fill) piece.bg = tui.RGBA.fromHex(fillHex);
     return piece;
   };
