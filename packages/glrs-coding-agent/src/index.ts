@@ -775,19 +775,6 @@ const main = async (): Promise<void> => {
     render({ type: "error", text: `(extension) ${message}` });
   };
 
-  let replayRun = NO_TOOL_RUN;
-  for (const event of session.events) {
-    const stepped = advanceToolRun(replayRun, event);
-    replayRun = stepped.run;
-    if (stepped.footer.length > 0) screen.print(stepped.footer, false);
-    const { lines, gap } = eventBlock(
-      event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
-      renderTool,
-      screen.columnsNow(),
-    );
-    if (lines.length > 0) screen.print(lines, gap);
-  }
-
   // The picker is gone; this is metadata only. Context size and pricing feed
   // the status line's `ctx 12.3k(6%)` and the cost, and there is no denominator
   // without it. Silent on failure: offline, the line reads `unknown`.
@@ -1052,6 +1039,31 @@ const main = async (): Promise<void> => {
   let loaded = await loadAllExtensions();
   applyToolBans(config.config.tools?.disable);
   registerCommands();
+
+  // Replayed after the extensions load, not before.
+  //
+  // This ran hundreds of lines earlier, while `registry.renderers` and the
+  // markdown chain were still empty — so `renderTool` returned undefined and
+  // the transform chain was the identity, and a resumed transcript always got
+  // glrs's default rendering however many renderers an extension had. It is
+  // printed once into scrollback rather than re-rendered on later paints, so
+  // "before extensions" meant "wrong for the rest of the session".
+  //
+  // It still precedes the startup notices, so the transcript reads first and
+  // whatever went wrong at startup reads under it.
+  let replayRun = NO_TOOL_RUN;
+  for (const event of session.events) {
+    const stepped = advanceToolRun(replayRun, event);
+    replayRun = stepped.run;
+    if (stepped.footer.length > 0) screen.print(stepped.footer, false);
+    const { lines, gap } = eventBlock(
+      event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
+      renderTool,
+      screen.columnsNow(),
+    );
+    if (lines.length > 0) screen.print(lines, gap);
+  }
+
   for (const failure of loaded.failures)
     render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
   for (const said of loaded.notes) render({ type: "notice", text: `(extension) ${said}` });
