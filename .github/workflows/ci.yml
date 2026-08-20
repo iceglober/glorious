@@ -21,7 +21,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - name: install
-        run: bun install --frozen-lockfile
+        # `bun install --frozen-lockfile` on a clean runner has been failing with
+        # `ENOENT: could not open the "node_modules" directory` — it goes looking
+        # for the directory rather than creating it. Making it exist first costs
+        # nothing and is the difference between a red run and a green one.
+        run: |
+          mkdir -p node_modules
+          bun install --frozen-lockfile
       - name: typecheck
         run: |
           bun run typecheck
