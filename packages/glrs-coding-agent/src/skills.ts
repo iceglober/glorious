@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
+import type { SkillSummary } from "../../glrs-core/src";
 import type { Command } from "./commands";
 
 type Skill = {
@@ -22,18 +23,10 @@ type Skill = {
   modelInvocable: boolean;
 };
 
-export type SkillSummary = {
-  name: string;
-  description: string;
-  location: string;
-  // What to type to run it, without the leading slash. Carried rather than
-  // recomputed by every listing that wants to show it.
-  command: string;
-  trigger: string;
-  modelInvocable: boolean;
-  allowedTools: readonly string[];
-  compatibility: string;
-};
+// Declared in glrs-core, where extensions reach it. This was a second copy of
+// the same shape, which is how `license` and `metadata` came to be parsed here
+// and absent there — the same drift the Glrs type had.
+export type { SkillSummary } from "../../glrs-core/src";
 
 export type Skills = {
   catalog: string;
@@ -101,13 +94,21 @@ const ancestors = (root: string, home: string): string[] => {
 // project sits under $HOME, which listed every personal skill twice and warned
 // `two skills are named "X"` naming the same path on both sides of the sentence.
 // The tests never saw it: they all pass a scratch home outside the tree.
+// `.glrs` and `.glorious` were read for the project root only, while the
+// ancestor walk looked for `.agents/skills` alone — so `~/.glrs/skills` was
+// never read at all, even though `~/.glrs` is where config, commands and
+// extensions all come from. Every agent directory is now searched at every
+// level, which is what someone putting a skill beside their extensions expects.
+const AGENT_DIRECTORIES = [".agents", ".glrs", ".glorious"] as const;
+
 const skillRoots = (root: string, home: string, extra: readonly string[] = []): string[] => [
   ...new Set([
     join(home, ".config", "agents", "skills"),
-    join(home, ".agents", "skills"),
-    ...ancestors(root, home).map((directory) => join(directory, ".agents", "skills")),
-    join(root, ".glrs", "skills"),
-    join(root, ".glorious", "skills"),
+    ...AGENT_DIRECTORIES.map((directory) => join(home, directory, "skills")),
+    ...ancestors(root, home).flatMap((directory) =>
+      AGENT_DIRECTORIES.map((agent) => join(directory, agent, "skills")),
+    ),
+    ...AGENT_DIRECTORIES.map((directory) => join(root, directory, "skills")),
     ...extra,
   ]),
 ];
@@ -226,7 +227,15 @@ const parseSkill = (
       location,
       license: fields.get("license") ?? "",
       compatibility,
-      allowedTools: (fields.get("allowed-tools") ?? "").split(/\s+/u).filter((one) => one !== ""),
+      // Split on commas as well as spaces. `allowed-tools: read, grep` is the
+      // spelling everyone writes, and splitting on whitespace alone produced
+      // ["read,", "grep"] — a tool named "read," matches nothing. That was
+      // harmless while the field was enforced by nobody; now that it restricts
+      // a turn, it would have silently withheld the tool the skill asked for.
+      allowedTools: (fields.get("allowed-tools") ?? "")
+        .split(/[\s,]+/u)
+        .map((one) => one.trim())
+        .filter((one) => one !== ""),
       metadata,
       modelInvocable: !truthy(fields.get(MODEL_INVOCATION_FIELD) ?? ""),
       body: lines
@@ -312,7 +321,12 @@ const skillContent = (skill: Skill): string =>
 const triggerPrompt = (skill: Skill): string =>
   `Run the ${skill.name} skill now. The user invoked it as a slash command, so the instructions below are what to carry out — not background material, and not something to summarise or ask about. Follow them from the top. Any text after the command name is the skill's arguments.\n\n${skillContent(skill)}`;
 
-const createSkillTool = (skills: Skill[]) => {
+// Told when a skill is activated, so the caller can hold it to what it said it
+// needs. `allowed-tools` was parsed into the summary and enforced by nothing —
+// a field that reads as a safety control and was not one.
+export type OnActivate = (skill: { name: string; allowedTools: readonly string[] }) => void;
+
+const createSkillTool = (skills: Skill[], onActivate?: OnActivate) => {
   if (skills.length === 0) return undefined;
   const byName = new Map(skills.map((skill) => [skill.name, skill]));
   return tool({
@@ -324,6 +338,7 @@ const createSkillTool = (skills: Skill[]) => {
     execute: async ({ name }) => {
       const skill = byName.get(name);
       if (!skill) return `ERROR: unknown skill: ${name}`;
+      onActivate?.({ name: skill.name, allowedTools: skill.allowedTools });
       return `<skill_content name="${escapeXml(skill.name)}">\n${skill.body}\n\nSkill directory: ${escapeXml(dirname(skill.location))}\n</skill_content>`;
     },
   });
@@ -337,6 +352,7 @@ export const loadSkills = async (
   root: string,
   home: string = homedir(),
   extra: readonly string[] = [],
+  onActivate?: OnActivate,
 ): Promise<Skills> => {
   const { skills, warnings } = await discover(root, home, extra);
   // What the model is told exists. A skill that opted out of model invocation is
@@ -367,7 +383,17 @@ export const loadSkills = async (
       origin: skill.location,
     })),
     summaries: skills.map(
-      ({ name, description, location, trigger, modelInvocable, allowedTools, compatibility }) => ({
+      ({
+        name,
+        description,
+        location,
+        trigger,
+        modelInvocable,
+        allowedTools,
+        compatibility,
+        license,
+        metadata,
+      }) => ({
         name,
         description,
         location,
@@ -376,10 +402,12 @@ export const loadSkills = async (
         modelInvocable,
         allowedTools,
         compatibility,
+        license,
+        metadata,
       }),
     ),
     // Only what the model was told about can be activated by it, or the opt-out
     // would be a listing change with a way around it.
-    tool: createSkillTool(offered),
+    tool: createSkillTool(offered, onActivate),
   };
 };

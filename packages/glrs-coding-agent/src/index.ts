@@ -257,7 +257,14 @@ const main = async (): Promise<void> => {
   let extensionSkillRoots = skillRootsFor(
     (await resolveExtensions(root, config.config.extensions)).plan,
   );
-  let skills = await loadSkills(root, undefined, extensionSkillRoots);
+  // Skills load long before the agent and the registry exist, so activation is
+  // routed through a slot that is filled in once they do. A skill activated
+  // before then simply is not held to its list, which cannot happen: nothing
+  // can call the tool until the agent is running.
+  let holdToSkill: (skill: { name: string; allowedTools: readonly string[] }) => void = () => {};
+  let skills = await loadSkills(root, undefined, extensionSkillRoots, (skill) =>
+    holdToSkill(skill),
+  );
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills, which answer under a `skill:` prefix of their own.
   let userCommands = await loadUserCommands(root);
@@ -541,6 +548,7 @@ const main = async (): Promise<void> => {
         chat.flush();
         screen.sealDraft();
         live = { kind: "text", text: "" };
+        liftSkillHold();
         void fire(registry, "turn_end", { text: lastAnswer }, onExtensionFailure);
         void saveSession(session);
         break;
@@ -957,7 +965,7 @@ const main = async (): Promise<void> => {
       );
       const [refreshedCommands, refreshedSkills] = await Promise.all([
         loadUserCommands(root),
-        loadSkills(root, undefined, extensionSkillRoots),
+        loadSkills(root, undefined, extensionSkillRoots, (skill) => holdToSkill(skill)),
       ]);
       userCommands = refreshedCommands;
       skills = refreshedSkills;
@@ -1003,6 +1011,38 @@ const main = async (): Promise<void> => {
   // registered it. It rides the same filter seam an extension's g.filterTools
   // uses, so the two intersect rather than one overwriting the other — and it
   // has to be re-applied after a reload, which resets the filters to none.
+  // `allowed-tools` in a skill's frontmatter, enforced for the rest of the turn
+  // that activated it. It was parsed, carried into the summary, and read by
+  // nothing — so a skill declaring it needed only `read` and `grep` could still
+  // call `bash`, and the field read as a control it was not.
+  //
+  // The turn is the boundary because activation is a turn-scoped act: the model
+  // asked for the skill in order to do something now. `activate_skill` itself is
+  // always kept, so a skill with a narrow list cannot trap the model in itself.
+  let skillHold: ((name: string) => boolean) | undefined;
+
+  const liftSkillHold = (): void => {
+    if (skillHold === undefined) return;
+    const at = registry.toolFilters.indexOf(skillHold);
+    if (at >= 0) registry.toolFilters.splice(at, 1);
+    skillHold = undefined;
+    agent.setToolFilters(registry.toolFilters);
+  };
+
+  holdToSkill = ({ name, allowedTools }) => {
+    liftSkillHold();
+    if (allowedTools.length === 0) return;
+    const allowed = new Set(allowedTools.map((one) => one.trim().toLowerCase()));
+    allowed.add("activate_skill");
+    skillHold = (tool) => allowed.has(tool.toLowerCase());
+    registry.toolFilters.push(skillHold);
+    agent.setToolFilters(registry.toolFilters);
+    render({
+      type: "notice",
+      text: `(${name} limits this turn to: ${[...allowed].sort().join(", ")})`,
+    });
+  };
+
   const applyToolBans = (names: readonly string[] | undefined): void => {
     const off = new Set((names ?? []).map((name) => name.trim().toLowerCase()));
     registry.toolFilters.push((name) => !off.has(name.toLowerCase()));

@@ -402,3 +402,101 @@ describe("where skills are looked for", () => {
     await rm(home, { recursive: true, force: true });
   });
 });
+
+// `~/.glrs` is where config, commands and extensions all come from, and it was
+// the one agent directory skills were never looked for in: `.glrs`/`.glorious`
+// were searched at the project root only, while the ancestor walk looked for
+// `.agents/skills` alone.
+describe("every agent directory is searched at every level", () => {
+  test("a skill in ~/.glrs/skills is found", async () => {
+    const home = await mkdtemp(join(tmpdir(), "glrs-home-"));
+    const project = await mkdtemp(join(tmpdir(), "glrs-proj-"));
+    await writeSkill(join(home, ".glrs", "skills", "zz-personal-glrs"), "zz-personal-glrs");
+    const found = await loadSkills(project, home);
+    expect(found.summaries.map((one) => one.name)).toContain("zz-personal-glrs");
+    await rm(home, { recursive: true, force: true });
+    await rm(project, { recursive: true, force: true });
+  });
+
+  test("the old spelling is still read, so a rename does not lose a skill", async () => {
+    const home = await mkdtemp(join(tmpdir(), "glrs-home2-"));
+    const project = await mkdtemp(join(tmpdir(), "glrs-proj2-"));
+    await writeSkill(join(home, ".glorious", "skills", "zz-personal-old"), "zz-personal-old");
+    const found = await loadSkills(project, home);
+    expect(found.summaries.map((one) => one.name)).toContain("zz-personal-old");
+    await rm(home, { recursive: true, force: true });
+    await rm(project, { recursive: true, force: true });
+  });
+
+  test("no root is searched twice", async () => {
+    // Duplicated roots find every skill under them again and warn that two
+    // skills share a name, naming the same file on both sides.
+    const home = await mkdtemp(join(tmpdir(), "glrs-home3-"));
+    await writeSkill(join(home, ".glrs", "skills", "zz-once"), "zz-once");
+    const found = await loadSkills(home, home);
+    expect(found.summaries.filter((one) => one.name === "zz-once")).toHaveLength(1);
+    expect(found.warnings.join(" ")).not.toContain("zz-once");
+    await rm(home, { recursive: true, force: true });
+  });
+});
+
+describe("frontmatter a skill author sets is frontmatter something can read", () => {
+  const withFields = async (frontmatter: string) => {
+    const project = await mkdtemp(join(tmpdir(), "glrs-fm-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-fmh-"));
+    await mkdir(join(project, ".glrs", "skills", "zz-fields"), { recursive: true });
+    await writeFile(
+      join(project, ".glrs", "skills", "zz-fields", "SKILL.md"),
+      `---\nname: zz-fields\ndescription: Fixture.\n${frontmatter}---\n\nBody.\n`,
+    );
+    const found = await loadSkills(project, home);
+    await rm(project, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
+    return found.summaries.find((one) => one.name === "zz-fields");
+  };
+
+  test("license and metadata reach the summary rather than dying in the parser", async () => {
+    const skill = await withFields("license: MIT\nmetadata:\n  team: platform\n");
+    expect(skill?.license).toBe("MIT");
+    expect(skill?.metadata).toMatchObject({ team: "platform" });
+  });
+
+  test("allowed-tools and compatibility are carried", async () => {
+    const skill = await withFields("allowed-tools: read, grep\ncompatibility: glrs>=1\n");
+    expect(skill?.allowedTools).toEqual(["read", "grep"]);
+    expect(skill?.compatibility).toBe("glrs>=1");
+  });
+});
+
+describe("activating a skill reports what it is allowed to use", () => {
+  const activate = async (frontmatter: string): Promise<string[][]> => {
+    const project = await mkdtemp(join(tmpdir(), "glrs-act-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-acth-"));
+    await mkdir(join(project, ".glrs", "skills", "zz-act"), { recursive: true });
+    await writeFile(
+      join(project, ".glrs", "skills", "zz-act", "SKILL.md"),
+      `---\nname: zz-act\ndescription: Fixture.\n${frontmatter}---\n\nBody.\n`,
+    );
+    const seen: string[][] = [];
+    const found = await loadSkills(project, home, [], (skill) =>
+      seen.push([...skill.allowedTools]),
+    );
+    // The SDK hands execute a context this test does not need; only the
+    // activation callback is under test here.
+    await found.tool?.execute?.({ name: "zz-act" }, {
+      toolCallId: "t",
+      messages: [],
+    } as never);
+    await rm(project, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
+    return seen;
+  };
+
+  test("the list a skill declared reaches the caller that can enforce it", async () => {
+    expect(await activate("allowed-tools: read, grep\n")).toEqual([["read", "grep"]]);
+  });
+
+  test("a skill that declares nothing asks for no restriction", async () => {
+    expect(await activate("")).toEqual([[]]);
+  });
+});

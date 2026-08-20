@@ -64,6 +64,14 @@ export type SkillSummary = {
   description: string;
   location: string;
   modelInvocable: boolean;
+  // Parsed from frontmatter and, until now, unreachable: `license` and
+  // `metadata` never left the private Skill type, and `compatibility` reached
+  // the summary with no reader. A field a skill author can set and nobody can
+  // read is a field that does not exist.
+  compatibility: string;
+  license: string;
+  metadata: Readonly<Record<string, string>>;
+  allowedTools: readonly string[];
 };
 
 export type LoadedExtension = { name: string; origin: string; contributed: string };
