@@ -226,7 +226,7 @@ describe("provider and model overrides", () => {
         },
       }),
     );
-    const { config } = await loadConfig(root, home);
+    const { config } = await loadConfig(root, home, {});
     expect(config.providers?.openai).toMatchObject({
       factoryOptions: { headers: { user: "yes", project: "yes" } },
       requestOptions: { stopSequences: ["PROJECT"], temperature: 0.8 },
@@ -373,7 +373,7 @@ describe("the three config scopes", () => {
   test("Project pins one key while User config supplies another", async () => {
     const home = await userConfig(`{"variant":"high"}`);
     const root = await project(`{"model":"anthropic/claude-opus-5"}`);
-    const { config } = await loadConfig(root, home);
+    const { config } = await loadConfig(root, home, {});
     expect(config).toMatchObject({ model: "anthropic/claude-opus-5", variant: "high" });
   });
 });
@@ -509,7 +509,7 @@ describe("how a queue delivers", () => {
   test("Project wins over User, one key at a time", async () => {
     const home = await userConfig('{"steeringMode":"all","followUpMode":"all"}');
     const root = await project('{"followUpMode":"one-at-a-time"}');
-    const { config } = await loadConfig(root, home);
+    const { config } = await loadConfig(root, home, {});
     expect(config.steeringMode).toBe("all");
     expect(config.followUpMode).toBe("one-at-a-time");
   });
@@ -631,7 +631,7 @@ describe("which extensions load", () => {
       '{"extensions":{"load":["ask-user"],"disable":["web-fetch"]}}',
     );
     const root = await written('{"extensions":{"load":["web-fetch"]}}');
-    const { config } = await loadConfig(root, home);
+    const { config } = await loadConfig(root, home, {});
     expect([...(config.extensions?.load ?? [])].sort()).toEqual(["ask-user", "web-fetch"]);
     // Disabled in User, still disabled even though Project asked for it.
     expect(config.extensions?.disable).toEqual(["web-fetch"]);
