@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { isQueueMode, type QueueMode } from "../../glrs-core/src";
 import { settingsFor } from "./models";
 
 // Two files, read-only, no schema. The four-layer merge with provenance
@@ -23,7 +24,7 @@ export type ProviderSettings = {
 // the oldest waiting message and leaves the rest; "all" hands over everything
 // waiting as a single delivery. Declared here rather than imported from the
 // coding agent because config cannot depend on it — see check-boundaries.ts.
-export type QueueMode = "one-at-a-time" | "all";
+export type { QueueMode } from "../../glrs-core/src";
 
 // Which extensions load, and which do not. `load` names a shipped extension or
 // a path; `disable` names anything at all and stops it loading. Declared here
@@ -107,10 +108,8 @@ const stringOf = (value: unknown): string | undefined =>
 const positiveNumberOf = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 
-const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
-
 const queueModeOf = (value: unknown): QueueMode | undefined =>
-  QUEUE_MODES.includes(value as QueueMode) ? (value as QueueMode) : undefined;
+  isQueueMode(value) ? value : undefined;
 
 // The camelCase spellings are what the two settings are called in the docs of
 // the agent this queue was modelled on, so they are what someone arriving from
@@ -203,8 +202,8 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     if (value === undefined) return undefined;
     // `"extensions": ["web-fetch"]` is the shorthand everyone tries first.
     if (Array.isArray(value)) {
-      const load = names(value, block, keys[0] ?? "load");
-      return load === undefined ? undefined : ({ [keys[0] ?? "load"]: load } as unknown as T);
+      const load = names(value, block, keys[0]);
+      return load === undefined ? undefined : ({ [keys[0]]: load } as unknown as T);
     }
     if (!isObject(value)) {
       wrong(block, wanted);

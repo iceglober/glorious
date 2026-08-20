@@ -57,9 +57,6 @@ export const mainRepo = async (cwd: string, exec: Exec = shell): Promise<string>
   return realpath(found).catch(() => found);
 };
 
-export const repoName = async (cwd: string, exec: Exec = shell): Promise<string> =>
-  basename(await mainRepo(cwd, exec));
-
 // Where worktrees live. The environment overrides are the ones the tool this
 // replaces honoured, so an existing layout keeps working.
 export const worktreesRoot = (repo: string, home = homedir()): string => {
