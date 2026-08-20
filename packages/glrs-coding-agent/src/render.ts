@@ -1,5 +1,8 @@
+import type { Activity } from "../../glrs-core/src";
 import type { SessionEvent } from "../../glrs-core/src/events";
 import { resultSummary } from "./toolkit";
+
+export type { Activity };
 
 export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
 
@@ -502,20 +505,6 @@ export const elapsed = (ms: number): string => {
   const seconds = Math.max(0, ms) / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-};
-
-// What the model is doing and for how long, plus how to stop it. This used to
-// be that text pinned to the right of a full-width animated sine field; the
-// field carried no information and cost a repaint on every one of eleven frames
-// a second. The phase leads because it is the part that changes, so a narrow
-// terminal clips the fixed hint rather than the live reading.
-// What the turn is doing, and how to stop it. The state an extension replacing
-// this row is handed.
-export type Activity = {
-  busy: boolean;
-  queued: number;
-  columns: number;
-  phase?: { name: string; ms: number } | null;
 };
 
 export const statusRow = ({ busy, queued, columns, phase }: Activity): Line[] => {

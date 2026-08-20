@@ -4,10 +4,13 @@ import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
 import webFetch from "../../extensions/web-fetch/src";
 import worktree from "../../extensions/worktree/src";
+import type { Shipped } from "../../glrs-core/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import { describeThrown } from "./render";
 import type { ToolEvent } from "./toolkit";
 import { agentDirectories } from "./usercommands";
+
+export type { Shipped };
 
 // An extension is a TypeScript file that registers capabilities against the API
 // in extension-api.ts. Bun imports .ts directly, so loading one is a dynamic
@@ -117,16 +120,6 @@ const bundled = [
       "fetches web pages and returns them as markdown, rendering JavaScript when Chrome is installed",
   },
 ];
-
-// Which of the shipped extensions is on, off, or has never been decided. The
-// three states fall out of the two config lists rather than needing a store of
-// their own: named in `load` is a yes, named in `disable` is a no, and in
-// neither is a question nobody has answered.
-export type Shipped = {
-  name: string;
-  summary: string;
-  state: "on" | "off" | "undecided";
-};
 
 export const shippedExtensions = (settings?: ExtensionSettings): Shipped[] => {
   const on = new Set((settings?.load ?? []).map(key));

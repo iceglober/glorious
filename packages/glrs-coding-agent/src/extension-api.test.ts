@@ -25,7 +25,9 @@ import {
 const here = import.meta.dir;
 
 const members = (): string[] => {
-  const source = readFileSync(join(here, "extension-api.ts"), "utf8");
+  const source =
+    readFileSync(join(here, "extension-api.ts"), "utf8") +
+    readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
   const body = source.slice(source.indexOf("export type Glrs = {"));
   return [...body.slice(0, body.indexOf("\n};")).matchAll(/^ {2}([a-zA-Z]+)\??:/gmu)].map(
     (match) => match[1],
@@ -424,7 +426,9 @@ describe("every event fires in both hosts", () => {
   };
 
   const names = (): string[] => {
-    const source = readFileSync(join(here, "extension-api.ts"), "utf8");
+    const source =
+      readFileSync(join(here, "extension-api.ts"), "utf8") +
+      readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
     const block = source.slice(source.indexOf("export type EventName ="));
     return [...block.slice(0, block.indexOf(";")).matchAll(/"([a-z_]+)"/gu)].map((m) => m[1]);
   };
@@ -540,7 +544,9 @@ describe("the lifecycle page matches the code", () => {
     readFileSync(join(here, "..", "..", "..", "docs", "published", "lifecycle.md"), "utf8");
 
   const eventNames = (): string[] => {
-    const source = readFileSync(join(here, "extension-api.ts"), "utf8");
+    const source =
+      readFileSync(join(here, "extension-api.ts"), "utf8") +
+      readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
     const block = source.slice(source.indexOf("export type EventName ="));
     return [...block.slice(0, block.indexOf(";")).matchAll(/"([a-z_]+)"/gu)].map((m) => m[1]);
   };
@@ -654,5 +660,47 @@ describe("two extensions claiming one tool name", () => {
       execute: async () => "only me",
     });
     expect(await run(registry, "solo")).toBe("only me");
+  });
+});
+
+// The API extensions are written against and the object glrs builds were two
+// separate declarations, and they drifted: the copy carried 26 members while
+// the object carried 44, so `model`, `tools`, `status`, `footer`, `key`,
+// `flag`, `abort`, `setModel` and ten more worked at runtime and were invisible
+// to anyone writing an extension. There is one declaration now, and these pin
+// that there stays one.
+describe("the extension API is declared once", () => {
+  const core = readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
+  const api = readFileSync(join(here, "extension-api.ts"), "utf8");
+
+  test("glrs-core declares it and the coding agent does not redeclare it", () => {
+    expect(core).toContain("export type Glrs = {");
+    expect(api).not.toContain("export type Glrs = {");
+  });
+
+  test("the agent implements that type rather than describing its own", () => {
+    // `createApi` returns `Glrs`, and `Glrs` is now the one extensions import —
+    // so an implementation that falls behind the type cannot compile.
+    expect(api).toMatch(/createApi = \([\s\S]*?\): Glrs =>/u);
+  });
+
+  test("extensions reach it without importing the coding agent", () => {
+    // The boundary check forbids it, which is what forced the copy originally.
+    for (const name of ["builtins", "ask-user", "web-fetch", "worktree"]) {
+      const source = readFileSync(
+        join(here, "..", "..", "extensions", name, "src", "index.ts"),
+        "utf8",
+      );
+      expect(source).toContain("glrs-core/src");
+      expect(source).not.toContain("glrs-coding-agent");
+    }
+  });
+
+  test("no member is declared without being built", () => {
+    const declared = members();
+    // Every member named on the type appears as a key on the object literal
+    // `createApi` returns. A member with no implementation used to typecheck as
+    // optional and be undefined at runtime.
+    for (const name of declared) expect(api).toMatch(new RegExp(`^\\s{4}${name}[:(,]`, "mu"));
   });
 });

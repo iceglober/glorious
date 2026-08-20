@@ -866,6 +866,16 @@ const main = async (): Promise<void> => {
         ...entry,
         contributed: describeContribution(registry, entry.origin),
       })),
+      keys: registry.keys.map(({ key, ctrl, shift, description }) => ({
+        key,
+        ctrl,
+        shift,
+        description,
+      })),
+      flags: [...registry.flags].map(([name, spec]) => ({
+        name,
+        description: spec.description,
+      })),
     }),
     clear: () => {
       const outcome = chat.clear();

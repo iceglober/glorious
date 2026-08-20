@@ -113,7 +113,12 @@ export default function builtins(g: Glrs): void {
   g.command("help", {
     description: "Show commands and keys",
     run: () => {
-      const { commands } = g.inspect();
+      const { commands, keys, flags } = g.inspect();
+      // glrs's own bindings live in the composer rather than the registry, so
+      // they are named here. Anything an extension bound is read from what it
+      // registered — `KeySpec.description` was required and printed nowhere.
+      const chord = (one: { key: string; ctrl?: boolean; shift?: boolean }): string =>
+        [one.ctrl ? "Ctrl" : "", one.shift ? "Shift" : "", one.key].filter(Boolean).join("+");
       g.print([
         heading(g, "Commands", "/ to complete · ↑↓ to move · Tab to fill"),
         ...table(
@@ -133,7 +138,18 @@ export default function builtins(g: Glrs): void {
             name: "@",
             note: "reference a file or directory — its contents, or its listing, travel with the message",
           },
+          ...keys.map((one) => ({ name: chord(one), note: one.description })),
         ]),
+        ...(flags.length === 0
+          ? []
+          : [
+              blank,
+              heading(g, "Flags"),
+              ...table(
+                g,
+                flags.map((one) => ({ name: `--${one.name}`, note: one.description })),
+              ),
+            ]),
       ]);
     },
   });
