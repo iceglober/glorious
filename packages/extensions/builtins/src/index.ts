@@ -1,4 +1,5 @@
 import type { Glrs, Line } from "../../../glrs-core/src";
+import { forkSession } from "../../../glrs-core/src/session";
 import { createCodingTools } from "./tools";
 
 // Every first-party capability that a third party could have written: the six tools
@@ -64,7 +65,12 @@ const blank: Line = [{ text: "" }];
 // unreadable: three of them turned a five-line listing into fifteen, and the
 // part that actually matters is whether this is User, Project, or glrs's own.
 const originOf = (g: Glrs, path: string): string => {
-  if (path.includes("/v2/bundled/")) return "bundled";
+  // A shipped extension reports its package specifier as its origin, and a skill
+  // it ships sits under packages/extensions/<name>/. Neither is a path under
+  // your project, so both used to fall through to "other". This tested for
+  // "/v2/bundled/" — a directory that stopped existing when the repo became a
+  // monorepo, so nothing had matched it in months.
+  if (path.startsWith("@glrs-dev/") || path.includes("/packages/extensions/")) return "bundled";
   if (path.startsWith(g.root)) return "project";
   // GLRS_CONFIG_HOME may sit outside HOME, and Windows normally has USERPROFILE
   // and APPDATA rather than HOME. Any of them makes this a User resource.
@@ -112,7 +118,12 @@ export default function builtins(g: Glrs): void {
   g.command("help", {
     description: "Show commands and keys",
     run: () => {
-      const { commands } = g.inspect();
+      const { commands, keys, flags } = g.inspect();
+      // glrs's own bindings live in the composer rather than the registry, so
+      // they are named here. Anything an extension bound is read from what it
+      // registered — `KeySpec.description` was required and printed nowhere.
+      const chord = (one: { key: string; ctrl?: boolean; shift?: boolean }): string =>
+        [one.ctrl ? "Ctrl" : "", one.shift ? "Shift" : "", one.key].filter(Boolean).join("+");
       g.print([
         heading(g, "Commands", "/ to complete · ↑↓ to move · Tab to fill"),
         ...table(
@@ -132,7 +143,18 @@ export default function builtins(g: Glrs): void {
             name: "@",
             note: "reference a file or directory — its contents, or its listing, travel with the message",
           },
+          ...keys.map((one) => ({ name: chord(one), note: one.description })),
         ]),
+        ...(flags.length === 0
+          ? []
+          : [
+              blank,
+              heading(g, "Flags"),
+              ...table(
+                g,
+                flags.map((one) => ({ name: `--${one.name}`, note: one.description })),
+              ),
+            ]),
       ]);
     },
   });
@@ -258,6 +280,44 @@ export default function builtins(g: Glrs): void {
       const outcome = await g.compact(args.trim() === "" ? {} : { instruction: args.trim() });
       if (outcome.outcome === "too-short") g.print("(nothing worth compacting yet)");
       if (outcome.outcome === "busy") g.print("(cannot compact while a turn is running)");
+    },
+  });
+
+  // Forking was written and wired to nothing. `forkSession` copies a session's
+  // events up to a point into a fresh id, which is the whole of what a branch
+  // point needs — it was reachable only through a repository object whose one
+  // consumer was the unreachable SDK entry.
+  //
+  // Nothing about this needs a new API member: `g.session()` already names the
+  // session, and an extension may reach glrs-core. A first-party command has
+  // the surface a third-party one has.
+  g.command("fork", {
+    description: "Copy this session to a new id, so you can branch and come back",
+    run: async (args) => {
+      const { id, events } = g.session();
+      const at = args.trim() === "" ? undefined : Number(args.trim());
+      if (at !== undefined && (!Number.isInteger(at) || at < 1 || at > events)) {
+        g.print(
+          `/fork takes an event count between 1 and ${events}, or nothing for the whole session.`,
+          "warning",
+        );
+        return;
+      }
+      try {
+        const forked = await forkSession(id, at);
+        g.print(
+          [
+            heading(g, "Forked", forked.id),
+            ...table(g, [
+              { name: "events", note: `${at ?? events} of ${events}` },
+              { name: "resume", note: `glrs --resume ${forked.id}` },
+            ]),
+          ],
+          "success",
+        );
+      } catch (thrown) {
+        g.print(`/fork failed: ${(thrown as Error).message}`, "danger");
+      }
     },
   });
 

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve, win32 } from "node:path";
+import { settingsFor } from "./providers";
 
 // Three scopes, nearest value wins: Project-User, Project, then User. Config is
 // hand-edited unless configuration explicitly allows glrs to record extension choices.
@@ -644,6 +645,11 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
           }),
         ) as Record<string, ModelSettings>;
       }
+      for (const key of ["api", "region", "project", "location"] as const)
+        if (provider[key] !== undefined && !settingsFor(name).includes(key)) {
+          diagnostics.push(`${where}: providers.${name}.${key} is not used by ${name} — ignored`);
+          delete provider[key];
+        }
       providers[name] = provider;
     }
 

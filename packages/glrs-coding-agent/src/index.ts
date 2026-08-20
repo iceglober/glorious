@@ -19,14 +19,20 @@ import {
   envSetting,
   loadCatalogue,
   loadConfig,
+  type ModelOption,
   missingFor,
   modelLabel,
   modelMetadata,
+  NoModelChosen,
+  noteFor,
+  PROVIDERS,
   providerSpec,
 } from "../../provider-registry/src";
 import { createAgent } from "./agent";
+import { helpText, route } from "./argv";
 import { availableLines } from "./available";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
+import { runCli } from "./cli";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { cleanShellChunk, shellCompletion } from "./direct-shell";
 import {
@@ -34,6 +40,7 @@ import {
   describeContribution,
   type ExtensionHost,
   fire,
+  promptContributions,
   resetRegistry,
 } from "./extension-api";
 import {
@@ -41,8 +48,9 @@ import {
   firstPartyExtensions,
   loadExtensions,
   resolveExtensions,
+  skillRootsFor,
 } from "./extensions";
-import { expandMentions, fileCandidates } from "./mentions";
+import { expandMentions, fileCandidates, forgetListings } from "./mentions";
 import { runPrint } from "./print";
 import { fence } from "./prompt";
 import {
@@ -104,39 +112,39 @@ const probe = () => {
   };
 };
 
-const USAGE =
-  "Usage: glrs [--version | update | doctor [--json] | --resume [session-id] | " +
-  "--model <provider/model> | -p <prompt>]";
-
 const main = async (): Promise<void> => {
-  const args = process.argv.slice(2);
-  if (args.length === 1 && args[0] === "--version") {
+  const asked = await route(process.argv.slice(2));
+
+  if (asked.kind === "version") {
     process.stdout.write(`glrs ${VERSION}\n`);
     return;
   }
-  if (args.length === 1 && args[0] === "update") {
+  if (asked.kind === "update") {
     execFileSync("bun", ["add", "-g", `${PACKAGE_NAME}@next`], { stdio: "inherit" });
     return;
   }
-  // Applied before anything reads the model, so it wins the same way the
-  // environment variable does — and so -p and the TUI take it alike.
-  const chosenModel = args[args.indexOf("--model") + 1];
-  if (args.includes("--model") && chosenModel !== undefined) process.env.GLRS_MODEL = chosenModel;
+  // The one route that loads extensions to answer: a subcommand an extension
+  // added is discoverable only by asking it, and help that omitted `glrs wt`
+  // would be help that lies. Every other route keeps the old rule.
+  if (asked.kind === "help") {
+    const { root: helpRoot } = probe();
+    const { available } = await runCli("", [], { root: helpRoot });
+    process.stdout.write(helpText(available));
+    return;
+  }
+  // Applied before anything reads the model, so it wins the way the environment
+  // variable does — and so -p and the TUI take it alike.
+  if ("model" in asked && asked.model !== undefined) process.env.GLRS_MODEL = asked.model;
 
-  // Headless, and handled before anything opens the terminal: the whole point
-  // is that this path never touches the alternate screen.
-  const printAt = args.findIndex((arg) => arg === "-p" || arg === "--print");
-  if (printAt >= 0) {
+  // Headless, handled before anything opens the terminal: the whole point is
+  // that this path never touches the alternate screen.
+  if (asked.kind === "print") {
     // Piped input joins the prompt rather than replacing it, so both
-    // `cat log | glrs -p "what failed?"` and a bare `cat log | glrs -p`
-    // work. Fenced, so a diff or a log reads as material rather than as further
-    // instructions — the same treatment piped input gets.
+    // `cat log | glrs -p "what failed?"` and a bare `cat log | glrs -p` work.
+    // Fenced, so a diff or a log reads as material rather than as further
+    // instructions.
     const piped = process.stdin.isTTY ? "" : (await Bun.stdin.text()).trim();
-    const asked = args
-      .slice(printAt + 1)
-      .join(" ")
-      .trim();
-    const prompt = [asked, piped === "" ? "" : fence("input", piped)]
+    const prompt = [asked.prompt, piped === "" ? "" : fence("input", piped)]
       .filter((part) => part !== "")
       .join("\n\n");
     if (prompt === "") throw new Error("Nothing to run: -p needs a prompt or piped input.");
@@ -145,36 +153,40 @@ const main = async (): Promise<void> => {
     process.exitCode = await runPrint(prompt, { root, os, git });
     return;
   }
-  let resumeId: string | undefined;
-  // Found wherever it sits: flags may precede it now, and `--model x doctor`
-  // silently opening the TUI instead of reporting was worse than an error.
-  const doctor = args.includes("doctor");
-  const doctorJson = doctor && args.includes("--json");
-  // A bare word is only ever a flag's value. Anything else is a typo, and
-  // saying so beats opening a session that ignores what was asked for.
-  if (!doctor)
-    args.forEach((arg, at) => {
-      if (arg.startsWith("-")) return;
-      if (!args[at - 1]?.startsWith("-")) throw new Error(USAGE);
-    });
-  if (args.includes("--resume")) resumeId = args[args.indexOf("--resume") + 1];
-  // An extension registers its flags while loading, which is long after argv is
-  // parsed — so unrecognised `--name value` pairs are carried here and handed
-  // over once the extensions that claim them exist. One glrs does not
-  // recognise is reported rather than ignored.
-  const extraFlags = new Map<string, string>();
-  for (let at = 0; at < args.length; at += 1) {
-    const flag = /^--([a-z][a-z0-9-]*)$/u.exec(args[at]);
-    if (flag && !["resume", "version", "print", "model"].includes(flag[1])) {
-      extraFlags.set(flag[1], args[at + 1] ?? "");
-      at += 1;
-    }
+
+  // A first bare word that is none of glrs's own may be a subcommand an
+  // extension added. Finding out means loading them, so it happens here — and
+  // a bare `glrs`, `glrs -p …` and `glrs doctor` never pay for it.
+  if (asked.kind === "subcommand") {
+    const { root: cliRoot } = probe();
+    const outcome = await runCli(asked.name, asked.rest, { root: cliRoot });
+    if (outcome.handled) return;
+    // The error can name what is available rather than only what is built in,
+    // because the extensions that would have claimed it have just been asked.
+    throw new Error(`Unknown subcommand '${asked.name}'.\n\n${helpText(outcome.available)}`);
   }
-  const { root, isGit, os, branch, worktree, git, label } = probe();
+
+  const doctor = asked.kind === "doctor";
+  const doctorJson = doctor && asked.json;
+  const resumeId = asked.kind === "chat" ? asked.resume : undefined;
+  const picker = asked.kind === "chat" && asked.picker;
+  const extraFlags = asked.kind === "chat" ? asked.flags : new Map<string, string>();
+
+  const { root, isGit, os, git } = probe();
   await ensureConfigFiles(root, { project: isGit });
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
-    const chosen = currentModel(resolvedConfig.config);
+    // Now that nothing is defaulted, "no model configured" is a state doctor
+    // exists to report — so it is caught here rather than ending the one
+    // command whose whole job is to say what is wrong.
+    let chosen: ModelOption | undefined;
+    let modelProblem: string | undefined;
+    try {
+      chosen = currentModel(resolvedConfig.config);
+    } catch (thrown) {
+      if (!(thrown instanceof NoModelChosen)) throw thrown;
+      modelProblem = (thrown as Error).message;
+    }
     // Resolved, not loaded: this says what would run without running any of it.
     // An extension is a program, and a diagnostic that executes programs is not
     // a diagnostic.
@@ -186,18 +198,37 @@ const main = async (): Promise<void> => {
         ...planned.failures.map((one) => `extensions.load "${one.origin}": ${one.message}`),
       ],
       model: chosen,
-      provider: providerSpec(chosen.provider)?.label ?? `${chosen.provider} (OpenAI-compatible)`,
-      missing: missingFor(chosen.provider, resolvedConfig.config.providers?.[chosen.provider]),
+      provider:
+        chosen === undefined
+          ? undefined
+          : (providerSpec(chosen.provider)?.label ?? `${chosen.provider} (OpenAI-compatible)`),
+      missing:
+        chosen === undefined
+          ? []
+          : missingFor(chosen.provider, resolvedConfig.config.providers?.[chosen.provider]),
+      // How to obtain the credential, for the providers that need more than a
+      // variable set — ADC for vertex, the credential chain for bedrock.
+      note: chosen === undefined ? undefined : noteFor(chosen.provider),
       extensions: planned.plan.map(({ name, origin, source }) => ({ name, origin, source })),
     };
     if (doctorJson) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else {
       const lines = [
-        `model: ${modelLabel(report.model)}`,
-        `provider: ${report.provider}`,
-        ...(report.missing.length === 0
-          ? ["credentials: found"]
-          : report.missing.map((gap) => `missing: ${gap}`)),
+        report.model === undefined ? "model: not configured" : `model: ${modelLabel(report.model)}`,
+        ...(modelProblem === undefined ? [] : [`  ${modelProblem}`]),
+        // Named here because the message above says they are. A diagnostic
+        // that points at a list it does not print is the same defect as a
+        // config key that parses and does nothing.
+        ...(report.model === undefined
+          ? [`providers: ${PROVIDERS.map((one) => one.id).join(", ")}`]
+          : []),
+        ...(report.provider === undefined ? [] : [`provider: ${report.provider}`]),
+        ...(report.model === undefined
+          ? []
+          : report.missing.length === 0
+            ? ["credentials: found"]
+            : report.missing.map((gap) => `missing: ${gap}`)),
+        ...(report.note === undefined || report.missing.length === 0 ? [] : [`  ${report.note}`]),
         `extensions: ${
           report.extensions.length === 0
             ? "none"
@@ -211,8 +242,9 @@ const main = async (): Promise<void> => {
   }
   // Only --resume resumes. This keyed on `args.length === 0`, so once
   // extensions could add flags, `glrs --anything` silently opened the
-  // session picker instead of starting a session.
-  const resuming = args.includes("--resume");
+  // session picker instead of starting a session. The router now answers it
+  // outright: an id to resume, or the picker asked for by a bare --resume.
+  const resuming = resumeId !== undefined || picker;
   const session = resuming ? await openSession(resumeId, pickSession) : await createSession(root);
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
@@ -223,7 +255,20 @@ const main = async (): Promise<void> => {
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
       ? envToolTimeout
       : config.config.toolTimeoutMs;
-  let skills = await loadSkills(root);
+  // Which extensions would load, worked out without running any of them, so an
+  // extension's own skills/ directory can join the roots here — at startup,
+  // hundreds of lines before extensions themselves load.
+  let extensionSkillRoots = skillRootsFor(
+    (await resolveExtensions(root, config.config.extensions)).plan,
+  );
+  // Skills load long before the agent and the registry exist, so activation is
+  // routed through a slot that is filled in once they do. A skill activated
+  // before then simply is not held to its list, which cannot happen: nothing
+  // can call the tool until the agent is running.
+  let holdToSkill: (skill: { name: string; allowedTools: readonly string[] }) => void = () => {};
+  let skills = await loadSkills(root, undefined, extensionSkillRoots, (skill) =>
+    holdToSkill(skill),
+  );
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills, which answer under a `skill:` prefix of their own.
   let userCommands = await loadUserCommands(root);
@@ -364,7 +409,7 @@ const main = async (): Promise<void> => {
     // misses every turn. `<extensions>` is already a PREAMBLE_TAG, so this is
     // stripped from a replayed transcript without a new tag.
     extensionPrompt: () => [
-      ...registry.promptLines,
+      ...promptContributions(registry.promptLines),
       ...availableLines(
         firstPartyExtensions(config.config.extensions),
         (config.config.agentConfigAllowlist ?? []).some(
@@ -507,6 +552,7 @@ const main = async (): Promise<void> => {
         chat.flush();
         screen.sealDraft();
         live = { kind: "text", text: "" };
+        liftSkillHold();
         void fire(registry, "turn_end", { text: lastAnswer }, onExtensionFailure);
         void saveSession(session);
         break;
@@ -733,19 +779,6 @@ const main = async (): Promise<void> => {
     render({ type: "error", text: `(extension) ${message}` });
   };
 
-  let replayRun = NO_TOOL_RUN;
-  for (const event of session.events) {
-    const stepped = advanceToolRun(replayRun, event);
-    replayRun = stepped.run;
-    if (stepped.footer.length > 0) screen.print(stepped.footer, false);
-    const { lines, gap } = eventBlock(
-      event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
-      renderTool,
-      screen.columnsNow(),
-    );
-    if (lines.length > 0) screen.print(lines, gap);
-  }
-
   // The picker is gone; this is metadata only. Context size and pricing feed
   // the status line's `ctx 12.3k(6%)` and the cost, and there is no denominator
   // without it. Silent on failure: offline, the line reads `unknown`.
@@ -832,6 +865,16 @@ const main = async (): Promise<void> => {
         ...entry,
         contributed: describeContribution(registry, entry.origin),
       })),
+      keys: registry.keys.map(({ key, ctrl, shift, description }) => ({
+        key,
+        ctrl,
+        shift,
+        description,
+      })),
+      flags: [...registry.flags].map(([name, spec]) => ({
+        name,
+        description: spec.description,
+      })),
     }),
     clear: () => {
       const outcome = chat.clear();
@@ -904,9 +947,15 @@ const main = async (): Promise<void> => {
       ),
     compact: (options) => runCompaction(options ?? {}, false),
     reload: async () => {
+      // Re-derived rather than reused: /reload re-reads config, so an extension
+      // turned on since startup brings its skills with it.
+      const rereadForSkills = await loadConfig(root);
+      extensionSkillRoots = skillRootsFor(
+        (await resolveExtensions(root, rereadForSkills.config.extensions)).plan,
+      );
       const [refreshedCommands, refreshedSkills] = await Promise.all([
         loadUserCommands(root),
-        loadSkills(root),
+        loadSkills(root, undefined, extensionSkillRoots, (skill) => holdToSkill(skill)),
       ]);
       userCommands = refreshedCommands;
       skills = refreshedSkills;
@@ -931,6 +980,10 @@ const main = async (): Promise<void> => {
         settings: reread.config.extensions,
       });
       applyToolBans(reread.config.tools?.disable);
+      // The @-completion file listing is cached for five seconds; a reload is
+      // the user saying the tree changed, so it is dropped here. `forgetListings`
+      // existed with no caller — the cache had no invalidation hook at all.
+      forgetListings();
       for (const problem of reread.diagnostics)
         render({ type: "notice", text: `(config) ${problem}` });
       for (const failure of loaded.failures)
@@ -952,6 +1005,38 @@ const main = async (): Promise<void> => {
   // registered it. It rides the same filter seam an extension's g.filterTools
   // uses, so the two intersect rather than one overwriting the other — and it
   // has to be re-applied after a reload, which resets the filters to none.
+  // `allowed-tools` in a skill's frontmatter, enforced for the rest of the turn
+  // that activated it. It was parsed, carried into the summary, and read by
+  // nothing — so a skill declaring it needed only `read` and `grep` could still
+  // call `bash`, and the field read as a control it was not.
+  //
+  // The turn is the boundary because activation is a turn-scoped act: the model
+  // asked for the skill in order to do something now. `activate_skill` itself is
+  // always kept, so a skill with a narrow list cannot trap the model in itself.
+  let skillHold: ((name: string) => boolean) | undefined;
+
+  const liftSkillHold = (): void => {
+    if (skillHold === undefined) return;
+    const at = registry.toolFilters.indexOf(skillHold);
+    if (at >= 0) registry.toolFilters.splice(at, 1);
+    skillHold = undefined;
+    agent.setToolFilters(registry.toolFilters);
+  };
+
+  holdToSkill = ({ name, allowedTools }) => {
+    liftSkillHold();
+    if (allowedTools.length === 0) return;
+    const allowed = new Set(allowedTools.map((one) => one.trim().toLowerCase()));
+    allowed.add("activate_skill");
+    skillHold = (tool) => allowed.has(tool.toLowerCase());
+    registry.toolFilters.push(skillHold);
+    agent.setToolFilters(registry.toolFilters);
+    render({
+      type: "notice",
+      text: `(${name} limits this turn to: ${[...allowed].sort().join(", ")})`,
+    });
+  };
+
   const applyToolBans = (names: readonly string[] | undefined): void => {
     const off = new Set((names ?? []).map((name) => name.trim().toLowerCase()));
     registry.toolFilters.push((name) => !off.has(name.toLowerCase()));
@@ -961,6 +1046,31 @@ const main = async (): Promise<void> => {
   let loaded = await loadAllExtensions();
   applyToolBans(config.config.tools?.disable);
   registerCommands();
+
+  // Replayed after the extensions load, not before.
+  //
+  // This ran hundreds of lines earlier, while `registry.renderers` and the
+  // markdown chain were still empty — so `renderTool` returned undefined and
+  // the transform chain was the identity, and a resumed transcript always got
+  // glrs's default rendering however many renderers an extension had. It is
+  // printed once into scrollback rather than re-rendered on later paints, so
+  // "before extensions" meant "wrong for the rest of the session".
+  //
+  // It still precedes the startup notices, so the transcript reads first and
+  // whatever went wrong at startup reads under it.
+  let replayRun = NO_TOOL_RUN;
+  for (const event of session.events) {
+    const stepped = advanceToolRun(replayRun, event);
+    replayRun = stepped.run;
+    if (stepped.footer.length > 0) screen.print(stepped.footer, false);
+    const { lines, gap } = eventBlock(
+      event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
+      renderTool,
+      screen.columnsNow(),
+    );
+    if (lines.length > 0) screen.print(lines, gap);
+  }
+
   for (const failure of loaded.failures)
     render({ type: "error", text: `(extension ${failure.origin}) ${failure.message}` });
   for (const said of loaded.notes) render({ type: "notice", text: `(extension) ${said}` });

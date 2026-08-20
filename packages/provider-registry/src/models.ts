@@ -21,10 +21,14 @@ import type { LanguageModel } from "ai";
 import { type Config, envSetting, type JsonObject, type ModelSettings } from "./config";
 import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
 
+export { PROVIDER_SETTINGS, settingsFor } from "./providers";
+
 export type ModelRef = {
   provider: string;
   modelId: string;
 };
+
+export class NoModelChosen extends Error {}
 
 export type ModelOption = ModelRef & {
   name: string;
@@ -86,7 +90,7 @@ const catalogue = async (fetcher: typeof fetch): Promise<unknown | null> => {
 export const modelRef = (value: string): ModelRef => {
   const slash = value.indexOf("/");
   if (slash < 1 || slash === value.length - 1)
-    throw new Error(`Model must be "provider/model-id", got "${value}".`);
+    throw new NoModelChosen(`Model must be "provider/model-id", got "${value}".`);
   return {
     provider: canonicalProvider(value.slice(0, slash)),
     modelId: value.slice(slash + 1),
@@ -164,6 +168,7 @@ const providerSettings = (
   const model = modelSettings(provider, modelId, config);
   const metadata = model?.metadata;
   const common = {
+    api: providerSettings?.api,
     factoryOptions: providerSettings?.factoryOptions,
     requestOptions: mergeObjects(providerSettings?.requestOptions, model?.requestOptions),
     providerOptions: mergeObjects(
@@ -198,7 +203,7 @@ const providerSettings = (
         process.env.GOOGLE_VERTEX_LOCATION ??
         "global",
     };
-  return providerSettings?.api === undefined ? common : { ...common, api: providerSettings.api };
+  return common;
 };
 
 export const configuredModel = (
@@ -225,7 +230,7 @@ export const configuredModel = (
 export const currentModel = (config?: Config): ModelOption => {
   const model = (envSetting("MODEL") ?? config?.model)?.trim();
   if (!model)
-    throw new Error(
+    throw new NoModelChosen(
       'No model configured. Set GLRS_MODEL="provider/model-id" or add "model" to glrs config.',
     );
   return configuredModel(model, config, envSetting("VARIANT") ?? config?.variant);

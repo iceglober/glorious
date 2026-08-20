@@ -25,12 +25,23 @@ const ancestors = (start: string, stop: string): string[] => {
   }
 };
 
+// Machine-wide rules. glrs read four of amp's locations and owned none of its
+// own, so an administrator could install rules for amp on a machine and had no
+// way to install them for glrs. Both are read; glrs's own come last, so they
+// are the nearest and win.
 const systemFiles = (): string[] => {
   if (process.platform === "darwin")
-    return ["/etc/ampcode/AGENTS.md", "/Library/Application Support/ampcode/AGENTS.md"];
-  if (process.platform === "win32")
-    return [join(process.env.ProgramData ?? "C:\\ProgramData", "ampcode", "AGENTS.md")];
-  return ["/etc/ampcode/AGENTS.md"];
+    return [
+      "/etc/ampcode/AGENTS.md",
+      "/Library/Application Support/ampcode/AGENTS.md",
+      "/etc/glrs/AGENTS.md",
+      "/Library/Application Support/glrs/AGENTS.md",
+    ];
+  if (process.platform === "win32") {
+    const data = process.env.ProgramData ?? "C:\\ProgramData";
+    return [join(data, "ampcode", "AGENTS.md"), join(data, "glrs", "AGENTS.md")];
+  }
+  return ["/etc/ampcode/AGENTS.md", "/etc/glrs/AGENTS.md"];
 };
 
 export const loadAgentRules = async (root: string, location = root): Promise<string> => {
@@ -41,6 +52,7 @@ export const loadAgentRules = async (root: string, location = root): Promise<str
   const files = [
     ...systemFiles(),
     join(home, ".config", "amp", "AGENTS.md"),
+    join(home, ".config", "glrs", "AGENTS.md"),
     join(home, ".config", "AGENTS.md"),
   ];
   for (const directory of directories) {

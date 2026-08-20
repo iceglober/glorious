@@ -102,7 +102,9 @@ export const wrapTool = <Schema extends z.ZodType>(
 };
 
 export const firstDetail = (raw: Record<string, unknown>): string => {
-  for (const key of ["command", "pattern", "path", "task"]) {
+  // `task` was here, matching no registered tool — residue of a delegation
+  // tool that no longer exists.
+  for (const key of ["command", "pattern", "path"]) {
     const value = raw[key];
     if (typeof value === "string") return value;
   }

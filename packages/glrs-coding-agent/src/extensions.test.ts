@@ -13,7 +13,7 @@ import {
   type Registry,
   resetRegistry,
 } from "./extension-api";
-import { loadExtensions, resolveExtensions } from "./extensions";
+import { loadExtensions, resolveExtensions, skillRootsFor } from "./extensions";
 import type { ToolEvent } from "./toolkit";
 
 let root = "";
@@ -50,7 +50,7 @@ const host: ExtensionHost = {
   settings: () => ({ toolTimeoutMs: 1000 }),
   available: () => [],
   setExtension: async () => "not-allowed" as const,
-  inspect: () => ({ commands: [], skills: [], extensions: [] }),
+  inspect: () => ({ commands: [], skills: [], extensions: [], keys: [], flags: [] }),
   clear: () => "cleared" as const,
   compact: async () => ({ outcome: "too-short" as const }),
   reload: async () => {},
@@ -606,5 +606,29 @@ describe("replacing a first-party tool", () => {
     for (const name of ["bash", "read", "write", "edit", "grep", "glob"])
       expect(Object.keys(registry.tools)).toContain(name);
     await rm(dir, { recursive: true, force: true });
+  });
+});
+
+// A disk extension's `dir` is the directory its file sits in, so several of them
+// side by side describe one `skills/` directory between them.
+describe("where extension skills are looked for", () => {
+  test("extensions sharing a directory contribute that root once", async () => {
+    const shared = join(root, ".glrs", "extensions");
+    const { plan } = await resolveExtensions(root);
+    // greeter.ts, broken.ts and notafunction.ts all sit in that one directory,
+    // so without deduplication its skills root arrives three times.
+    expect(plan.filter((entry) => entry.dir === shared).length).toBeGreaterThan(1);
+
+    const roots = skillRootsFor(plan);
+    expect(roots.filter((one) => one === join(shared, "skills"))).toHaveLength(1);
+    // Discovery walks every root it is given: a repeated one finds each skill
+    // under it again and warns that two skills share a name, naming the same
+    // path on both sides.
+    expect(new Set(roots).size).toBe(roots.length);
+  });
+
+  test("an extension in its own directory still contributes its own root", async () => {
+    const { plan } = await resolveExtensions(root);
+    expect(skillRootsFor(plan)).toContain(join(root, ".glrs", "extensions", "sized", "skills"));
   });
 });

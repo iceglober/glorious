@@ -1,0 +1,17 @@
+{
+  "name": "@glrs-dev/glrs-ext-worktree",
+  "version": "1.0.0-next.38",
+  "private": true,
+  "description": "Create, audit and clean git worktrees, from the CLI and from a session.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worktree": "./src/worktree.ts"
+  },
+  "files": [
+    "src",
+    "skills",
+    "README.md"
+  ]
+}

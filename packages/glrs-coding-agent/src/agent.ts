@@ -5,6 +5,9 @@ import {
   type JsonObject,
   type ModelOption,
   modelCost,
+  type ProviderOptions,
+  requestOptions,
+  withCacheBreakpoints,
 } from "../../provider-registry/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { errorText } from "./render";
@@ -173,34 +176,28 @@ const mergeOptions = (far: JsonObject, near: JsonObject): JsonObject => {
 };
 
 export const providerOptions = (
-  model: Pick<ModelOption, "provider" | "variant" | "providerOptions">,
+  model: Pick<ModelOption, "provider" | "modelId" | "variant" | "providerOptions">,
   cacheKey: string,
-): Record<string, JsonObject> => {
-  const namespace =
-    model.provider === "openai" || model.provider === "azure" ? model.provider : undefined;
-  const defaults: Record<string, JsonObject> =
-    namespace === undefined
-      ? {}
-      : {
-          [namespace]: {
-            ...(model.variant ? { reasoningEffort: model.variant } : {}),
-            textVerbosity: "low",
-            promptCacheKey: cacheKey,
-            store: false,
-          },
-        };
-  return mergeOptions(
-    defaults as JsonObject,
+): ProviderOptions =>
+  mergeOptions(
+    requestOptions({
+      provider: model.provider,
+      modelId: model.modelId,
+      variant: model.variant,
+      cacheKey,
+    }) as JsonObject,
     (model.providerOptions ?? {}) as JsonObject,
-  ) as Record<string, JsonObject>;
-};
+  ) as ProviderOptions;
 
 export const requestSettings = (
-  model: Pick<ModelOption, "provider" | "variant" | "requestOptions" | "providerOptions">,
+  model: Pick<
+    ModelOption,
+    "provider" | "modelId" | "variant" | "requestOptions" | "providerOptions"
+  >,
   cacheKey: string,
 ): JsonObject => ({
   ...(model.requestOptions ?? {}),
-  providerOptions: providerOptions(model, cacheKey),
+  providerOptions: providerOptions(model, cacheKey) as JsonObject,
 });
 
 export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
@@ -251,7 +248,6 @@ export const createAgent = (setup: Setup) => {
     .join("\n\n");
   const cacheKey = (scope: string): string =>
     createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
-
   // Withheld, not forbidden: a tool the model cannot see cannot be talked into
   // being used. An empty list means everything survives. This is the seam a
   // read-only mode is written against, now that there is no mode in the core.
@@ -305,7 +301,7 @@ export const createAgent = (setup: Setup) => {
       const result = await generateText({
         maxOutputTokens: 4_000,
         maxRetries: 3,
-        ...requestSettings(setup.model, cacheKey("compact")),
+        ...requestSettings({ ...setup.model, variant: undefined }, cacheKey("compact")),
         model,
         instructions:
           "You are compacting a coding session so work can continue past the context limit. " +
@@ -445,7 +441,10 @@ export const createAgent = (setup: Setup) => {
         const result = streamText({
           ...settings(),
           tools: toolsFor(turn.onTool),
-          messages: [...shown],
+          // Anthropic and Bedrock cache only what is marked, so the marks go
+          // in here rather than in providerOptions. OpenAI and Google cache a
+          // prefix unasked and are handed the list unchanged.
+          messages: withCacheBreakpoints([...shown], setup.model.provider, setup.model.modelId),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.
           // Appending keeps the cached prefix intact, so steering costs the

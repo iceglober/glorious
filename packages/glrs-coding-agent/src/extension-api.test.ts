@@ -8,6 +8,7 @@ import {
   type ExtensionHost,
   fire,
   type Glrs,
+  promptContributions,
   type Registry,
 } from "./extension-api";
 
@@ -24,7 +25,9 @@ import {
 const here = import.meta.dir;
 
 const members = (): string[] => {
-  const source = readFileSync(join(here, "extension-api.ts"), "utf8");
+  const source =
+    readFileSync(join(here, "extension-api.ts"), "utf8") +
+    readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
   const body = source.slice(source.indexOf("export type Glrs = {"));
   return [...body.slice(0, body.indexOf("\n};")).matchAll(/^ {2}([a-zA-Z]+)\??:/gmu)].map(
     (match) => match[1],
@@ -304,6 +307,99 @@ describe("first-party extensions that have not loaded", () => {
   });
 });
 
+// A subcommand of the executable. Registered like a tool rather than like a
+// slash command, because two extensions offering `glrs wt` must not depend on
+// which loaded first.
+describe("subcommands an extension adds to the executable", () => {
+  test("it lands in the registry under its own name", () => {
+    const { g, registry } = harness();
+    g.cli("wt", { description: "worktrees", run: () => {} });
+    expect(registry.cli.get("wt")?.description).toBe("worktrees");
+    expect(registry.cli.get("wt")?.origin).toBe("test-extension");
+  });
+
+  test("the name is lowercased, the way commands are", () => {
+    const { g, registry } = harness();
+    g.cli("WT", { description: "d", run: () => {} });
+    expect(registry.cli.has("wt")).toBe(true);
+  });
+
+  test("the first extension to claim a subcommand keeps it", async () => {
+    const { g, registry } = harness();
+    let ran = "";
+    g.cli("wt", {
+      description: "the project's",
+      run: () => {
+        ran = "project";
+      },
+    });
+    const shipped = createApi(
+      { root: "/tmp/project", mode: "tui" } as unknown as ExtensionHost,
+      registry,
+      () => {},
+      "@glrs-dev/glrs-ext-worktree",
+    );
+    shipped.cli("wt", {
+      description: "the shipped one",
+      run: () => {
+        ran = "shipped";
+      },
+    });
+
+    await registry.cli.get("wt")?.run([]);
+    expect(ran).toBe("project");
+    // The loser is reported rather than dropped, so /extensions stays honest.
+    expect(describeContribution(registry, "@glrs-dev/glrs-ext-worktree")).toContain("shadowed");
+  });
+
+  test("what it registered shows up in the contribution ledger", () => {
+    const { g, registry } = harness();
+    g.cli("wt", { description: "d", run: () => {} });
+    expect(describeContribution(registry, "test-extension")).toContain("cli: glrs wt");
+  });
+});
+
+// A contribution can be a string decided at registration or a function asked
+// fresh each turn. The second is what lets an extension say something about the
+// session rather than only about itself.
+describe("what an extension contributes to the per-turn preamble", () => {
+  test("a string is carried through as written", () => {
+    const { g, registry } = harness();
+    g.prompt("use bun, not npm");
+    expect(promptContributions(registry.promptLines)).toEqual(["use bun, not npm"]);
+  });
+
+  test("a function is asked each time, so it can change between turns", () => {
+    const { g, registry } = harness();
+    let count = 0;
+    g.prompt(() => {
+      count += 1;
+      return `asked ${count} time(s)`;
+    });
+    expect(promptContributions(registry.promptLines)).toEqual(["asked 1 time(s)"]);
+    expect(promptContributions(registry.promptLines)).toEqual(["asked 2 time(s)"]);
+  });
+
+  // Saying nothing has to be possible, or a contribution that is only sometimes
+  // relevant costs a blank line in every turn that does not need it.
+  test("an empty string says nothing at all", () => {
+    const { g, registry } = harness();
+    g.prompt("");
+    g.prompt(() => "");
+    expect(promptContributions(registry.promptLines)).toEqual([]);
+  });
+
+  test("one that throws costs its own line, not the turn", () => {
+    const { g, registry } = harness();
+    g.prompt("before");
+    g.prompt(() => {
+      throw new Error("no");
+    });
+    g.prompt("after");
+    expect(promptContributions(registry.promptLines)).toEqual(["before", "after"]);
+  });
+});
+
 // Enforced by construction: the Proxy above records every member these tests
 // read, so adding an API member without testing it fails here rather than
 // shipping untested.
@@ -330,7 +426,9 @@ describe("every event fires in both hosts", () => {
   };
 
   const names = (): string[] => {
-    const source = readFileSync(join(here, "extension-api.ts"), "utf8");
+    const source =
+      readFileSync(join(here, "extension-api.ts"), "utf8") +
+      readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
     const block = source.slice(source.indexOf("export type EventName ="));
     return [...block.slice(0, block.indexOf(";")).matchAll(/"([a-z_]+)"/gu)].map((m) => m[1]);
   };
@@ -449,7 +547,9 @@ describe("the lifecycle page matches the code", () => {
     );
 
   const eventNames = (): string[] => {
-    const source = readFileSync(join(here, "extension-api.ts"), "utf8");
+    const source =
+      readFileSync(join(here, "extension-api.ts"), "utf8") +
+      readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
     const block = source.slice(source.indexOf("export type EventName ="));
     return [...block.slice(0, block.indexOf(";")).matchAll(/"([a-z_]+)"/gu)].map((m) => m[1]);
   };
@@ -563,5 +663,77 @@ describe("two extensions claiming one tool name", () => {
       execute: async () => "only me",
     });
     expect(await run(registry, "solo")).toBe("only me");
+  });
+});
+
+// The API extensions are written against and the object glrs builds were two
+// separate declarations, and they drifted: the copy carried 26 members while
+// the object carried 44, so `model`, `tools`, `status`, `footer`, `key`,
+// `flag`, `abort`, `setModel` and ten more worked at runtime and were invisible
+// to anyone writing an extension. There is one declaration now, and these pin
+// that there stays one.
+describe("the extension API is declared once", () => {
+  const core = readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
+  const api = readFileSync(join(here, "extension-api.ts"), "utf8");
+
+  test("glrs-core declares it and the coding agent does not redeclare it", () => {
+    expect(core).toContain("export type Glrs = {");
+    expect(api).not.toContain("export type Glrs = {");
+  });
+
+  test("the agent implements that type rather than describing its own", () => {
+    // `createApi` returns `Glrs`, and `Glrs` is now the one extensions import —
+    // so an implementation that falls behind the type cannot compile.
+    expect(api).toMatch(/createApi = \([\s\S]*?\): Glrs =>/u);
+  });
+
+  test("extensions reach it without importing the coding agent", () => {
+    // The boundary check forbids it, which is what forced the copy originally.
+    for (const name of ["builtins", "ask-user", "web-fetch", "worktree"]) {
+      const source = readFileSync(
+        join(here, "..", "..", "extensions", name, "src", "index.ts"),
+        "utf8",
+      );
+      expect(source).toContain("glrs-core/src");
+      expect(source).not.toContain("glrs-coding-agent");
+    }
+  });
+
+  test("no member is declared without being built", () => {
+    const declared = members();
+    // Every member named on the type appears as a key on the object literal
+    // `createApi` returns. A member with no implementation used to typecheck as
+    // optional and be undefined at runtime.
+    for (const name of declared) expect(api).toMatch(new RegExp(`^\\s{4}${name}[:(,]`, "mu"));
+  });
+});
+
+// Tone and Span drifted the same way Glrs did: the renderer honoured seven
+// tones and italic/underline spans, and the type extensions import named five
+// tones and neither attribute.
+describe("what the renderer draws is what the type allows", () => {
+  const core = readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
+  const render = readFileSync(join(here, "render.ts"), "utf8");
+
+  test("every tone the renderer paints can be named by an extension", () => {
+    const painted = [
+      ...render.matchAll(/^ {2}(accent|highlight|muted|prompt|success|warning|danger):/gmu),
+    ].map((one) => one[1]);
+    const declared = core.slice(
+      core.indexOf("export type Tone ="),
+      core.indexOf(";", core.indexOf("export type Tone =")),
+    );
+    for (const tone of new Set(painted)) expect(declared).toContain(`"${tone}"`);
+  });
+
+  test("neither is declared twice", () => {
+    expect(render).not.toMatch(/^export type Tone =/mu);
+    expect(render).not.toMatch(/^export type Span = \{/mu);
+  });
+
+  test("span attributes the renderer honours are on the type", () => {
+    const span = core.slice(core.indexOf("export type Span = {"));
+    for (const attribute of ["bold", "italic", "underline", "fill"])
+      expect(span.slice(0, span.indexOf("};"))).toContain(attribute);
   });
 });

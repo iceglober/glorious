@@ -3,10 +3,14 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
 import webFetch from "../../extensions/web-fetch/src";
+import worktree from "../../extensions/worktree/src";
+import type { FirstPartyExtension } from "../../glrs-core/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import { describeThrown } from "./render";
 import type { ToolEvent } from "./toolkit";
 import { agentDirectories } from "./usercommands";
+
+export type { FirstPartyExtension };
 
 // An extension is a TypeScript file that registers capabilities against the API
 // in extension-api.ts. Bun imports .ts directly, so loading one is a dynamic
@@ -28,7 +32,7 @@ export type ExtensionLoad = {
   extensions: LoadedExtension[];
   failures: Array<{ origin: string; message: string }>;
   // Nothing is broken, but something is worth knowing — a file that took a
-  // first-party extension's name and the capability that went with it.
+  // shipped extension's name and the capability that went with it.
   notes: string[];
 };
 
@@ -64,8 +68,8 @@ const failureText = (thrown: unknown): string => {
   return /Cannot find module/u.test(thrown.message) ? "no index.ts" : thrown.message;
 };
 
-// What each first-party extension is worth saying about, when a file on disk takes
-// its name and the first-party one therefore does not load. Shadowing was always
+// What each shipped extension is worth saying about, when a file on disk takes
+// its name and the shipped one therefore does not load. Shadowing was always
 // supported and is still the point; `builtins` is the one whose loss is worth
 // interrupting for, because it now carries the six tools as well as the seven
 // commands and an agent without them cannot do anything at all.
@@ -86,6 +90,7 @@ const bundled = [
     origin: "@glrs-dev/glrs-ext-ask-user",
     load: askUser,
     defaultOn: false,
+    dir: join(import.meta.dir, "..", "..", "extensions", "ask-user"),
     summary: "asks the user a multiple-choice question and waits for the answer",
   },
   {
@@ -93,30 +98,29 @@ const bundled = [
     origin: "@glrs-dev/glrs-ext-builtins",
     load: builtins,
     defaultOn: true,
+    dir: join(import.meta.dir, "..", "..", "extensions", "builtins"),
     summary: "the file, search and shell tools, and every slash command",
+  },
+  {
+    name: "worktree",
+    origin: "@glrs-dev/glrs-ext-worktree",
+    load: worktree,
+    defaultOn: false,
+    dir: join(import.meta.dir, "..", "..", "extensions", "worktree"),
+    summary:
+      "creates git worktrees, and audits which ones still have sessions working in them; adds `glrs wt`",
   },
   {
     name: "web-fetch",
     origin: "@glrs-dev/glrs-ext-web-fetch",
     load: webFetch,
     defaultOn: false,
+    dir: join(import.meta.dir, "..", "..", "extensions", "web-fetch"),
     summary:
       "fetches web pages and returns them as markdown, rendering JavaScript when Chrome is installed",
   },
 ];
 
-// Which of the first-party extensions is on, off, or has never been decided. The
-// three states fall out of the two config lists rather than needing a store of
-// their own: named in `load` is a yes, named in `disable` is a no, and in
-// neither is a question nobody has answered.
-/** First-party extension metadata and its configured activation state. */
-export type FirstPartyExtension = {
-  name: string;
-  summary: string;
-  state: "on" | "off" | "undecided";
-};
-
-/** Resolve activation state for every first-party extension. */
 export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyExtension[] => {
   const on = new Set((settings?.load ?? []).map(key));
   const off = new Set((settings?.disable ?? []).map(key));
@@ -135,7 +139,6 @@ export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyEx
 // imported from provider-registry for the same reason QueueMode is declared
 // twice: extension loading has no business depending on the model registry,
 // and a structural type costs three lines.
-/** Config lists controlling extension activation. */
 export type ExtensionSettings = {
   load?: readonly string[];
   disable?: readonly string[];
@@ -150,6 +153,10 @@ export type Planned = {
   name: string;
   origin: string;
   source: "disk" | "bundled" | "config";
+  // The directory the extension lives in. Its `skills/` subdirectory, if it has
+  // one, joins the skill roots — which is why this is on the *plan*: working it
+  // out must not require running the extension.
+  dir: string;
   path?: string;
   load?: (glrs: never) => void | Promise<void>;
 };
@@ -186,7 +193,13 @@ export const resolveExtensions = async (
   // wins — is untouched by anything config says.
   for (const entry of (await Promise.all(extensionRoots(root).map(entryPoints))).flat()) {
     if (take(entry.name) !== "free") continue;
-    plan.push({ name: entry.name, origin: entry.path, source: "disk", path: entry.path });
+    plan.push({
+      name: entry.name,
+      origin: entry.path,
+      source: "disk",
+      dir: dirname(entry.path),
+      path: entry.path,
+    });
   }
 
   for (const entry of bundled) {
@@ -202,7 +215,13 @@ export const resolveExtensions = async (
     // these are installed rather than bundled.
     if (!entry.defaultOn && !wanted.has(key(entry.name)) && !wanted.has(key(entry.origin)))
       continue;
-    plan.push({ name: entry.name, origin: entry.origin, source: "bundled", load: entry.load });
+    plan.push({
+      name: entry.name,
+      origin: entry.origin,
+      source: "bundled",
+      dir: entry.dir,
+      load: entry.load,
+    });
   }
 
   // Whatever `load` named that discovery and the roster did not account for.
@@ -220,7 +239,7 @@ export const resolveExtensions = async (
       const near = bundled.map((one) => one.name).join(", ");
       failures.push({
         origin: entry,
-        message: `no extension by that name is first-party or on disk — available first-party extensions: ${near}`,
+        message: `no extension by that name is bundled or on disk — glrs ships ${near}`,
       });
       continue;
     }
@@ -234,7 +253,13 @@ export const resolveExtensions = async (
     const named = basename(entryPath, ".ts").toLowerCase();
     const label = named === "index" ? basename(dirname(entryPath)).toLowerCase() : named;
     if (take(label) !== "free") continue;
-    plan.push({ name: label, origin: entryPath, source: "config", path: entryPath });
+    plan.push({
+      name: label,
+      origin: entryPath,
+      source: "config",
+      dir: dirname(entryPath),
+      path: entryPath,
+    });
   }
 
   for (const one of settings?.disable ?? [])
@@ -246,9 +271,22 @@ export const resolveExtensions = async (
 
 // Each extension is loaded and invoked on its own, so one that throws on import
 // or in its factory costs only itself. Files on disk are walked first and a
-// project can shadow a first-party extension by name — replacing web_fetch is a
+// project can shadow a shipped extension by name — replacing web_fetch is a
 // supported thing to do. (An older comment here claimed bundled ones came
 // first; they never have.)
+// Where each extension that would load keeps its skills. Derived from the plan,
+// so no extension has to run to answer it — which is what lets skills load at
+// startup even though extensions do not load until much later.
+//
+// Deduplicated, because a disk extension's `dir` is the directory the file sits
+// in — so two of them side by side in `~/.config/agents/extensions/` yield that
+// one `skills/` directory twice. Discovery walks each root it is given, so a
+// repeated root finds every skill under it again and warns that two skills share
+// a name, naming the same path on both sides.
+export const skillRootsFor = (plan: readonly Planned[]): string[] => [
+  ...new Set(plan.map((entry) => join(entry.dir, "skills"))),
+];
+
 export const loadExtensions = async (
   root: string,
   registry: Registry,

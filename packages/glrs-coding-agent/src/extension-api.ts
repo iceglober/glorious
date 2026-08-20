@@ -1,17 +1,10 @@
-import type { ModelMessage, ToolSet } from "ai";
+import type { ToolSet } from "ai";
 import { z } from "zod";
 import type { Settings } from "../../glrs-core/src";
-import type { FirstPartyExtension } from "./extensions";
-import type { WriteOutcome } from "./writeconfig";
-
-/** Result of recording a first-party extension choice in Project config. */
-export type ExtensionChoice = WriteOutcome | "unknown";
-
-import type { ShellResult as ToolShellResult } from "../../glrs-core/src/shell";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
+import type { FirstPartyExtension } from "./extensions";
 import { clip, type Line, type Tone } from "./render";
-import type { SkillSummary } from "./skills";
 import type { ToolEvent } from "./toolkit";
 import { wrapTool } from "./toolkit";
 
@@ -28,148 +21,46 @@ import { wrapTool } from "./toolkit";
 export type { Compaction } from "./chat";
 export type { Activity, Line, Span, Tone } from "./render";
 
+// Declared in glrs-core, because `packages/extensions` may not import this
+// package. Re-exported so everything in the agent keeps importing them from
+// here, while there is only one declaration of each.
+import type {
+  CliSpec,
+  EventName,
+  EventPayload,
+  ExtensionChoice,
+  FlagSpec,
+  Glrs,
+  Handler,
+  HandlerVerdict,
+  KeySpec,
+  Loaded,
+  ModelInfo,
+  SessionInfo,
+  ShellResult,
+  Ui,
+  Verdict,
+} from "../../glrs-core/src";
 import type { Activity } from "./render";
 
-// One definition, in core, where both the coding agent and the tools extension
-// can reach it. This was briefly declared here as well; two copies of one shape
-// is two things to remember to change, and the last pair had already drifted.
-export type ShellResult = ToolShellResult;
-
-/** Lifecycle event names accepted by {@link Glrs.on}. */
-export type EventName =
-  | "session_start"
-  | "session_end"
-  | "input"
-  | "user_bash"
-  | "turn_start"
-  | "turn_end"
-  | "idle"
-  | "message"
-  | "before_request"
-  | "tool_call"
-  | "tool_start"
-  | "tool_end"
-  | "model_select"
-  | "usage"
-  | "reasoning"
-  | "error"
-  | "compact"
-  | "context"
-  | "before_provider_request"
-  | "after_provider_response";
-
-/** Payload delivered for each {@link EventName}. */
-export type EventPayload = {
-  session_start: { root: string };
-  // The session is tearing down. Awaited, so an extension gets to finish.
-  session_end: { root: string };
-  // Returning a string replaces what the user typed; returning false swallows
-  // it, which is how an extension handles input itself.
-  input: { text: string };
-  user_bash: { command: string };
-  turn_start: { text: string };
-  turn_end: { text: string };
-  // The queue drained and nothing is running.
-  idle: Record<string, never>;
-  // Assistant text and reasoning as they stream.
-  message: { kind: "text" | "reasoning"; text: string };
-  // Fires before the model is called. Returning a string appends to the
-  // per-turn message, which is how an extension injects context for one turn.
-  before_request: { prompt: string; messages: number };
-  // Fires before a tool runs. Returning false blocks the call and hands the
-  // model your reason — this is how a confirm-before-destructive extension, or
-  // a read-only mode, is written without the core knowing about either.
-  tool_call: { name: string; input: Record<string, unknown> };
-  tool_start: { name: string; input: Record<string, unknown> };
-  // Returning a string replaces what the model is told the tool returned.
-  tool_end: {
-    name: string;
-    input: Record<string, unknown>;
-    ok: boolean;
-    result: string;
-    detail: string;
-    elapsedMs: number;
-  };
-  model_select: { model: string; variant?: string };
-  // Fires once per model call, which is once per step — a turn that runs three
-  // tools reports four times. `cached` is what the provider served from its
-  // prompt cache rather than reprocessing, so cached/input is the hit rate.
-  usage: {
-    input: number;
-    output: number;
-    cached: number;
-    cost?: number;
-    contextTokens: number;
-  };
-  // The collapsed reasoning summary, once the model stops thinking.
-  reasoning: { text: string; elapsedMs: number };
-  // A turn that failed, with the message the transcript shows.
-  error: { message: string };
-  // The conversation was summarised to stay inside the context limit.
-  compact: { dropped: number; kept: number; automatic: boolean };
-  // Every message about to be sent, before each model call. Returning an array
-  // replaces what is sent for that call only — the stored conversation is
-  // untouched, so filtering or reordering here never rewrites history.
-  //
-  // `before_request` appends a string to the turn's message; this replaces the
-  // whole list, which is what redaction, windowing and message-level rewriting
-  // need and appending cannot do.
-  context: { messages: readonly ModelMessage[]; step: number };
-  // The HTTP request to the provider, before it is sent. Returning headers
-  // merges them; returning a body replaces it outright. A gateway, a signing
-  // proxy, per-request auth and request logging all live here.
-  before_provider_request: {
-    url: string;
-    headers: Readonly<Record<string, string>>;
-    body: unknown;
-  };
-  // The provider's response, before its body is read. Observational: status and
-  // headers are what rate-limit budgets and request ids arrive in.
-  after_provider_response: {
-    url: string;
-    status: number;
-    headers: Readonly<Record<string, string>>;
-  };
+export type {
+  CliSpec,
+  EventName,
+  EventPayload,
+  ExtensionChoice,
+  FlagSpec,
+  Glrs,
+  Handler,
+  HandlerVerdict,
+  KeySpec,
+  Loaded,
+  ModelInfo,
+  SessionInfo,
+  ShellResult,
+  Ui,
+  Verdict,
 };
 
-// undefined rather than void, so the union is unambiguous: a handler that
-// returns nothing leaves the payload alone.
-// What a handler may return, per event. Most return nothing; the ones that can
-// change what happens say so in their own type rather than every handler
-// sharing one loose `string | false`.
-/** Return values that let selected lifecycle hooks change execution. */
-export type Verdict = {
-  input: string | false;
-  tool_call: string | false;
-  tool_end: string;
-  before_request: string;
-  context: readonly ModelMessage[];
-  before_provider_request: { headers?: Record<string, string>; body?: unknown };
-};
-
-/** Value an event handler may return for event `E`. */
-export type HandlerVerdict<E extends EventName = EventName> =
-  | undefined
-  | (E extends keyof Verdict ? Verdict[E] : never);
-
-/** Synchronous or asynchronous lifecycle event handler. */
-export type Handler<E extends EventName> = (
-  payload: EventPayload[E],
-) => HandlerVerdict<E> | Promise<HandlerVerdict<E>>;
-
-/**
- * Definition of a model-callable tool.
- *
- * @example
- * ```ts
- * g.tool({
- *   name: "count_todos",
- *   description: "Count TODO comments under a path.",
- *   input: g.z.object({ path: g.z.string() }),
- *   execute: async ({ path }) => (await g.exec(`rg -c TODO ${path}`)).stdout,
- * });
- * ```
- */
 export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   name: string;
   description: string;
@@ -181,36 +72,11 @@ export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   renderResult?: (result: string, ok: boolean) => Line[];
 };
 
-/** Definition of a user-invoked slash command. */
 export type CommandSpec = {
   description: string;
   run: (args: string) => void | Promise<void>;
 };
 
-// What is loaded right now. Every listing glrs used to ship as a built-in
-// command is a view over this and nothing more, which is why none of them are
-// built in any longer.
-/** Snapshot returned by {@link Glrs.inspect}. */
-export type Loaded = {
-  commands: ReadonlyArray<{ name: string; description: string; origin?: string }>;
-  // The real type, not a copy of its fields — a second declaration of the same
-  // shape is a second thing to remember to update, and this one had already
-  // fallen behind.
-  skills: readonly SkillSummary[];
-  extensions: ReadonlyArray<{ name: string; origin: string; contributed: string }>;
-};
-
-/** Model identity and optional catalogue metadata. */
-export type ModelInfo = {
-  label: string;
-  provider: string;
-  modelId: string;
-  variant?: string;
-  variants?: readonly string[];
-  context?: number;
-};
-
-/** Token, cache, context, and cost usage for the active session. */
 export type Usage = {
   /** Context size the provider last reported, or null before the first call. */
   tokens: number | null;
@@ -220,33 +86,6 @@ export type Usage = {
   last?: { input: number; output: number; cached: number; cost?: number };
   /** Summed across the session, including turns replayed from disk on resume. */
   total: { input: number; output: number; cached: number; cost: number; steps: number };
-};
-
-/** Metadata for the active session. */
-export type SessionInfo = {
-  id: string;
-  file: string;
-  title: string;
-  events: number;
-};
-
-// A keybinding an extension owns. Returning true consumes the key, so the
-// composer never sees it — which is what Tab-cycling and Ctrl+B used to be
-// before they were core, and what they would be again as extensions.
-/** TUI keybinding registered by an extension. */
-export type KeySpec = {
-  key: string;
-  ctrl?: boolean;
-  shift?: boolean;
-  description: string;
-  run: () => void | Promise<void>;
-};
-
-/** CLI flag registered by an extension. */
-export type FlagSpec = {
-  description: string;
-  // Called with everything after the flag on the command line.
-  run: (value: string) => void | Promise<void>;
 };
 
 /** A keypress, in glrs's own vocabulary rather than the renderer's. */
@@ -259,7 +98,6 @@ export type Key = {
   text: string;
 };
 
-/** Renderer and key handler used while an extension owns the composer. */
 export type Capture = {
   /** Draw the composer area. Called on every key, and on resize. */
   render: (columns: number) => Line[];
@@ -267,198 +105,11 @@ export type Capture = {
   onKey: (key: Key) => void;
 };
 
-/** Interactive TUI capabilities. Guard access with {@link Glrs.hasUI}. */
-export type Ui = {
-  /**
-   * Take over the composer area: draw your own lines there and receive every
-   * key, until you call close().
-   *
-   * This is the whole of glrs's input primitive, and it is deliberately the
-   * only one. There was an `ask`, a `select`, a `confirm` and an `input` here,
-   * which meant the core had an opinion about what a question looks like — a
-   * 234-line widget lived in the renderer for the sake of one tool, and the
-   * "generic" helpers around it were parsing the JSON that tool returned to the
-   * model. A coding agent's core does not need to know what asking is.
-   *
-   * The bundled `ask-user` extension is a question widget written against
-   * nothing but this. A picker, a form, a diff viewer are the same amount of
-   * work, and none of them is privileged over yours.
-   */
-  capture: (spec: Capture) => { close: () => void; repaint: () => void };
-  /** Put text in the composer, ready to edit. */
-  setInput: (text: string) => void;
-};
-
-/**
- * Public host API passed to every extension.
- *
- * Registration methods (`tool`, `command`, `key`, `flag`, and `on`) are normally
- * called during initialization. Runtime methods remain valid until shutdown.
- *
- * @example Add status and observe tool calls
- * ```ts
- * export default function (g: Glrs) {
- *   let calls = 0;
- *   g.on("tool_start", () => { calls += 1; });
- *   g.status(() => `${calls} tool calls`);
- * }
- * ```
- */
-export type Glrs = {
-  /** The project root every path is resolved against. */
-  root: string;
-  /**
-   * Zod, for describing a tool's input. Handed over rather than imported: an
-   * extension in the User extensions directory has no node_modules of its own to
-   * resolve it from, and one that works in your home directory but not in a
-   * project is not a working extension. An extension needs no imports at all.
-   */
-  z: typeof z;
-  /** Register a tool the model can call. */
-  tool: <Schema extends z.ZodType>(spec: ToolSpec<Schema>) => void;
-  /** Register a slash command the user can type. */
-  command: (name: string, spec: CommandSpec) => void;
-  /** Bind a key. Only fires when the composer has focus and no overlay is up. */
-  key: (spec: KeySpec) => void;
-  /** Register a CLI flag: `glrs --name value`. */
-  flag: (name: string, spec: FlagSpec) => void;
-  /** Subscribe to a lifecycle event. */
-  on: <E extends EventName>(event: E, handler: Handler<E>) => void;
-  /** Run a shell command in the project root. */
-  exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
-  /**
-   * Start a turn. `label` is what the transcript shows instead of the text.
-   * `steer` joins the turn already running, at its next step boundary, so the
-   * model reads it before it chooses its next action; without it the message
-   * waits until the agent has finished all its work. With nothing running the
-   * two are the same thing — a turn.
-   */
-  send: (text: string, options?: { label?: string; steer?: boolean }) => void;
-  /** Write into the transcript. Pass Line[] when you want it styled. */
-  print: (content: string | Line[], tone?: Tone) => void;
-  /** Terminal width. Anything wider than this wraps, so measure before drawing. */
-  columns: () => number;
-  /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
-  clip: (text: string, limit: number) => string;
-  /**
-   * This session's resolved runtime settings, merged from every config file
-   * that applied. Provider connection settings are not part of this compact
-   * runtime view; an extension that needs them can read config itself.
-   */
-  settings: () => Readonly<Settings>;
-  /**
-   * First-party extensions, and whether each is on, off, or has never been
-   * decided. The three states come from config: named in `extensions.load`,
-   * named in `extensions.disable`, or in neither.
-   */
-  available: () => readonly FirstPartyExtension[];
-  /**
-   * Record that one should or should not load, by writing `extensions.load` or
-   * `extensions.disable` in the project's config. Returns `"not-allowed"` unless
-   * `agentConfigAllowlist` names `"extensions"` — config is hand-edited unless
-   * you have said otherwise.
-   */
-  setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
-  /** What is loaded: commands, skills, extensions. */
-  inspect: () => Loaded;
-  /** Drop the conversation the model replays. The transcript is untouched. */
-  clear: () => "cleared" | "busy" | "empty";
-  /**
-   * Summarise the older part of the conversation and carry the brief forward,
-   * so a session can outlive its context window. `keep` is roughly how many
-   * tokens of recent turns to leave verbatim.
-   */
-  compact: (options?: { instruction?: string; keep?: number }) => Promise<Compaction>;
-  /** Re-read skills, commands, extensions, and extension/tool config. */
-  reload: () => Promise<void>;
-
-  /** "tui" when a terminal is attached, "print" for a headless -p run. */
-  mode: "tui" | "print";
-  /** False in print mode: nothing can be asked and nothing can be drawn. */
-  hasUI: boolean;
-  /** Prompts, pickers and the composer. Throws in print mode. */
-  ui: Ui;
-
-  /** The tools the model can currently call. */
-  tools: () => readonly string[];
-  /**
-   * Narrow what the model can call, from the next turn onward. Return false for
-   * a tool to withhold it. Withholding beats instructing: a tool that is absent
-   * cannot be talked into being used.
-   *
-   * Every extension's filter has to agree, so restrictions compose and can only
-   * narrow. This replaced a `setTools(names)` that set one global list — a
-   * read-only extension and a no-network extension would each call it, the
-   * second would silently undo the first, and neither could see the other.
-   *
-   * Returns a handle that lifts your own filter and nobody else's.
-   */
-  filterTools: (keep: (name: string) => boolean) => { lift: () => void };
-
-  /** The model in force, with its context window and reasoning variants. */
-  model: () => ModelInfo;
-  /** Every model the catalogue knows for the providers you have credentials for. */
-  models: () => Promise<readonly ModelInfo[]>;
-  /** Switch model, as "provider/model-id". Takes effect on the next turn. */
-  setModel: (label: string, variant?: string) => Promise<void>;
-
-  /** Is nothing running and nothing queued? */
-  idle: () => boolean;
-  /** How many turns are waiting behind the running one. */
-  pending: () => number;
-  /** Interrupt the running turn. True if there was one. */
-  abort: () => boolean;
-  /** Tokens, cache hits and cost: the last call and the session total. */
-  usage: () => Usage;
-  /** The system prompt exactly as the model receives it. */
-  systemPrompt: () => string;
-  /** Quit glrs. */
-  shutdown: () => void;
-
-  /** This session: id, file on disk, title, event count. */
-  session: () => SessionInfo;
-  /** Rename the session for this process. Stored titles are derived from user messages. */
-  setSessionName: (title: string) => void;
-  /** Persist your own data in the session file. Never sent to the model. */
-  appendEntry: (type: string, data: unknown) => void;
-  /**
-   * Everything this session has recorded under `type`, oldest first — including
-   * entries written before a `--resume`, since a resumed session replays them.
-   *
-   * appendEntry had no counterpart, so an extension could write to the session
-   * file and never read it back: storage you cannot read is not storage, and
-   * the only way to recover your own data was to open `session().file` and
-   * parse it yourself.
-   */
-  entries: (type: string) => readonly unknown[];
-
-  /** Transform assistant markdown before it is rendered. Display only. */
-  markdown: (transform: (text: string) => string) => void;
-  /** A bus for extensions to talk to each other. */
-  events: {
-    emit: (name: string, payload?: unknown) => void;
-    on: (name: string, handler: (payload: unknown) => void) => void;
-  };
-  /** Append a line to the per-turn preamble the model reads. */
-  prompt: (text: string) => void;
-  /** Contribute a segment to the status line. Return null to show nothing. */
-  status: (render: () => string | null) => void;
-  /** Draw extra rows above the status line. Return [] to show nothing. */
-  footer: (render: () => Line[]) => void;
-  /**
-   * Replace the activity row — what the turn is doing, how long it has been
-   * doing it, and how to stop it. Return null to leave glrs's own. The
-   * first extension to return lines wins, so Project can override User
-   * one the same way it overrides a command.
-   */
-  activity: (render: (state: Activity) => Line[] | null) => void;
-};
-
 // What index.ts hands the API so it can reach the running session. Split out so
 // the facade has no idea whether it is talking to a TUI or a print run.
 export type ExtensionHost = {
   root: string;
-  mode: "tui" | "print";
+  mode: "tui" | "print" | "cli";
   exec: (command: string, args?: readonly string[]) => Promise<ShellResult>;
   send: (text: string, options: { label?: string; steer?: boolean }) => void;
   print: (content: string | Line[], tone: Tone) => void;
@@ -501,6 +152,8 @@ export type Registry = {
   tools: ToolSet;
   commands: Command[];
   runners: Map<string, (args: string) => void | Promise<void>>;
+  // Subcommands of the executable. First claim kept, like tools.
+  cli: Map<string, CliSpec & { origin: string }>;
   handlers: Map<EventName, Array<Handler<EventName>>>;
   renderers: Map<string, ToolRenderer>;
   // Every extension's tool filter. All of them must agree for a tool to survive.
@@ -508,7 +161,8 @@ export type Registry = {
   statuses: Array<() => string | null>;
   footers: Array<() => Line[]>;
   activities: Array<(state: Activity) => Line[] | null>;
-  promptLines: string[];
+  // A string was decided at registration; a function is asked each turn.
+  promptLines: Array<string | (() => string)>;
   keys: KeySpec[];
   flags: Map<string, FlagSpec>;
   markdown: Array<(text: string) => string>;
@@ -518,7 +172,14 @@ export type Registry = {
   // there being no approval prompt to have read it out beforehand.
   contributions: Map<
     string,
-    { tools: string[]; shadowed: string[]; commands: string[]; hooks: number; ui: number }
+    {
+      tools: string[];
+      shadowed: string[];
+      commands: string[];
+      cli: string[];
+      hooks: number;
+      ui: number;
+    }
   >;
 };
 
@@ -537,6 +198,7 @@ export const resetRegistry = (registry: Registry): void => {
   registry.keys.length = 0;
   registry.markdown.length = 0;
   registry.runners.clear();
+  registry.cli.clear();
   registry.handlers.clear();
   registry.renderers.clear();
   registry.flags.clear();
@@ -548,6 +210,7 @@ export const createRegistry = (): Registry => ({
   tools: {},
   commands: [],
   runners: new Map(),
+  cli: new Map(),
   handlers: new Map(),
   renderers: new Map(),
   toolFilters: [],
@@ -562,6 +225,24 @@ export const createRegistry = (): Registry => ({
   contributions: new Map(),
 });
 
+// What the per-turn preamble actually says, resolved from what extensions
+// contributed. A function is asked fresh each turn, so a contribution can
+// reflect the session rather than only what was true at load; one that throws
+// loses its own line rather than the turn, and one that returns "" says nothing.
+//
+// Shared by both hosts on purpose. This is the third thing index.ts and print.ts
+// each have to do identically, and the previous two drifted.
+export const promptContributions = (lines: ReadonlyArray<string | (() => string)>): string[] =>
+  lines.flatMap((line) => {
+    if (typeof line === "string") return line === "" ? [] : [line];
+    try {
+      const said = line();
+      return said === "" ? [] : [said];
+    } catch {
+      return [];
+    }
+  });
+
 export const describeContribution = (registry: Registry, origin: string): string => {
   const entry = registry.contributions.get(origin);
   if (!entry) return "registered nothing";
@@ -569,6 +250,7 @@ export const describeContribution = (registry: Registry, origin: string): string
     entry.tools.length > 0 && `tools: ${entry.tools.join(", ")}`,
     entry.shadowed.length > 0 && `shadowed: ${entry.shadowed.join(", ")}`,
     entry.commands.length > 0 && `commands: ${entry.commands.map((n) => `/${n}`).join(", ")}`,
+    entry.cli.length > 0 && `cli: ${entry.cli.map((n) => `glrs ${n}`).join(", ")}`,
     entry.hooks > 0 && `${entry.hooks} hook${entry.hooks === 1 ? "" : "s"}`,
     entry.ui > 0 && `${entry.ui} ui`,
   ].filter((part): part is string => typeof part === "string");
@@ -589,6 +271,7 @@ export const createApi = (
     tools: [] as string[],
     shadowed: [] as string[],
     commands: [] as string[],
+    cli: [] as string[],
     hooks: 0,
     ui: 0,
   };
@@ -603,8 +286,8 @@ export const createApi = (
     // here already follows — commands, user commands, skills, and the activity
     // row. Tool names were the one exception, and the exception ran backwards:
     // the later an extension loaded, the more it could take. Since the loader
-    // walks the project before first-party extensions, first-wins is what makes a
-    // project extension able to replace a first-party tool.
+    // walks the project before anything shipped, first-wins is what makes a
+    // project extension able to replace a tool glrs ships.
     //
     // The loser is recorded rather than dropped silently: /extensions is the
     // only account anyone gets of what an extension did, and listing a tool it
@@ -627,6 +310,17 @@ export const createApi = (
           call: spec.renderCall as ToolRenderer["call"],
           result: spec.renderResult,
         });
+    },
+    // First claim kept, like tools: two extensions offering `glrs wt` should not
+    // depend on load order, and the project is walked before anything shipped.
+    cli: (name, spec) => {
+      const slug = name.toLowerCase();
+      if (registry.cli.has(slug)) {
+        ledger.shadowed.push(`${slug} (cli)`);
+        return;
+      }
+      ledger.cli.push(slug);
+      registry.cli.set(slug, { ...spec, origin });
     },
     command: (name, spec) => {
       const slug = name.toLowerCase();
@@ -658,7 +352,9 @@ export const createApi = (
     clear: host.clear,
     compact: host.compact,
     reload: host.reload,
-    prompt: (text) => registry.promptLines.push(text),
+    prompt: (text) => {
+      registry.promptLines.push(text);
+    },
     mode: host.mode,
     hasUI: host.mode === "tui",
     ui: {

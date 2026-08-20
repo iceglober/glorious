@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
+import type { SkillSummary } from "../../glrs-core/src";
 import { agentSkillsDirectories, userConfigDirectory } from "../../provider-registry/src";
 import type { Command } from "./commands";
 
@@ -23,19 +24,10 @@ type Skill = {
   modelInvocable: boolean;
 };
 
-/** Discoverable skill metadata exposed through extension inspection. */
-export type SkillSummary = {
-  name: string;
-  description: string;
-  location: string;
-  // What to type to run it, without the leading slash. Carried rather than
-  // recomputed by every listing that wants to show it.
-  command: string;
-  trigger: string;
-  modelInvocable: boolean;
-  allowedTools: readonly string[];
-  compatibility: string;
-};
+// Declared in glrs-core, where extensions reach it. This was a second copy of
+// the same shape, which is how `license` and `metadata` came to be parsed here
+// and absent there — the same drift the Glrs type had.
+export type { SkillSummary } from "../../glrs-core/src";
 
 export type Skills = {
   catalog: string;
@@ -75,6 +67,19 @@ const DESCRIPTION_MAX = 1024;
 const COMPATIBILITY_MAX = 500;
 const LEGAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
+// glrs's own directory and the vendor-neutral Agent Skills layout, and
+// nothing else. It used to also read ~/.claude/skills, every ancestor's
+// .claude/skills, ~/.claude/plugins/cache and ~/.config/amp/skills — so another
+// tool's whole skill surface arrived as glrs slash commands, and every one
+// of those names and descriptions was paid for in the per-turn preamble. Put a
+// symlink in .agents/skills/ if you want one of them here.
+//
+// `extra` is where an extension's own skills/ directory lands. Appended last on
+// purpose: the first root to claim a name wins, so a project or personal skill
+// of the same name still beats one that arrived with an extension.
+//
+// Deduped because the ancestor walk reaches ~/.agents/skills again whenever the
+// project sits under $HOME, which listed every personal skill twice and warned
 // Project glrs skills win, then portable project Agent Skills, then the same
 // two User locations. Nothing is inherited from arbitrary parent directories.
 const skillRoots = (
@@ -82,13 +87,17 @@ const skillRoots = (
   home: string,
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
+  extra: readonly string[],
 ): string[] => {
   const [projectAgents, userAgents] = agentSkillsDirectories(root, home, env, platform);
   return [
-    join(root, ".glrs", "skills"),
-    projectAgents,
-    join(userConfigDirectory(home, env, platform), "skills"),
-    userAgents,
+    ...new Set([
+      join(root, ".glrs", "skills"),
+      projectAgents,
+      join(userConfigDirectory(home, env, platform), "skills"),
+      userAgents,
+      ...extra,
+    ]),
   ];
 };
 
@@ -206,7 +215,15 @@ const parseSkill = (
       location,
       license: fields.get("license") ?? "",
       compatibility,
-      allowedTools: (fields.get("allowed-tools") ?? "").split(/\s+/u).filter((one) => one !== ""),
+      // Split on commas as well as spaces. `allowed-tools: read, grep` is the
+      // spelling everyone writes, and splitting on whitespace alone produced
+      // ["read,", "grep"] — a tool named "read," matches nothing. That was
+      // harmless while the field was enforced by nobody; now that it restricts
+      // a turn, it would have silently withheld the tool the skill asked for.
+      allowedTools: (fields.get("allowed-tools") ?? "")
+        .split(/[\s,]+/u)
+        .map((one) => one.trim())
+        .filter((one) => one !== ""),
       metadata,
       modelInvocable: !truthy(fields.get(MODEL_INVOCATION_FIELD) ?? ""),
       body: lines
@@ -246,11 +263,12 @@ const discover = async (
   home: string,
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
+  extra: readonly string[],
 ): Promise<{ skills: Skill[]; warnings: string[] }> => {
   const found: Skill[] = [];
   const warnings: string[] = [];
   const seen = new Map<string, string>();
-  for (const base of skillRoots(root, home, env, platform)) {
+  for (const base of skillRoots(root, home, env, platform, extra)) {
     for (const location of await skillFiles(resolve(base))) {
       const text = await Bun.file(location)
         .text()
@@ -293,7 +311,12 @@ const skillContent = (skill: Skill): string =>
 const triggerPrompt = (skill: Skill): string =>
   `Run the ${skill.name} skill now. The user invoked it as a slash command, so the instructions below are what to carry out — not background material, and not something to summarise or ask about. Follow them from the top. Any text after the command name is the skill's arguments.\n\n${skillContent(skill)}`;
 
-const createSkillTool = (skills: Skill[]) => {
+// Told when a skill is activated, so the caller can hold it to what it said it
+// needs. `allowed-tools` was parsed into the summary and enforced by nothing —
+// a field that reads as a safety control and was not one.
+export type OnActivate = (skill: { name: string; allowedTools: readonly string[] }) => void;
+
+const createSkillTool = (skills: Skill[], onActivate?: OnActivate) => {
   if (skills.length === 0) return undefined;
   const byName = new Map(skills.map((skill) => [skill.name, skill]));
   return tool({
@@ -305,6 +328,7 @@ const createSkillTool = (skills: Skill[]) => {
     execute: async ({ name }) => {
       const skill = byName.get(name);
       if (!skill) return `ERROR: unknown skill: ${name}`;
+      onActivate?.({ name: skill.name, allowedTools: skill.allowedTools });
       return `<skill_content name="${escapeXml(skill.name)}">\n${skill.body}\n\nSkill directory: ${escapeXml(dirname(skill.location))}\n</skill_content>`;
     },
   });
@@ -317,10 +341,15 @@ const createSkillTool = (skills: Skill[]) => {
 export const loadSkills = async (
   root: string,
   home: string = homedir(),
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
+  envOrExtra: NodeJS.ProcessEnv | readonly string[] = process.env,
+  platformOrActivate: NodeJS.Platform | OnActivate = process.platform,
 ): Promise<Skills> => {
-  const { skills, warnings } = await discover(root, home, env, platform);
+  const hasExtra = Array.isArray(envOrExtra);
+  const extra = hasExtra ? (envOrExtra as readonly string[]) : [];
+  const env = hasExtra ? process.env : (envOrExtra as NodeJS.ProcessEnv);
+  const platform = typeof platformOrActivate === "string" ? platformOrActivate : process.platform;
+  const onActivate = typeof platformOrActivate === "function" ? platformOrActivate : undefined;
+  const { skills, warnings } = await discover(root, home, env, platform, extra);
   // What the model is told exists. A skill that opted out of model invocation is
   // absent from here — which is the whole of that field: it does not appear in
   // the preamble, it is not activatable, and the only way to it is typing its
@@ -349,7 +378,17 @@ export const loadSkills = async (
       origin: skill.location,
     })),
     summaries: skills.map(
-      ({ name, description, location, trigger, modelInvocable, allowedTools, compatibility }) => ({
+      ({
+        name,
+        description,
+        location,
+        trigger,
+        modelInvocable,
+        allowedTools,
+        compatibility,
+        license,
+        metadata,
+      }) => ({
         name,
         description,
         location,
@@ -358,10 +397,12 @@ export const loadSkills = async (
         modelInvocable,
         allowedTools,
         compatibility,
+        license,
+        metadata,
       }),
     ),
     // Only what the model was told about can be activated by it, or the opt-out
     // would be a listing change with a way around it.
-    tool: createSkillTool(offered),
+    tool: createSkillTool(offered, onActivate),
   };
 };
