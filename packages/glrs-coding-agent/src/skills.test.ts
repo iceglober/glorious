@@ -370,7 +370,7 @@ describe("where skills are looked for", () => {
   test("a personal skill is found once, not once per path that reaches it", async () => {
     const { home, root } = await nested();
     await skillAt(join(home, ".config", "agents", "skills"), "zz-personal");
-    const skills = await loadSkills(root, home);
+    const skills = await loadSkills(root, home, {}, "linux");
     expect(skills.summaries.filter((one) => one.name === "zz-personal")).toHaveLength(1);
     expect(skills.warnings.join("\n")).not.toContain("two skills are named");
     await rm(home, { recursive: true, force: true });
@@ -415,7 +415,7 @@ describe("User skill directories", () => {
       join(home, ".config", "glrs", "skills", "zz-personal-glrs"),
       "zz-personal-glrs",
     );
-    const found = await loadSkills(project, home);
+    const found = await loadSkills(project, home, {}, "linux");
     expect(found.summaries.map((one) => one.name)).toContain("zz-personal-glrs");
     await rm(home, { recursive: true, force: true });
     await rm(project, { recursive: true, force: true });
@@ -436,7 +436,7 @@ describe("User skill directories", () => {
     // skills share a name, naming the same file on both sides.
     const home = await mkdtemp(join(tmpdir(), "glrs-home3-"));
     await writeSkill(join(home, ".config", "glrs", "skills", "zz-once"), "zz-once");
-    const found = await loadSkills(home, home);
+    const found = await loadSkills(home, home, {}, "linux");
     expect(found.summaries.filter((one) => one.name === "zz-once")).toHaveLength(1);
     expect(found.warnings.join(" ")).not.toContain("zz-once");
     await rm(home, { recursive: true, force: true });
