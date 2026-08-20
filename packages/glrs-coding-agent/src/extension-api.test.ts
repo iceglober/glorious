@@ -704,3 +704,33 @@ describe("the extension API is declared once", () => {
     for (const name of declared) expect(api).toMatch(new RegExp(`^\\s{4}${name}[:(,]`, "mu"));
   });
 });
+
+// Tone and Span drifted the same way Glrs did: the renderer honoured seven
+// tones and italic/underline spans, and the type extensions import named five
+// tones and neither attribute.
+describe("what the renderer draws is what the type allows", () => {
+  const core = readFileSync(join(here, "..", "..", "glrs-core", "src", "index.ts"), "utf8");
+  const render = readFileSync(join(here, "render.ts"), "utf8");
+
+  test("every tone the renderer paints can be named by an extension", () => {
+    const painted = [
+      ...render.matchAll(/^ {2}(accent|highlight|muted|prompt|success|warning|danger):/gmu),
+    ].map((one) => one[1]);
+    const declared = core.slice(
+      core.indexOf("export type Tone ="),
+      core.indexOf(";", core.indexOf("export type Tone =")),
+    );
+    for (const tone of new Set(painted)) expect(declared).toContain(`"${tone}"`);
+  });
+
+  test("neither is declared twice", () => {
+    expect(render).not.toMatch(/^export type Tone =/mu);
+    expect(render).not.toMatch(/^export type Span = \{/mu);
+  });
+
+  test("span attributes the renderer honours are on the type", () => {
+    const span = core.slice(core.indexOf("export type Span = {"));
+    for (const attribute of ["bold", "italic", "underline", "fill"])
+      expect(span.slice(0, span.indexOf("};"))).toContain(attribute);
+  });
+});

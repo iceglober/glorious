@@ -1,4 +1,5 @@
 import type { Glrs, Line } from "../../../glrs-core/src";
+import { forkSession } from "../../../glrs-core/src/session";
 import { createCodingTools } from "./tools";
 
 // Everything glrs ships that a third party could have written: the six tools
@@ -275,6 +276,44 @@ export default function builtins(g: Glrs): void {
       const outcome = await g.compact(args.trim() === "" ? {} : { instruction: args.trim() });
       if (outcome.outcome === "too-short") g.print("(nothing worth compacting yet)");
       if (outcome.outcome === "busy") g.print("(cannot compact while a turn is running)");
+    },
+  });
+
+  // Forking was written and wired to nothing. `forkSession` copies a session's
+  // events up to a point into a fresh id, which is the whole of what a branch
+  // point needs — it was reachable only through a repository object whose one
+  // consumer was the unreachable SDK entry.
+  //
+  // Nothing about this needs a new API member: `g.session()` already names the
+  // session, and an extension may reach glrs-core. A first-party command has
+  // the surface a third-party one has.
+  g.command("fork", {
+    description: "Copy this session to a new id, so you can branch and come back",
+    run: async (args) => {
+      const { id, events } = g.session();
+      const at = args.trim() === "" ? undefined : Number(args.trim());
+      if (at !== undefined && (!Number.isInteger(at) || at < 1 || at > events)) {
+        g.print(
+          `/fork takes an event count between 1 and ${events}, or nothing for the whole session.`,
+          "warning",
+        );
+        return;
+      }
+      try {
+        const forked = await forkSession(id, at);
+        g.print(
+          [
+            heading(g, "Forked", forked.id),
+            ...table(g, [
+              { name: "events", note: `${at ?? events} of ${events}` },
+              { name: "resume", note: `glrs --resume ${forked.id}` },
+            ]),
+          ],
+          "success",
+        );
+      } catch (thrown) {
+        g.print(`/fork failed: ${(thrown as Error).message}`, "danger");
+      }
     },
   });
 

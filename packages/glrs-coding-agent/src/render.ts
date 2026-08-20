@@ -1,19 +1,11 @@
-import type { Activity } from "../../glrs-core/src";
+import type { Activity, Span, Tone } from "../../glrs-core/src";
 import type { SessionEvent } from "../../glrs-core/src/events";
 import { resultSummary } from "./toolkit";
 
+// Declared in glrs-core, where extensions reach it. Two declarations is how
+// the pair came to disagree about which tones exist.
+export type { Span, Tone } from "../../glrs-core/src";
 export type { Activity };
-
-export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
-
-export type Span = {
-  text: string;
-  tone?: Tone;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  fill?: boolean;
-};
 
 export type Line = Span[];
 

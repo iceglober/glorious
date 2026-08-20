@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listSessions, saveSession, sessionFile } from "./session";
+import { forkSession, listSessions, saveSession, sessionFile } from "./session";
 
 // Sessions are the one thing here that is genuinely the user's data: lose the
 // directory and you lose every transcript. The rename moved where they are
@@ -120,5 +120,56 @@ describe("resuming a session written before the rename", () => {
     const listed = await listSessions();
     expect(listed).toHaveLength(1);
     expect(listed[0]?.updatedAt).toBe("2026-02-01T00:00:00.000Z");
+  });
+});
+
+// Forking was written, complete and correct, and reachable only through a
+// repository object whose one consumer was an unreachable SDK entry — so it had
+// never run outside its own file. `/fork` calls it now.
+describe("forking a session", () => {
+  const seed = async (id: string, events: number): Promise<string> => {
+    const home = await store();
+    await mkdir(join(home, "glrs", "sessions"), { recursive: true });
+    await writeFile(
+      join(home, "glrs", "sessions", `${id}.json`),
+      `${JSON.stringify({
+        schema: 2,
+        id,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-02T00:00:00.000Z",
+        cwd: "/tmp/work",
+        events: Array.from({ length: events }, (_, at) => ({ type: "user", text: `m${at}` })),
+      })}\n`,
+    );
+    return home;
+  };
+
+  test("the copy is a new session, and the original is untouched", async () => {
+    await seed("aaaa1111", 4);
+    const forked = await forkSession("aaaa1111");
+    expect(forked.id).not.toBe("aaaa1111");
+    expect(forked.events).toHaveLength(4);
+    expect(forked.cwd).toBe("/tmp/work");
+    const both = await listSessions();
+    expect(both.map((one) => one.id).sort()).toEqual([forked.id, "aaaa1111"].sort());
+    expect(both.find((one) => one.id === "aaaa1111")?.events).toHaveLength(4);
+  });
+
+  test("it can cut at a point, which is what makes it a branch", async () => {
+    await seed("bbbb2222", 6);
+    const forked = await forkSession("bbbb2222", 2);
+    expect(forked.events).toHaveLength(2);
+    expect((forked.events[1] as { text: string }).text).toBe("m1");
+  });
+
+  test("the fork is on disk, so --resume finds it", async () => {
+    await seed("cccc3333", 3);
+    const forked = await forkSession("cccc3333");
+    expect(await Bun.file(sessionFile(forked.id)).exists()).toBe(true);
+  });
+
+  test("forking something that is not there says so", async () => {
+    await store();
+    await expect(forkSession("nosuchid")).rejects.toThrow("Session not found");
   });
 });
