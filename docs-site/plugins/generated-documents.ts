@@ -24,6 +24,7 @@ const schema = JSON.parse(
 ) as Schema & { $id: string };
 
 const escape = (value: string): string => value.replaceAll("|", "\\|").replaceAll("\n", " ");
+const generatedFrom = (source: string): string => `<small>generated from: ${source}</small>`;
 
 const resolveRef = (value: Schema, root: Schema): Schema => {
   if (!value.$ref?.startsWith("#/$defs/")) return value;
@@ -65,7 +66,7 @@ export const configReference = (root: Schema): string => {
   const lines = [
     "## settings reference",
     "",
-    `generated from the [hosted JSON Schema](${schema.$id}). add \`\"$schema\": \"${schema.$id}\"\` for editor autocomplete and validation.`,
+    generatedFrom(`<a href="${schema.$id}">config schema</a>`),
     "",
     "| setting | type | default | description |",
     "| --- | --- | --- | --- |",
@@ -86,7 +87,7 @@ export const providerReference = (
   const lines = [
     "## built in",
     "",
-    "generated from the provider registry used by model resolution and `glrs doctor`.",
+    generatedFrom("provider registry"),
     "",
     "| provider | prefix | credentials `doctor` recognizes | `doctor` also checks | note |",
     "| --- | --- | --- | --- | --- |",
