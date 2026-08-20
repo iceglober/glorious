@@ -1,6 +1,7 @@
 # Node / TS
 node_modules/
 dist/
+/docs-site/generated/
 packages/glorious-coding-agent/docs/
 *.tsbuildinfo
 

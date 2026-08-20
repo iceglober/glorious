@@ -12,6 +12,7 @@ const watched = [
   join(site, "api"),
   join(site, "plugins"),
   join(site, "public"),
+  join(site, "scripts"),
   join(site, "theme"),
   join(site, "typedoc.json"),
 ];

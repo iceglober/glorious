@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { Application, Converter, type DocumentReflection } from "typedoc";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   PROVIDER_ALIASES,
   PROVIDERS,
@@ -18,10 +18,6 @@ type Schema = {
   items?: Schema;
   $defs?: Record<string, Schema>;
 };
-
-const schema = JSON.parse(
-  readFileSync(new URL("../public/config.schema.json", import.meta.url), "utf8"),
-) as Schema & { $id: string };
 
 const escape = (value: string): string => value.replaceAll("|", "\\|").replaceAll("\n", " ");
 const generatedFrom = (source: string): string => `<small>generated from: ${source}</small>`;
@@ -62,11 +58,11 @@ const rows = (
   return output;
 };
 
-export const configReference = (root: Schema): string => {
+export const configReference = (root: Schema & { $id?: string }): string => {
   const lines = [
-    "## settings reference",
+    "# configuration options",
     "",
-    generatedFrom(`<a href="${schema.$id}">config schema</a>`),
+    generatedFrom(`<a href="${root.$id}">config schema</a>`),
     "",
     "| setting | type | default | description |",
     "| --- | --- | --- | --- |",
@@ -85,7 +81,7 @@ export const providerReference = (
   aliases: Readonly<Record<string, string>>,
 ): string => {
   const lines = [
-    "## built in",
+    "# all providers",
     "",
     generatedFrom("provider registry"),
     "",
@@ -96,48 +92,34 @@ export const providerReference = (
         `| ${escape(provider.label)} | \`${provider.id}\` | ${provider.env.map((name) => `\`${name}\``).join(" or ")} | ${(provider.needs ?? []).map((name) => `\`${name}\``).join(", ")} | ${escape(provider.note ?? "")} |`,
     ),
     "",
-    "accepted shorthands:",
+    "## accepted shorthands",
     "",
     ...Object.entries(aliases).map(([alias, provider]) => `- \`${alias}\` → \`${provider}\``),
   ];
   return `${lines.join("\n")}\n`;
 };
 
-export const generatedRegion = (name: string, markdown: string): string =>
-  `<!-- generated:${name}:start -->\n<div class="glrs-generated-boundary">generated content starts</div>\n\n${markdown.trimEnd()}\n\n<div class="glrs-generated-boundary">generated content ends</div>\n<!-- generated:${name}:end -->`;
+const document = (title: string, content: string): string =>
+  `---\ntitle: ${title}\n---\n\n${content}`;
 
-const inject = (document: DocumentReflection, name: string, markdown: string): void => {
-  const start = `<!-- generated:${name}:start -->`;
-  const end = `<!-- generated:${name}:end -->`;
-  const legacy = `<!-- generated:${name} -->`;
-  const part = document.content.find(
-    (entry) => entry.kind === "text" && (entry.text.includes(start) || entry.text.includes(legacy)),
-  );
-  const region = generatedRegion(name, markdown);
-  if (part?.kind !== "text") {
-    document.content.push({ kind: "text", text: `\n${region}\n` });
-    return;
-  }
-  const from = part.text.indexOf(start);
-  const to = part.text.indexOf(end, from + start.length);
-  if (from >= 0 && to >= 0)
-    part.text = `${part.text.slice(0, from)}${region}${part.text.slice(to + end.length)}`;
-  else part.text = part.text.replace(legacy, region);
+export const generateDocuments = async (
+  site: string = join(import.meta.dir, ".."),
+): Promise<void> => {
+  const schema = JSON.parse(await readFile(join(site, "public", "config.schema.json"), "utf8")) as Schema & {
+    $id: string;
+  };
+  const directory = join(site, "generated", "4-reference");
+  await mkdir(directory, { recursive: true });
+  await Promise.all([
+    writeFile(
+      join(directory, "4-configuration-options.md"),
+      document("configuration options", configReference(schema)),
+    ),
+    writeFile(
+      join(directory, "5-all-providers.md"),
+      document("all providers", providerReference(PROVIDERS, PROVIDER_ALIASES)),
+    ),
+  ]);
 };
 
-export function load(application: Application): void {
-  application.converter.on(
-    Converter.EVENT_CREATE_DOCUMENT,
-    (_context: undefined, document: DocumentReflection) => {
-      const generated = document.frontmatter.generate;
-      if (generated === "config-schema")
-        inject(document, "config-schema", configReference(schema as Schema));
-      if (generated === "providers")
-        inject(
-          document,
-          "providers",
-          providerReference(PROVIDERS, PROVIDER_ALIASES),
-        );
-    },
-  );
-}
+if (import.meta.main) await generateDocuments();

@@ -11,7 +11,6 @@
   "plugin": [
     "./theme/index.ts",
     "./plugins/group-documents.ts",
-    "./plugins/generated-documents.ts",
     "@boneskull/typedoc-plugin-mermaid"
   ],
   "theme": "glrs",
@@ -26,7 +25,8 @@
   },
   "readme": "./homepage.md",
   "projectDocuments": [
-    "../docs/published/**/*.md"
+    "../docs/published/**/*.md",
+    "./generated/**/*.md"
   ],
   "lowercaseDocumentGroupTitles": true,
   "sortEntryPoints": false,
