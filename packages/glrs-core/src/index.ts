@@ -7,8 +7,20 @@ export type { ModelMessage } from "ai";
 export * from "./events";
 export * from "./session";
 
-export type Tone = "muted" | "accent" | "highlight" | "warning" | "danger";
-export type Span = { text: string; tone?: Tone; bold?: boolean; fill?: boolean };
+// The renderer supports seven; this said five, so `prompt` and `success` were
+// tones an extension could not name without a type error even though every
+// host would draw them.
+export type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
+// `italic` and `underline` are honoured by the renderer (chrome.ts) and were
+// missing here, so an extension could not ask for them.
+export type Span = {
+  text: string;
+  tone?: Tone;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fill?: boolean;
+};
 export type Line = Span[];
 
 export type ToolCall = {
