@@ -16,6 +16,12 @@
     "types": ["bun", "node"],
     "skipLibCheck": true
   },
-  "include": ["packages/**/*.ts", "docs/**/*.ts"],
-  "exclude": ["node_modules", "**/dist/**", "**/build/**", "**/coverage/**"]
+  // `docs/**/*.ts` was here and matches nothing — there are no TypeScript
+  // files under docs. `scripts/` and `eval/` are real code that CI never
+  // typechecked; both are clean, so they are checked from now on. `infra/`
+  // and `docs-site/` have their own install roots and their own tsconfigs.
+  "include": ["packages/**/*.ts", "scripts/**/*.ts", "eval/**/*.ts"],
+  // eval fixtures are deliberately broken — they are the input an eval runs
+  // against, so typechecking them would be checking the wrong thing.
+  "exclude": ["node_modules", "**/dist/**", "**/build/**", "**/coverage/**", "eval/**/fixture/**"]
 }

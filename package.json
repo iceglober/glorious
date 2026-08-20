@@ -38,6 +38,11 @@
     "glrs": "bin/glrs",
     "glorious": "bin/glrs"
   },
+  "exports": {
+    ".": "./packages/glrs-coding-agent/src/sdk.ts",
+    "./extension-api": "./packages/glrs-coding-agent/src/public-extension-api.ts",
+    "./package.json": "./package.json"
+  },
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "bun packages/glrs-coding-agent/src/index.ts",
