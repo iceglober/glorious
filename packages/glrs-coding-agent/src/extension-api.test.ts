@@ -536,12 +536,15 @@ describe("the request pipeline is interceptable", () => {
   });
 });
 
-// docs/published/9-internals.md is the page the model is pointed at to learn what
+// docs/published/9-reference/8-events.md is the page the model is pointed at to learn what
 // it can hook. A page that lists an event glrs does not have, or omits one
 // it does, is worse than no page.
 describe("the internals page matches the code", () => {
   const page = (): string =>
-    readFileSync(join(here, "..", "..", "..", "docs", "published", "9-internals.md"), "utf8");
+    readFileSync(
+      join(here, "..", "..", "..", "docs", "published", "9-reference", "8-events.md"),
+      "utf8",
+    );
 
   const eventNames = (): string[] => {
     const source =

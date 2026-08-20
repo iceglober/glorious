@@ -6,7 +6,7 @@ export const fence = (tag: string, body: string): string =>
   `<${tag}>\n${body.replaceAll(`</${tag}>`, `<∕${tag}>`)}\n</${tag}>`;
 
 // Resolved against this file, so the path is right whether glrs is run from
-// a checkout or from the installed global package — `docs` ships in the npm
+// a checkout or from the installed global package. `docs` ships in the npm
 // tarball, which is what makes the block below true rather than aspirational.
 //
 // Docs only. The agent is deliberately not pointed at implementation source: the documented API is
@@ -16,7 +16,7 @@ export const fence = (tag: string, body: string): string =>
 // further.
 const here = import.meta.dir;
 // One path. There was a `<pkg>/docs` branch first, filled by a `prepack` on a
-// package that is `private: true` and never packed — the release publishes the
+// package that is `private: true` and never packed: the release publishes the
 // root package, which has no prepack. So the branch could not be satisfied and
 // the fallback below was always the live one.
 export const docsPath = (): string => join(here, "..", "..", "..", "docs", "published");
@@ -31,16 +31,16 @@ export const reminder = (body: string): string =>
   `${REMINDER_OPEN}\n${body.replaceAll(REMINDER_CLOSE, "[∕system-reminder]")}\n${REMINDER_CLOSE}`;
 
 // Roughly forty lines, about a thousand tokens with the tool schemas. What was
-// here before — a four-step method, four worked
-// examples, a delegation argument, a permission table, a grounding clause, a
-// prose style guide — was 300 lines describing subsystems that no longer exist
-// and rules a capable model already follows.
+// here before (a four-step method, four worked examples, a delegation argument,
+// a permission table, a grounding clause, a prose style guide) was 300 lines
+// describing subsystems that no longer exist and rules a capable model already
+// follows.
 //
 // Anything cut comes back as an AGENTS.md line or a skill, not here: those cost
 // nothing until they are read, and this is re-sent on every turn.
 //
 // Nothing volatile may appear below. The system prompt has to stay
-// byte-identical across turns, sessions and projects for the prompt cache —
+// byte-identical across turns, sessions and projects for the prompt cache.
 // environment, git state, skills and extensions ride in the per-turn message
 // instead. prompt.test.ts fails if any of that reappears here.
 export const systemPrompt = (ctx: { rules: string }): string => `
@@ -72,20 +72,22 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   directory, the project you are in has its own docs/ and it is not this one.
   Read them whole; they are written for you and they cross-reference each other.
 
-  - 8-extensions.md    writing an extension: the API, discovery, rendering
-  - 9-internals.md     how a turn runs, every lifecycle event, where the seams are
-  - 7-commands.md      \`/name\` markdown commands, SKILL.md skills, and AGENTS.md
-  - 4-tools.md         the tools that reach the machine, their limits, and why nothing prompts
-  - 6-configuration.md the three config files, every key, and what a diagnostic means
-  - 2-models.md        choosing a model, providers, credentials, context and retries
-  - 5-cli.md           argv routing, \`-p\`, and subcommands
+  - 9-reference/7-extensions.md          writing an extension: the API, discovery, rendering
+  - 9-reference/8-events.md              every lifecycle event, what it carries, what returning changes
+  - 9-reference/6-commands-and-skills.md \`/name\` markdown commands, SKILL.md skills, and AGENTS.md
+  - 9-reference/3-tools.md               the tools that reach the machine and their limits
+  - 9-reference/5-configuration.md       the three config files, merge rules, diagnostics
+  - 9-reference/4-models.md              choosing a model, providers, variants, context metadata
+  - 9-reference/1-cli.md                 argv routing, \`-p\`, and subcommands
+  - 3-explanation/3-a-turn.md            how a turn runs, caching, steering, compaction
+  - 1-tutorials/2-first-extension.md     a worked extension, start to finish
 
   Read them when the user asks about glrs itself, and especially when they
   ask for a capability it does not have. The answer is almost always an
   extension: a TypeScript file in .glrs/extensions/ that default-exports a
   function taking the glrs API, and can register tools, slash commands,
-  lifecycle hooks, status widgets and custom rendering. Start at 8-extensions.md;
-  it carries a complete worked example.
+  lifecycle hooks, status widgets and custom rendering. Start at
+  1-tutorials/2-first-extension.md, then 9-reference/7-extensions.md.
 
   Write it rather than handing the request back. Verify it with
   \`glrs -p "<prompt>"\`, which loads extensions exactly as the app does.

@@ -113,11 +113,11 @@ export const generateDocuments = async (
   await mkdir(directory, { recursive: true });
   await Promise.all([
     writeFile(
-      join(directory, "1-configuration-options.md"),
+      join(directory, "9-configuration-options.md"),
       document("configuration options", configReference(schema)),
     ),
     writeFile(
-      join(directory, "2-all-providers.md"),
+      join(directory, "10-all-providers.md"),
       document("all providers", providerReference(PROVIDERS, PROVIDER_ALIASES)),
     ),
   ]);

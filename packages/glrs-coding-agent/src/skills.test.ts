@@ -223,7 +223,7 @@ describe("frontmatter", () => {
   });
 
   // Not part of the specification — a convention enough agents adopted that a
-  // skill carrying it expects it honoured. See docs/published/7-commands.md.
+  // skill carrying it expects it honoured. See docs/published/9-reference/6-commands-and-skills.md.
   test("disable-model-invocation keeps a skill out of the model's reach", async () => {
     const loaded = await load(
       "name: zz-fm\ndescription: A fixture.\ndisable-model-invocation: true",

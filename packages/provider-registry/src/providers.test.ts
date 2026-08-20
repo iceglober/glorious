@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createModel, currentModel } from "./models";
-import { missingFor, PROVIDERS, providerSpec } from "./providers";
+import { missingFor, PROVIDER_ALIASES, PROVIDERS, providerSpec } from "./providers";
 
 describe("the provider table", () => {
   test("covers the providers glrs ships a factory for", () => {
@@ -111,5 +113,33 @@ describe("the names people actually type", () => {
 
   test("an alias is not mistaken for an OpenAI-compatible endpoint", () => {
     expect(() => createModel(currentModel({ model: "vertex/x" }))).not.toThrow(/base URL/u);
+  });
+});
+
+// The models page lists the aliases so a reader does not have to open this file.
+// A list that drifts is worse than none, because glrs reads that page about
+// itself and will offer a shorthand that no longer resolves.
+describe("the models page lists every alias", () => {
+  const page = (): string =>
+    readFileSync(
+      join(import.meta.dir, "..", "..", "..", "docs", "published", "9-reference", "4-models.md"),
+      "utf8",
+    );
+
+  test("every alias is on the page, next to what it resolves to", () => {
+    const text = page();
+    const missing = Object.entries(PROVIDER_ALIASES).filter(
+      ([alias, canonical]) => !text.includes(`\`${alias}\``) || !text.includes(`\`${canonical}\``),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  test("the page invents no alias", () => {
+    const listed = [...page().matchAll(/^\| ((?:`[\w-]+`(?:, )?)+) \| `([\w-]+)` \|$/gmu)].flatMap(
+      ([, aliases, canonical]) =>
+        [...(aliases as string).matchAll(/`([\w-]+)`/gu)].map((m) => [m[1], canonical] as const),
+    );
+    expect(listed.length).toBe(Object.keys(PROVIDER_ALIASES).length);
+    for (const [alias, canonical] of listed) expect(PROVIDER_ALIASES[alias]).toBe(canonical);
   });
 });

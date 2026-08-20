@@ -32,8 +32,11 @@ export const directoryLabel = (segment: string, lowercase = false): string => {
   return lowercase ? label.toLowerCase() : label;
 };
 
+// Numeric, so a directory of 1..10 orders as written. Plain localeCompare put
+// `10-all-providers.md` between `1-cli.md` and `2-keys.md`, because it compares
+// "10" and "1-" character by character.
 export const compareDocumentPaths = (left: string, right: string): number =>
-  left.localeCompare(right);
+  left.localeCompare(right, undefined, { numeric: true });
 
 export const documentPath = (file: string, patterns: readonly string[]): string | null => {
   for (const pattern of patterns) {
