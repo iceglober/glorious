@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glrs.dev/config.schema.json",
+  "title": "glrs configuration",
+  "description": "Configuration for glrs. Values merge Project-User, Project, then User; a fully qualified model must be supplied by config, environment, or CLI.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://glrs.dev/config.schema.json",
+      "description": "Enables editor validation and autocomplete for this file."
+    },
+    "model": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/.+$",
+      "examples": ["anthropic/claude-opus-5"],
+      "description": "Required at runtime as provider/model-id. There is no default provider or model."
+    },
+    "variant": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["high"],
+      "description": "Reasoning effort when supported by the selected model."
+    },
+    "tool_timeout_ms": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 600000,
+      "description": "Timeout for built-in shell and search tools, in milliseconds."
+    },
+    "steering_mode": { "$ref": "#/$defs/queueMode" },
+    "steeringMode": { "$ref": "#/$defs/queueMode" },
+    "follow_up_mode": { "$ref": "#/$defs/queueMode" },
+    "followUpMode": { "$ref": "#/$defs/queueMode" },
+    "extensions": {
+      "description": "First-party extension names or extension paths to load, plus names to disable.",
+      "oneOf": [
+        { "$ref": "#/$defs/nameList" },
+        {
+          "type": "object",
+          "properties": {
+            "load": { "$ref": "#/$defs/nameList" },
+            "disable": { "$ref": "#/$defs/nameList" }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "tools": {
+      "description": "Tool names to withhold from the model.",
+      "oneOf": [
+        { "$ref": "#/$defs/nameList" },
+        {
+          "type": "object",
+          "properties": {
+            "disable": { "$ref": "#/$defs/nameList" }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "agentConfigAllowlist": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["extensions"] },
+      "uniqueItems": true,
+      "description": "Config sections glrs may update after the user answers."
+    },
+    "providers": {
+      "type": "object",
+      "description": "Provider-specific connection settings.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "api": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Base URL for an OpenAI-compatible endpoint."
+          },
+          "region": {
+            "type": "string",
+            "minLength": 1,
+            "description": "AWS Bedrock region."
+          },
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Google Vertex project."
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Google Vertex location."
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "queueMode": {
+      "type": "string",
+      "enum": ["one-at-a-time", "all"],
+      "default": "one-at-a-time"
+    },
+    "nameList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

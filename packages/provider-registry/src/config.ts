@@ -173,6 +173,7 @@ const ALSO_KNOWN: Record<string, keyof Config> = {
 // ignored" while the extensions loaded anyway, which is a diagnostic that
 // contradicts what happened.
 const KNOWN = [
+  "$schema",
   "model",
   "variant",
   "tool_timeout_ms",

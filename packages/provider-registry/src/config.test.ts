@@ -169,6 +169,17 @@ describe("a config that does not do what it looks like it does", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  test("a schema-only file is recognized as glrs config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-schema-"));
+    await mkdir(join(dir, ".glrs"), { recursive: true });
+    await writeFile(
+      join(dir, ".glrs", "config.json"),
+      '{"$schema":"https://glrs.dev/config.schema.json"}',
+    );
+    expect((await loadConfig(dir, join(dir, "nohome"))).diagnostics).toEqual([]);
+    await rm(dir, { recursive: true, force: true });
+  });
+
   test("a good config says nothing at all", async () => {
     const dir = await mkdtemp(join(tmpdir(), "glrs-good-"));
     await mkdir(join(dir, ".glrs"), { recursive: true });
