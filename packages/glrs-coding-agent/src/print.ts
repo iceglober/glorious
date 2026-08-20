@@ -37,10 +37,15 @@ export const runPrint = async (
   // out from the inert plan rather than by running anything. Without this a
   // skill an extension ships would be invisible to `-p` — which is the path the
   // skills themselves tell the agent to verify its work with.
+  // `allowed-tools` restricts a headless run the same way it restricts a turn in
+  // the TUI. A run is one turn, so there is nothing to lift it at the end of.
+  // Skills load before the agent exists, so activation goes through a slot.
+  let holdToSkill: (skill: { name: string; allowedTools: readonly string[] }) => void = () => {};
   const skills = await loadSkills(
     where.root,
     undefined,
     skillRootsFor((await resolveExtensions(where.root, loadedConfig.config.extensions)).plan),
+    (skill) => holdToSkill(skill),
   );
   // Built from the config, which it was not: currentModel() was called with no
   // arguments here, so a model set in .glrs/config.json worked in the TUI
@@ -205,7 +210,20 @@ export const runPrint = async (
   const banned = new Set(
     (loadedConfig.config.tools?.disable ?? []).map((name) => name.trim().toLowerCase()),
   );
-  if (banned.size > 0) agent.setToolFilters([(name) => !banned.has(name.toLowerCase())]);
+  // Kept as a list rather than replaced, so a skill's own restriction composes
+  // with the configured bans instead of overwriting them.
+  const filters: Array<(name: string) => boolean> = [];
+  if (banned.size > 0) filters.push((name) => !banned.has(name.toLowerCase()));
+  if (filters.length > 0) agent.setToolFilters(filters);
+
+  holdToSkill = ({ name, allowedTools }) => {
+    if (allowedTools.length === 0) return;
+    const allowed = new Set(allowedTools.map((one) => one.trim().toLowerCase()));
+    allowed.add("activate_skill");
+    filters.push((tool) => allowed.has(tool.toLowerCase()));
+    agent.setToolFilters(filters);
+    note(`[skill] ${name} limits this run to: ${[...allowed].sort().join(", ")}`);
+  };
 
   const onSigint = (): void => stop.abort();
   process.on("SIGINT", onSigint);
