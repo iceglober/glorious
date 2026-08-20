@@ -68,18 +68,39 @@ describe("a setting a provider does not read says so", () => {
   });
 });
 
-describe("the base URL reaches the client for every provider that takes one", () => {
+describe("the base URL reaches the model option for every provider that takes one", () => {
   // azure is the case that mattered: the former default provider, and the one
   // branch of createModel that dropped baseURL entirely.
+  //
+  // This asserts the option, not the constructed client. Building a real client
+  // needs whatever credentials that provider wants — google-vertex reaches for
+  // application-default credentials and throws without them, which passes on a
+  // laptop that has them and fails on CI. What is glrs's to get right is that
+  // the configured value arrives; what the SDK then does with it is the SDK's.
   for (const provider of ["azure", "anthropic", "amazon-bedrock", "google-vertex", "ollama"])
-    test(`${provider} is constructed without throwing when given a base URL`, async () => {
+    test(`${provider} carries the base URL it was configured with`, async () => {
       const root = await project({
         model: `${provider}/some-model`,
         providers: { [provider]: { api: VALUES.api } },
       });
       const { config } = await loadConfig(root);
       expect(currentModel(config).api).toBe(VALUES.api);
-      expect(() => createModel(currentModel(config))).not.toThrow();
       await rm(root, { recursive: true, force: true });
     });
+
+  // The one construction worth asserting: an unknown provider with no base URL
+  // is refused with a message naming the key to set, and given one it is built.
+  test("an unknown provider is refused without a base URL and accepted with one", async () => {
+    const bare = await project({ model: "mystery/x" });
+    const without = currentModel((await loadConfig(bare)).config);
+    expect(() => createModel(without)).toThrow(/base URL/u);
+    const given = await project({
+      model: "mystery/x",
+      providers: { mystery: { api: VALUES.api } },
+    });
+    const configured = currentModel((await loadConfig(given)).config);
+    expect(() => createModel(configured)).not.toThrow();
+    await rm(bare, { recursive: true, force: true });
+    await rm(given, { recursive: true, force: true });
+  });
 });
