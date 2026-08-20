@@ -23,7 +23,10 @@ const blockOf = (source: string, start: string, end = "\n    }"): string => {
 };
 
 const events = readCore("events.ts");
-const api = read("extension-api.ts");
+// The event payload types moved to glrs-core, where extensions can reach them
+// without importing the coding agent. Both files are read so this guard pins
+// the declarations wherever they live rather than where they lived.
+const api = read("extension-api.ts") + readCore("index.ts");
 
 describe("what the session records is what an extension can see", () => {
   test("every field on the usage session event reaches the usage payload", () => {

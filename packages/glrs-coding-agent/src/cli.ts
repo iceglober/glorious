@@ -77,7 +77,7 @@ export const runCli = async (
     // Reading the roster is fine here; changing it is a decision somebody
     // agreed to in conversation, and there is no conversation.
     setExtension: async () => "not-allowed",
-    inspect: () => ({ commands: [], skills: [], extensions: [] }),
+    inspect: () => ({ commands: [], skills: [], extensions: [], keys: [], flags: [] }),
     send: () => needsSession("send"),
     setInput: () => needsSession("setInput"),
     capture: () => needsSession("ui.capture"),

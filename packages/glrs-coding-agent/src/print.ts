@@ -136,6 +136,18 @@ export const runPrint = async (
           ...entry,
           contributed: describeContribution(registry, entry.origin),
         })),
+        // Registered headlessly and never dispatched — but an extension asking
+        // what exists should get the truth, not an empty list.
+        keys: registry.keys.map(({ key, ctrl, shift, description }) => ({
+          key,
+          ctrl,
+          shift,
+          description,
+        })),
+        flags: [...registry.flags].map(([name, spec]) => ({
+          name,
+          description: spec.description,
+        })),
       }),
       clear: () => "empty" as const,
       compact: async () => ({ outcome: "too-short" as const }),
