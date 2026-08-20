@@ -28,7 +28,7 @@ a command is a prompt you invoke with `/name`. a skill is instructions the model
 
 ## command files
 
-```md
+```markdown
 ---
 description: open a pull request
 ---
@@ -53,3 +53,5 @@ every skill answers to `/skill:<name>` and unknown fields are ignored. `allowed-
 ## AGENTS.md
 
 every text found is concatenated, nearest last: `/etc/ampcode/AGENTS.md` and `/etc/glrs/AGENTS.md` (macOS adds `/Library/Application Support/…`, Windows uses `%ProgramData%`), then `~/.config/amp/AGENTS.md`, `~/.config/glrs/AGENTS.md`, `~/.config/AGENTS.md`, then every directory from `$HOME` down to the working directory. in those directories the first of `AGENTS.md`, `AGENT.md`, `CLAUDE.md` is read.
+
+see also: [write a command](../2-how-to/4-write-a-command.md), [write a skill](../2-how-to/5-write-a-skill.md)

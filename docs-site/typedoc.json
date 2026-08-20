@@ -41,7 +41,12 @@
   "markdownLinkExternal": true,
   "highlightLanguages": [
     "bash",
+    "sh",
+    "shell",
     "console",
+    "text",
+    "md",
+    "ts",
     "css",
     "html",
     "javascript",

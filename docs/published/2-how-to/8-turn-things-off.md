@@ -4,6 +4,8 @@ title: turn things off
 
 # turn things off
 
+## every turn
+
 `.glrs/config.json`:
 
 ```json
@@ -23,10 +25,12 @@ title: turn things off
 
 ## one turn
 
-```md
+```markdown
 ---
 allowed-tools: read, grep, glob
 ---
 ```
 
 in a skill's frontmatter: the turn that activates the skill gets those tools and no others. disabling is not a security boundary, see [permissions](../3-explanation/2-permissions.md).
+
+see also: [configuration](../9-reference/5-configuration.md), [tools](../9-reference/3-tools.md)

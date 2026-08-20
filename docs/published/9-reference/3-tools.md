@@ -38,3 +38,5 @@ past the deadline: SIGTERM to the process group, SIGKILL five seconds later, the
 one string. `bash` returns stdout, then stderr, then `[exit N]` when it fails. a thrown error becomes `ERROR: <message>`, which marks the call failed.
 
 `edit` resolves every replacement in every file before writing anything. one bad replacement leaves every file unchanged. each file is renamed into place.
+
+see also: [permissions](../3-explanation/2-permissions.md), [turn things off](../2-how-to/8-turn-things-off.md)

@@ -6,7 +6,7 @@ title: resume and fork
 
 ## resume
 
-```sh
+```bash
 glrs --resume            # pick from a list
 glrs --resume 3f9a1c2b   # open that session
 ```
@@ -15,7 +15,7 @@ the picker lists every session newest first, titled by your last message, with i
 
 ## fork
 
-```
+```text
 /session     # read the event count
 /fork 42     # copy the first 42 events to a new id
 /fork        # copy all of them
@@ -28,3 +28,5 @@ events include tool calls and results, not just messages. `/fork` prints the new
 `/session` prints the current id, context, tokens, cost, event count and file path.
 
 sessions are JSON under `$XDG_DATA_HOME/glrs/sessions`, else `~/.local/share/glrs/sessions`. see [configuration](../9-reference/5-configuration.md).
+
+see also: [keys](../9-reference/2-keys.md), [cli](../9-reference/1-cli.md)

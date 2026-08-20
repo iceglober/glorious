@@ -6,11 +6,11 @@ title: your first extension
 
 you will write a `stash_list` tool, load it, and watch the model call it.
 
-you need the repository from [first turn](./1-first-turn.md).
+you need the repository from [quick start](./1-quick-start.md).
 
 ## make a stash to find
 
-```sh
+```bash
 cd /tmp/glrs-tour
 echo scratch >> greeting.txt
 git stash push -m scratch
@@ -18,13 +18,13 @@ git stash push -m scratch
 
 ## write the extension
 
-```sh
+```bash
 mkdir -p .glrs/extensions
 ```
 
 put this in `.glrs/extensions/stash-list.ts`:
 
-```ts
+```typescript
 import type { Extension } from "@glrs-dev/glrs/extension-api";
 
 const extension: Extension = (g) => {
@@ -46,13 +46,13 @@ export default extension;
 
 `.glrs/extensions` is read at startup, so a new run picks the file up:
 
-```sh
+```bash
 glrs -p "use stash_list"
 ```
 
 the tool trail goes to stderr, the answer to stdout:
 
-```
+```text
 You have one stash: scratch, on main.
 ```
 
@@ -60,11 +60,8 @@ already inside the TUI (the full-screen terminal interface)? type `/reload` inst
 
 drop the stash when you are done:
 
-```sh
+```bash
 git stash drop
 ```
 
-## next
-
-- [extensions](../9-reference/7-extensions.md)
-- [events](../9-reference/8-events.md)
+next: [extensions](../9-reference/7-extensions.md), [events](../9-reference/8-events.md)

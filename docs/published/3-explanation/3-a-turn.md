@@ -8,7 +8,7 @@ a turn is a loop: send the conversation, read the stream, run the tools the mode
 
 ## what is sent
 
-```
+```text
 instructions   the system prompt, byte-identical every turn
 history        every earlier message, unchanged
 new message    environment · skills · extensions · what you typed
@@ -44,10 +44,12 @@ the third exists because the first two cannot see a mid-response drop: fetch res
 
 past 75% of the context window the older part of the conversation is summarised and replaced by one message:
 
-```
+```text
 <earlier-conversation>
 …
 </earlier-conversation>
 ```
 
 a tool result separated from the call it answers is an invalid request, so the cut walks back to the newest user message that still leaves about 20k tokens of recent work. everything after it survives verbatim. everything before it is the brief.
+
+see also: [events](../9-reference/8-events.md), [models](../9-reference/4-models.md)

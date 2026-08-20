@@ -75,3 +75,5 @@ extensions: builtins (bundled)
 ```
 
 with credentials present the third line is `credentials: found`. with no model the first is `model: not configured`, followed by the reason and the built-in provider ids. `--json` emits the same report as an object: `diagnostics`, `model`, `provider`, `missing`, `note`, `extensions`.
+
+see also: [models](./4-models.md), [configuration](./5-configuration.md), [run in a pipeline](../2-how-to/9-run-in-a-pipeline.md)

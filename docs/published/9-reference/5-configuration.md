@@ -73,3 +73,5 @@ reported in the transcript as `(config)`, on stderr as `[config]` under `-p`, an
 ```
 
 `.../glorious/sessions/` is read, never written: a session resumed from there is saved to the new path.
+
+see also: [turn things off](../2-how-to/8-turn-things-off.md), [models](./4-models.md)

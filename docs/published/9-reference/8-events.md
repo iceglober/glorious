@@ -8,7 +8,7 @@ an extension observes and changes a turn through `g.on`.
 
 ## g.on
 
-```ts
+```typescript
 export default (g) => {
   g.on("tool_call", ({ name }) => (name === "write" ? "this session is read-only" : undefined));
 };
@@ -58,3 +58,5 @@ export default (g) => {
 - a blocked `tool_call` reaches the model as the tool's result: `ERROR: <your string>`, or `ERROR: an extension blocked <name> for this turn.` for `false`. the turn continues.
 - the TUI fires `idle` then `turn_end`. `-p` fires `turn_end` then `idle`.
 - both hosts await `session_end`, so work on the way out finishes. the TUI's screen stops as soon as it resolves, so printing there lands nowhere.
+
+see also: [extensions](./7-extensions.md), [a turn](../3-explanation/3-a-turn.md), [your first extension](../1-tutorials/2-first-extension.md)

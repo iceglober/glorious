@@ -44,3 +44,5 @@ a default provider guesses whose account is billed and which endpoint sees the t
 - **host**: the surface a session runs on: `tui`, `print`, `cli`
 - **project root**: `git rev-parse --show-toplevel`, or the working directory outside a repo
 - **cache breakpoint**: a mark on the second-to-last message; Anthropic and Bedrock cache everything up to it
+
+see also: [a turn](./3-a-turn.md), [permissions](./2-permissions.md), [extensions](../9-reference/7-extensions.md)

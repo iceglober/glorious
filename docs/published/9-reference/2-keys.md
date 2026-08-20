@@ -51,3 +51,5 @@ the activity row is drawn only while busy or compacting, and `g.activity()` repl
 
 ## picker
 `up` `down` or `k` `j` move, `shift+up` `shift+down` move 5, `enter` opens, `esc` cancels.
+
+see also: [resume and fork](../2-how-to/3-resume-and-fork.md), [a turn](../3-explanation/3-a-turn.md)

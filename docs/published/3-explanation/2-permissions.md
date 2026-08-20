@@ -19,3 +19,5 @@ a confirmation prompt is not a boundary once an agent can edit and execute
 code. an extension can refuse a call from the `tool_call` hook, but it runs in
 the same process. real boundaries come from outside: git review, worktrees,
 containers, or operating-system controls.
+
+see also: [tools](../9-reference/3-tools.md), [turn things off](../2-how-to/8-turn-things-off.md)

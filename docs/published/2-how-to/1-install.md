@@ -4,7 +4,9 @@ title: install
 
 # install
 
-```sh
+## install script
+
+```bash
 curl -fsSL https://glrs.dev/install.sh | bash
 ```
 
@@ -25,17 +27,21 @@ if `glrs` is not found afterward, add the directory printed by `bun pm bin -g` t
 
 `glrs update` reinstalls the latest `@next`.
 
-## uninstall (sad)
+## uninstall
 
-```sh
+```bash
 bun remove -g @glrs-dev/glrs
 rm -rf ~/.config/glrs ~/.local/share/glrs ~/.cache/glrs  # config, sessions, cache
 ```
 
 ## alt+enter steering on Windows Terminal
 
-Windows Terminal takes the key for fullscreen and consumes it before glrs sees it. unbind it in `settings.json`, then restart glrs:
+Windows Terminal claims `alt+enter` for fullscreen and consumes it before
+glrs sees it. open its settings file with `ctrl+,` (**Settings**, then **Open
+JSON file**) and unbind the key, then restart glrs:
 
 ```json
 { "actions": [{ "command": "unbound", "keys": "alt+enter" }] }
 ```
+
+next: [quick start](../1-tutorials/1-quick-start.md), [connect a provider](./2-connect-a-provider.md), [cli](../9-reference/1-cli.md)

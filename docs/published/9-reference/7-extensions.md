@@ -43,7 +43,7 @@ a tool filter narrows what the model may call, from the next model call. every f
 
 renderers run synchronously during a paint. `footer` returns `Line[]`, `activity` returns `Line[]` or null to keep glrs's own, `status` returns a string or null. a span marked `fill` takes a background, and one on a line pads it out to the terminal width.
 
-```ts
+```typescript
 type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
 type Span = { text: string; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; fill?: boolean };
 type Line = Span[];
@@ -58,3 +58,5 @@ type Line = Span[];
 ## sdk
 
 `@glrs-dev/glrs` exports `createAgentCore`, `createCodingAgent`, `createProviderRegistry` and `jsonSessionRepository` for embedding a session in another host: the generated **SDK** page, built from `packages/glrs-coding-agent/src/sdk.ts`. an extension imports `@glrs-dev/glrs/extension-api` instead.
+
+see also: [your first extension](../1-tutorials/2-first-extension.md), [events](./8-events.md)

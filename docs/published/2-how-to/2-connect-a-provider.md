@@ -9,17 +9,17 @@ set the credential, then check it with `glrs doctor`: a connected provider repor
 
 ## a keyed provider
 
-```sh
+```bash
 export ANTHROPIC_API_KEY=sk-…
 GLRS_MODEL=anthropic/claude-opus-5 glrs doctor
 ```
 
-## Azure
+## azure
 
 `AZURE_FOUNDRY_API_KEY`, `AZURE_API_KEY`, or `AZURE_OPENAI_API_KEY`; the first one set wins.
 `AZURE_RESOURCE_NAME` is also required.
 
-## Bedrock and Vertex
+## bedrock and vertex
 
 Bedrock reads the standard AWS credential chain: `AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, or
 `AWS_BEARER_TOKEN_BEDROCK`, so an SSO profile or an assumed role works. Vertex reads
@@ -46,3 +46,5 @@ an unknown prefix is an OpenAI-compatible endpoint and needs a base URL: Ollama,
 ```
 
 model ids and precedence: [models](../9-reference/4-models.md).
+
+see also: [models](../9-reference/4-models.md), [configuration](../9-reference/5-configuration.md)

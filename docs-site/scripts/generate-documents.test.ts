@@ -34,7 +34,7 @@ describe("generated documentation", () => {
     await generateDocuments(site);
     expect(await readFile(join(site, "generated", "9-reference", "9-configuration-options.md"), "utf8"))
       .toContain("title: configuration options");
-    expect(await readFile(join(site, "generated", "9-reference", "10-all-providers.md"), "utf8"))
+    expect(await readFile(join(site, "generated", "9-reference", "9-providers.md"), "utf8"))
       .toContain("title: all providers");
     await rm(site, { recursive: true, force: true });
   });

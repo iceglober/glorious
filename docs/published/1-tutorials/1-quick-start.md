@@ -1,27 +1,27 @@
 ---
-title: first turn
+title: quick start
 ---
 
-# first turn
+# quick start
 
 ## install
 
-```sh
+```bash
 curl -fsSL https://glrs.dev/install.sh | bash
 ```
 
-the script requires git and offers to install Bun when it is missing.
+the script requires git and offers to install Bun when it is missing. for
+package managers, PATH fixes and uninstalling: [install](../2-how-to/1-install.md).
 
-## name a model
+## set a provider key
 
-```sh
+```bash
 export ANTHROPIC_API_KEY=...
-export GLRS_MODEL=anthropic/claude-opus-5
 ```
 
 ## make a scratch repo
 
-```sh
+```bash
 mkdir /tmp/glrs-tour && cd /tmp/glrs-tour && git init
 printf 'hello\n' > greeting.txt
 git add -A && git commit -m start
@@ -29,8 +29,8 @@ git add -A && git commit -m start
 
 ## take one turn
 
-```sh
-glrs
+```bash
+glrs --model anthropic/claude-opus-5
 ```
 
 type this and press `enter`:
@@ -45,14 +45,14 @@ glrs reads the file, edits it, and tells you what it changed.
 
 press `ctrl+c` twice to leave, then:
 
-```sh
+```bash
 git diff
 ```
 
 ## come back
 
-```sh
-glrs --resume
+```bash
+glrs --model anthropic/claude-opus-5 --resume
 ```
 
 arrows move, `enter` opens, `esc` cancels. the session picks up where it stopped.
