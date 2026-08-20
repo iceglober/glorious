@@ -178,7 +178,7 @@ const mergeOptions = (far: JsonObject, near: JsonObject): JsonObject => {
 };
 
 export const providerOptions = (
-  model: Pick<ModelOption, "provider" | "modelId" | "variant" | "providerOptions">,
+  model: Pick<ModelOption, "provider" | "modelId" | "variant" | "variants" | "providerOptions">,
   cacheKey: string,
 ): ProviderOptions =>
   mergeOptions(
@@ -186,6 +186,7 @@ export const providerOptions = (
       provider: model.provider,
       modelId: model.modelId,
       variant: model.variant,
+      variants: model.variants,
       cacheKey,
     }) as JsonObject,
     (model.providerOptions ?? {}) as JsonObject,

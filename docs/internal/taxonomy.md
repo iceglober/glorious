@@ -39,18 +39,19 @@ The lifecycle is install, update, uninstall. Naming one implies the other two.
 | --- | --- |
 | **provider** | who serves the model. `anthropic`, `azure`, `ollama` |
 | **model id** | `provider/model-id`. Always both halves; there is no default |
-| **variant** | reasoning effort: `low`, `med`, `high`, `xhigh`, `max` |
-| **default variant** | what a model uses when none is set. Usually `med` |
+| **variant** | reasoning effort. The values are the model's own, from the catalogue |
+| **variants** | what this model accepts. models.dev publishes it per model |
 | **credential** | the environment variable a provider reads |
 | **catalogue** | context window and prices, fetched from models.dev and cached |
 
 Say **set a model**, not *name* or *choose*. Four places, nearest wins:
 `--model`, `GLRS_MODEL`, project config, user config.
 
-> **code gap.** `shaping.ts:25` declares `"minimal" | "low" | "medium" | "high"`.
-> The canonical set above is what providers actually offer. The code needs
-> `med` over `medium`, and needs `xhigh` and `max`. `g.setThinkingLevel(level)`
-> takes a bare `string`, so it will not catch the mismatch.
+models.dev publishes `reasoning_options` per model and the catalogue holds over
+a hundred distinct shapes: `[low,medium,high]`, `[minimal,low,medium,
+high]`, `[low,medium,high,xhigh,max]`, `[none,high]`, and many
+models with no effort scale at all. glrs validates a variant against the model's
+own list. There is no canonical set to memorise.
 
 ## 3. session
 

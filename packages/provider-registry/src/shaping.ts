@@ -22,7 +22,15 @@
 // A provider glrs does not know is treated as OpenAI-compatible everywhere
 // else, so it is treated as OpenAI-compatible here too.
 
-export type Variant = "minimal" | "low" | "medium" | "high";
+// Reasoning effort is not a fixed set. models.dev publishes what each model
+// accepts in `reasoning_options`, and across the catalogue there are over a
+// hundred distinct shapes: ["low","medium","high"], ["minimal","low","medium",
+// "high"], ["low","medium","high","xhigh","max"], ["none","high"], and models
+// with no effort scale at all. A union here could only ever be wrong for most
+// of them, so the value is a string and the model's own list is what validates
+// it. `ModelOption.variants` carries that list, from the catalogue or from
+// config.
+export type Variant = string;
 
 // The AI SDK carries provider options as JSON, so this is JSON-shaped rather
 // than `unknown` — otherwise it will not satisfy the SDK's own option type.
@@ -33,17 +41,35 @@ export type ProviderOptions = Record<string, Record<string, JsonValue>>;
 // are glrs's reading of what each word should buy, not something a provider
 // publishes — the words are the interface, and this is the one place they turn
 // into budgets, so a provider is never handed a number from nowhere.
-const BUDGET: Record<Variant, number> = {
-  minimal: 1024,
-  low: 4096,
-  medium: 12288,
-  high: 24576,
+// Anthropic, Google and Bedrock want a token budget rather than a word. The
+// budget comes from where the variant sits in the model's own scale, so a model
+// offering three levels spreads over the same range as one offering five. A
+// model with no published scale falls back to a fixed ladder, which is the only
+// case where guessing is unavoidable.
+const FALLBACK: readonly string[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
+const FLOOR = 1024;
+const CEILING = 32768;
+
+const budgetFor = (variant: string, scale: readonly string[]): number | undefined => {
+  const at = scale.indexOf(variant);
+  if (at < 0 || scale.length === 0) return undefined;
+  if (scale.length === 1) return CEILING;
+  const step = (CEILING - FLOOR) / (scale.length - 1);
+  return Math.round(FLOOR + step * at);
 };
 
-const asVariant = (value: string | undefined): Variant | undefined => {
+// The variant a caller asked for, if this model accepts it. An unknown value is
+// dropped rather than forwarded: a provider that rejects it fails the whole
+// turn, and a provider that ignores it silently bills for the wrong effort.
+const asVariant = (
+  value: string | undefined,
+  variants: readonly string[] | undefined,
+): string | undefined => {
   if (value === undefined) return undefined;
   const word = value.trim().toLowerCase();
-  return word in BUDGET ? (word as Variant) : undefined;
+  if (word === "") return undefined;
+  const scale = variants ?? FALLBACK;
+  return scale.includes(word) ? word : undefined;
 };
 
 // Which provider-options namespace a provider reads. azure is served by the
@@ -65,8 +91,10 @@ export const namespaceFor = (provider: string, modelId = ""): string => {
 export type Shape = {
   provider: string;
   modelId?: string;
-  /** The configured reasoning effort, in glrs's words. */
+  /** The configured reasoning effort. */
   variant?: string;
+  /** What this model accepts, from the catalogue. Empty means no effort scale. */
+  variants?: readonly string[];
   /** Stable per-conversation key, for providers that route on one. */
   cacheKey?: string;
 };
@@ -75,8 +103,9 @@ export type Shape = {
 // that provider actually reads.
 export const requestOptions = (shape: Shape): ProviderOptions => {
   const namespace = namespaceFor(shape.provider, shape.modelId);
-  const variant = asVariant(shape.variant);
-  const budget = variant === undefined ? undefined : BUDGET[variant];
+  const variant = asVariant(shape.variant, shape.variants);
+  const scale = shape.variants ?? FALLBACK;
+  const budget = variant === undefined ? undefined : budgetFor(variant, scale);
 
   if (namespace === "anthropic")
     return {
@@ -103,9 +132,11 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
               reasoningConfig: {
                 type: "enabled",
                 budgetTokens: budget,
-                // bedrock takes the word as well as the number, and only these
-                // three — "minimal" has no spelling there.
-                ...(variant === "minimal" ? {} : { maxReasoningEffort: variant }),
+                // bedrock takes a word as well as a number, and only these
+                // three. Anything outside them travels as the budget alone.
+                ...(["low", "medium", "high"].includes(variant)
+                  ? { maxReasoningEffort: variant }
+                  : {}),
               },
             }),
       },
