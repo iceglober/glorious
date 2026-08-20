@@ -119,6 +119,38 @@ export const configScopes = (
     path,
   }));
 
+const withSchema = (text: string): string | undefined => {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (!isObject(raw) || Object.hasOwn(raw, "$schema")) return undefined;
+
+  const open = text.indexOf("{");
+  const close = text.lastIndexOf("}");
+  const inside = text.slice(open + 1, close);
+  const property = `${JSON.stringify("$schema")}: ${JSON.stringify(CONFIG_SCHEMA_URL)}`;
+  if (inside.trim() === "") {
+    const newline = inside.includes("\r\n") ? "\r\n" : inside.includes("\n") ? "\n" : undefined;
+    const replacement =
+      newline === undefined
+        ? `${inside}${property}${inside}`
+        : `${newline}  ${property}${newline}${inside.slice(inside.lastIndexOf(newline) + newline.length)}`;
+    return `${text.slice(0, open + 1)}${replacement}${text.slice(close)}`;
+  }
+
+  const leading = /^\s*/u.exec(inside)?.[0] ?? "";
+  return `${text.slice(0, open + 1)}${leading}${property},${leading}${inside.slice(leading.length)}${text.slice(close)}`;
+};
+
+const addSchema = async (path: string): Promise<void> => {
+  const text = await readFile(path, "utf8");
+  const updated = withSchema(text);
+  if (updated !== undefined) await writeFile(path, updated, "utf8");
+};
+
 export const ensureConfigFiles = async (
   root: string,
   options: {
@@ -151,6 +183,7 @@ export const ensureConfigFiles = async (
       created.push(target.path);
     } catch (thrown) {
       if ((thrown as NodeJS.ErrnoException).code !== "EEXIST") throw thrown;
+      await addSchema(target.path);
     }
   }
   return created;

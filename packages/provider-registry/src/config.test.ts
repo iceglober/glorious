@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   CONFIG_SCHEMA_URL,
   configScopes,
@@ -114,19 +114,40 @@ describe("initializing config files", () => {
     expect(await Bun.file(join(root, ".glrs", ".gitignore")).text()).toBe("/config.local.json\n");
   });
 
-  test("existing config is never replaced", async () => {
+  test("adds the schema to existing config in every resolved scope", async () => {
     const root = await mkdtemp(join(tmpdir(), "glrs-init-existing-"));
     const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
     roots.push(root, home);
-    await mkdir(join(root, ".glrs"), { recursive: true });
-    await writeFile(join(root, ".glrs", "config.json"), '{"model":"openai/custom"}\n');
-    await ensureConfigFiles(root, { project: true, home, env: {}, platform: "linux" });
-    expect(await Bun.file(join(root, ".glrs", "config.json")).text()).toBe(
-      '{"model":"openai/custom"}\n',
-    );
+    const paths = configScopes(root, home, {}, "linux").map((scope) => scope.path);
+    for (const path of paths) await mkdir(dirname(path), { recursive: true });
+    await writeFile(paths[0], '{"variant":"high"}\n');
+    await writeFile(paths[1], '{\n  "model": "openai/custom"\n}\n');
+    await writeFile(paths[2], "{\n}\n");
+
     expect(
       await ensureConfigFiles(root, { project: true, home, env: {}, platform: "linux" }),
     ).toEqual([]);
+    for (const path of paths)
+      expect(JSON.parse(await Bun.file(path).text())).toMatchObject({ $schema: CONFIG_SCHEMA_URL });
+    expect(await Bun.file(paths[1]).text()).toBe(
+      `{\n  "$schema": "${CONFIG_SCHEMA_URL}",\n  "model": "openai/custom"\n}\n`,
+    );
+  });
+
+  test("does not replace an existing schema or rewrite malformed JSON", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-existing-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    const user = join(home, ".config", "glrs", "config.json");
+    await mkdir(dirname(user), { recursive: true });
+    const custom = '{"$schema":"https://example.com/custom.json","model":"openai/custom"}\n';
+    await writeFile(user, custom);
+    await ensureConfigFiles(root, { project: false, home, env: {}, platform: "linux" });
+    expect(await Bun.file(user).text()).toBe(custom);
+
+    await writeFile(user, "{not json\n");
+    await ensureConfigFiles(root, { project: false, home, env: {}, platform: "linux" });
+    expect(await Bun.file(user).text()).toBe("{not json\n");
   });
 });
 
