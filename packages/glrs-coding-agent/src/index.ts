@@ -49,7 +49,7 @@ import {
   shippedExtensions,
   skillRootsFor,
 } from "./extensions";
-import { expandMentions, fileCandidates } from "./mentions";
+import { expandMentions, fileCandidates, forgetListings } from "./mentions";
 import { runPrint } from "./print";
 import { fence } from "./prompt";
 import {
@@ -169,7 +169,7 @@ const main = async (): Promise<void> => {
   const picker = asked.kind === "chat" && asked.picker;
   const extraFlags = asked.kind === "chat" ? asked.flags : new Map<string, string>();
 
-  const { root, os, branch, worktree, git, label } = probe();
+  const { root, os, git } = probe();
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
     // Now that nothing is defaulted, "no model configured" is a state doctor
@@ -977,6 +977,10 @@ const main = async (): Promise<void> => {
         settings: reread.config.extensions,
       });
       applyToolBans(reread.config.tools?.disable);
+      // The @-completion file listing is cached for five seconds; a reload is
+      // the user saying the tree changed, so it is dropped here. `forgetListings`
+      // existed with no caller — the cache had no invalidation hook at all.
+      forgetListings();
       for (const problem of reread.diagnostics)
         render({ type: "notice", text: `(config) ${problem}` });
       for (const failure of loaded.failures)

@@ -43,7 +43,7 @@ export const subcommandOf = (
   const at = args.findIndex(
     (arg, index) => !arg.startsWith("-") && !args[index - 1]?.startsWith("-"),
   );
-  return at < 0 ? null : { name: args[at] ?? "", rest: args.slice(at + 1) };
+  return at < 0 ? null : { name: args[at], rest: args.slice(at + 1) };
 };
 
 export type CliOutcome = {

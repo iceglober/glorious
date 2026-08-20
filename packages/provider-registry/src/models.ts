@@ -27,9 +27,13 @@ export type ModelRef = {
 };
 
 export type ModelOption = ModelRef & {
+  // No config key sets this — credentials are environment-only from a config
+  // file, deliberately, since a config file is a thing people commit. It is on
+  // the type for a caller building a ModelOption through the SDK entry, which
+  // is a real caller now that the package exports one.
+  apiKey?: string;
   name: string;
   api?: string;
-  apiKey?: string;
   env: readonly string[];
   npm?: string;
   inputCost?: number;
@@ -271,14 +275,14 @@ type ProviderFactory = (options: {
   fetch?: typeof fetch;
 }) => (id: string) => LanguageModel;
 
+// bedrock and vertex are absent deliberately: `createModel` returns for both
+// before this map is consulted, so entries for them could never be selected.
 const factories: Record<string, ProviderFactory> = {
-  "amazon-bedrock": createAmazonBedrock as ProviderFactory,
   anthropic: createAnthropic as ProviderFactory,
   cerebras: createCerebras as ProviderFactory,
   cohere: createCohere as ProviderFactory,
   deepseek: createDeepSeek as ProviderFactory,
   google: createGoogle as ProviderFactory,
-  "google-vertex": createGoogleVertex as ProviderFactory,
   groq: createGroq as ProviderFactory,
   mistral: createMistral as ProviderFactory,
   openai: createOpenAI as ProviderFactory,

@@ -223,6 +223,17 @@ export type Activity = {
   phase?: { name: string; ms: number } | null;
 };
 
+// How a queue hands its messages over: one per opportunity, or all of them at
+// once. Declared here because both the coding agent (which runs the queues) and
+// provider-registry (which validates the setting) need it, and neither may
+// import the other — the same reason the extension API lives here. It was
+// declared in both, with provider-registry keeping a private copy of the list
+// and the predicate beside it.
+export type QueueMode = "one-at-a-time" | "all";
+export const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
+export const isQueueMode = (value: unknown): value is QueueMode =>
+  typeof value === "string" && QUEUE_MODES.includes(value as QueueMode);
+
 // The extension API, declared once.
 //
 // This was two types: the real one on the object `extension-api.ts` builds, and
