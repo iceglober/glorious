@@ -18,7 +18,7 @@ import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
-import { type Config, envSetting } from "./config";
+import { type Config, envSetting, type JsonObject, type ModelSettings } from "./config";
 import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
 
 export type ModelRef = {
@@ -40,6 +40,9 @@ export type ModelOption = ModelRef & {
   region?: string;
   project?: string;
   location?: string;
+  factoryOptions?: JsonObject;
+  requestOptions?: JsonObject;
+  providerOptions?: Record<string, JsonObject>;
 };
 
 const catalogUrl = "https://models.dev/api.json";
@@ -110,27 +113,113 @@ export const modelCost = (
     ? undefined
     : ((model.inputCost ?? 0) * input + (model.outputCost ?? 0) * output) / 1_000_000;
 
+const mergeObjects = <T extends JsonObject>(
+  far: T | undefined,
+  near: T | undefined,
+): T | undefined => {
+  if (far === undefined) return near;
+  if (near === undefined) return far;
+  const output: JsonObject = { ...far };
+  for (const [key, value] of Object.entries(near))
+    output[key] =
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? (mergeObjects(
+            typeof output[key] === "object" && output[key] !== null && !Array.isArray(output[key])
+              ? (output[key] as JsonObject)
+              : undefined,
+            value as JsonObject,
+          ) ?? {})
+        : value;
+  return output as T;
+};
+
+const modelSettings = (
+  provider: string,
+  modelId: string,
+  config?: Config,
+): ModelSettings | undefined => config?.providers?.[provider]?.models?.[modelId];
+
 const providerSettings = (
   provider: string,
+  modelId: string,
   config?: Config,
-): Pick<ModelOption, "api" | "region" | "project" | "location"> => {
-  const metadata = config?.providers?.[provider];
+): Partial<
+  Pick<
+    ModelOption,
+    | "api"
+    | "region"
+    | "project"
+    | "location"
+    | "factoryOptions"
+    | "requestOptions"
+    | "providerOptions"
+    | "name"
+    | "context"
+    | "inputCost"
+    | "outputCost"
+    | "variants"
+  >
+> => {
+  const providerSettings = config?.providers?.[provider];
+  const model = modelSettings(provider, modelId, config);
+  const metadata = model?.metadata;
+  const common = {
+    factoryOptions: providerSettings?.factoryOptions,
+    requestOptions: mergeObjects(providerSettings?.requestOptions, model?.requestOptions),
+    providerOptions: mergeObjects(
+      providerSettings?.providerOptions as JsonObject | undefined,
+      model?.providerOptions as JsonObject | undefined,
+    ) as Record<string, JsonObject> | undefined,
+    name: metadata?.name,
+    context: metadata?.context,
+    inputCost: metadata?.inputCost,
+    outputCost: metadata?.outputCost,
+    variants: metadata?.variants,
+  };
   if (provider === "amazon-bedrock")
     return {
+      ...common,
       region:
-        metadata?.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1",
+        providerSettings?.region ??
+        process.env.AWS_REGION ??
+        process.env.AWS_DEFAULT_REGION ??
+        "us-east-1",
     };
   if (provider === "google-vertex")
     return {
+      ...common,
       project:
-        metadata?.project ?? process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GOOGLE_VERTEX_PROJECT,
+        providerSettings?.project ??
+        process.env.GOOGLE_CLOUD_PROJECT ??
+        process.env.GOOGLE_VERTEX_PROJECT,
       location:
-        metadata?.location ??
+        providerSettings?.location ??
         process.env.GOOGLE_CLOUD_LOCATION ??
         process.env.GOOGLE_VERTEX_LOCATION ??
         "global",
     };
-  return metadata?.api === undefined ? {} : { api: metadata.api };
+  return providerSettings?.api === undefined ? common : { ...common, api: providerSettings.api };
+};
+
+export const configuredModel = (
+  value: string,
+  config?: Config,
+  variant: string | undefined = config?.variant,
+): ModelOption => {
+  const model = value.trim();
+  const ref = modelRef(model);
+  const settings = providerSettings(ref.provider, ref.modelId, config);
+  return {
+    ...ref,
+    ...settings,
+    name: settings.name ?? model,
+    variant,
+    // From the provider table, so every provider declares its own names rather
+    // than azure being special-cased and the rest falling through to whatever
+    // their SDK happens to read.
+    env: providerSpec(ref.provider)?.env ?? [],
+    npm: ref.provider === "azure" ? "@ai-sdk/azure" : undefined,
+  };
 };
 
 export const currentModel = (config?: Config): ModelOption => {
@@ -139,18 +228,7 @@ export const currentModel = (config?: Config): ModelOption => {
     throw new Error(
       'No model configured. Set GLRS_MODEL="provider/model-id" or add "model" to glrs config.',
     );
-  const ref = modelRef(model);
-  return {
-    ...ref,
-    ...providerSettings(ref.provider, config),
-    name: model,
-    variant: envSetting("VARIANT") ?? config?.variant,
-    // From the provider table, so every provider declares its own names rather
-    // than azure being special-cased and the rest falling through to whatever
-    // their SDK happens to read.
-    env: providerSpec(ref.provider)?.env ?? [],
-    npm: ref.provider === "azure" ? "@ai-sdk/azure" : undefined,
-  };
+  return configuredModel(model, config, envSetting("VARIANT") ?? config?.variant);
 };
 
 // Every model the catalogue carries, for the extension API's model picker. The
@@ -210,27 +288,29 @@ export const modelMetadata = async (
       >;
     }
   >;
+  const configured = Object.fromEntries(
+    (["api", "npm", "context", "inputCost", "outputCost", "variants"] as const)
+      .map((key) => [key, model[key]])
+      .filter(([, value]) => value !== undefined),
+  ) as Partial<ModelOption>;
   const provider = catalog[model.provider];
   const entry = Object.values(provider?.models ?? {}).find(
     (candidate) => (candidate.id ?? "") === model.modelId,
   );
-  if (!entry) return {};
+  if (!entry) return configured;
   const scale = priceMultiplier(model.provider);
   return {
-    api: model.api ?? provider?.api,
-    npm: model.npm ?? provider?.npm,
+    api: provider?.api,
+    npm: provider?.npm,
     context: entry.limit?.context,
     inputCost: entry.cost?.input === undefined ? undefined : entry.cost.input * scale,
     outputCost: entry.cost?.output === undefined ? undefined : entry.cost.output * scale,
     variants: entry.reasoning_options?.find((option) => option.type === "effort")?.values,
+    ...configured,
   };
 };
 
-type ProviderFactory = (options: {
-  apiKey?: string;
-  baseURL?: string;
-  fetch?: typeof fetch;
-}) => (id: string) => LanguageModel;
+type ProviderFactory = (options?: Record<string, unknown>) => (id: string) => LanguageModel;
 
 const factories: Record<string, ProviderFactory> = {
   "amazon-bedrock": createAmazonBedrock as ProviderFactory,
@@ -260,23 +340,38 @@ export const resolveApiKey = (option: {
   option.apiKey ?? option.env?.map((name) => process.env[name]).find((value) => Boolean(value));
 
 export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch): LanguageModel => {
-  const apiKey = resolveApiKey(option);
+  const configured = { ...(option.factoryOptions ?? {}) } as Record<string, unknown>;
+  const configuredKey = typeof configured.apiKey === "string" ? configured.apiKey : undefined;
+  const apiKey = configuredKey ?? resolveApiKey(option);
+  const common = {
+    ...configured,
+    ...(option.api !== undefined && configured.baseURL === undefined
+      ? { baseURL: option.api }
+      : {}),
+    ...(apiKey !== undefined ? { apiKey } : {}),
+    // The wrapped fetch carries deadlines and extension lifecycle hooks, so it
+    // is the one provider factory option config cannot replace.
+    fetch: fetcher as typeof fetch,
+  };
   if (option.provider === "azure" || option.npm === "@ai-sdk/azure")
-    return createAzure({ apiKey, fetch: fetcher as typeof fetch })(option.modelId);
+    return createAzure(common as Parameters<typeof createAzure>[0])(option.modelId);
   if (option.provider === "amazon-bedrock")
     return createAmazonBedrock({
-      apiKey,
-      baseURL: option.api,
-      region: option.region,
-      fetch: fetcher as typeof fetch,
-    })(option.modelId);
+      ...common,
+      ...(option.region !== undefined && configured.region === undefined
+        ? { region: option.region }
+        : {}),
+    } as Parameters<typeof createAmazonBedrock>[0])(option.modelId);
   if (option.provider === "google-vertex")
     return createGoogleVertex({
-      apiKey,
-      project: option.project,
-      location: option.location,
-      fetch: fetcher as typeof fetch,
-    })(option.modelId);
+      ...common,
+      ...(option.project !== undefined && configured.project === undefined
+        ? { project: option.project }
+        : {}),
+      ...(option.location !== undefined && configured.location === undefined
+        ? { location: option.location }
+        : {}),
+    } as Parameters<typeof createGoogleVertex>[0])(option.modelId);
   const factory = factories[option.provider];
   // Anything without a factory of its own is an OpenAI-compatible endpoint —
   // Ollama, LM Studio, vLLM, a gateway, a company proxy. It only needs a base
@@ -284,7 +379,7 @@ export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch):
   // reachable only if models.dev happened to publish the provider, so a local
   // server could not be used at all.
   if (option.npm === "@ai-sdk/openai-compatible" || !factory) {
-    if (!option.api) {
+    if (!option.api && typeof configured.baseURL !== "string") {
       const near = nearestProvider(option.provider);
       throw new Error(
         near === undefined
@@ -295,10 +390,8 @@ export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch):
     }
     return createOpenAICompatible({
       name: option.provider,
-      apiKey,
-      baseURL: option.api,
-      fetch: fetcher as typeof fetch,
-    })(option.modelId);
+      ...common,
+    } as Parameters<typeof createOpenAICompatible>[0])(option.modelId);
   }
-  return factory({ apiKey, baseURL: option.api, fetch: fetcher as typeof fetch })(option.modelId);
+  return factory(common)(option.modelId);
 };

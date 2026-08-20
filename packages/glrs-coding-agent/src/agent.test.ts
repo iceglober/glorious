@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { type ModelMessage, type ToolSet, tool } from "ai";
+import { generateText, type ModelMessage, type ToolSet, tool } from "ai";
 import { z } from "zod";
+import { createModel, type ModelOption } from "../../provider-registry/src";
 import {
   createAgent,
   providerOptions,
+  requestSettings,
   settleQuietly,
   shouldResend,
   withInjected,
@@ -99,19 +101,104 @@ describe("a stream that fails part-way", () => {
 });
 
 describe("what we ask the provider for", () => {
-  test("reasoning travels as content, never as a server-side reference", () => {
-    // store:true (the provider's default when unset) replays reasoning as
-    // {type:"item_reference", id:"rs_…"}, and a missed lookup kills the turn
-    expect(providerOptions(undefined, "key").store).toBe(false);
+  const model = (over: Record<string, unknown> = {}) => ({
+    provider: "openai",
+    modelId: "gpt-5",
+    name: "gpt-5",
+    env: [],
+    ...over,
   });
 
-  test("the cache key still rides along, so prompt caching is unaffected", () => {
-    expect(providerOptions(undefined, "abc123").promptCacheKey).toBe("abc123");
+  test("OpenAI safety and caching defaults are namespaced as provider options", () => {
+    expect(providerOptions(model(), "abc123")).toEqual({
+      openai: {
+        textVerbosity: "low",
+        promptCacheKey: "abc123",
+        store: false,
+      },
+    });
   });
 
-  test("effort is sent only when a mode asked for one", () => {
-    expect(providerOptions("high", "k")).toMatchObject({ reasoningEffort: "high" });
-    expect(providerOptions(undefined, "k")).not.toHaveProperty("reasoningEffort");
+  test("configured provider options pass through and override defaults", () => {
+    expect(
+      providerOptions(
+        model({
+          variant: "high",
+          providerOptions: {
+            openai: { store: true, customFutureOption: "kept" },
+            gateway: { order: ["bedrock"] },
+          },
+        }),
+        "key",
+      ),
+    ).toEqual({
+      openai: {
+        reasoningEffort: "high",
+        textVerbosity: "low",
+        promptCacheKey: "key",
+        store: true,
+        customFutureOption: "kept",
+      },
+      gateway: { order: ["bedrock"] },
+    });
+  });
+
+  test("non-OpenAI models do not receive OpenAI-only defaults", () => {
+    expect(
+      providerOptions(
+        model({
+          provider: "anthropic",
+          providerOptions: { anthropic: { thinking: { type: "adaptive" } } },
+        }),
+        "key",
+      ),
+    ).toEqual({ anthropic: { thinking: { type: "adaptive" } } });
+  });
+
+  test("common request options and provider options are assembled together", () => {
+    expect(
+      requestSettings(
+        model({
+          requestOptions: { temperature: 0.2, maxOutputTokens: 32000, maxRetries: 9 },
+          providerOptions: { openai: { serviceTier: "flex" } },
+        }),
+        "key",
+      ),
+    ).toMatchObject({
+      temperature: 0.2,
+      maxOutputTokens: 32000,
+      maxRetries: 9,
+      providerOptions: { openai: { serviceTier: "flex", store: false } },
+    });
+  });
+
+  test("request and provider options reach the provider HTTP body", async () => {
+    let body: Record<string, unknown> = {};
+    const selected: ModelOption = {
+      provider: "openai",
+      modelId: "gpt-4.1",
+      name: "gpt-4.1",
+      env: [],
+      factoryOptions: { apiKey: "test-key" },
+      requestOptions: { temperature: 0.2 },
+      providerOptions: { openai: { serviceTier: "default", store: true } },
+    };
+    const languageModel = createModel(selected, (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      body = JSON.parse(String(init?.body));
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch);
+    await generateText({
+      model: languageModel,
+      prompt: "hi",
+      maxRetries: 0,
+      ...requestSettings(selected, "key"),
+    }).catch(() => {});
+    expect(body.temperature).toBe(0.2);
+    expect(body.service_tier).toBe("default");
+    expect(body.store).toBe(true);
   });
 });
 

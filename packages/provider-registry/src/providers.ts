@@ -121,12 +121,12 @@ export const compatibleNote =
 // What is missing before this provider can answer, for `doctor`.
 export const missingFor = (
   id: string,
-  settings: { api?: string } | undefined,
+  settings: { api?: string; factoryOptions?: { baseURL?: unknown } } | undefined,
   environment: NodeJS.ProcessEnv = process.env,
 ): string[] => {
   const spec = providerSpec(id);
   if (!spec) {
-    if (settings?.api) return [];
+    if (settings?.api || typeof settings?.factoryOptions?.baseURL === "string") return [];
     const near = nearestProvider(id);
     return [
       near === undefined

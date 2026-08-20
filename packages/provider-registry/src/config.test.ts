@@ -151,6 +151,196 @@ describe("initializing config files", () => {
   });
 });
 
+describe("provider and model overrides", () => {
+  test("retains arbitrary JSON options instead of filtering provider-specific config", async () => {
+    const root = await project(
+      JSON.stringify({
+        model: "openai/gpt-5",
+        providers: {
+          openai: {
+            factoryOptions: {
+              baseURL: "https://proxy.example/v1",
+              organization: "org_123",
+              headers: { "x-proxy": "yes" },
+            },
+            requestOptions: { temperature: 0.2, stopSequences: ["DONE"] },
+            providerOptions: { openai: { store: true, customFutureOption: "kept" } },
+            models: {
+              "gpt-5": {
+                requestOptions: { maxOutputTokens: 32000 },
+                providerOptions: { openai: { reasoningEffort: "high" } },
+                metadata: { context: 400000, inputCost: 1.25, outputCost: 10 },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(diagnostics).toEqual([]);
+    expect(config.providers?.openai).toEqual({
+      factoryOptions: {
+        baseURL: "https://proxy.example/v1",
+        organization: "org_123",
+        headers: { "x-proxy": "yes" },
+      },
+      requestOptions: { temperature: 0.2, stopSequences: ["DONE"] },
+      providerOptions: { openai: { store: true, customFutureOption: "kept" } },
+      models: {
+        "gpt-5": {
+          requestOptions: { maxOutputTokens: 32000 },
+          providerOptions: { openai: { reasoningEffort: "high" } },
+          metadata: { context: 400000, inputCost: 1.25, outputCost: 10 },
+        },
+      },
+    });
+  });
+
+  test("deep-merges scopes, replaces arrays, and uses null to remove inherited values", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-options-project-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-options-home-"));
+    roots.push(root, home);
+    await mkdir(join(root, ".glrs"), { recursive: true });
+    await mkdir(join(home, ".config", "glrs"), { recursive: true });
+    await writeFile(
+      join(home, ".config", "glrs", "config.json"),
+      JSON.stringify({
+        providers: {
+          openai: {
+            factoryOptions: { organization: "remove-me", headers: { user: "yes" } },
+            requestOptions: { stopSequences: ["USER"], temperature: 0.8 },
+            providerOptions: { openai: { store: false, user: true } },
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(root, ".glrs", "config.json"),
+      JSON.stringify({
+        providers: {
+          openai: {
+            factoryOptions: { organization: null, headers: { project: "yes" } },
+            requestOptions: { stopSequences: ["PROJECT"] },
+            providerOptions: { openai: { store: true } },
+          },
+        },
+      }),
+    );
+    const { config } = await loadConfig(root, home);
+    expect(config.providers?.openai).toMatchObject({
+      factoryOptions: { headers: { user: "yes", project: "yes" } },
+      requestOptions: { stopSequences: ["PROJECT"], temperature: 0.8 },
+      providerOptions: { openai: { store: true, user: true } },
+    });
+    expect(config.providers?.openai?.factoryOptions).not.toHaveProperty("organization");
+  });
+
+  test("validates model metadata without discarding its valid fields", async () => {
+    const root = await project(
+      JSON.stringify({
+        providers: {
+          openai: {
+            models: {
+              "gpt-5": {
+                metadata: {
+                  name: 42,
+                  context: "large",
+                  inputCost: -1,
+                  outputCost: 10,
+                  variants: ["high", 4],
+                  unknown: "ignored",
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.providers?.openai?.models?.["gpt-5"]?.metadata).toEqual({
+      outputCost: 10,
+      variants: ["high"],
+    });
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.name");
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.context");
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.inputCost");
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.variants[1]");
+  });
+
+  test("rejects provider option namespaces that are not objects", async () => {
+    const root = await project(
+      JSON.stringify({
+        providers: {
+          openai: {
+            providerOptions: { openai: "not-an-object", future: { kept: true } },
+            models: {
+              "gpt-5": { providerOptions: { openai: 42, future: { model: true } } },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.providers?.openai?.providerOptions).toEqual({ future: { kept: true } });
+    expect(config.providers?.openai?.models?.["gpt-5"]?.providerOptions).toEqual({
+      future: { model: true },
+    });
+    expect(diagnostics.join("\n")).toContain("providers.openai.providerOptions.openai");
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.models.gpt-5.providerOptions.openai",
+    );
+  });
+
+  test("rejects request fields owned by the agent", async () => {
+    const root = await project(
+      JSON.stringify({
+        model: "openai/gpt-5",
+        providers: {
+          openai: {
+            factoryOptions: { fetch: "not allowed", baseURL: "https://example.test" },
+            requestOptions: {
+              prompt: "replace the user",
+              system: "replace the system prompt",
+              messages: [],
+              tools: {},
+              activeTools: [],
+              abortSignal: null,
+              onChunk: "not a callback",
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.providers?.openai?.requestOptions).toEqual({});
+    expect(config.providers?.openai?.factoryOptions).toEqual({ baseURL: "https://example.test" });
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.factoryOptions.fetch is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.prompt is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.system is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.messages is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.tools is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.activeTools is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.abortSignal is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.onChunk is owned by glrs",
+    );
+  });
+});
+
 describe("the three config scopes", () => {
   test("Project-User, Project, then User", () => {
     const scopes = configScopes("/zz/project", "/zz/home", {}, "linux");

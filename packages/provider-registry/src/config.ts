@@ -5,15 +5,118 @@ import { dirname, join, resolve, win32 } from "node:path";
 // Three scopes, nearest value wins: Project-User, Project, then User. Config is
 // hand-edited unless configuration explicitly allows glrs to record extension choices.
 
-export type ProviderSettings = {
-  // Base URL, for an OpenAI-compatible endpoint that is not one of the named
-  // providers.
+export type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
+export type JsonObject = { [key: string]: JsonValue };
+
+type JsonConfig<T> = T extends string | number | boolean | null
+  ? T
+  : T extends (...args: never[]) => unknown
+    ? never
+    : T extends readonly (infer Item)[]
+      ? JsonConfig<Item>[]
+      : T extends object
+        ? {
+            [Key in keyof T as JsonConfig<T[Key]> extends never ? never : Key]: JsonConfig<T[Key]>;
+          }
+        : never;
+
+type OpenAIProviderOptions =
+  | import("@ai-sdk/openai").OpenAIChatLanguageModelOptions
+  | import("@ai-sdk/openai").OpenAIResponsesProviderOptions;
+
+/** Provider option types sourced from installed AI SDK provider packages. */
+export type ProviderCallOptionsById = {
+  anthropic: JsonConfig<import("@ai-sdk/anthropic").AnthropicProviderOptions> & JsonObject;
+  azure: JsonConfig<OpenAIProviderOptions> & JsonObject;
+  bedrock: JsonConfig<import("@ai-sdk/amazon-bedrock").BedrockProviderOptions> & JsonObject;
+  cohere: JsonConfig<import("@ai-sdk/cohere").CohereLanguageModelOptions> & JsonObject;
+  deepseek: JsonConfig<import("@ai-sdk/deepseek").DeepSeekLanguageModelOptions> & JsonObject;
+  google: JsonConfig<import("@ai-sdk/google").GoogleGenerativeAIProviderOptions> & JsonObject;
+  groq: JsonConfig<import("@ai-sdk/groq").GroqProviderOptions> & JsonObject;
+  mistral: JsonConfig<import("@ai-sdk/mistral").MistralLanguageModelOptions> & JsonObject;
+  openai: JsonConfig<OpenAIProviderOptions> & JsonObject;
+  openrouter: JsonConfig<import("@openrouter/ai-sdk-provider").OpenRouterProviderOptions> &
+    JsonObject;
+  perplexity: JsonConfig<import("@ai-sdk/perplexity").PerplexityLanguageModelOptions> & JsonObject;
+  xai: JsonConfig<
+    import("@ai-sdk/xai").XaiProviderOptions | import("@ai-sdk/xai").XaiResponsesProviderOptions
+  > &
+    JsonObject;
+};
+
+export type ProviderCallOptions = Record<string, JsonObject> & {
+  [Id in keyof ProviderCallOptionsById]?: ProviderCallOptionsById[Id];
+};
+
+export type RequestSettings = JsonConfig<
+  Omit<import("ai").CallSettings & import("ai").RequestOptions, "abortSignal" | "providerOptions">
+> &
+  JsonObject;
+
+export type ModelMetadataSettings = {
+  name?: string;
+  context?: number;
+  inputCost?: number;
+  outputCost?: number;
+  variants?: string[];
+};
+
+export type ModelSettings = {
+  requestOptions?: RequestSettings;
+  providerOptions?: ProviderCallOptions;
+  metadata?: ModelMetadataSettings;
+};
+
+export type ProviderSettings<FactoryOptions extends JsonObject = JsonObject> = {
+  /** Options passed directly to the installed AI SDK provider factory. */
+  factoryOptions?: FactoryOptions;
+  /** Standard JSON-compatible AI SDK call options applied to every model call. */
+  requestOptions?: RequestSettings;
+  /** AI SDK provider options, including their provider namespace. */
+  providerOptions?: ProviderCallOptions;
+  /** Exact model-id overrides. */
+  models?: Record<string, ModelSettings>;
+  // Compatibility conveniences. These become provider factory options.
   api?: string;
-  // amazon-bedrock
   region?: string;
-  // google-vertex
   project?: string;
   location?: string;
+};
+
+type FactoryOptions<F extends (...args: never[]) => unknown> = NonNullable<Parameters<F>[0]>;
+type JsonFactoryOptions<T> = JsonConfig<Omit<T, "fetch">> & JsonObject;
+
+/** Factory option types sourced from the installed AI SDK provider packages. */
+export type ProviderFactoryOptionsById = {
+  "amazon-bedrock": JsonFactoryOptions<
+    FactoryOptions<typeof import("@ai-sdk/amazon-bedrock").createAmazonBedrock>
+  >;
+  anthropic: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/anthropic").createAnthropic>>;
+  azure: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/azure").createAzure>>;
+  cerebras: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/cerebras").createCerebras>>;
+  cohere: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/cohere").createCohere>>;
+  deepseek: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/deepseek").createDeepSeek>>;
+  google: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/google").createGoogle>>;
+  "google-vertex": JsonFactoryOptions<
+    FactoryOptions<typeof import("@ai-sdk/google-vertex").createGoogleVertex>
+  >;
+  groq: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/groq").createGroq>>;
+  mistral: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/mistral").createMistral>>;
+  openai: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/openai").createOpenAI>>;
+  openrouter: JsonFactoryOptions<
+    FactoryOptions<typeof import("@openrouter/ai-sdk-provider").createOpenRouter>
+  >;
+  perplexity: JsonFactoryOptions<
+    FactoryOptions<typeof import("@ai-sdk/perplexity").createPerplexity>
+  >;
+  togetherai: JsonFactoryOptions<
+    FactoryOptions<typeof import("@ai-sdk/togetherai").createTogetherAI>
+  >;
+  xai: JsonFactoryOptions<FactoryOptions<typeof import("@ai-sdk/xai").createXai>>;
+};
+
+export type ProvidersSettings = Record<string, ProviderSettings> & {
+  [Id in keyof ProviderFactoryOptionsById]?: ProviderSettings<ProviderFactoryOptionsById[Id]>;
 };
 
 // How much of a message queue one delivery takes. "one-at-a-time" hands over
@@ -56,7 +159,7 @@ export type Config = {
   // answer you gave it rather than asking you to paste a line every session.
   // Only "extensions" is understood today.
   agentConfigAllowlist?: readonly string[];
-  providers?: Record<string, ProviderSettings>;
+  providers?: ProvidersSettings;
 };
 
 export type LoadedConfig = { config: Config; diagnostics: string[] };
@@ -230,6 +333,54 @@ const positiveNumberOf = (value: unknown): number | undefined =>
 
 const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
 
+const AGENT_OWNED_REQUEST_OPTIONS = new Set([
+  "model",
+  "instructions",
+  "system",
+  "prompt",
+  "messages",
+  "allowSystemInMessages",
+  "tools",
+  "toolChoice",
+  "activeTools",
+  "toolOrder",
+  "toolApproval",
+  "experimental_toolApprovalSecret",
+  "abortSignal",
+  "prepareStep",
+  "repairToolCall",
+  "experimental_repairToolCall",
+  "experimental_refineToolInput",
+  "experimental_transform",
+  "experimental_download",
+  "output",
+  "includeRawChunks",
+  "onChunk",
+  "onError",
+  "onStart",
+  "experimental_onStart",
+  "onStepStart",
+  "experimental_onStepStart",
+  "onFinish",
+  "onEnd",
+  "onAbort",
+  "onStepEnd",
+  "onStepFinish",
+  "onLanguageModelCallStart",
+  "experimental_onLanguageModelCallStart",
+  "onLanguageModelCallEnd",
+  "experimental_onLanguageModelCallEnd",
+  "onToolExecutionStart",
+  "onToolExecutionEnd",
+  "experimental_onToolCallStart",
+  "experimental_onToolCallFinish",
+  "providerOptions",
+  "stopWhen",
+  "runtimeContext",
+  "toolsContext",
+  "_internal",
+]);
+
 const queueModeOf = (value: unknown): QueueMode | undefined =>
   QUEUE_MODES.includes(value as QueueMode) ? (value as QueueMode) : undefined;
 
@@ -344,6 +495,86 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
 
   if (raw.providers !== undefined && !isObject(raw.providers)) wrong("providers", "an object");
 
+  const requestOptions = (value: unknown, path: string): JsonObject | undefined => {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+      diagnostics.push(`${where}: ${path} should be an object — ignored`);
+      return undefined;
+    }
+    const kept = { ...value } as JsonObject;
+    for (const key of AGENT_OWNED_REQUEST_OPTIONS)
+      if (Object.hasOwn(kept, key)) {
+        delete kept[key];
+        diagnostics.push(`${where}: ${path}.${key} is owned by glrs — ignored`);
+      }
+    return kept;
+  };
+
+  const providerOptions = (
+    value: unknown,
+    path: string,
+  ): Record<string, JsonObject> | undefined => {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+      diagnostics.push(`${where}: ${path} should be an object — ignored`);
+      return undefined;
+    }
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([namespace, options]) => {
+        // null is JSON Merge Patch's deletion marker and has to survive until
+        // the three scopes are combined.
+        if (options === null || isObject(options)) return [[namespace, options]];
+        diagnostics.push(`${where}: ${path}.${namespace} should be an object — ignored`);
+        return [];
+      }),
+    ) as Record<string, JsonObject>;
+  };
+
+  const modelMetadata = (value: unknown, path: string): ModelMetadataSettings | undefined => {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+      diagnostics.push(`${where}: ${path} should be an object — ignored`);
+      return undefined;
+    }
+    const metadata: Record<string, unknown> = {};
+    const keep = (
+      key: "name" | "context" | "inputCost" | "outputCost",
+      valid: (candidate: unknown) => boolean,
+      wanted: string,
+    ): void => {
+      if (value[key] === undefined) return;
+      if (value[key] === null || valid(value[key])) metadata[key] = value[key];
+      else diagnostics.push(`${where}: ${path}.${key} should be ${wanted} — ignored`);
+    };
+    keep("name", (candidate) => stringOf(candidate) !== undefined, "a non-empty string");
+    keep("context", (candidate) => positiveNumberOf(candidate) !== undefined, "a positive number");
+    keep(
+      "inputCost",
+      (candidate) => typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0,
+      "a non-negative number",
+    );
+    keep(
+      "outputCost",
+      (candidate) => typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0,
+      "a non-negative number",
+    );
+    if (value.variants === null) metadata.variants = null;
+    else if (value.variants !== undefined) {
+      if (!Array.isArray(value.variants))
+        diagnostics.push(`${where}: ${path}.variants should be an array of strings — ignored`);
+      else {
+        const variants = value.variants.flatMap((candidate, index) => {
+          const variant = stringOf(candidate);
+          if (variant !== undefined) return [variant];
+          diagnostics.push(`${where}: ${path}.variants[${index}] should be a string — ignored`);
+          return [];
+        });
+        metadata.variants = variants;
+      }
+    }
+    return metadata as ModelMetadataSettings;
+  };
+
   const providers: Record<string, ProviderSettings> = {};
   if (isObject(raw.providers))
     for (const [name, value] of Object.entries(raw.providers)) {
@@ -351,12 +582,69 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
         diagnostics.push(`${where}: providers.${name} should be an object — ignored`);
         continue;
       }
-      providers[name] = {
-        api: stringOf(value.api),
-        region: stringOf(value.region),
-        project: stringOf(value.project),
-        location: stringOf(value.location),
-      };
+      const provider = { ...value } as ProviderSettings;
+      const providerRequests = requestOptions(
+        value.requestOptions,
+        `providers.${name}.requestOptions`,
+      );
+      if (providerRequests === undefined) delete provider.requestOptions;
+      else provider.requestOptions = providerRequests;
+      if (value.factoryOptions !== undefined && !isObject(value.factoryOptions)) {
+        diagnostics.push(
+          `${where}: providers.${name}.factoryOptions should be an object — ignored`,
+        );
+        delete provider.factoryOptions;
+      } else if (isObject(value.factoryOptions)) {
+        provider.factoryOptions = { ...value.factoryOptions } as JsonObject;
+        if (Object.hasOwn(provider.factoryOptions, "fetch")) {
+          delete provider.factoryOptions.fetch;
+          diagnostics.push(
+            `${where}: providers.${name}.factoryOptions.fetch is owned by glrs — ignored`,
+          );
+        }
+      }
+      const providerCallOptions = providerOptions(
+        value.providerOptions,
+        `providers.${name}.providerOptions`,
+      );
+      if (providerCallOptions === undefined) delete provider.providerOptions;
+      else provider.providerOptions = providerCallOptions;
+      if (value.models !== undefined && !isObject(value.models)) {
+        diagnostics.push(`${where}: providers.${name}.models should be an object — ignored`);
+        delete provider.models;
+      } else if (isObject(value.models)) {
+        provider.models = Object.fromEntries(
+          Object.entries(value.models).flatMap(([modelId, model]) => {
+            if (!isObject(model)) {
+              diagnostics.push(
+                `${where}: providers.${name}.models.${modelId} should be an object — ignored`,
+              );
+              return [];
+            }
+            const configured = { ...model } as ModelSettings;
+            const modelRequests = requestOptions(
+              model.requestOptions,
+              `providers.${name}.models.${modelId}.requestOptions`,
+            );
+            if (modelRequests === undefined) delete configured.requestOptions;
+            else configured.requestOptions = modelRequests;
+            const modelProviderOptions = providerOptions(
+              model.providerOptions,
+              `providers.${name}.models.${modelId}.providerOptions`,
+            );
+            if (modelProviderOptions === undefined) delete configured.providerOptions;
+            else configured.providerOptions = modelProviderOptions;
+            const metadata = modelMetadata(
+              model.metadata,
+              `providers.${name}.models.${modelId}.metadata`,
+            );
+            if (metadata === undefined) delete configured.metadata;
+            else configured.metadata = metadata;
+            return [[modelId, configured]];
+          }),
+        ) as Record<string, ModelSettings>;
+      }
+      providers[name] = provider;
     }
 
   // A file full of keys, none of which mean anything here, is almost always one
@@ -402,6 +690,19 @@ const mergedLists = <T extends Record<string, readonly string[] | undefined>>(
   return Object.keys(out).length > 0 ? out : undefined;
 };
 
+const removed = Symbol("removed");
+const mergeJson = (far: unknown, near: unknown): unknown | typeof removed => {
+  if (near === null) return removed;
+  if (!isObject(near)) return near;
+  const output: Record<string, unknown> = isObject(far) ? { ...far } : {};
+  for (const [key, value] of Object.entries(near)) {
+    const merged = mergeJson(output[key], value);
+    if (merged === removed) delete output[key];
+    else output[key] = merged;
+  }
+  return output;
+};
+
 const merge = (near: Config, far: Config): Config => ({
   model: near.model ?? far.model,
   variant: near.variant ?? far.variant,
@@ -413,7 +714,7 @@ const merge = (near: Config, far: Config): Config => ({
   // Nearest wins rather than adding up: permission to write your config is not
   // something a project you cloned should be able to widen.
   agentConfigAllowlist: near.agentConfigAllowlist ?? far.agentConfigAllowlist,
-  providers: { ...far.providers, ...near.providers },
+  providers: mergeJson(far.providers ?? {}, near.providers ?? {}) as ProvidersSettings,
 });
 
 // A path in a config file means a path from that file. Only the prefixes that

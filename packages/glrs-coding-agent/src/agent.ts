@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
-import { createModel, type ModelOption, modelCost } from "../../provider-registry/src";
+import {
+  createModel,
+  type JsonObject,
+  type ModelOption,
+  modelCost,
+} from "../../provider-registry/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { errorText } from "./render";
 import type { ToolEvent } from "./toolkit";
@@ -152,11 +157,50 @@ type Setup = Parameters<typeof systemPrompt>[0] &
 // history every turn, so it gains nothing from server-side state, and false is
 // also what makes the provider ask for reasoning.encrypted_content, which is
 // what keeps the reasoning replayable at all.
-export const providerOptions = (effort: string | undefined, cacheKey: string) => ({
-  ...(effort ? { reasoningEffort: effort } : {}),
-  textVerbosity: "low" as const,
-  promptCacheKey: cacheKey,
-  store: false as const,
+const mergeOptions = (far: JsonObject, near: JsonObject): JsonObject => {
+  const output: JsonObject = { ...far };
+  for (const [key, value] of Object.entries(near))
+    output[key] =
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? mergeOptions(
+            typeof output[key] === "object" && output[key] !== null && !Array.isArray(output[key])
+              ? (output[key] as JsonObject)
+              : {},
+            value as JsonObject,
+          )
+        : value;
+  return output;
+};
+
+export const providerOptions = (
+  model: Pick<ModelOption, "provider" | "variant" | "providerOptions">,
+  cacheKey: string,
+): Record<string, JsonObject> => {
+  const namespace =
+    model.provider === "openai" || model.provider === "azure" ? model.provider : undefined;
+  const defaults: Record<string, JsonObject> =
+    namespace === undefined
+      ? {}
+      : {
+          [namespace]: {
+            ...(model.variant ? { reasoningEffort: model.variant } : {}),
+            textVerbosity: "low",
+            promptCacheKey: cacheKey,
+            store: false,
+          },
+        };
+  return mergeOptions(
+    defaults as JsonObject,
+    (model.providerOptions ?? {}) as JsonObject,
+  ) as Record<string, JsonObject>;
+};
+
+export const requestSettings = (
+  model: Pick<ModelOption, "provider" | "variant" | "requestOptions" | "providerOptions">,
+  cacheKey: string,
+): JsonObject => ({
+  ...(model.requestOptions ?? {}),
+  providerOptions: providerOptions(model, cacheKey),
 });
 
 export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
@@ -207,8 +251,6 @@ export const createAgent = (setup: Setup) => {
     .join("\n\n");
   const cacheKey = (scope: string): string =>
     createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
-  // Modes are gone, so the effort is whatever the model was configured with.
-  const openaiOptions = (scope: string) => providerOptions(setup.model.variant, cacheKey(scope));
 
   // Withheld, not forbidden: a tool the model cannot see cannot be talked into
   // being used. An empty list means everything survives. This is the seam a
@@ -243,11 +285,11 @@ export const createAgent = (setup: Setup) => {
   };
 
   const settings = () => ({
+    maxRetries: 5,
+    ...requestSettings(setup.model, cacheKey(setup.sessionId)),
     model,
     instructions: systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT)],
-    maxRetries: 5,
-    providerOptions: { openai: openaiOptions(setup.sessionId) },
   });
 
   return {
@@ -261,6 +303,9 @@ export const createAgent = (setup: Setup) => {
       signal?: AbortSignal,
     ): Promise<string> => {
       const result = await generateText({
+        maxOutputTokens: 4_000,
+        maxRetries: 3,
+        ...requestSettings(setup.model, cacheKey("compact")),
         model,
         instructions:
           "You are compacting a coding session so work can continue past the context limit. " +
@@ -270,9 +315,6 @@ export const createAgent = (setup: Setup) => {
           "how, what failed and what that ruled out, and what is left to do. Drop: narration, " +
           "tool output that has served its purpose, and anything already superseded. Prefer " +
           "specifics — a path, a command, an error string — over description of them.",
-        maxOutputTokens: 4_000,
-        maxRetries: 3,
-        providerOptions: { openai: providerOptions(undefined, cacheKey("compact")) },
         messages: [
           ...messages,
           {

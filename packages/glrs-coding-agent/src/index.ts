@@ -13,6 +13,7 @@ import {
 } from "../../glrs-core/src/session";
 import { runShell } from "../../glrs-core/src/shell";
 import {
+  configuredModel,
   currentModel,
   ensureConfigFiles,
   envSetting,
@@ -21,7 +22,6 @@ import {
   missingFor,
   modelLabel,
   modelMetadata,
-  modelRef,
   providerSpec,
 } from "../../provider-registry/src";
 import { createAgent } from "./agent";
@@ -859,8 +859,7 @@ const main = async (): Promise<void> => {
       }));
     },
     setModel: async (label, variant) => {
-      const ref = modelRef(label);
-      const next = { ...currentModel(config.config), ...ref, name: label, variant };
+      const next = configuredModel(label, config.config, variant);
       model = { ...next, ...(await modelMetadata(next).catch(() => ({}))) };
       agent.setModel(model);
       await fire(

@@ -8,6 +8,7 @@ const schema = JSON.parse(
 ) as {
   $id: string;
   properties: Record<string, unknown>;
+  $defs: Record<string, { properties?: Record<string, unknown> }>;
 };
 
 describe("hosted config schema", () => {
@@ -19,6 +20,31 @@ describe("hosted config schema", () => {
     expect(
       Object.keys(schema.properties).some((key) => key !== "$schema" && key.includes("_")),
     ).toBe(false);
+  });
+
+  test("describes provider passthrough and exact model overrides", () => {
+    const providers = schema.properties.providers as {
+      additionalProperties: { properties: Record<string, unknown> };
+    };
+    for (const key of [
+      "factoryOptions",
+      "requestOptions",
+      "providerOptions",
+      "models",
+    ])
+      expect(providers.additionalProperties.properties).toHaveProperty(key);
+    expect(schema.$defs.factoryOptions.properties?.fetch).toBe(false);
+    expect(schema.$defs.factoryOptions.properties).toHaveProperty("baseURL");
+    expect(schema.$defs.factoryOptions.properties).toHaveProperty("headers");
+    expect(schema.$defs.requestOptions.properties).toHaveProperty("temperature");
+    expect(schema.$defs.requestOptions.properties).toHaveProperty("maxOutputTokens");
+    expect(schema.$defs.requestOptions.properties?.messages).toBe(false);
+    expect(schema.$defs.requestOptions.properties?.tools).toBe(false);
+    const openai = schema.$defs.providerOptions.properties?.openai as {
+      properties?: Record<string, unknown>;
+    };
+    expect(openai.properties).toHaveProperty("reasoningEffort");
+    expect(openai.properties).toHaveProperty("store");
   });
 
   test("covers every documented top-level setting", () => {

@@ -13,7 +13,7 @@ type Schema = {
   enum?: unknown[];
   $ref?: string;
   oneOf?: Schema[];
-  properties?: Record<string, Schema>;
+  properties?: Record<string, Schema | boolean>;
   additionalProperties?: boolean | Schema;
   items?: Schema;
   $defs?: Record<string, Schema>;
@@ -36,12 +36,13 @@ const typeLabel = (raw: Schema, root: Schema): string => {
 };
 
 const rows = (
-  properties: Record<string, Schema>,
+  properties: Record<string, Schema | boolean>,
   root: Schema,
   prefix = "",
 ): Array<{ name: string; schema: Schema }> => {
   const output: Array<{ name: string; schema: Schema }> = [];
   for (const [name, raw] of Object.entries(properties)) {
+    if (typeof raw === "boolean") continue;
     const fullName = `${prefix}${name}`;
     const value = resolveRef(raw, root);
     output.push({ name: fullName, schema: value });
