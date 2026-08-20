@@ -1,24 +1,19 @@
-# Published documentation audit
+# published documentation
 
-Superseded. The page-by-page table that was here reviewed a fifteen-page tree
-that no longer exists — `4-reference/`, `5-customize/` and `5-internals/` are
-gone, and the flat pages beside them were renumbered — so every row named a file
-that had been deleted.
+Four groups, [Diataxis](https://diataxis.fr): tutorials, how-to, explanation,
+reference. One type per page. A tutorial that explains has stopped being a
+tutorial; link out instead.
 
-An audit that describes a structure nobody can find is worse than none: it reads
-as current, and the pages it vouches for are not the pages being served.
+Accuracy is held by the test suite, not by a document beside the docs:
 
-The published docs are now nine flat pages, `1-getting-started.md` through
-`9-internals.md`. Their accuracy is held by the source itself rather than by a
-document beside them:
+- `prompt.test.ts` asserts every path the system prompt names resolves under
+  `docsPath()`.
+- `extension-api.test.ts` counts the event rows in `9-reference/8-events.md`
+  against the `EventName` union.
 
-- `packages/glrs-coding-agent/src/prompt.test.ts` asserts that every path the
-  system prompt names resolves under `docsPath()`, so a renumbering fails a test
-  rather than failing a reader.
-- `packages/glrs-coding-agent/src/extension-api.test.ts` reads the lifecycle
-  section by path and counts its event rows against the `EventName` union.
+Both exist because this directory is read twice. The docs site builds from it,
+and `prompt.ts` points glrs at it instead of at source. A wrong sentence here
+becomes a wrong extension later.
 
-Both exist because this directory is read twice over — once by the docs site,
-and once by glrs, which `prompt.ts` deliberately points at documentation rather
-than at implementation source. A wrong sentence here becomes a wrong extension
-later, which is why the checks live in the test suite and not in prose.
+`9-reference/` is numbered to match `docs-site/generated/9-reference/`, so the
+two merge into one nav group.
