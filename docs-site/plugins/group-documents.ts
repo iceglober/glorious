@@ -2,6 +2,7 @@ import {
   Application,
   Converter,
   DocumentReflection,
+  ParameterType,
   type ProjectReflection,
 } from "typedoc";
 import {
@@ -16,6 +17,12 @@ import {
 export const documentFolderNames = new Set<string>();
 
 export function load(application: Application): void {
+  application.options.addDeclaration({
+    name: "lowercaseDocumentGroupTitles",
+    help: "Render document directory group titles in lowercase.",
+    type: ParameterType.Boolean,
+    defaultValue: false,
+  });
   const patterns = application.options.getValue("projectDocuments") as readonly string[];
   if (!hasDocumentGlob(patterns)) return;
 
@@ -40,6 +47,8 @@ export function load(application: Application): void {
   application.converter.on(
     Converter.EVENT_RESOLVE_BEGIN,
     (context) => {
+      const lowercaseTitles =
+        application.options.getValue("lowercaseDocumentGroupTitles") === true;
       const folders = new Map<string, DocumentReflection>();
       for (const [document, { directories, file }] of pending) {
         let parent: ProjectReflection | DocumentReflection = context.project;
@@ -48,7 +57,7 @@ export function load(application: Application): void {
           key = key ? `${key}/${directory}` : directory;
           let folder = folders.get(key);
           if (!folder) {
-            const name = directoryLabel(directory);
+            const name = directoryLabel(directory, lowercaseTitles);
             folder = new DocumentReflection(name, parent, [], {});
             documentFolderNames.add(name);
             parent.addChild(folder);

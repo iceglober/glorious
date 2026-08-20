@@ -97,13 +97,13 @@ export type Usage = {
   total: { input: number; output: number; cached: number; cost: number; steps: number };
 };
 
-// This session's resolved settings, merged from every config file that applied.
-// Provider blocks are deliberately absent: they hold API keys, and an extension
-// that wants them can read the files itself rather than being handed them.
+// This session's resolved runtime settings, merged from every config file that
+// applied. Provider connection settings are deliberately outside this compact
+// view; an extension that needs them can read config itself.
 export type Settings = {
-  tool_timeout_ms?: number;
-  steering_mode?: "one-at-a-time" | "all";
-  follow_up_mode?: "one-at-a-time" | "all";
+  toolTimeoutMs?: number;
+  steeringMode?: "one-at-a-time" | "all";
+  followUpMode?: "one-at-a-time" | "all";
 };
 
 export type EventPayload = {
@@ -197,11 +197,11 @@ export type HandlerVerdict<E extends EventName = EventName> =
   | undefined
   | (E extends keyof Verdict ? Verdict[E] : never);
 
-// Which of the shipped extensions is on, off, or has never been decided. The
+// Which first-party extension is on, off, or has never been decided. The
 // three states fall out of the two config lists rather than needing a store of
 // their own: named in `load` is a yes, named in `disable` is a no, and in
 // neither is a question nobody has answered.
-export type Shipped = {
+export type FirstPartyExtension = {
   name: string;
   summary: string;
   state: "on" | "off" | "undecided";
@@ -367,7 +367,7 @@ export type Loaded = {
   flags: ReadonlyArray<{ name: string; description: string }>;
 };
 
-// What recording a choice about a shipped extension can come back as.
+// What recording a choice about a first-party extension can come back as.
 export type ExtensionChoice = WriteOutcome | "unknown";
 
 export type Glrs = {
@@ -419,11 +419,11 @@ export type Glrs = {
    */
   settings: () => Readonly<Settings>;
   /**
-   * The extensions glrs ships, and whether each is on, off, or has never been
+   * First-party extensions, and whether each is on, off, or has never been
    * decided. The three states come from config: named in `extensions.load`,
    * named in `extensions.disable`, or in neither.
    */
-  available: () => readonly Shipped[];
+  available: () => readonly FirstPartyExtension[];
   /**
    * Record that one should or should not load, by writing `extensions.load` or
    * `extensions.disable` in the project's config. Returns `"not-allowed"` unless
@@ -536,11 +536,13 @@ export type Glrs = {
 export type ExtensionContext = Glrs;
 export type Extension = (context: Glrs) => void | Promise<void>;
 
+/** Provider adapter capable of constructing one model. */
 export type ModelProvider = {
   id: string;
   model: (modelId: string, options?: Record<string, unknown>) => unknown;
 };
 
+/** Minimal provider-neutral agent runtime used by SDK hosts. */
 export type AgentCore = {
   session: Session;
   runTurn: (input: string) => Promise<Turn>;
@@ -549,6 +551,7 @@ export type AgentCore = {
 
 export type AgentCoreOptions = AgentCore;
 
+/** Create an agent core from host-supplied turn and extension behavior. */
 export const createAgentCore = (options: AgentCoreOptions): AgentCore => ({
   session: options.session,
   runTurn: options.runTurn,

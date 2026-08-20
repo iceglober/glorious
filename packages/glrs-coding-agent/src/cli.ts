@@ -1,7 +1,7 @@
 import { runShell } from "../../glrs-core/src/shell";
 import { loadConfig } from "../../provider-registry/src";
 import { createRegistry, type ExtensionHost, type Line } from "./extension-api";
-import { loadExtensions, shippedExtensions } from "./extensions";
+import { firstPartyExtensions, loadExtensions } from "./extensions";
 import { clip, width } from "./render";
 
 // The third way glrs runs, after the TUI and `-p`: a subcommand an extension
@@ -69,11 +69,11 @@ export const runCli = async (
     columns: () =>
       process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 100,
     settings: () => ({
-      tool_timeout_ms: config.config.tool_timeout_ms,
-      steering_mode: config.config.steering_mode,
-      follow_up_mode: config.config.follow_up_mode,
+      toolTimeoutMs: config.config.toolTimeoutMs,
+      steeringMode: config.config.steeringMode,
+      followUpMode: config.config.followUpMode,
     }),
-    available: () => shippedExtensions(config.config.extensions),
+    available: () => firstPartyExtensions(config.config.extensions),
     // Reading the roster is fine here; changing it is a decision somebody
     // agreed to in conversation, and there is no conversation.
     setExtension: async () => "not-allowed",

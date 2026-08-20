@@ -18,10 +18,17 @@
   "customCss": "./theme/glrs.css",
   "name": "glrs",
   "includeVersion": false,
-  "readme": "none",
+  "navigationLinks": {
+    "github": "https://github.com/iceglober/glorious",
+    "ci": "https://github.com/iceglober/glorious/actions/workflows/ci.yml",
+    "npm": "https://www.npmjs.com/package/@glrs-dev/glrs"
+  },
+  "readme": "./homepage.md",
   "projectDocuments": [
-    "../docs/published/**/*.md"
+    "../docs/published/**/*.md",
+    "./generated/**/*.md"
   ],
+  "lowercaseDocumentGroupTitles": true,
   "sortEntryPoints": false,
   "searchInComments": true,
   "searchInDocuments": true,

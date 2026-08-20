@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { type ModelMessage, type ToolSet, tool } from "ai";
+import { generateText, type ModelMessage, type ToolSet, tool } from "ai";
 import { z } from "zod";
+import { createModel, type ModelOption } from "../../provider-registry/src";
 import {
   createAgent,
   providerOptions,
+  requestSettings,
   settleQuietly,
   shouldResend,
   withInjected,
@@ -99,45 +101,104 @@ describe("a stream that fails part-way", () => {
 });
 
 describe("what we ask the provider for", () => {
-  const openai = { provider: "openai", modelId: "gpt-5" };
-
-  test("reasoning travels as content, never as a server-side reference", () => {
-    // store:true (the provider's default when unset) replays reasoning as
-    // {type:"item_reference", id:"rs_…"}, and a missed lookup kills the turn
-    expect(providerOptions(openai, "key").openai?.store).toBe(false);
+  const model = (over: Record<string, unknown> = {}) => ({
+    provider: "openai",
+    modelId: "gpt-5",
+    name: "gpt-5",
+    env: [],
+    ...over,
   });
 
-  test("the cache key still rides along, so prompt caching is unaffected", () => {
-    expect(providerOptions(openai, "abc123").openai?.promptCacheKey).toBe("abc123");
-  });
-
-  test("effort is sent only when one was configured", () => {
-    expect(providerOptions({ ...openai, variant: "high" }, "k").openai).toMatchObject({
-      reasoningEffort: "high",
+  test("OpenAI safety and caching defaults are namespaced as provider options", () => {
+    expect(providerOptions(model(), "abc123")).toEqual({
+      openai: {
+        textVerbosity: "low",
+        promptCacheKey: "abc123",
+        store: false,
+      },
     });
-    expect(providerOptions(openai, "k").openai).not.toHaveProperty("reasoningEffort");
   });
 
-  // The whole object used to be nested under `openai` whatever the provider
-  // was, so `{"model":"anthropic/…","variant":"high"}` validated, passed
-  // doctor, and reached nothing that reads it.
-  test("each provider is asked in its own words, under its own namespace", () => {
+  test("configured provider options pass through and override defaults", () => {
     expect(
-      providerOptions({ provider: "anthropic", modelId: "claude", variant: "high" }, "k"),
-    ).toMatchObject({ anthropic: { thinking: { type: "enabled" } } });
-    expect(
-      providerOptions({ provider: "google", modelId: "gemini", variant: "high" }, "k"),
-    ).toMatchObject({ google: { thinkingConfig: { includeThoughts: true } } });
-    expect(
-      providerOptions({ provider: "amazon-bedrock", modelId: "x", variant: "low" }, "k"),
-    ).toMatchObject({ bedrock: { reasoningConfig: { maxReasoningEffort: "low" } } });
+      providerOptions(
+        model({
+          variant: "high",
+          providerOptions: {
+            openai: { store: true, customFutureOption: "kept" },
+            gateway: { order: ["bedrock"] },
+          },
+        }),
+        "key",
+      ),
+    ).toEqual({
+      openai: {
+        reasoningEffort: "high",
+        textVerbosity: "low",
+        promptCacheKey: "key",
+        store: true,
+        customFutureOption: "kept",
+      },
+      gateway: { order: ["bedrock"] },
+    });
   });
 
-  test("no provider is handed a namespace it does not read", () => {
-    for (const provider of ["anthropic", "google", "amazon-bedrock"])
-      expect(providerOptions({ provider, modelId: "m", variant: "high" }, "k")).not.toHaveProperty(
-        "openai",
-      );
+  test("non-OpenAI models do not receive OpenAI-only defaults", () => {
+    expect(
+      providerOptions(
+        model({
+          provider: "anthropic",
+          providerOptions: { anthropic: { thinking: { type: "adaptive" } } },
+        }),
+        "key",
+      ),
+    ).toEqual({ anthropic: { thinking: { type: "adaptive" } } });
+  });
+
+  test("common request options and provider options are assembled together", () => {
+    expect(
+      requestSettings(
+        model({
+          requestOptions: { temperature: 0.2, maxOutputTokens: 32000, maxRetries: 9 },
+          providerOptions: { openai: { serviceTier: "flex" } },
+        }),
+        "key",
+      ),
+    ).toMatchObject({
+      temperature: 0.2,
+      maxOutputTokens: 32000,
+      maxRetries: 9,
+      providerOptions: { openai: { serviceTier: "flex", store: false } },
+    });
+  });
+
+  test("request and provider options reach the provider HTTP body", async () => {
+    let body: Record<string, unknown> = {};
+    const selected: ModelOption = {
+      provider: "openai",
+      modelId: "gpt-4.1",
+      name: "gpt-4.1",
+      env: [],
+      factoryOptions: { apiKey: "test-key" },
+      requestOptions: { temperature: 0.2 },
+      providerOptions: { openai: { serviceTier: "default", store: true } },
+    };
+    const languageModel = createModel(selected, (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      body = JSON.parse(String(init?.body));
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch);
+    await generateText({
+      model: languageModel,
+      prompt: "hi",
+      maxRetries: 0,
+      ...requestSettings(selected, "key"),
+    }).catch(() => {});
+    expect(body.temperature).toBe(0.2);
+    expect(body.service_tier).toBe("default");
+    expect(body.store).toBe(true);
   });
 });
 

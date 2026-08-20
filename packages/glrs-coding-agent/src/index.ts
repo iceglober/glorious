@@ -13,7 +13,9 @@ import {
 } from "../../glrs-core/src/session";
 import { runShell } from "../../glrs-core/src/shell";
 import {
+  configuredModel,
   currentModel,
+  ensureConfigFiles,
   envSetting,
   loadCatalogue,
   loadConfig,
@@ -21,7 +23,6 @@ import {
   missingFor,
   modelLabel,
   modelMetadata,
-  modelRef,
   NoModelChosen,
   noteFor,
   PROVIDERS,
@@ -44,9 +45,9 @@ import {
 } from "./extension-api";
 import {
   type ExtensionSettings,
+  firstPartyExtensions,
   loadExtensions,
   resolveExtensions,
-  shippedExtensions,
   skillRootsFor,
 } from "./extensions";
 import { expandMentions, fileCandidates, forgetListings } from "./mentions";
@@ -102,6 +103,7 @@ const probe = () => {
   const root = top === "" ? cwd : top;
   return {
     root,
+    isGit: top !== "",
     os,
     branch: branch === "" ? "HEAD" : branch,
     worktree: root === cwd ? null : cwd.slice(`${root}/`.length),
@@ -146,7 +148,8 @@ const main = async (): Promise<void> => {
       .filter((part) => part !== "")
       .join("\n\n");
     if (prompt === "") throw new Error("Nothing to run: -p needs a prompt or piped input.");
-    const { root, os, git } = probe();
+    const { root, isGit, os, git } = probe();
+    await ensureConfigFiles(root, { project: isGit });
     process.exitCode = await runPrint(prompt, { root, os, git });
     return;
   }
@@ -169,7 +172,8 @@ const main = async (): Promise<void> => {
   const picker = asked.kind === "chat" && asked.picker;
   const extraFlags = asked.kind === "chat" ? asked.flags : new Map<string, string>();
 
-  const { root, os, git } = probe();
+  const { root, isGit, os, git } = probe();
+  await ensureConfigFiles(root, { project: isGit });
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
     // Now that nothing is defaulted, "no model configured" is a state doctor
@@ -250,7 +254,7 @@ const main = async (): Promise<void> => {
   const toolTimeoutMs =
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
       ? envToolTimeout
-      : config.config.tool_timeout_ms;
+      : config.config.toolTimeoutMs;
   // Which extensions would load, worked out without running any of them, so an
   // extension's own skills/ directory can join the roots here — at startup,
   // hundreds of lines before extensions themselves load.
@@ -407,7 +411,7 @@ const main = async (): Promise<void> => {
     extensionPrompt: () => [
       ...promptContributions(registry.promptLines),
       ...availableLines(
-        shippedExtensions(config.config.extensions),
+        firstPartyExtensions(config.config.extensions),
         (config.config.agentConfigAllowlist ?? []).some(
           (one) => one.trim().toLowerCase() === "extensions",
         ),
@@ -799,8 +803,8 @@ const main = async (): Promise<void> => {
       return typeof added === "string" ? added : undefined;
     },
     history: messagesOf(session.events),
-    steeringMode: config.config.steering_mode,
-    followUpMode: config.config.follow_up_mode,
+    steeringMode: config.config.steeringMode,
+    followUpMode: config.config.followUpMode,
   });
 
   // Loaded after the screen exists, so a failure has somewhere to be seen, and
@@ -811,11 +815,11 @@ const main = async (): Promise<void> => {
     root,
     exec: (command, args) => runShell(root, command, args),
     mode: "tui" as const,
-    available: () => shippedExtensions(config.config.extensions),
+    available: () => firstPartyExtensions(config.config.extensions),
     // Writes only where agentConfigAllowlist says it may; otherwise it says so
     // and the model tells the user which line to add.
     setExtension: async (name, on) => {
-      if (!shippedExtensions().some((one) => one.name === name)) return "unknown";
+      if (!firstPartyExtensions().some((one) => one.name === name)) return "unknown";
       const outcome = await recordExtensionChoice(root, config.config, name, on);
       if (outcome !== "written") return outcome;
       // The in-memory config is what the advertisement and the next reload read,
@@ -829,9 +833,9 @@ const main = async (): Promise<void> => {
       return outcome;
     },
     settings: () => ({
-      tool_timeout_ms: toolTimeoutMs,
-      steering_mode: config.config.steering_mode,
-      follow_up_mode: config.config.follow_up_mode,
+      toolTimeoutMs: toolTimeoutMs,
+      steeringMode: config.config.steeringMode,
+      followUpMode: config.config.followUpMode,
     }),
     send: (text, options) => {
       chat.send(text, options.label ?? null, options.steer === true ? "steer" : "follow-up");
@@ -898,8 +902,7 @@ const main = async (): Promise<void> => {
       }));
     },
     setModel: async (label, variant) => {
-      const ref = modelRef(label);
-      const next = { ...currentModel(config.config), ...ref, name: label, variant };
+      const next = configuredModel(label, config.config, variant);
       model = { ...next, ...(await modelMetadata(next).catch(() => ({}))) };
       agent.setModel(model);
       await fire(

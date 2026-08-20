@@ -1,63 +1,93 @@
 ---
-title: Quickstart
+title: quickstart
 ---
 
-# Quickstart
+# quickstart
 
-## Install
-
-Installation options, package-manager commands, and update instructions live on
-the [Install](./2-install.md) page.
-
-## Set the model key
+## install
 
 ```sh
-export AZURE_OPENAI_API_KEY=…   # or AZURE_FOUNDRY_API_KEY / AZURE_API_KEY
-export AZURE_RESOURCE_NAME=…     # your Azure AI Foundry resource
+curl -fsSL https://glrs.dev/install.sh | bash
 ```
 
-`GLRS_MODEL` overrides the default model (`gpt-5.6-luna`).
+more options on [installation](./2-installation.md)
 
-## Open a session
+## configure a model
 
-From inside a git repo:
+a model is required. use a fully qualified `provider/model-id`.
+
+### anthropic
+
+```sh
+export ANTHROPIC_API_KEY=...
+export GLRS_MODEL=anthropic/claude-opus-5
+```
+
+### openai
+
+```sh
+export OPENAI_API_KEY=...
+export GLRS_MODEL=openai/gpt-5.6-sol
+```
+
+see [models](./4-models.md) for every provider and configuration-file options.
+
+## run a session
+
+from inside a git repo:
 
 ```sh
 glrs
 ```
 
-Type, and the agent reads and edits files and runs commands as you chat.
-`glrs --resume` reopens an earlier session.
+type a message in the composer:
 
-## Slash commands
+```
+> describe this project to me
+```
 
-- `/help` — keys and commands.
-- `/skills` — list discovered skills; press `r` to reload from disk.
-- `/extensions` — list loaded extensions and what each one registered.
-- `/clear` — drop the conversation the model replays, keeping the transcript.
+glrs can read and edit files, search the repo, and run shell commands. it has
+the same permissions as the process that launched it.
 
-Reusable behavior belongs in a TypeScript extension. Extensions are user-invoked,
-never selected by the model, and can register tools, commands, hooks, or UI.
-The `!` prefix remains available for one-off shell commands.
+press `ctrl+c` twice on an empty composer to exit. glrs prints the session ID
+and its resume command:
 
-## Keys
+```sh
+glrs --resume <id>
+```
 
-- **Enter** submits; **Shift+Enter** inserts a newline.
-- **Esc** removes the newest queued message, then interrupts the running turn.
-- **Ctrl+C** clears the composer; twice on an empty composer exits.
-- **↑/↓** or **Ctrl+P/N** browse prompt history.
-- **!** as the first character runs the line as a shell command instead of
-  sending it to the model. **Backspace** on an empty line leaves.
-- Mouse-select copies to the clipboard.
+run `glrs --resume` without an ID to choose from earlier sessions.
 
-## Project rules and skills
+## slash commands
 
-glrs reads `AGENTS.md`, `AGENT.md` or `CLAUDE.md` from the working
-directory upwards, nearer files last. Skills — a directory with a `SKILL.md`
-carrying `name` and `description` frontmatter — are discovered the same way;
-only the name and description are loaded until the agent activates one.
+| command                  | action                                                 |
+| ------------------------ | ------------------------------------------------------ |
+| `/help`                  | list commands and keys                                 |
+| `/skills`                | list available skills                                  |
+| `/extensions`            | list loaded and available extensions                   |
+| `/reload`                | reload skills, commands, extensions, and tool settings |
+| `/clear`                 | clear model context; keep the transcript               |
+| `/compact [instruction]` | summarize older context                                |
+| `/session`               | show session usage and storage                         |
 
-## Next
+## keys
 
-- [Tools](./tools.md)
-- [CLI](./cli.md)
+| key                 | action                                                             |
+| ------------------- | ------------------------------------------------------------------ |
+| `enter`             | send; while busy, queue a follow-up turn                           |
+| `alt+enter`         | steer the running turn at its next step                            |
+| `shift+enter`       | insert a newline                                                   |
+| `alt+↑`             | return the newest queued message to the composer                   |
+| `esc`               | close completion; otherwise stop the turn and hold queued messages |
+| `ctrl+c`            | clear; interrupt; press again to exit                              |
+| `↑` / `↓`           | move through completion or prompt history at the draft edges       |
+| `ctrl+p` / `ctrl+n` | move through prompt history anywhere                               |
+| `tab`               | fill the selected completion                                       |
+| `/`                 | complete a slash command                                           |
+| `@`                 | attach a file or directory                                         |
+| `!`                 | enter direct shell mode                                            |
+| `backspace`         | leave an empty direct shell composer                               |
+| mouse drag          | select and copy through OSC 52                                     |
+
+on Windows Terminal, `alt+enter` needs a one-time remap. see
+[terminal setup](./4-reference/2-terminal-setup.md).

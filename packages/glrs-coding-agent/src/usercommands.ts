@@ -1,39 +1,25 @@
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join } from "node:path";
+import { glrsDirectories } from "../../provider-registry/src";
 import type { Command } from "./commands";
 
-// Same shape the skill roots use: project directories win over the home
-// directory, so a repo can define a command that shadows a personal one.
-// Returned without a leaf so everything loaded per-agent-directory —
-// commands — walks the same list rather than each keeping its own
-// copy that can drift.
-export const agentDirectories = (root: string): string[] => {
-  const home = homedir();
-  const project: string[] = [];
-  let current = resolve(root);
-  while (true) {
-    project.push(current);
-    if (current === home) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return [
-    // `.glorious` is still read alongside `.glrs` after the rename, the same
-    // way `.agents` is read alongside both: this list has always held more than
-    // one name for the same idea.
-    ...project.flatMap((directory) => [
-      join(directory, ".glrs"),
-      join(directory, ".glorious"),
-      join(directory, ".agents"),
-    ]),
-    join(home, ".config", "agents"),
-  ];
-};
+// Project first, User second. Commands and extensions are glrs-specific, so
+// neither is discovered from the vendor-neutral `.agents` tree.
+export const agentDirectories = (
+  root: string,
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] => glrsDirectories(root, home, env, platform);
 
-const commandRoots = (root: string): string[] =>
-  agentDirectories(root).map((directory) => join(directory, "commands"));
+const commandRoots = (
+  root: string,
+  home?: string,
+  env?: NodeJS.ProcessEnv,
+  platform?: NodeJS.Platform,
+): string[] =>
+  agentDirectories(root, home, env, platform).map((directory) => join(directory, "commands"));
 
 export const scalar = (value: string): string => {
   const trimmed = value.trim();
@@ -87,11 +73,16 @@ const readCommands = async (directory: string): Promise<Command[]> => {
   return found;
 };
 
-// The first directory to define a name wins, so a project command shadows a
-// personal one rather than both appearing.
-export const loadUserCommands = async (root: string): Promise<Command[]> => {
+// The first directory to define a name wins, so a Project command shadows a
+// User one rather than both appearing.
+export const loadUserCommands = async (
+  root: string,
+  home?: string,
+  env?: NodeJS.ProcessEnv,
+  platform?: NodeJS.Platform,
+): Promise<Command[]> => {
   const seen = new Map<string, Command>();
-  for (const directory of commandRoots(root))
+  for (const directory of commandRoots(root, home, env, platform))
     for (const command of await readCommands(directory))
       if (!seen.has(command.name)) seen.set(command.name, command);
   return [...seen.values()];

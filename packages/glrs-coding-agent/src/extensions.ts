@@ -4,13 +4,13 @@ import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
 import webFetch from "../../extensions/web-fetch/src";
 import worktree from "../../extensions/worktree/src";
-import type { Shipped } from "../../glrs-core/src";
+import type { FirstPartyExtension } from "../../glrs-core/src";
 import { createApi, type ExtensionHost, type Registry } from "./extension-api";
 import { describeThrown } from "./render";
 import type { ToolEvent } from "./toolkit";
 import { agentDirectories } from "./usercommands";
 
-export type { Shipped };
+export type { FirstPartyExtension };
 
 // An extension is a TypeScript file that registers capabilities against the API
 // in extension-api.ts. Bun imports .ts directly, so loading one is a dynamic
@@ -121,7 +121,7 @@ const bundled = [
   },
 ];
 
-export const shippedExtensions = (settings?: ExtensionSettings): Shipped[] => {
+export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyExtension[] => {
   const on = new Set((settings?.load ?? []).map(key));
   const off = new Set((settings?.disable ?? []).map(key));
   return bundled.map(({ name, origin, defaultOn, summary }) => {

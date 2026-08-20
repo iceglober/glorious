@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Settings } from "../../glrs-core/src";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
-import type { Shipped } from "./extensions";
+import type { FirstPartyExtension } from "./extensions";
 import { clip, type Line, type Tone } from "./render";
 import type { ToolEvent } from "./toolkit";
 import { wrapTool } from "./toolkit";
@@ -117,7 +117,7 @@ export type ExtensionHost = {
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
   setInput: (text: string) => void;
   settings: () => Readonly<Settings>;
-  available: () => readonly Shipped[];
+  available: () => readonly FirstPartyExtension[];
   setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
   inspect: () => Loaded;
   clear: () => "cleared" | "busy" | "empty";

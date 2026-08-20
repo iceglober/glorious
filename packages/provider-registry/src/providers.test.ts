@@ -52,6 +52,9 @@ describe("what doctor reports as missing", () => {
   test("an unknown provider needs a base URL, and says so", () => {
     expect(missingFor("ollama", undefined, bare)[0]).toContain("providers.ollama.api");
     expect(missingFor("ollama", { api: "http://localhost:11434/v1" }, bare)).toEqual([]);
+    expect(
+      missingFor("ollama", { factoryOptions: { baseURL: "http://localhost:11434/v1" } }, bare),
+    ).toEqual([]);
   });
 });
 

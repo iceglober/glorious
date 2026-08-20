@@ -1,8 +1,15 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { configPaths, envSetting, loadConfig } from "./config";
+import { dirname, join } from "node:path";
+import {
+  CONFIG_SCHEMA_URL,
+  configScopes,
+  ensureConfigFiles,
+  envSetting,
+  loadConfig,
+  userConfigDirectory,
+} from "./config";
 
 const roots: string[] = [];
 
@@ -23,12 +30,12 @@ afterAll(async () => {
 describe("loadConfig", () => {
   test("reads the model, variant, and tool timeout a project pins", async () => {
     const root = await project(
-      `{"model":"anthropic/claude-opus-5","variant":"high","tool_timeout_ms":120000}`,
+      `{"model":"anthropic/claude-opus-5","variant":"high","toolTimeoutMs":120000}`,
     );
     expect((await loadConfig(root, join(root, "nohome"))).config).toMatchObject({
       model: "anthropic/claude-opus-5",
       variant: "high",
-      tool_timeout_ms: 120000,
+      toolTimeoutMs: 120000,
     });
   });
 
@@ -71,23 +78,303 @@ describe("loadConfig", () => {
   });
 });
 
-// Extensions and commands already come from ~/.glrs — the
-// ancestor walk reaches it whenever a project sits under home. Config not
-// reading the same directory is a rule nobody should have to learn.
-describe("where personal config lives", () => {
-  test("both personal locations are read, project first", () => {
-    const paths = configPaths("/zz/project", "/zz/home");
-    // the copy you do not commit sits nearest, ahead of the one you do
-    expect(paths[0]).toBe("/zz/project/.glrs/config.local.json");
-    expect(paths[1]).toBe("/zz/project/.glrs/config.json");
-    expect(paths).toContain("/zz/home/.glrs/config.json");
-    expect(paths).toContain("/zz/home/.config/glrs/config.json");
+describe("initializing config files", () => {
+  test("a non-project run creates only User config", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-root-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    const created = await ensureConfigFiles(root, {
+      project: false,
+      home,
+      env: {},
+      platform: "linux",
+    });
+    expect(created).toEqual([join(home, ".config", "glrs", "config.json")]);
+    expect(JSON.parse(await Bun.file(created[0]).text())).toEqual({ $schema: CONFIG_SCHEMA_URL });
+    expect(await Bun.file(join(root, ".glrs", "config.json")).exists()).toBe(false);
   });
 
-  test("a project pins one key while personal config supplies another", async () => {
+  test("a project run creates Project-User, Project, and User config", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-project-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    const created = await ensureConfigFiles(root, {
+      project: true,
+      home,
+      env: {},
+      platform: "linux",
+    });
+    expect(created).toEqual([
+      join(root, ".glrs", "config.local.json"),
+      join(root, ".glrs", "config.json"),
+      join(home, ".config", "glrs", "config.json"),
+    ]);
+    for (const path of created)
+      expect(JSON.parse(await Bun.file(path).text())).toEqual({ $schema: CONFIG_SCHEMA_URL });
+    expect(await Bun.file(join(root, ".glrs", ".gitignore")).text()).toBe("/config.local.json\n");
+  });
+
+  test("adds the schema to existing config in every resolved scope", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-existing-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    const paths = configScopes(root, home, {}, "linux").map((scope) => scope.path);
+    for (const path of paths) await mkdir(dirname(path), { recursive: true });
+    await writeFile(paths[0], '{"variant":"high"}\n');
+    await writeFile(paths[1], '{\n  "model": "openai/custom"\n}\n');
+    await writeFile(paths[2], "{\n}\n");
+
+    expect(
+      await ensureConfigFiles(root, { project: true, home, env: {}, platform: "linux" }),
+    ).toEqual([]);
+    for (const path of paths)
+      expect(JSON.parse(await Bun.file(path).text())).toMatchObject({ $schema: CONFIG_SCHEMA_URL });
+    expect(await Bun.file(paths[1]).text()).toBe(
+      `{\n  "$schema": "${CONFIG_SCHEMA_URL}",\n  "model": "openai/custom"\n}\n`,
+    );
+  });
+
+  test("does not replace an existing schema or rewrite malformed JSON", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-existing-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    const user = join(home, ".config", "glrs", "config.json");
+    await mkdir(dirname(user), { recursive: true });
+    const custom = '{"$schema":"https://example.com/custom.json","model":"openai/custom"}\n';
+    await writeFile(user, custom);
+    await ensureConfigFiles(root, { project: false, home, env: {}, platform: "linux" });
+    expect(await Bun.file(user).text()).toBe(custom);
+
+    await writeFile(user, "{not json\n");
+    await ensureConfigFiles(root, { project: false, home, env: {}, platform: "linux" });
+    expect(await Bun.file(user).text()).toBe("{not json\n");
+  });
+});
+
+describe("provider and model overrides", () => {
+  test("retains arbitrary JSON options instead of filtering provider-specific config", async () => {
+    const root = await project(
+      JSON.stringify({
+        model: "openai/gpt-5",
+        providers: {
+          openai: {
+            factoryOptions: {
+              baseURL: "https://proxy.example/v1",
+              organization: "org_123",
+              headers: { "x-proxy": "yes" },
+            },
+            requestOptions: { temperature: 0.2, stopSequences: ["DONE"] },
+            providerOptions: { openai: { store: true, customFutureOption: "kept" } },
+            models: {
+              "gpt-5": {
+                requestOptions: { maxOutputTokens: 32000 },
+                providerOptions: { openai: { reasoningEffort: "high" } },
+                metadata: { context: 400000, inputCost: 1.25, outputCost: 10 },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(diagnostics).toEqual([]);
+    expect(config.providers?.openai).toEqual({
+      factoryOptions: {
+        baseURL: "https://proxy.example/v1",
+        organization: "org_123",
+        headers: { "x-proxy": "yes" },
+      },
+      requestOptions: { temperature: 0.2, stopSequences: ["DONE"] },
+      providerOptions: { openai: { store: true, customFutureOption: "kept" } },
+      models: {
+        "gpt-5": {
+          requestOptions: { maxOutputTokens: 32000 },
+          providerOptions: { openai: { reasoningEffort: "high" } },
+          metadata: { context: 400000, inputCost: 1.25, outputCost: 10 },
+        },
+      },
+    });
+  });
+
+  test("deep-merges scopes, replaces arrays, and uses null to remove inherited values", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-options-project-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-options-home-"));
+    roots.push(root, home);
+    await mkdir(join(root, ".glrs"), { recursive: true });
+    await mkdir(join(home, ".config", "glrs"), { recursive: true });
+    await writeFile(
+      join(home, ".config", "glrs", "config.json"),
+      JSON.stringify({
+        providers: {
+          openai: {
+            factoryOptions: { organization: "remove-me", headers: { user: "yes" } },
+            requestOptions: { stopSequences: ["USER"], temperature: 0.8 },
+            providerOptions: { openai: { store: false, user: true } },
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(root, ".glrs", "config.json"),
+      JSON.stringify({
+        providers: {
+          openai: {
+            factoryOptions: { organization: null, headers: { project: "yes" } },
+            requestOptions: { stopSequences: ["PROJECT"] },
+            providerOptions: { openai: { store: true } },
+          },
+        },
+      }),
+    );
+    const { config } = await loadConfig(root, home, {});
+    expect(config.providers?.openai).toMatchObject({
+      factoryOptions: { headers: { user: "yes", project: "yes" } },
+      requestOptions: { stopSequences: ["PROJECT"], temperature: 0.8 },
+      providerOptions: { openai: { store: true, user: true } },
+    });
+    expect(config.providers?.openai?.factoryOptions).not.toHaveProperty("organization");
+  });
+
+  test("validates model metadata without discarding its valid fields", async () => {
+    const root = await project(
+      JSON.stringify({
+        providers: {
+          openai: {
+            models: {
+              "gpt-5": {
+                metadata: {
+                  name: 42,
+                  context: "large",
+                  inputCost: -1,
+                  outputCost: 10,
+                  variants: ["high", 4],
+                  unknown: "ignored",
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.providers?.openai?.models?.["gpt-5"]?.metadata).toEqual({
+      outputCost: 10,
+      variants: ["high"],
+    });
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.name");
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.context");
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.inputCost");
+    expect(diagnostics.join("\n")).toContain("models.gpt-5.metadata.variants[1]");
+  });
+
+  test("rejects provider option namespaces that are not objects", async () => {
+    const root = await project(
+      JSON.stringify({
+        providers: {
+          openai: {
+            providerOptions: { openai: "not-an-object", future: { kept: true } },
+            models: {
+              "gpt-5": { providerOptions: { openai: 42, future: { model: true } } },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.providers?.openai?.providerOptions).toEqual({ future: { kept: true } });
+    expect(config.providers?.openai?.models?.["gpt-5"]?.providerOptions).toEqual({
+      future: { model: true },
+    });
+    expect(diagnostics.join("\n")).toContain("providers.openai.providerOptions.openai");
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.models.gpt-5.providerOptions.openai",
+    );
+  });
+
+  test("rejects request fields owned by the agent", async () => {
+    const root = await project(
+      JSON.stringify({
+        model: "openai/gpt-5",
+        providers: {
+          openai: {
+            factoryOptions: { fetch: "not allowed", baseURL: "https://example.test" },
+            requestOptions: {
+              prompt: "replace the user",
+              system: "replace the system prompt",
+              messages: [],
+              tools: {},
+              activeTools: [],
+              abortSignal: null,
+              onChunk: "not a callback",
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.providers?.openai?.requestOptions).toEqual({});
+    expect(config.providers?.openai?.factoryOptions).toEqual({ baseURL: "https://example.test" });
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.factoryOptions.fetch is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.prompt is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.system is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.messages is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.tools is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.activeTools is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.abortSignal is owned by glrs",
+    );
+    expect(diagnostics.join("\n")).toContain(
+      "providers.openai.requestOptions.onChunk is owned by glrs",
+    );
+  });
+});
+
+describe("the three config scopes", () => {
+  test("Project-User, Project, then User", () => {
+    const scopes = configScopes("/zz/project", "/zz/home", {}, "linux");
+    expect(scopes).toEqual([
+      { name: "Project-User", path: "/zz/project/.glrs/config.local.json" },
+      { name: "Project", path: "/zz/project/.glrs/config.json" },
+      { name: "User", path: "/zz/home/.config/glrs/config.json" },
+    ]);
+  });
+
+  test("an explicit User directory wins over XDG", () => {
+    expect(
+      userConfigDirectory("/home/me", {
+        GLRS_CONFIG_HOME: "/mine/glrs",
+        XDG_CONFIG_HOME: "/xdg",
+      }),
+    ).toBe("/mine/glrs");
+  });
+
+  test("XDG_CONFIG_HOME contains the glrs User directory", () => {
+    expect(userConfigDirectory("/home/me", { XDG_CONFIG_HOME: "/xdg" })).toBe("/xdg/glrs");
+  });
+
+  test("Windows uses roaming application data", () => {
+    expect(userConfigDirectory("C:/Users/me", { APPDATA: "C:/Roaming" }, "win32")).toBe(
+      "C:\\Roaming\\glrs",
+    );
+  });
+
+  test("Project pins one key while User config supplies another", async () => {
+    const home = await userConfig(`{"variant":"high"}`);
     const root = await project(`{"model":"anthropic/claude-opus-5"}`);
-    const { config } = await loadConfig(root, join(root, "nohome"));
-    expect(config.model).toBe("anthropic/claude-opus-5");
+    const { config } = await loadConfig(root, home, {});
+    expect(config).toMatchObject({ model: "anthropic/claude-opus-5", variant: "high" });
   });
 });
 
@@ -152,6 +439,17 @@ describe("a config that does not do what it looks like it does", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  test("a schema-only file is recognized as glrs config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-schema-"));
+    await mkdir(join(dir, ".glrs"), { recursive: true });
+    await writeFile(
+      join(dir, ".glrs", "config.json"),
+      '{"$schema":"https://glrs.dev/config.schema.json"}',
+    );
+    expect((await loadConfig(dir, join(dir, "nohome"))).diagnostics).toEqual([]);
+    await rm(dir, { recursive: true, force: true });
+  });
+
   test("a good config says nothing at all", async () => {
     const dir = await mkdtemp(join(tmpdir(), "glrs-good-"));
     await mkdir(join(dir, ".glrs"), { recursive: true });
@@ -166,12 +464,12 @@ describe("a config that does not do what it looks like it does", () => {
   });
 });
 
-// The personal layer, for checking that a project file wins one key at a time.
-const personal = async (contents: string): Promise<string> => {
+// The User scope, for checking that Project wins one key at a time.
+const userConfig = async (contents: string): Promise<string> => {
   const home = await mkdtemp(join(tmpdir(), "glrs-home-"));
   roots.push(home);
-  await mkdir(join(home, ".glrs"), { recursive: true });
-  await writeFile(join(home, ".glrs", "config.json"), contents);
+  await mkdir(join(home, ".config", "glrs"), { recursive: true });
+  await writeFile(join(home, ".config", "glrs", "config.json"), contents);
   return home;
 };
 
@@ -179,26 +477,24 @@ describe("how a queue delivers", () => {
   test("nothing sets either mode by default", async () => {
     const root = await project('{"model":"azure/x"}');
     const { config } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBeUndefined();
-    expect(config.follow_up_mode).toBeUndefined();
+    expect(config.steeringMode).toBeUndefined();
+    expect(config.followUpMode).toBeUndefined();
   });
 
-  test("the snake_case spellings glrs uses elsewhere", async () => {
-    const root = await project('{"steering_mode":"all","follow_up_mode":"one-at-a-time"}');
-    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBe("all");
-    expect(config.follow_up_mode).toBe("one-at-a-time");
-    expect(diagnostics).toEqual([]);
-  });
-
-  // The camelCase names are what these settings are called in the docs of the
-  // agent this queue was modelled on, so they are what gets typed first.
-  test("the camelCase spellings are read too", async () => {
+  test("the camelCase spellings are read", async () => {
     const root = await project('{"steeringMode":"all","followUpMode":"all"}');
     const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBe("all");
-    expect(config.follow_up_mode).toBe("all");
+    expect(config.steeringMode).toBe("all");
+    expect(config.followUpMode).toBe("all");
     expect(diagnostics).toEqual([]);
+  });
+
+  test("snake_case names are not config keys", async () => {
+    const root = await project('{"steering_mode":"all","follow_up_mode":"all"}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.steeringMode).toBeUndefined();
+    expect(config.followUpMode).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain("nothing here is a glrs setting");
   });
 
   // A recognised key with an unusable value is otherwise dropped exactly as
@@ -206,64 +502,16 @@ describe("how a queue delivers", () => {
   test("a value that is not a mode is reported under the name that was written", async () => {
     const root = await project('{"steeringMode":"batch"}');
     const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBeUndefined();
+    expect(config.steeringMode).toBeUndefined();
     expect(diagnostics.join("\n")).toContain('"steeringMode" should be "one-at-a-time" or "all"');
   });
 
-  test("a project file wins over a personal one, one key at a time", async () => {
-    const home = await personal('{"steering_mode":"all","follow_up_mode":"all"}');
-    const root = await project('{"follow_up_mode":"one-at-a-time"}');
-    const { config } = await loadConfig(root, home);
-    expect(config.steering_mode).toBe("all");
-    expect(config.follow_up_mode).toBe("one-at-a-time");
-  });
-});
-
-// The rename kept every old name working rather than making a directory rename
-// and a shell-profile edit the price of upgrading. These pin that promise; the
-// rest of this file exercises `.glrs`, so without them the fallback would be
-// the only path covered or the only path broken and nobody would know which.
-describe("the names from before the rename", () => {
-  const named = async (dir: string, contents: string): Promise<string> => {
-    const root = await mkdtemp(join(tmpdir(), "glrs-legacy-"));
-    roots.push(root);
-    await mkdir(join(root, dir), { recursive: true });
-    await writeFile(join(root, dir, "config.json"), contents);
-    return root;
-  };
-
-  test("a project .glorious/config.json is still read", async () => {
-    const root = await named(".glorious", '{"model":"azure/from-the-old-name"}');
-    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.model).toBe("azure/from-the-old-name");
-    expect(diagnostics).toEqual([]);
-  });
-
-  test("with both present in one project, .glrs wins", async () => {
-    const root = await named(".glorious", '{"model":"azure/old"}');
-    await mkdir(join(root, ".glrs"), { recursive: true });
-    await writeFile(join(root, ".glrs", "config.json"), '{"model":"azure/new"}');
-    expect((await loadConfig(root, join(root, "nohome"))).config.model).toBe("azure/new");
-  });
-
-  // The ordering claim in configPaths: project beats personal regardless of
-  // which spelling each one uses, or the rename would quietly reorder
-  // precedence rather than just adding a name.
-  test("a project .glorious still beats a personal .glrs", async () => {
-    const home = await mkdtemp(join(tmpdir(), "glrs-legacy-home-"));
-    roots.push(home);
-    await mkdir(join(home, ".glrs"), { recursive: true });
-    await writeFile(join(home, ".glrs", "config.json"), '{"model":"azure/personal"}');
-    const root = await named(".glorious", '{"model":"azure/project"}');
-    expect((await loadConfig(root, home)).config.model).toBe("azure/project");
-  });
-
-  test("both spellings appear in the search path, new ones first", () => {
-    const paths = configPaths("/repo", "/home/me");
-    const first = paths.findIndex((path) => path.includes(".glrs"));
-    const later = paths.findIndex((path) => path.includes(".glorious"));
-    expect(first).toBeGreaterThanOrEqual(0);
-    expect(later).toBeGreaterThan(first);
+  test("Project wins over User, one key at a time", async () => {
+    const home = await userConfig('{"steeringMode":"all","followUpMode":"all"}');
+    const root = await project('{"followUpMode":"one-at-a-time"}');
+    const { config } = await loadConfig(root, home, {});
+    expect(config.steeringMode).toBe("all");
+    expect(config.followUpMode).toBe("one-at-a-time");
   });
 });
 
@@ -372,20 +620,20 @@ describe("which extensions load", () => {
   });
 
   // The other trap: merge is hand-written, and lists are sets rather than
-  // values. A project activating one must not switch off the one your personal
+  // values. Project activating one must not switch off the one User
   // config activates everywhere.
   test("the lists add up across layers rather than replacing", async () => {
     const home = await mkdtemp(join(tmpdir(), "glrs-ext-home-"));
     roots.push(home);
-    await mkdir(join(home, ".glrs"), { recursive: true });
+    await mkdir(join(home, ".config", "glrs"), { recursive: true });
     await writeFile(
-      join(home, ".glrs", "config.json"),
+      join(home, ".config", "glrs", "config.json"),
       '{"extensions":{"load":["ask-user"],"disable":["web-fetch"]}}',
     );
     const root = await written('{"extensions":{"load":["web-fetch"]}}');
-    const { config } = await loadConfig(root, home);
+    const { config } = await loadConfig(root, home, {});
     expect([...(config.extensions?.load ?? [])].sort()).toEqual(["ask-user", "web-fetch"]);
-    // Disabled personally, still disabled even though the project asked for it.
+    // Disabled in User, still disabled even though Project asked for it.
     expect(config.extensions?.disable).toEqual(["web-fetch"]);
   });
 

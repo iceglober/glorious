@@ -22,12 +22,15 @@ export const documentTitle = (file: string): string => {
   return basename(file, extname(file));
 };
 
-export const directoryLabel = (segment: string): string =>
-  segment
+export const directoryLabel = (segment: string, lowercase = false): string => {
+  const label = segment
+    .replace(/^\d+[-_]/u, "")
     .split(/[-_]/u)
     .filter(Boolean)
     .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
     .join(" ");
+  return lowercase ? label.toLowerCase() : label;
+};
 
 export const compareDocumentPaths = (left: string, right: string): number =>
   left.localeCompare(right);

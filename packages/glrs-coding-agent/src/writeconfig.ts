@@ -1,9 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { WriteOutcome } from "../../glrs-core/src";
 import type { Config } from "../../provider-registry/src";
-
-export type { WriteOutcome };
 
 // The one thing in glrs that writes your configuration, and it does nothing
 // unless you have said it may. `config.ts` opens with "nothing writes config at
@@ -13,6 +10,9 @@ export type { WriteOutcome };
 // What it is for is narrow. The agent can suggest turning on an extension the
 // work needs; without somewhere to record your answer, a decline lasts until
 // the next turn and you are asked the same question forever.
+
+/** Result of attempting an allowlisted Project-config update. */
+export type WriteOutcome = "written" | "not-allowed" | "already" | "failed";
 
 const permitted = (config: Config, section: string): boolean =>
   (config.agentConfigAllowlist ?? []).some((one) => one.trim().toLowerCase() === section);

@@ -499,17 +499,31 @@ export const elapsed = (ms: number): string => {
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 };
 
+/** Platform-native shortcut shown for returning a queued message to the composer. */
+export const dequeueShortcut = (platform: NodeJS.Platform = process.platform): string =>
+  `${platform === "darwin" ? "Opt" : "Alt"}+↑`;
+
 export const statusRow = ({ busy, queued, columns, phase }: Activity): Line[] => {
   const limit = Math.max(0, Math.floor(columns));
   if (!busy || limit === 0) return [[{ text: "" }]];
-  const head = `${phase ? `${phase.name} ${elapsed(phase.ms)} · ` : ""}Esc interrupt`;
+  const lead = phase ? `${phase.name} ${elapsed(phase.ms)} · ` : "";
+  const stop = "Esc interrupt";
+  const core = `${lead}${stop}`;
   // The same warning tone the queued rows above carry, so one glance ties the
-  // count to the rows it is counting.
-  const waiting: Line = queued > 0 ? [{ text: ` · ${queued} queued`, tone: "warning" }] : [];
-  // The phase leads: it is the part that changes, so a narrow terminal drops the
-  // count — which the queued rows already show — before it eats the live
+  // count to the rows it is counting and says how to take one back.
+  const waiting = queued > 0 ? `${queued} queued (${dequeueShortcut()} dequeue) · ` : "";
+  // The phase leads: it is the part that changes, so a narrow terminal drops
+  // the count — which the queued rows already show — before it eats the live
   // reading or the hint for stopping.
-  if (width(head) + width(waiting[0]?.text ?? "") <= limit)
-    return [[{ text: head, tone: "accent" }, ...waiting]];
-  return [[{ text: clip(head, limit), tone: "accent" }]];
+  if (width(core) + width(waiting) <= limit) {
+    if (waiting === "") return [[{ text: core, tone: "accent" }]];
+    return [
+      [
+        ...(lead === "" ? [] : [{ text: lead, tone: "accent" as const }]),
+        { text: waiting, tone: "warning" },
+        { text: stop, tone: "accent" },
+      ],
+    ];
+  }
+  return [[{ text: clip(core, limit), tone: "accent" }]];
 };

@@ -78,7 +78,7 @@ const byId = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
 // is why Vertex is `google-vertex` and Bedrock is `amazon-bedrock` — reasonable
 // as identifiers, not what anyone reaches for. An alias that resolves is worth
 // more than an error that is technically correct.
-const ALIASES: Record<string, string> = {
+export const PROVIDER_ALIASES: Readonly<Record<string, string>> = {
   vertex: "google-vertex",
   "google-vertex-ai": "google-vertex",
   gemini: "google",
@@ -95,7 +95,15 @@ const ALIASES: Record<string, string> = {
   "open-router": "openrouter",
 };
 
-export const canonicalProvider = (id: string): string => ALIASES[id] ?? id;
+export const PROVIDER_SETTINGS: Record<string, readonly string[]> = {
+  "amazon-bedrock": ["api", "region"],
+  "google-vertex": ["api", "project", "location"],
+};
+
+export const settingsFor = (provider: string): readonly string[] =>
+  PROVIDER_SETTINGS[provider] ?? ["api"];
+
+export const canonicalProvider = (id: string): string => PROVIDER_ALIASES[id] ?? id;
 
 export const providerSpec = (id: string): ProviderSpec | undefined =>
   byId.get(canonicalProvider(id));
@@ -131,12 +139,12 @@ export const noteFor = (id: string): string | undefined => providerSpec(id)?.not
 // What is missing before this provider can answer, for `doctor`.
 export const missingFor = (
   id: string,
-  settings: { api?: string } | undefined,
+  settings: { api?: string; factoryOptions?: { baseURL?: unknown } } | undefined,
   environment: NodeJS.ProcessEnv = process.env,
 ): string[] => {
   const spec = providerSpec(id);
   if (!spec) {
-    if (settings?.api) return [];
+    if (settings?.api || typeof settings?.factoryOptions?.baseURL === "string") return [];
     const near = nearestProvider(id);
     return [
       near === undefined

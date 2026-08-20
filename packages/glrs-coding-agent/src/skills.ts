@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
 import type { SkillSummary } from "../../glrs-core/src";
+import { agentSkillsDirectories, userConfigDirectory } from "../../provider-registry/src";
 import type { Command } from "./commands";
 
 type Skill = {
@@ -66,19 +67,6 @@ const DESCRIPTION_MAX = 1024;
 const COMPATIBILITY_MAX = 500;
 const LEGAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
-const ancestors = (root: string, home: string): string[] => {
-  const directories: string[] = [];
-  let current = resolve(root);
-  while (true) {
-    directories.push(current);
-    if (current === home) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return directories;
-};
-
 // glrs's own directory and the vendor-neutral Agent Skills layout, and
 // nothing else. It used to also read ~/.claude/skills, every ancestor's
 // .claude/skills, ~/.claude/plugins/cache and ~/.config/amp/skills — so another
@@ -92,26 +80,26 @@ const ancestors = (root: string, home: string): string[] => {
 //
 // Deduped because the ancestor walk reaches ~/.agents/skills again whenever the
 // project sits under $HOME, which listed every personal skill twice and warned
-// `two skills are named "X"` naming the same path on both sides of the sentence.
-// The tests never saw it: they all pass a scratch home outside the tree.
-// `.glrs` and `.glorious` were read for the project root only, while the
-// ancestor walk looked for `.agents/skills` alone — so `~/.glrs/skills` was
-// never read at all, even though `~/.glrs` is where config, commands and
-// extensions all come from. Every agent directory is now searched at every
-// level, which is what someone putting a skill beside their extensions expects.
-const AGENT_DIRECTORIES = [".agents", ".glrs", ".glorious"] as const;
-
-const skillRoots = (root: string, home: string, extra: readonly string[] = []): string[] => [
-  ...new Set([
-    join(home, ".config", "agents", "skills"),
-    ...AGENT_DIRECTORIES.map((directory) => join(home, directory, "skills")),
-    ...ancestors(root, home).flatMap((directory) =>
-      AGENT_DIRECTORIES.map((agent) => join(directory, agent, "skills")),
-    ),
-    ...AGENT_DIRECTORIES.map((directory) => join(root, directory, "skills")),
-    ...extra,
-  ]),
-];
+// Project glrs skills win, then portable project Agent Skills, then the same
+// two User locations. Nothing is inherited from arbitrary parent directories.
+const skillRoots = (
+  root: string,
+  home: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  extra: readonly string[],
+): string[] => {
+  const [projectAgents, userAgents] = agentSkillsDirectories(root, home, env, platform);
+  return [
+    ...new Set([
+      join(root, ".glrs", "skills"),
+      projectAgents,
+      join(userConfigDirectory(home, env, platform), "skills"),
+      userAgents,
+      ...extra,
+    ]),
+  ];
+};
 
 const scalar = (value: string): string => {
   const trimmed = value.trim();
@@ -273,12 +261,14 @@ const skillFiles = async (base: string, depth = 0): Promise<string[]> => {
 const discover = async (
   root: string,
   home: string,
-  extra: readonly string[] = [],
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  extra: readonly string[],
 ): Promise<{ skills: Skill[]; warnings: string[] }> => {
   const found: Skill[] = [];
   const warnings: string[] = [];
   const seen = new Map<string, string>();
-  for (const base of skillRoots(root, home, extra)) {
+  for (const base of skillRoots(root, home, env, platform, extra)) {
     for (const location of await skillFiles(resolve(base))) {
       const text = await Bun.file(location)
         .text()
@@ -351,10 +341,15 @@ const createSkillTool = (skills: Skill[], onActivate?: OnActivate) => {
 export const loadSkills = async (
   root: string,
   home: string = homedir(),
-  extra: readonly string[] = [],
-  onActivate?: OnActivate,
+  envOrExtra: NodeJS.ProcessEnv | readonly string[] = process.env,
+  platformOrActivate: NodeJS.Platform | OnActivate = process.platform,
 ): Promise<Skills> => {
-  const { skills, warnings } = await discover(root, home, extra);
+  const hasExtra = Array.isArray(envOrExtra);
+  const extra = hasExtra ? (envOrExtra as readonly string[]) : [];
+  const env = hasExtra ? process.env : (envOrExtra as NodeJS.ProcessEnv);
+  const platform = typeof platformOrActivate === "string" ? platformOrActivate : process.platform;
+  const onActivate = typeof platformOrActivate === "function" ? platformOrActivate : undefined;
+  const { skills, warnings } = await discover(root, home, env, platform, extra);
   // What the model is told exists. A skill that opted out of model invocation is
   // absent from here — which is the whole of that field: it does not appear in
   // the preamble, it is not activatable, and the only way to it is typing its

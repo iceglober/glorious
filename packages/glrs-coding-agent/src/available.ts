@@ -1,4 +1,4 @@
-import type { Shipped } from "./extensions";
+import type { FirstPartyExtension } from "./extensions";
 
 // What the model is told about capabilities it does not have but could.
 //
@@ -9,15 +9,15 @@ import type { Shipped } from "./extensions";
 // their cached prefix. `PREAMBLE_TAGS` already lists "extensions", so this is
 // stripped from a replayed transcript without another tag being added.
 //
-// It says nothing at all once every shipped extension has been decided, which
+// It says nothing at all once every first-party extension has been decided, which
 // is the point: an agent that keeps offering something you already said no to
 // is worse than one that never offered.
 
 export const availableLines = (
-  shipped: readonly Shipped[],
+  firstParty: readonly FirstPartyExtension[],
   canRecord: boolean,
 ): readonly string[] => {
-  const undecided = shipped.filter((one) => one.state === "undecided");
+  const undecided = firstParty.filter((one) => one.state === "undecided");
   if (undecided.length === 0) return [];
   return [
     "Not loaded, but available to turn on if the work calls for one:",

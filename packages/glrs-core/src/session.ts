@@ -49,6 +49,7 @@ type LegacySession = Omit<StoredSession, "schema" | "events"> & {
   messages: ModelMessage[];
 };
 
+/** Persisted conversation and usage state. */
 export type Session = {
   schema: 2;
   id: string;
@@ -194,6 +195,7 @@ export const loadPromptHistory = async (): Promise<string[]> => {
   }
 };
 
+/** Durable session operations required by an SDK host. */
 export type SessionRepository = {
   create: (cwd: string) => Promise<Session>;
   load: (id: string) => Promise<Session | null>;
@@ -203,6 +205,7 @@ export type SessionRepository = {
   save: (session: Session) => Promise<void>;
 };
 
+/** Plain-JSON session repository used by the glrs CLI. */
 export const jsonSessionRepository: SessionRepository = {
   create: createSession,
   load: async (id) => (await listSessions()).find((session) => session.id === id) ?? null,

@@ -48,7 +48,7 @@ const harness = () => {
   const host = {
     root: "/tmp/project",
     mode: "tui" as const,
-    settings: () => ({ tool_timeout_ms: 4242, steering_mode: "all" as const }),
+    settings: () => ({ toolTimeoutMs: 4242, steeringMode: "all" as const }),
     available: () => [
       { name: "builtins", summary: "the tools and commands", state: "on" as const },
       { name: "web-fetch", summary: "fetches web pages", state: "undecided" as const },
@@ -281,8 +281,8 @@ describe("what the host tells an extension about the session", () => {
   test("settings carry the resolved config, without the provider blocks", () => {
     const { g } = harness();
     const settings = g.settings();
-    expect(settings.tool_timeout_ms).toBe(4242);
-    expect(settings.steering_mode).toBe("all");
+    expect(settings.toolTimeoutMs).toBe(4242);
+    expect(settings.steeringMode).toBe("all");
     // Provider settings hold API keys. An extension that wants them can read
     // the config files itself rather than being handed them.
     expect("providers" in settings).toBe(false);
@@ -292,7 +292,7 @@ describe("what the host tells an extension about the session", () => {
 // What lets an extension offer a capability the session does not have. The
 // three states come from config; recording a choice writes it, but only where
 // agentConfigAllowlist says glrs may.
-describe("the extensions glrs ships but has not loaded", () => {
+describe("first-party extensions that have not loaded", () => {
   test("available reports each one's state", () => {
     const { g } = harness();
     const offered = g.available();
@@ -536,12 +536,15 @@ describe("the request pipeline is interceptable", () => {
   });
 });
 
-// docs/published/lifecycle.md is the page the model is pointed at to learn what
+// docs/published/5-internals/3-lifecycle.md is the page the model is pointed at to learn what
 // it can hook. A page that lists an event glrs does not have, or omits one
 // it does, is worse than no page.
 describe("the lifecycle page matches the code", () => {
   const page = (): string =>
-    readFileSync(join(here, "..", "..", "..", "docs", "published", "lifecycle.md"), "utf8");
+    readFileSync(
+      join(here, "..", "..", "..", "docs", "published", "5-internals", "3-lifecycle.md"),
+      "utf8",
+    );
 
   const eventNames = (): string[] => {
     const source =
@@ -568,7 +571,7 @@ describe("the lifecycle page matches the code", () => {
 // Every other one — commands, user commands, skills, the activity row — is
 // first-wins, and the exception ran backwards: the later an extension loaded,
 // the more it could take. Since the loader walks the project before anything
-// glrs ships, first-wins is what makes a project extension able to replace
+// first-party extensions, first-wins is what makes a project extension able to replace
 // a tool that ships in the box.
 describe("two extensions claiming one tool name", () => {
   const joining = (registry: Registry, origin: string): Glrs =>
@@ -597,7 +600,7 @@ describe("two extensions claiming one tool name", () => {
     const shipped = joining(registry, "@glrs-dev/glrs-ext-builtins");
     shipped.tool({
       name: "bash",
-      description: "the shipped one",
+      description: "the first-party one",
       input: shipped.z.object({}),
       execute: async () => "from the box",
     });
@@ -618,7 +621,7 @@ describe("two extensions claiming one tool name", () => {
     const shipped = joining(registry, "@glrs-dev/glrs-ext-builtins");
     shipped.tool({
       name: "bash",
-      description: "the shipped one",
+      description: "the first-party one",
       input: shipped.z.object({}),
       execute: async () => "ok",
       renderCall: () => [[{ text: "from the box" }]],
@@ -640,7 +643,7 @@ describe("two extensions claiming one tool name", () => {
     const shipped = joining(registry, "@glrs-dev/glrs-ext-builtins");
     shipped.tool({
       name: "bash",
-      description: "the shipped one",
+      description: "the first-party one",
       input: shipped.z.object({}),
       execute: async () => "ok",
     });

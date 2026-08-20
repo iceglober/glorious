@@ -323,19 +323,23 @@ describe("discovery reaches skills that are organised", () => {
   });
 });
 
-// The rename kept the old directory readable. Everything above uses `.glrs`, so
-// without this the fallback would be uncovered and its loss would look like a
-// skill that was simply never written.
-describe("skills under the name from before the rename", () => {
-  test("a .glorious/skills tree is still loaded", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "glrs-legacy-skills-"));
-    await mkdir(join(dir, ".glorious", "skills", "zz-legacy"), { recursive: true });
-    await writeFile(
-      join(dir, ".glorious", "skills", "zz-legacy", "SKILL.md"),
-      "---\nname: zz-legacy\ndescription: Loaded from the old directory name.\n---\n\nbody\n",
-    );
-    const skills = await loadSkills(dir);
-    expect(skills.summaries.map((one) => one.name)).toContain("zz-legacy");
+describe("the four skill locations", () => {
+  test("a skill in the User glrs directory is available in a project", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-user-skills-"));
+    const home = join(dir, "home");
+    const project = join(dir, "project");
+    await writeSkill(join(home, ".config", "glrs", "skills", "zz-user"), "zz-user");
+    const skills = await loadSkills(project, home, {}, "linux");
+    expect(skills.summaries.map((one) => one.name)).toContain("zz-user");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("a skill in an arbitrary ancestor is not inherited", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-ancestor-skills-"));
+    const project = join(dir, "nested", "project");
+    await writeSkill(join(dir, ".agents", "skills", "zz-ancestor"), "zz-ancestor");
+    const skills = await loadSkills(project, join(dir, "home"), {}, "linux");
+    expect(skills.summaries.map((one) => one.name)).not.toContain("zz-ancestor");
     await rm(dir, { recursive: true, force: true });
   });
 });
@@ -365,8 +369,8 @@ describe("where skills are looked for", () => {
   // with itself — naming the same path on both sides of the sentence.
   test("a personal skill is found once, not once per path that reaches it", async () => {
     const { home, root } = await nested();
-    await skillAt(join(home, ".agents", "skills"), "zz-personal");
-    const skills = await loadSkills(root, home);
+    await skillAt(join(home, ".config", "agents", "skills"), "zz-personal");
+    const skills = await loadSkills(root, home, {}, "linux");
     expect(skills.summaries.filter((one) => one.name === "zz-personal")).toHaveLength(1);
     expect(skills.warnings.join("\n")).not.toContain("two skills are named");
     await rm(home, { recursive: true, force: true });
@@ -403,27 +407,26 @@ describe("where skills are looked for", () => {
   });
 });
 
-// `~/.glrs` is where config, commands and extensions all come from, and it was
-// the one agent directory skills were never looked for in: `.glrs`/`.glorious`
-// were searched at the project root only, while the ancestor walk looked for
-// `.agents/skills` alone.
-describe("every agent directory is searched at every level", () => {
-  test("a skill in ~/.glrs/skills is found", async () => {
+describe("User skill directories", () => {
+  test("a skill in the User glrs directory is found", async () => {
     const home = await mkdtemp(join(tmpdir(), "glrs-home-"));
     const project = await mkdtemp(join(tmpdir(), "glrs-proj-"));
-    await writeSkill(join(home, ".glrs", "skills", "zz-personal-glrs"), "zz-personal-glrs");
-    const found = await loadSkills(project, home);
+    await writeSkill(
+      join(home, ".config", "glrs", "skills", "zz-personal-glrs"),
+      "zz-personal-glrs",
+    );
+    const found = await loadSkills(project, home, {}, "linux");
     expect(found.summaries.map((one) => one.name)).toContain("zz-personal-glrs");
     await rm(home, { recursive: true, force: true });
     await rm(project, { recursive: true, force: true });
   });
 
-  test("the old spelling is still read, so a rename does not lose a skill", async () => {
+  test("the retired .glorious spelling is not read", async () => {
     const home = await mkdtemp(join(tmpdir(), "glrs-home2-"));
     const project = await mkdtemp(join(tmpdir(), "glrs-proj2-"));
     await writeSkill(join(home, ".glorious", "skills", "zz-personal-old"), "zz-personal-old");
     const found = await loadSkills(project, home);
-    expect(found.summaries.map((one) => one.name)).toContain("zz-personal-old");
+    expect(found.summaries.map((one) => one.name)).not.toContain("zz-personal-old");
     await rm(home, { recursive: true, force: true });
     await rm(project, { recursive: true, force: true });
   });
@@ -432,8 +435,8 @@ describe("every agent directory is searched at every level", () => {
     // Duplicated roots find every skill under them again and warn that two
     // skills share a name, naming the same file on both sides.
     const home = await mkdtemp(join(tmpdir(), "glrs-home3-"));
-    await writeSkill(join(home, ".glrs", "skills", "zz-once"), "zz-once");
-    const found = await loadSkills(home, home);
+    await writeSkill(join(home, ".config", "glrs", "skills", "zz-once"), "zz-once");
+    const found = await loadSkills(home, home, {}, "linux");
     expect(found.summaries.filter((one) => one.name === "zz-once")).toHaveLength(1);
     expect(found.warnings.join(" ")).not.toContain("zz-once");
     await rm(home, { recursive: true, force: true });

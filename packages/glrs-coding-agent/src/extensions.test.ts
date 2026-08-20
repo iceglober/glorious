@@ -47,7 +47,7 @@ const host: ExtensionHost = {
     captured.push(spec);
     return { close: () => {}, repaint: () => {} };
   },
-  settings: () => ({ tool_timeout_ms: 1000 }),
+  settings: () => ({ toolTimeoutMs: 1000 }),
   available: () => [],
   setExtension: async () => "not-allowed" as const,
   inspect: () => ({ commands: [], skills: [], extensions: [], keys: [], flags: [] }),
@@ -155,6 +155,30 @@ describe("loading extensions", () => {
     const { result } = await load();
     const { failures } = result as { failures: Array<{ message: string }> };
     expect(failures.some((f) => f.message.includes("no default export"))).toBe(true);
+  });
+
+  test("User extensions are discovered without walking project ancestors", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-extension-scopes-"));
+    const project = join(dir, "parent", "project");
+    const user = join(dir, "user");
+    await mkdir(join(dir, "parent", ".glrs", "extensions"), { recursive: true });
+    await mkdir(join(user, "extensions"), { recursive: true });
+    await writeFile(
+      join(dir, "parent", ".glrs", "extensions", "ancestor.ts"),
+      "export default () => {};",
+    );
+    await writeFile(join(user, "extensions", "everywhere.ts"), "export default () => {};");
+    const before = process.env.GLRS_CONFIG_HOME;
+    process.env.GLRS_CONFIG_HOME = user;
+    try {
+      const { plan } = await resolveExtensions(project);
+      expect(plan.map((one) => one.name)).toContain("everywhere");
+      expect(plan.map((one) => one.name)).not.toContain("ancestor");
+    } finally {
+      if (before === undefined) delete process.env.GLRS_CONFIG_HOME;
+      else process.env.GLRS_CONFIG_HOME = before;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -445,9 +469,8 @@ describe("the extensions that ship with glrs", () => {
       notes: readonly string[];
     };
     await rm(dir, { recursive: true, force: true });
-    // Only what glrs ships. `agentDirectories` puts ~/.config/agents/extensions
-    // on the walk unconditionally, so a temp project still picks up whatever the
-    // machine running these tests happens to have installed there.
+    // Only first-party extensions. A developer may have User extensions installed, so
+    // a temp project can still pick up files from the machine running these tests.
     return {
       ...result,
       extensions: result.extensions.filter((one) => one.origin.startsWith("@glrs-dev/")),
@@ -545,7 +568,7 @@ describe("what config says that does not resolve", () => {
   });
 });
 
-describe("replacing a tool glrs ships", () => {
+describe("replacing a first-party tool", () => {
   const bashFrom = async (dir: string): Promise<string> => {
     const registry = createRegistry();
     await loadExtensions(dir, registry, { ...host, root: dir }, () => {});
@@ -555,7 +578,7 @@ describe("replacing a tool glrs ships", () => {
     return entry.execute({ command: "unused" }, {});
   };
 
-  test("with no project extension, the shipped bash is what runs", async () => {
+  test("with no project extension, the first-party bash is what runs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "glrs-shipped-"));
     expect(await bashFrom(dir)).not.toContain("FROM-THE-PROJECT");
     await rm(dir, { recursive: true, force: true });

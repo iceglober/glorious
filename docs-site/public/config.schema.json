@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://glrs.dev/config.schema.json",
+  "title": "glrs configuration",
+  "description": "Configuration for glrs. Values merge Project-User, Project, then User; a fully qualified model must be supplied by config, environment, or CLI.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://glrs.dev/config.schema.json",
+      "description": "Enables editor validation and autocomplete for this file."
+    },
+    "model": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/.+$",
+      "examples": ["anthropic/claude-opus-5"],
+      "description": "Required at runtime as provider/model-id. There is no default provider or model."
+    },
+    "variant": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["high"],
+      "description": "Reasoning effort when supported by the selected model."
+    },
+    "toolTimeoutMs": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 600000,
+      "description": "Timeout for built-in shell and search tools, in milliseconds."
+    },
+    "steeringMode": {
+      "$ref": "#/$defs/queueMode",
+      "description": "How Alt+Enter messages are delivered into the active turn."
+    },
+    "followUpMode": {
+      "$ref": "#/$defs/queueMode",
+      "description": "How Enter messages are delivered after the active turn finishes."
+    },
+    "extensions": {
+      "description": "First-party extension names or extension paths to load, plus names to disable.",
+      "oneOf": [
+        { "$ref": "#/$defs/nameList" },
+        {
+          "type": "object",
+          "properties": {
+            "load": {
+              "$ref": "#/$defs/nameList",
+              "description": "First-party extension names or extension paths to load."
+            },
+            "disable": {
+              "$ref": "#/$defs/nameList",
+              "description": "Extension names that must not load."
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "tools": {
+      "description": "Tool names to withhold from the model.",
+      "oneOf": [
+        { "$ref": "#/$defs/nameList" },
+        {
+          "type": "object",
+          "properties": {
+            "disable": {
+              "$ref": "#/$defs/nameList",
+              "description": "Tool names to withhold from the model."
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "agentConfigAllowlist": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["extensions"] },
+      "uniqueItems": true,
+      "description": "Config sections glrs may update after the user answers."
+    },
+    "providers": {
+      "type": "object",
+      "description": "Provider-specific connection settings.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "factoryOptions": {
+            "$ref": "#/$defs/factoryOptions",
+            "description": "JSON-compatible options passed directly to the installed AI SDK provider factory."
+          },
+          "requestOptions": {
+            "$ref": "#/$defs/requestOptions",
+            "description": "Standard AI SDK call options applied to every model call for this provider."
+          },
+          "providerOptions": {
+            "$ref": "#/$defs/providerOptions",
+            "description": "Provider-namespaced AI SDK options passed directly to model calls."
+          },
+          "models": {
+            "type": "object",
+            "description": "Overrides keyed by exact model id.",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "requestOptions": {
+                  "$ref": "#/$defs/requestOptions"
+                },
+                "providerOptions": { "$ref": "#/$defs/providerOptions" },
+                "metadata": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "context": { "type": "number", "exclusiveMinimum": 0 },
+                    "inputCost": { "type": "number", "minimum": 0 },
+                    "outputCost": { "type": "number", "minimum": 0 },
+                    "variants": { "type": "array", "items": { "type": "string" } }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "api": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Base URL for an OpenAI-compatible endpoint."
+          },
+          "region": {
+            "type": "string",
+            "minLength": 1,
+            "description": "AWS Bedrock region."
+          },
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Google Vertex project."
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Google Vertex location."
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "queueMode": {
+      "type": "string",
+      "enum": ["one-at-a-time", "all"],
+      "default": "one-at-a-time"
+    },
+    "factoryOptions": {
+      "type": "object",
+      "properties": {
+        "apiKey": { "type": "string" },
+        "baseURL": { "type": "string", "format": "uri" },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "organization": { "type": "string" },
+        "region": { "type": "string" },
+        "project": { "type": "string" },
+        "location": { "type": "string" },
+        "resourceName": { "type": "string" },
+        "apiVersion": { "type": "string" },
+        "fetch": false
+      },
+      "additionalProperties": true
+    },
+    "requestOptions": {
+      "type": "object",
+      "properties": {
+        "maxOutputTokens": { "type": "number", "exclusiveMinimum": 0 },
+        "temperature": { "type": "number" },
+        "topP": { "type": "number" },
+        "topK": { "type": "number" },
+        "presencePenalty": { "type": "number" },
+        "frequencyPenalty": { "type": "number" },
+        "stopSequences": { "type": "array", "items": { "type": "string" } },
+        "seed": { "type": "integer" },
+        "maxRetries": { "type": "integer", "minimum": 0 },
+        "timeout": { "type": "number", "exclusiveMinimum": 0 },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "model": false,
+        "instructions": false,
+        "system": false,
+        "prompt": false,
+        "messages": false,
+        "allowSystemInMessages": false,
+        "tools": false,
+        "toolChoice": false,
+        "activeTools": false,
+        "toolOrder": false,
+        "toolApproval": false,
+        "experimental_toolApprovalSecret": false,
+        "abortSignal": false,
+        "prepareStep": false,
+        "repairToolCall": false,
+        "experimental_repairToolCall": false,
+        "experimental_refineToolInput": false,
+        "experimental_transform": false,
+        "experimental_download": false,
+        "output": false,
+        "includeRawChunks": false,
+        "onChunk": false,
+        "onError": false,
+        "onStart": false,
+        "experimental_onStart": false,
+        "onStepStart": false,
+        "experimental_onStepStart": false,
+        "onFinish": false,
+        "onEnd": false,
+        "onAbort": false,
+        "onStepEnd": false,
+        "onStepFinish": false,
+        "onLanguageModelCallStart": false,
+        "experimental_onLanguageModelCallStart": false,
+        "onLanguageModelCallEnd": false,
+        "experimental_onLanguageModelCallEnd": false,
+        "onToolExecutionStart": false,
+        "onToolExecutionEnd": false,
+        "experimental_onToolCallStart": false,
+        "experimental_onToolCallFinish": false,
+        "providerOptions": false,
+        "stopWhen": false,
+        "runtimeContext": false,
+        "toolsContext": false,
+        "_internal": false
+      },
+      "additionalProperties": true
+    },
+    "providerOptions": {
+      "type": "object",
+      "properties": {
+        "openai": {
+          "type": "object",
+          "properties": {
+            "reasoningEffort": { "type": "string" },
+            "textVerbosity": { "type": "string", "enum": ["low", "medium", "high"] },
+            "promptCacheKey": { "type": "string" },
+            "store": { "type": "boolean" },
+            "serviceTier": {
+              "type": "string",
+              "enum": ["default", "auto", "flex", "priority"]
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": { "type": "object", "additionalProperties": true }
+    },
+    "nameList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

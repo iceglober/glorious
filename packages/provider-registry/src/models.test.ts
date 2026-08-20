@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateText } from "ai";
 import type { Config } from "./config";
 import {
+  configuredModel,
   createModel,
   currentModel,
   modelCost,
   modelMetadata,
-  NoModelChosen,
   priceMultiplier,
   resolveApiKey,
 } from "./models";
@@ -57,6 +57,7 @@ const environment = [
   "GOOGLE_VERTEX_PROJECT",
   "GOOGLE_CLOUD_LOCATION",
   "GOOGLE_VERTEX_LOCATION",
+  "OPENAI_API_KEY",
 ];
 const originalEnvironment = Object.fromEntries(
   environment.map((name) => [name, process.env[name]]),
@@ -99,21 +100,64 @@ describe("model resolution", () => {
     expect(currentModel(selected)).toMatchObject({ provider: "anthropic", modelId: "claude" });
     process.env.GLRS_MODEL = "openai/gpt";
     expect(currentModel(selected)).toMatchObject({ provider: "openai", modelId: "gpt" });
-    delete process.env.GLRS_MODEL;
   });
 
-  // There is no third place to fall back to. Defaulting to azure/gpt-5.6-luna
-  // made the most likely provider the one nobody chose, and it was the one
-  // branch that dropped `providers.azure.api` — so the guess and the silent
-  // misconfiguration compounded.
-  test("nothing configured is an error, not a guess", () => {
-    expect(() => currentModel()).toThrow(NoModelChosen);
-    expect(() => currentModel()).toThrow("No model is configured");
-    expect(() => currentModel(config({ model: "   " }))).toThrow("No model is configured");
+  test("requires an explicitly configured provider and model", () => {
+    expect(() => currentModel()).toThrow("No model configured");
+    expect(() => currentModel({ model: "gpt-5.6" })).toThrow('Model must be "provider/model-id"');
+    expect(() => currentModel({ model: "openai/" })).toThrow('Model must be "provider/model-id"');
   });
 
-  test("a model naming no provider is refused, since none is implied", () => {
-    expect(() => currentModel(config({ model: "gpt-5.6-luna" }))).toThrow("names no provider");
+  test("merges provider defaults with exact model overrides", () => {
+    const selected = currentModel(
+      config({
+        model: "openai/gpt-5",
+        providers: {
+          openai: {
+            factoryOptions: { baseURL: "https://proxy.example/v1", headers: { one: "provider" } },
+            requestOptions: { temperature: 0.8, stopSequences: ["provider"] },
+            providerOptions: { openai: { store: false, serviceTier: "flex" } },
+            models: {
+              "gpt-5": {
+                requestOptions: { temperature: 0.2, maxOutputTokens: 32000 },
+                providerOptions: { openai: { store: true } },
+                metadata: { context: 400000, inputCost: 1.25 },
+              },
+            },
+          },
+        },
+      }),
+    );
+    expect(selected).toMatchObject({
+      factoryOptions: { baseURL: "https://proxy.example/v1", headers: { one: "provider" } },
+      requestOptions: { temperature: 0.2, stopSequences: ["provider"], maxOutputTokens: 32000 },
+      providerOptions: { openai: { store: true, serviceTier: "flex" } },
+      context: 400000,
+      inputCost: 1.25,
+    });
+  });
+
+  test("resolves overrides for a model selected after startup", () => {
+    const selected = configuredModel(
+      "openai/gpt-6",
+      config({
+        model: "openai/gpt-5",
+        providers: {
+          openai: {
+            models: {
+              "gpt-6": { requestOptions: { temperature: 0.6 } },
+            },
+          },
+        },
+      }),
+      "high",
+    );
+    expect(selected).toMatchObject({
+      provider: "openai",
+      modelId: "gpt-6",
+      variant: "high",
+      requestOptions: { temperature: 0.6 },
+    });
   });
 
   test("resolves Bedrock and Vertex settings from config and environment", () => {
@@ -166,6 +210,34 @@ describe("models.dev metadata", () => {
         env: [],
       }),
     ).toMatchObject({ context: 128_000, api: "https://example.com/v1" });
+  });
+
+  test("configured metadata overrides models.dev", async () => {
+    mockCatalog();
+    expect(
+      await modelMetadata({
+        provider: "compatible",
+        modelId: "example-model",
+        name: "example-model",
+        env: [],
+        context: 999000,
+        inputCost: 7,
+        variants: ["custom"],
+      }),
+    ).toMatchObject({ context: 999000, inputCost: 7, variants: ["custom"] });
+  });
+
+  test("a model the catalog does not carry yields configured metadata rather than nothing", async () => {
+    mockCatalog();
+    expect(
+      await modelMetadata({
+        provider: "azure",
+        modelId: "private",
+        name: "private",
+        env: [],
+        context: 64000,
+      }),
+    ).toEqual({ context: 64000 });
   });
 
   test("a model the catalog does not carry yields nothing, not a throw", async () => {
@@ -222,8 +294,58 @@ describe("finding the api key", () => {
     expect(resolveApiKey({})).toBeUndefined();
   });
 
-  test("a resolved model carries the names, so the fallback can fire", () => {
-    expect(currentModel(config({ model: "anthropic/claude" })).env.length).toBeGreaterThan(0);
+  test("the startup model carries the names, so the fallback can fire", () => {
+    expect(currentModel({ model: "azure/gpt-4o" }).env.length).toBeGreaterThan(0);
+  });
+});
+
+describe("provider factory passthrough", () => {
+  test("an explicitly configured factory API key overrides the environment", async () => {
+    process.env.OPENAI_API_KEY = "environment-key";
+    const sent: { authorization: string | null } = { authorization: null };
+    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent.authorization = new Headers(init?.headers).get("authorization");
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch;
+    const model = createModel(
+      {
+        provider: "openai",
+        modelId: "gpt-5",
+        name: "gpt-5",
+        env: ["OPENAI_API_KEY"],
+        factoryOptions: { apiKey: "configured-key" },
+      },
+      fetcher,
+    );
+    await generateText({ model, prompt: "hi", maxRetries: 0 }).catch(() => {});
+    expect(sent.authorization).toBe("Bearer configured-key");
+  });
+
+  test("base URL and arbitrary headers reach the provider request", async () => {
+    let url = "";
+    let headers = new Headers();
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      url = String(input);
+      headers = new Headers(init?.headers);
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch;
+    const model = createModel(
+      {
+        provider: "openai",
+        modelId: "gpt-5",
+        name: "gpt-5",
+        env: [],
+        factoryOptions: {
+          apiKey: "test-key",
+          baseURL: "https://proxy.example/custom/v1",
+          headers: { "x-provider-option": "passed" },
+        },
+      },
+      fetcher,
+    );
+    await generateText({ model, prompt: "hi", maxRetries: 0 }).catch(() => {});
+    expect(url).toStartWith("https://proxy.example/custom/v1/");
+    expect(headers.get("x-provider-option")).toBe("passed");
   });
 });
 

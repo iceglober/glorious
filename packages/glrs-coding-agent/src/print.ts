@@ -4,7 +4,12 @@ import { runShell } from "../../glrs-core/src/shell";
 import { currentModel, envSetting, loadConfig, modelMetadata } from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { createRegistry, describeContribution, fire, promptContributions } from "./extension-api";
-import { loadExtensions, resolveExtensions, shippedExtensions, skillRootsFor } from "./extensions";
+import {
+  firstPartyExtensions,
+  loadExtensions,
+  resolveExtensions,
+  skillRootsFor,
+} from "./extensions";
 import { expandMentions } from "./mentions";
 import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
 import { loadSkills } from "./skills";
@@ -60,7 +65,7 @@ export const runPrint = async (
   const toolTimeoutMs =
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
       ? envToolTimeout
-      : loadedConfig.config.tool_timeout_ms;
+      : loadedConfig.config.toolTimeoutMs;
 
   const agent = createAgent({
     root: where.root,
@@ -113,8 +118,8 @@ export const runPrint = async (
     {
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
-      settings: () => ({ tool_timeout_ms: toolTimeoutMs }),
-      available: () => shippedExtensions(loadedConfig.config.extensions),
+      settings: () => ({ toolTimeoutMs: toolTimeoutMs }),
+      available: () => firstPartyExtensions(loadedConfig.config.extensions),
       // A headless run is one turn with no one to answer, so there is nobody to
       // agree to anything and nothing to record.
       setExtension: async () => {
