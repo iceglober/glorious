@@ -1,5 +1,34 @@
 # @glrs-dev/glrs
 
+## 1.0.0-next.56
+
+### Major Changes
+
+- 2c6ee34: Unify configuration and resources into three named scopes: Project-User, Project, and User.
+
+  Project-User remains `.glrs/config.local.json`, Project remains `.glrs/config.json`, and User now owns `config.json`, extensions, commands, and skills in one platform-aware directory. User defaults to `~/.config/glrs` on macOS and Linux and `%APPDATA%\glrs` on Windows, with `GLRS_CONFIG_HOME` and `XDG_CONFIG_HOME` overrides.
+
+  Stop walking arbitrary ancestors and stop reading the legacy `.glorious`, personal `~/.glrs`, and non-skill `.agents` locations. Portable Agent Skills remain supported in Project and User `agents/skills` directories.
+
+  Use camelCase exclusively for config keys, including `toolTimeoutMs`, `steeringMode`, and `followUpMode`.
+
+  Pass JSON-compatible `factoryOptions`, `requestOptions`, and provider-namespaced `providerOptions` through to the AI SDK. Support recursively merged provider defaults, exact model overrides, and model metadata overrides for models.dev.
+
+- 2c6ee34: Require every run to configure a fully qualified `provider/model-id` through CLI, environment, or config. Remove the implicit Azure provider and default model fallbacks.
+
+  Rename shipped-extension terminology to first-party extensions and publish richer TSDoc for the Extension API and SDK.
+
+### Minor Changes
+
+- 060a245: Expand the extension contract with custom providers, lifecycle and session gates, terminating tools, structured tool results, custom message and entry renderers, conversation/session controls, autocomplete, theme overrides, and mountable editor, widget, header, footer, and overlay surfaces.
+- 2c6ee34: Initialize missing User config on the first CLI run and, inside a Git repository, initialize Project and Project-User config with the hosted JSON Schema link. Existing config keeps its settings and formatting while gaining the schema link when it is missing.
+
+### Patch Changes
+
+- 2c6ee34: Host a JSON Schema at `https://glrs.dev/config.schema.json` for editor autocomplete and validation, and recognize the `$schema` metadata key in config files.
+- 2c6ee34: Rewrite the published guides in a terse, task-first voice; keep quickstart and installation at the root and organize the rest into use, customize, reference, and internals groups; remove redundant feature/glossary pages; correct installation, configuration, session, keybinding, provider, tool, and extension details; complete the quickstart, basics, and sessions pages; align first-party help text with actual queue behavior, give each package-manager command its own copyable block.
+- 2c6ee34: Show the dequeue shortcut beside the queued-message count in the activity row, using `Opt+↑` on macOS and `Alt+↑` elsewhere.
+
 ## 1.0.0-next.55
 
 ### Major Changes
