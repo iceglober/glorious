@@ -144,3 +144,34 @@ export const cacheHint = (provider: string, modelId = ""): ProviderOptions | und
   if (namespace === "bedrock") return { bedrock: { cachePoint: { type: "default" } } };
   return undefined;
 };
+
+// Where to put cache breakpoints in a conversation.
+//
+// Prompt caching was OpenAI-shaped throughout: a `promptCacheKey` and nothing
+// else. OpenAI and Google cache a prompt prefix without being asked, so that
+// worked for them and did nothing anywhere else — on Anthropic and Bedrock,
+// which cache only what is explicitly marked, every turn re-read the entire
+// conversation at full price.
+//
+// The mark goes on the second-to-last message: everything up to and including
+// it is cached, and it is the newest point that will still be present next
+// turn. The breakpoint therefore advances each turn, which is deliberate —
+// these providers match on prefix, so a longer prefix beginning with the
+// cached one still hits and extends it rather than starting over.
+//
+// A conversation shorter than two messages has no stable prefix to cache, so
+// nothing is marked and nothing is paid for.
+export const withCacheBreakpoints = <Message extends object>(
+  messages: readonly Message[],
+  provider: string,
+  modelId = "",
+): Message[] => {
+  const hint = cacheHint(provider, modelId);
+  if (hint === undefined || messages.length < 2) return [...messages];
+  const at = messages.length - 2;
+  return messages.map((message, index) => {
+    if (index !== at) return message;
+    const already = (message as { providerOptions?: Record<string, unknown> }).providerOptions;
+    return { ...message, providerOptions: { ...(already ?? {}), ...hint } } as Message;
+  });
+};
