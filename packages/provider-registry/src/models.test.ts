@@ -6,6 +6,7 @@ import {
   currentModel,
   modelCost,
   modelMetadata,
+  NoModelChosen,
   priceMultiplier,
   resolveApiKey,
 } from "./models";
@@ -92,14 +93,27 @@ const mockCatalog = (): void => {
 };
 
 describe("model resolution", () => {
-  test("prefers the environment model, then config, then Azure", () => {
+  test("prefers the environment model, then config", () => {
     const selected = config({ model: "anthropic/claude" });
 
     expect(currentModel(selected)).toMatchObject({ provider: "anthropic", modelId: "claude" });
     process.env.GLRS_MODEL = "openai/gpt";
     expect(currentModel(selected)).toMatchObject({ provider: "openai", modelId: "gpt" });
     delete process.env.GLRS_MODEL;
-    expect(currentModel()).toMatchObject({ provider: "azure", modelId: "gpt-5.6-luna" });
+  });
+
+  // There is no third place to fall back to. Defaulting to azure/gpt-5.6-luna
+  // made the most likely provider the one nobody chose, and it was the one
+  // branch that dropped `providers.azure.api` — so the guess and the silent
+  // misconfiguration compounded.
+  test("nothing configured is an error, not a guess", () => {
+    expect(() => currentModel()).toThrow(NoModelChosen);
+    expect(() => currentModel()).toThrow("No model is configured");
+    expect(() => currentModel(config({ model: "   " }))).toThrow("No model is configured");
+  });
+
+  test("a model naming no provider is refused, since none is implied", () => {
+    expect(() => currentModel(config({ model: "gpt-5.6-luna" }))).toThrow("names no provider");
   });
 
   test("resolves Bedrock and Vertex settings from config and environment", () => {
@@ -208,8 +222,8 @@ describe("finding the api key", () => {
     expect(resolveApiKey({})).toBeUndefined();
   });
 
-  test("the startup model carries the names, so the fallback can fire", () => {
-    expect(currentModel().env.length).toBeGreaterThan(0);
+  test("a resolved model carries the names, so the fallback can fire", () => {
+    expect(currentModel(config({ model: "anthropic/claude" })).env.length).toBeGreaterThan(0);
   });
 });
 

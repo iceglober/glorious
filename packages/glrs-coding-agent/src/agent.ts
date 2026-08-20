@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs, streamText } from "ai";
-import { createModel, type ModelOption, modelCost } from "../../provider-registry/src";
+import {
+  createModel,
+  type ModelOption,
+  modelCost,
+  type ProviderOptions,
+  requestOptions,
+} from "../../provider-registry/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { errorText } from "./render";
 import type { ToolEvent } from "./toolkit";
@@ -152,12 +158,16 @@ type Setup = Parameters<typeof systemPrompt>[0] &
 // history every turn, so it gains nothing from server-side state, and false is
 // also what makes the provider ask for reasoning.encrypted_content, which is
 // what keeps the reasoning replayable at all.
-export const providerOptions = (effort: string | undefined, cacheKey: string) => ({
-  ...(effort ? { reasoningEffort: effort } : {}),
-  textVerbosity: "low" as const,
-  promptCacheKey: cacheKey,
-  store: false as const,
-});
+export const providerOptions = (
+  model: { provider: string; modelId: string; variant?: string },
+  cacheKey: string,
+): ProviderOptions =>
+  requestOptions({
+    provider: model.provider,
+    modelId: model.modelId,
+    variant: model.variant,
+    cacheKey,
+  });
 
 export const settleQuietly = <T>(value: PromiseLike<T>, fallback: T): Promise<T> =>
   Promise.resolve(value).catch(() => fallback);
@@ -207,8 +217,11 @@ export const createAgent = (setup: Setup) => {
     .join("\n\n");
   const cacheKey = (scope: string): string =>
     createHash("sha256").update(`${setup.root} ${scope}`).digest("hex").slice(0, CACHE_KEY_CHARS);
-  // Modes are gone, so the effort is whatever the model was configured with.
-  const openaiOptions = (scope: string) => providerOptions(setup.model.variant, cacheKey(scope));
+  // Modes are gone, so the effort is whatever the model was configured with —
+  // spelled the way the provider that will answer expects it, rather than
+  // always as openai's `reasoningEffort` under an `openai` key that anthropic,
+  // google and bedrock do not read.
+  const shaped = (scope: string) => providerOptions(setup.model, cacheKey(scope));
 
   // Withheld, not forbidden: a tool the model cannot see cannot be talked into
   // being used. An empty list means everything survives. This is the seam a
@@ -247,7 +260,7 @@ export const createAgent = (setup: Setup) => {
     instructions: systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT)],
     maxRetries: 5,
-    providerOptions: { openai: openaiOptions(setup.sessionId) },
+    providerOptions: shaped(setup.sessionId),
   });
 
   return {
@@ -272,7 +285,10 @@ export const createAgent = (setup: Setup) => {
           "specifics — a path, a command, an error string — over description of them.",
         maxOutputTokens: 4_000,
         maxRetries: 3,
-        providerOptions: { openai: providerOptions(undefined, cacheKey("compact")) },
+        providerOptions: providerOptions(
+          { ...setup.model, variant: undefined },
+          cacheKey("compact"),
+        ),
         messages: [
           ...messages,
           {

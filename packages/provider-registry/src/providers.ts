@@ -115,8 +115,18 @@ export const nearestProvider = (id: string): string | undefined => {
 // which is what makes Ollama, LM Studio, vLLM, a gateway or a company proxy
 // reachable without glrs shipping a factory for each. It needs a base URL,
 // because there is nothing else to guess from.
-export const compatibleNote =
-  'Unknown providers are treated as OpenAI-compatible. Give one a base URL: {"providers":{"<id>":{"api":"http://localhost:11434/v1"}}}';
+//
+// Written once. This sentence used to exist three times — here, inline in
+// `missingFor`, and a third time in `createModel` — and the copy here was the
+// one nothing referenced.
+export const compatibleNote = (id: string): string =>
+  `providers.${id}.api (base URL for an OpenAI-compatible endpoint)`;
+
+// What a provider wants said beyond the name of a variable: how to obtain the
+// credential, when it is not simply "set this". Carried on the spec for vertex
+// and bedrock and read by nothing, so doctor reported that a credential was
+// missing without saying how to supply it.
+export const noteFor = (id: string): string | undefined => providerSpec(id)?.note;
 
 // What is missing before this provider can answer, for `doctor`.
 export const missingFor = (
@@ -130,7 +140,7 @@ export const missingFor = (
     const near = nearestProvider(id);
     return [
       near === undefined
-        ? `providers.${id}.api (base URL for an OpenAI-compatible endpoint)`
+        ? compatibleNote(id)
         : `unknown provider "${id}" — did you mean "${near}"? Otherwise set providers.${id}.api ` +
           "for an OpenAI-compatible endpoint",
     ];
