@@ -7,7 +7,7 @@ code and this file disagree, it is marked, and the code is what changes.
 
 ## the shape
 
-Six layers, plus two things that sit beside them rather than inside.
+Seven layers, and one thing that sits beside them.
 
     1. install        the binary on your machine
     2. model          who answers, and what it costs
@@ -18,7 +18,9 @@ Six layers, plus two things that sit beside them rather than inside.
     7. extension      what you build, in TypeScript
 
     beside:  subcommand    deterministic work, no session
-             self-authoring  glrs writing its own extension
+
+The core promise is a small core with limitless extensibility. Everything the
+model can reach comes from an extension, and self-authoring falls out of that.
 
 A **turn** happens inside a **session**. A **session** runs in a **mode**.
 Everything under **extension** is something an extension registers.
@@ -155,14 +157,14 @@ behind the `glrs` binary. Ships with glrs or comes from an extension.
 ### self-authoring
 
 glrs is given its own documentation in the system prompt and told to write an
-extension when asked for a capability it lacks, rather than declining.
+extension when asked for a capability it lacks.
 
 - **self-authoring**: the behaviour.
 - **self-authored extension**: what it produces.
-- "glrs can self-author an extension if new functionality is requested."
 
-This is the most distinctive thing in the product. It belongs on the homepage,
-not buried in the extension reference.
+It follows from the core promise rather than standing beside it: a small core
+where everything is an extension, plus documentation written for the model,
+means the model can add to it. Document it as a consequence, not a headline.
 
 ## cross-cutting
 
@@ -181,7 +183,7 @@ way to hold a session. Published docs say **two modes**, and name the
 ## rules for the docs
 
 1. One word per concept. The table above is the word.
-2. Six layers plus two neighbours. Do not introduce a seventh layer.
+2. Seven layers and one neighbour. Do not introduce an eighth layer.
 3. Explain a term at first use on a page, then use it freely.
 4. Prefer the code's word. Where this file and the code disagree, the
    disagreement is marked above and the code is what changes.

@@ -55,6 +55,29 @@ Use parentheses when the aside is genuinely an aside:
 An em-dash is usually one of those four wearing a costume. Pick the one you
 meant.
 
+## terse, not performative
+
+Say what is needed in as few words as possible.
+
+No slogans, no sayings, no humour, no marketing. These are not style choices,
+they are noise a reader has to skip.
+
+Prefer:
+
+> `tools.disable` withholds a tool from the model.
+
+Over: "glrs gives you fine-grained control over exactly which tools the model
+can reach for."
+
+Avoid jargon. Where a term is unavoidable, define it once at first use, then use
+it freely:
+
+> the TUI (the full-screen terminal interface) redraws on a timer
+
+Do not write a sentence whose job is to introduce the next sentence. Do not
+restate a heading in the line beneath it. Do not close a section by summarising
+it.
+
 ## progressive disclosure
 
 Lead with the answer. Add detail in layers a reader can stop reading.
