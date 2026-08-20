@@ -11,9 +11,12 @@ asynchronously. a thrown handler is reported without stopping the turn.
 ## turn order
 
 ```text
+project_trust *
 session_start
   input *
   turn_start
+  before_agent_start *
+  agent_start
   before_request *
     context *                    each model call
     before_provider_request *    each HTTP request
@@ -23,7 +26,9 @@ session_start
       tool_start
       tool_end *
     usage
+  agent_end
   turn_end / idle
+session_shutdown
 session_end
 ```
 
@@ -33,10 +38,18 @@ session_end
 
 | event | payload | return value |
 | --- | --- | --- |
+| `project_trust` | `{ root }` | `trusted`, `denied`, or `deferred` |
 | `session_start` | `{ root }` | — |
+| `session_shutdown` | `{ root }` | —; awaited during shutdown |
 | `session_end` | `{ root }` | —; awaited during shutdown |
-| `input` | `{ text }` | string replaces input; `false` swallows it |
-| `user_bash` | `{ command }` | — |
+| `session_before_compact` | `{ automatic, instruction }` | custom summary/instruction, or `false` |
+| `session_before_switch` | `{ from, to }` | `false` blocks |
+| `session_before_fork` | `{ id, at }` | `false` blocks |
+| `input` | `{ text }` | string/object replaces input and may choose steer/follow-up; `false` swallows |
+| `user_bash` | `{ command }` | command replacement or `false` |
+| `before_agent_start` | `{ prompt, systemPrompt }` | string appends; object can replace prompt/system prompt |
+| `agent_start` | `{ prompt }` | — |
+| `agent_end` | `{ text }` | — |
 | `turn_start` | `{ text }` | — |
 | `before_request` | `{ prompt, messages }` | string appends to this turn |
 | `context` | `{ messages, step }` | message array replaces this call only |
@@ -60,7 +73,8 @@ session_end
 turn starts. steering enters an existing turn and does not fire another
 `turn_start`.
 
-`input`, `user_bash`, `model_select`, and `compact` do not fire in print mode.
+`input`, `user_bash`, `model_select`, `compact`, and the three
+`session_before_*` events do not fire in print mode.
 
 ## request layers
 
@@ -86,6 +100,7 @@ what the model and transcript receive.
 `usage` fires once per model call. a turn that runs three rounds of tools may
 fire it four times.
 
-`turn_end` contains the final assistant text; `idle` means the queue drained.
+`agent_start` and `agent_end` bracket one agent run. `turn_end` contains the
+final assistant text; `idle` means the queue drained.
 print mode fires `turn_end` then `idle`; the TUI currently fires `idle` then
 `turn_end`. `session_end` is awaited so extensions can flush state.

@@ -47,7 +47,15 @@ export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   name: string;
   description: string;
   input: Schema;
-  execute: (input: z.infer<Schema>, signal: AbortSignal | undefined) => string | Promise<string>;
+  execute: (
+    input: z.infer<Schema>,
+    signal: AbortSignal | undefined,
+  ) =>
+    | string
+    | { content: string; data?: unknown }
+    | Promise<string | { content: string; data?: unknown }>;
+  /** End the active turn after this tool result is delivered to the model. */
+  terminate?: boolean;
   renderCall?: (input: z.infer<Schema>) => Line[];
   renderResult?: (result: string, ok: boolean) => Line[];
 };
@@ -56,6 +64,31 @@ export type Key = { key: string; ctrl: boolean; shift: boolean; text: string };
 export type Capture = {
   render: (columns: number) => Line[];
   onKey: (key: Key) => void;
+};
+
+export type SurfacePlacement =
+  | "editor"
+  | "above-editor"
+  | "below-editor"
+  | "header"
+  | "footer"
+  | "overlay";
+
+export type MountSpec = Capture & {
+  placement: SurfacePlacement;
+  overlay?: {
+    width?: number | `${number}%`;
+    height?: number | `${number}%`;
+    row?: number;
+    column?: number;
+    modal?: boolean;
+  };
+};
+
+export type AutocompleteItem = { name: string; description: string };
+export type AutocompleteProvider = {
+  sigil: string;
+  complete: (query: string) => readonly AutocompleteItem[] | Promise<readonly AutocompleteItem[]>;
 };
 
 export type CommandSpec = {
@@ -114,6 +147,14 @@ export type EventPayload = {
   // it, which is how an extension handles input itself.
   input: { text: string };
   user_bash: { command: string };
+  project_trust: { root: string };
+  before_agent_start: { prompt: string; systemPrompt: string };
+  agent_start: { prompt: string };
+  agent_end: { text: string };
+  session_before_compact: { automatic: boolean; instruction?: string };
+  session_before_switch: { from: string; to: string };
+  session_before_fork: { id: string; at?: number };
+  session_shutdown: { root: string };
   turn_start: { text: string };
   turn_end: { text: string };
   // The queue drained and nothing is running.
@@ -185,7 +226,13 @@ export type EventPayload = {
 // change what happens say so in their own type rather than every handler
 // sharing one loose `string | false`.
 export type Verdict = {
-  input: string | false;
+  input: string | false | { text: string; streamingBehavior?: "steer" | "follow-up" };
+  user_bash: { command: string } | false;
+  project_trust: "trusted" | "denied" | "deferred";
+  before_agent_start: string | false | { prompt?: string; systemPrompt?: string };
+  session_before_compact: { summary?: string; instruction?: string } | false;
+  session_before_switch: false;
+  session_before_fork: false;
   tool_call: string | false;
   tool_end: string;
   before_request: string;
@@ -271,6 +318,12 @@ export type Ui = {
    * work, and none of them is privileged over yours.
    */
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
+  /** Mount a custom editor, widget, header, footer, or overlay. */
+  mount: (spec: MountSpec) => { close: () => void; repaint: () => void };
+  /** Show a transient or transcript-backed notification. */
+  notify: (message: string, tone?: Tone) => void;
+  /** Override theme colors until the returned handle restores them. */
+  setTheme: (theme: Partial<Record<Tone, string>>) => { restore: () => void };
   /** Put text in the composer, ready to edit. */
   setInput: (text: string) => void;
 };
@@ -280,6 +333,14 @@ export type EventName =
   | "session_end"
   | "input"
   | "user_bash"
+  | "project_trust"
+  | "before_agent_start"
+  | "agent_start"
+  | "agent_end"
+  | "session_before_compact"
+  | "session_before_switch"
+  | "session_before_fork"
+  | "session_shutdown"
   | "turn_start"
   | "turn_end"
   | "idle"
@@ -332,6 +393,17 @@ export type CliSpec = {
    */
   run: (args: readonly string[]) => void | Promise<void>;
 };
+
+export type ExtensionProvider = {
+  id: string;
+  create: (
+    modelId: string,
+    options?: Record<string, unknown>,
+  ) => Extract<import("ai").LanguageModel, { specificationVersion: "v4" }>;
+};
+
+export type MessageRenderer = (event: SessionEvent) => Line[] | undefined;
+export type EntryRenderer = (data: unknown) => Line[] | undefined;
 
 export type ModelInfo = {
   label: string;
@@ -412,6 +484,8 @@ export type Glrs = {
   columns: () => number;
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
+  /** Keep the tail of a long value and mark the omitted head. */
+  truncateHead: (text: string, limit: number) => string;
   /**
    * This session's resolved settings, merged from every config file that
    * applied. Provider blocks are absent: they hold API keys, and an extension
@@ -452,6 +526,15 @@ export type Glrs = {
   /** Prompts, pickers and the composer. Throws in print mode. */
   ui: Ui;
 
+  /** Add completions for a sigil such as `#`. */
+  autocomplete: (provider: AutocompleteProvider) => { dispose: () => void };
+  /** Register a model provider, including providers with their own OAuth flow. */
+  provider: (provider: ExtensionProvider) => { dispose: () => void };
+  /** Render durable transcript messages before the default renderer. */
+  messageRenderer: (renderer: MessageRenderer) => void;
+  /** Render one kind of extension-owned session entry. */
+  entryRenderer: (type: string, renderer: EntryRenderer) => void;
+
   /** The tools the model can currently call. */
   tools: () => readonly string[];
   /**
@@ -474,6 +557,8 @@ export type Glrs = {
   models: () => Promise<readonly ModelInfo[]>;
   /** Switch model, as "provider/model-id". Takes effect on the next turn. */
   setModel: (label: string, variant?: string) => Promise<void>;
+  /** Change reasoning effort without changing the active model. */
+  setThinkingLevel: (level: string) => Promise<void>;
 
   /** Is nothing running and nothing queued? */
   idle: () => boolean;
@@ -488,6 +573,14 @@ export type Glrs = {
   /** Quit glrs. */
   shutdown: () => void;
 
+  /** Messages currently carried into the next model call. */
+  history: () => readonly ModelMessage[];
+  /** Fork this session after lifecycle gates approve it. */
+  forkSession: (at?: number) => Promise<SessionInfo>;
+  /** Switch the active session after lifecycle gates approve it. */
+  switchSession: (id: string) => Promise<boolean>;
+  /** Label an event for tree/bookmark UIs. */
+  setLabel: (event: number, label: string) => void;
   /** This session: id, file on disk, title, event count. */
   session: () => SessionInfo;
   /** Rename the session, as the resume picker shows it. */

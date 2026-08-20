@@ -31,7 +31,8 @@ const run = async (spec: ToolSpec | undefined, input: Record<string, unknown>): 
   // wrapTool turns the throw into the "ERROR: …" string the model reads; these
   // specs are raw, so the harness does that one thing too.
   try {
-    return await spec.execute(spec.input.parse(input), undefined);
+    const result = await spec.execute(spec.input.parse(input), undefined);
+    return typeof result === "string" ? result : result.content;
   } catch (thrown) {
     return `ERROR: ${thrown instanceof Error ? thrown.message : String(thrown)}`;
   }

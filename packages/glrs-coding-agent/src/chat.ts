@@ -257,7 +257,12 @@ export const createChat = (
     return force ? lastBoundary : 0;
   };
 
-  const compact = async (instruction: string, keep: number, force = false): Promise<Compaction> => {
+  const compact = async (
+    instruction: string,
+    keep: number,
+    force = false,
+    suppliedSummary?: string,
+  ): Promise<Compaction> => {
     if (working()) return { outcome: "busy" };
     const cut = cutPoint(keep, force);
     if (cut === 0) return { outcome: "too-short" };
@@ -270,7 +275,8 @@ export const createChat = (
     live = stop;
     signal({ type: "phase", name: "compacting" });
     try {
-      const summary = await agent.summarise(history.slice(0, cut), instruction, stop.signal);
+      const summary =
+        suppliedSummary ?? (await agent.summarise(history.slice(0, cut), instruction, stop.signal));
       if (summary === "") return { outcome: "failed", error: "the summary came back empty" };
       const dropped = cut;
       history = [{ role: "user", content: compactedPrompt(summary) }, ...history.slice(cut)];
@@ -321,6 +327,15 @@ export const createChat = (
     // Steering first, because that is the order they will be delivered in.
     get queued(): readonly Queued[] {
       return [...steering, ...followUps];
+    },
+    get history(): readonly ModelMessage[] {
+      return history;
+    },
+    replaceHistory: (messages: readonly ModelMessage[]): boolean => {
+      if (working()) return false;
+      history = [...messages];
+      note = "";
+      return true;
     },
     // Whether Esc has stopped the queue and there is something in it to hold.
     get held(): boolean {

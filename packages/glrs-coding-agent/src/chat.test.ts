@@ -407,6 +407,18 @@ describe("compacting a long conversation", () => {
     expect(sent().length).toBeLessThan(conversation(12).length);
   });
 
+  test("an extension-supplied summary bypasses the model summarizer", async () => {
+    const { chat, events } = harnessWith(conversation(12), "", async () => {
+      throw new Error("the model summarizer should not run");
+    });
+    expect((await chat.compact("unused", 2_000, false, "EXTENSION SUMMARY")).outcome).toBe(
+      "compacted",
+    );
+    expect(events.find((event) => event.type === "compacted")).toMatchObject({
+      summary: "EXTENSION SUMMARY",
+    });
+  });
+
   test("the summary leads the replayed history", async () => {
     const { chat, sent } = harnessWith(conversation(12), "WHAT HAPPENED BEFORE");
     await chat.compact("summarise", 2_000);

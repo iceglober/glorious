@@ -9,10 +9,10 @@ import {
   enterKeys,
   isAlt,
 } from "../composer";
-import type { Capture } from "../extension-api";
+import type { AutocompleteProvider, Capture, MountSpec } from "../extension-api";
 import type { QueueKind } from "../queue";
-import type { Line } from "../render";
-import { createChrome, fillHex, panelHex } from "./chrome";
+import type { Line, Tone } from "../render";
+import { createChrome, fillHex, panelHex, tones } from "./chrome";
 
 const fatalSignals = ["SIGTERM", "SIGHUP"] as const;
 const pastLimit = 100;
@@ -56,6 +56,29 @@ export const createScreen = async (callbacks: {
   const { columns, textNode, stack, styled } = chrome;
   const composerWidth = (): number => Math.max(1, columns() - 4);
 
+  const headerMount = textNode({ content: "", wrapMode: "word", width: "100%", visible: false });
+  const aboveEditorMount = textNode({
+    content: "",
+    wrapMode: "word",
+    width: "100%",
+    visible: false,
+  });
+  const belowEditorMount = textNode({
+    content: "",
+    wrapMode: "word",
+    width: "100%",
+    visible: false,
+  });
+  const footerMount = textNode({ content: "", wrapMode: "word", width: "100%", visible: false });
+  const overlayMount = textNode({
+    content: "",
+    wrapMode: "word",
+    width: "100%",
+    height: "100%",
+    visible: false,
+    position: "absolute",
+    zIndex: 100,
+  } as never);
   const view = new tui.ScrollBoxRenderable(renderer, {
     flexGrow: 1,
     flexShrink: 1,
@@ -133,12 +156,20 @@ export const createScreen = async (callbacks: {
     progress,
     autocomplete,
     waterline,
+    aboveEditorMount,
     composerSlot,
+    belowEditorMount,
     extra,
+    footerMount,
     status,
   ]);
   renderer.root.add(
-    stack({ flexDirection: "column", width: "100%", height: "100%" }, [view, footer]),
+    stack({ flexDirection: "column", width: "100%", height: "100%" }, [
+      headerMount,
+      view,
+      footer,
+      overlayMount,
+    ]),
   );
 
   const log: Array<{ lines: Line[]; node: TextRenderable; block: Renderable }> = [];
@@ -164,6 +195,17 @@ export const createScreen = async (callbacks: {
   let dismissedAt: string | null = null;
   let fileMatches: readonly { name: string; description: string }[] = [];
   let fileQuery: string | null = null;
+  const autocompleteProviders: AutocompleteProvider[] = [];
+  let extensionMatches: readonly { name: string; description: string }[] = [];
+  let extensionQuery = "";
+  const refreshExtensionMatches = async (sigil: string, query: string): Promise<void> => {
+    const provider = autocompleteProviders.find((candidate) => candidate.sigil === sigil);
+    const request = `${sigil}${query}`;
+    if (extensionQuery === request) return;
+    extensionQuery = request;
+    extensionMatches = provider ? await provider.complete(query) : [];
+    if (extensionQuery === request) syncAutocomplete();
+  };
   const refreshFiles = async (query: string): Promise<void> => {
     if (query === fileQuery) return;
     fileQuery = query;
@@ -244,6 +286,43 @@ export const createScreen = async (callbacks: {
     };
   };
 
+  const mountNodes = {
+    header: headerMount,
+    "above-editor": aboveEditorMount,
+    "below-editor": belowEditorMount,
+    footer: footerMount,
+    overlay: overlayMount,
+  } as const;
+  const mounted = new Map<Exclude<MountSpec["placement"], "editor">, MountSpec>();
+  const paintMount = (placement: Exclude<MountSpec["placement"], "editor">): void => {
+    const spec = mounted.get(placement);
+    const node = mountNodes[placement];
+    node.visible = spec !== undefined;
+    node.content = spec ? styled(spec.render(columns())) : "";
+    draw();
+  };
+  const mount = (spec: MountSpec): { close: () => void; repaint: () => void } => {
+    if (spec.placement === "editor") return capture(spec);
+    const placement = spec.placement as Exclude<MountSpec["placement"], "editor">;
+    mounted.set(placement, spec);
+    if (placement === "overlay") {
+      const node = overlayMount as unknown as Record<string, unknown>;
+      node.width = spec.overlay?.width ?? "100%";
+      node.height = spec.overlay?.height ?? "100%";
+      node.top = spec.overlay?.row ?? 0;
+      node.left = spec.overlay?.column ?? 0;
+    }
+    paintMount(placement);
+    return {
+      close: () => {
+        if (mounted.get(placement) !== spec) return;
+        mounted.delete(placement);
+        paintMount(placement);
+      },
+      repaint: () => paintMount(placement),
+    };
+  };
+
   const painter = (node: TextRenderable) => {
     let shown = "";
     return (lines: Line[]): void => {
@@ -304,7 +383,7 @@ export const createScreen = async (callbacks: {
     autocompleteSigil = activeSigil(
       input.plainText,
       input.cursorOffset,
-      shellMode ? ["/"] : ["/", "@"],
+      shellMode ? ["/"] : ["/", "@", ...autocompleteProviders.map((provider) => provider.sigil)],
     );
     const matches =
       autocompleteSigil === null
@@ -313,8 +392,12 @@ export const createScreen = async (callbacks: {
           ? // Files are found on disk, so the list arrives after the keystroke
             // that asked for it; whatever the last lookup returned is shown.
             fileMatches
-          : matchingCommands(autocompleteSigil.query);
+          : autocompleteSigil.sigil === "/"
+            ? matchingCommands(autocompleteSigil.query)
+            : extensionMatches;
     if (autocompleteSigil?.sigil === "@") void refreshFiles(autocompleteSigil.query);
+    else if (autocompleteSigil && autocompleteSigil.sigil !== "/")
+      void refreshExtensionMatches(autocompleteSigil.sigil, autocompleteSigil.query);
     const sigil = autocompleteSigil?.sigil ?? "/";
     autocompleteItems = matches;
     autocompleteIndex = Math.min(autocompleteIndex, Math.max(0, matches.length - 1));
@@ -448,6 +531,19 @@ export const createScreen = async (callbacks: {
     // Whoever holds the composer area sees every key first, in glrs's own
     // shape rather than the renderer's — the same vocabulary g.key() uses, so
     // an extension never meets an opentui type.
+    const overlay = mounted.get("overlay");
+    if (overlay && overlay.overlay?.modal !== false) {
+      event.stopPropagation();
+      overlay.onKey({
+        key: event.name ?? "",
+        ctrl: event.ctrl ?? false,
+        shift: event.shift ?? false,
+        text:
+          !event.ctrl && !event.meta && typeof event.sequence === "string" ? event.sequence : "",
+      });
+      paintMount("overlay");
+      return;
+    }
     if (captured) {
       event.stopPropagation();
       captured.onKey({
@@ -647,5 +743,32 @@ export const createScreen = async (callbacks: {
     },
     columns,
     capture,
+    mount,
+    addAutocompleteProvider: (provider: AutocompleteProvider) => {
+      autocompleteProviders.push(provider);
+      syncAutocomplete();
+      return {
+        dispose: () => {
+          const at = autocompleteProviders.indexOf(provider);
+          if (at >= 0) autocompleteProviders.splice(at, 1);
+          syncAutocomplete();
+        },
+      };
+    },
+    setTheme: (theme: Partial<Record<Tone, string>>) => {
+      const previous = { ...tones };
+      Object.assign(tones, theme);
+      onResize();
+      paintCapture();
+      for (const placement of mounted.keys()) paintMount(placement);
+      return {
+        restore: () => {
+          Object.assign(tones, previous);
+          onResize();
+          paintCapture();
+          for (const placement of mounted.keys()) paintMount(placement);
+        },
+      };
+    },
   };
 };

@@ -47,6 +47,13 @@ const host: ExtensionHost = {
     captured.push(spec);
     return { close: () => {}, repaint: () => {} };
   },
+  mount: (spec) => {
+    captured.push(spec);
+    return { close: () => {}, repaint: () => {} };
+  },
+  notify: () => {},
+  setTheme: () => ({ restore: () => {} }),
+  autocomplete: () => ({ dispose: () => {} }),
   settings: () => ({ toolTimeoutMs: 1000 }),
   available: () => [],
   setExtension: async () => "not-allowed" as const,
@@ -62,6 +69,11 @@ const host: ExtensionHost = {
   model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
   models: async () => [],
   setModel: async () => {},
+  registerProvider: () => ({ dispose: () => {} }),
+  history: () => [],
+  forkSession: async () => ({ id: "fork", file: "/tmp/fork", title: "fork", events: 0 }),
+  switchSession: async () => true,
+  setLabel: () => {},
   idle: () => true,
   pending: () => 0,
   abort: () => false,
