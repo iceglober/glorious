@@ -1,6 +1,7 @@
 import type { ToolSet } from "ai";
 import { z } from "zod";
 import type { Settings } from "../../glrs-core/src";
+import { truncateHead } from "../../glrs-core/src/shell";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
 import type { FirstPartyExtension } from "./extensions";
@@ -25,38 +26,50 @@ export type { Activity, Line, Span, Tone } from "./render";
 // package. Re-exported so everything in the agent keeps importing them from
 // here, while there is only one declaration of each.
 import type {
+  AutocompleteProvider,
   CliSpec,
+  EntryRenderer,
   EventName,
   EventPayload,
   ExtensionChoice,
+  ExtensionProvider,
   FlagSpec,
   Glrs,
   Handler,
   HandlerVerdict,
   KeySpec,
   Loaded,
+  MessageRenderer,
   ModelInfo,
+  MountSpec,
   SessionInfo,
   ShellResult,
+  SurfacePlacement,
   Ui,
   Verdict,
 } from "../../glrs-core/src";
 import type { Activity } from "./render";
 
 export type {
+  AutocompleteProvider,
   CliSpec,
+  EntryRenderer,
   EventName,
   EventPayload,
   ExtensionChoice,
+  ExtensionProvider,
   FlagSpec,
   Glrs,
   Handler,
   HandlerVerdict,
   KeySpec,
   Loaded,
+  MessageRenderer,
   ModelInfo,
+  MountSpec,
   SessionInfo,
   ShellResult,
+  SurfacePlacement,
   Ui,
   Verdict,
 };
@@ -65,7 +78,14 @@ export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
   name: string;
   description: string;
   input: Schema;
-  execute: (input: z.infer<Schema>, signal: AbortSignal | undefined) => string | Promise<string>;
+  execute: (
+    input: z.infer<Schema>,
+    signal: AbortSignal | undefined,
+  ) =>
+    | string
+    | { content: string; data?: unknown }
+    | Promise<string | { content: string; data?: unknown }>;
+  terminate?: boolean;
   // How the row looks while the call runs, and once it has finished. Omit
   // either and glrs draws its usual row.
   renderCall?: (input: z.infer<Schema>) => Line[];
@@ -115,6 +135,10 @@ export type ExtensionHost = {
   print: (content: string | Line[], tone: Tone) => void;
   columns: () => number;
   capture: (spec: Capture) => { close: () => void; repaint: () => void };
+  mount: (spec: MountSpec) => { close: () => void; repaint: () => void };
+  notify: (message: string, tone?: Tone) => void;
+  setTheme: (theme: Partial<Record<Tone, string>>) => { restore: () => void };
+  autocomplete: (provider: AutocompleteProvider) => { dispose: () => void };
   setInput: (text: string) => void;
   settings: () => Readonly<Settings>;
   available: () => readonly FirstPartyExtension[];
@@ -128,6 +152,11 @@ export type ExtensionHost = {
   model: () => ModelInfo;
   models: () => Promise<readonly ModelInfo[]>;
   setModel: (label: string, variant?: string) => Promise<void>;
+  registerProvider: (provider: ExtensionProvider) => { dispose: () => void };
+  history: () => readonly import("ai").ModelMessage[];
+  forkSession: (at?: number) => Promise<SessionInfo>;
+  switchSession: (id: string) => Promise<boolean>;
+  setLabel: (event: number, label: string) => void;
   idle: () => boolean;
   pending: () => number;
   abort: () => boolean;
@@ -156,6 +185,11 @@ export type Registry = {
   cli: Map<string, CliSpec & { origin: string }>;
   handlers: Map<EventName, Array<Handler<EventName>>>;
   renderers: Map<string, ToolRenderer>;
+  terminatingTools: Set<string>;
+  messageRenderers: MessageRenderer[];
+  entryRenderers: Map<string, EntryRenderer>;
+  providerRegistrations: Array<{ dispose: () => void }>;
+  uiDisposables: Array<() => void>;
   // Every extension's tool filter. All of them must agree for a tool to survive.
   toolFilters: Array<(name: string) => boolean>;
   statuses: Array<() => string | null>;
@@ -201,6 +235,13 @@ export const resetRegistry = (registry: Registry): void => {
   registry.cli.clear();
   registry.handlers.clear();
   registry.renderers.clear();
+  registry.terminatingTools.clear();
+  registry.messageRenderers.length = 0;
+  registry.entryRenderers.clear();
+  for (const registration of registry.providerRegistrations) registration.dispose();
+  registry.providerRegistrations.length = 0;
+  for (const dispose of registry.uiDisposables) dispose();
+  registry.uiDisposables.length = 0;
   registry.flags.clear();
   registry.bus.clear();
   registry.contributions.clear();
@@ -213,6 +254,11 @@ export const createRegistry = (): Registry => ({
   cli: new Map(),
   handlers: new Map(),
   renderers: new Map(),
+  terminatingTools: new Set(),
+  messageRenderers: [],
+  entryRenderers: new Map(),
+  providerRegistrations: [],
+  uiDisposables: [],
   toolFilters: [],
   statuses: [],
   footers: [],
@@ -303,8 +349,12 @@ export const createApi = (
         spec.name,
         spec.description,
         spec.input,
-        async (input, signal) => spec.execute(input, signal),
+        async (input, signal) => {
+          const result = await spec.execute(input, signal);
+          return typeof result === "string" ? result : result.content;
+        },
       );
+      if (spec.terminate) registry.terminatingTools.add(spec.name);
       if (spec.renderCall || spec.renderResult)
         registry.renderers.set(spec.name, {
           call: spec.renderCall as ToolRenderer["call"],
@@ -348,6 +398,7 @@ export const createApi = (
     print: (content, tone = "muted") => host.print(content, tone),
     columns: host.columns,
     clip,
+    truncateHead,
     inspect: host.inspect,
     clear: host.clear,
     compact: host.compact,
@@ -358,9 +409,36 @@ export const createApi = (
     mode: host.mode,
     hasUI: host.mode === "tui",
     ui: {
-      capture: host.capture,
+      capture: (spec) => {
+        const handle = host.capture(spec);
+        registry.uiDisposables.push(handle.close);
+        return handle;
+      },
+      mount: (spec) => {
+        const handle = host.mount(spec);
+        registry.uiDisposables.push(handle.close);
+        return handle;
+      },
+      notify: host.notify,
+      setTheme: (theme) => {
+        const handle = host.setTheme(theme);
+        registry.uiDisposables.push(handle.restore);
+        return handle;
+      },
       setInput: host.setInput,
     },
+    autocomplete: (provider) => {
+      const handle = host.autocomplete(provider);
+      registry.uiDisposables.push(handle.dispose);
+      return handle;
+    },
+    provider: (provider) => {
+      const registration = host.registerProvider(provider);
+      registry.providerRegistrations.push(registration);
+      return registration;
+    },
+    messageRenderer: (renderer) => registry.messageRenderers.push(renderer),
+    entryRenderer: (type, renderer) => registry.entryRenderers.set(type, renderer),
     tools: host.tools,
     filterTools: (keep) => {
       registry.toolFilters.push(keep);
@@ -377,6 +455,11 @@ export const createApi = (
     model: host.model,
     models: host.models,
     setModel: host.setModel,
+    setThinkingLevel: async (level) => host.setModel(host.model().label, level),
+    history: host.history,
+    forkSession: host.forkSession,
+    switchSession: host.switchSession,
+    setLabel: host.setLabel,
     idle: host.idle,
     pending: host.pending,
     abort: host.abort,

@@ -101,9 +101,11 @@ export default function (g) {
 }
 ```
 
-`execute` returns the string the model reads. throws become `ERROR:` results.
-results are capped at 30,000 characters. descriptions are sent on every model
-call; keep them short and operational.
+`execute` returns the string the model reads, or `{ content, data }` for a
+structured result. throws become `ERROR:` results. `terminate: true` ends the
+turn after the result is delivered. results are capped at 30,000 characters;
+`g.truncateHead()` keeps the newest part when that is what matters. descriptions
+are sent on every model call; keep them short and operational.
 
 first tool registration wins. a refused duplicate appears as `shadowed` in
 `/extensions`.
@@ -165,8 +167,11 @@ const held = g.ui.capture({
 });
 ```
 
-it is the only interactive input primitive. guard with `g.hasUI`; capture is
-unavailable in print mode. `g.ui.setInput(text)` fills the normal composer.
+guard with `g.hasUI`; capture is unavailable in print mode.
+`g.ui.mount()` uses the same render/key shape for custom editors, widgets,
+headers, footers, and overlays. `g.ui.notify()` posts a notification,
+`g.ui.setTheme()` overrides colors, and `g.ui.setInput(text)` fills the normal
+composer.
 
 ## messages and state
 
@@ -178,8 +183,10 @@ unavailable in print mode. `g.ui.setInput(text)` fills the normal composer.
 | `g.reload()` | reload disk resources plus extension/tool config |
 | `g.clear()` | clear model context |
 | `g.compact()` | summarize older context |
-| `g.session()` | current session metadata |
+| `g.session()` / `g.history()` | current session and model-visible messages |
+| `g.forkSession()` / `g.switchSession()` | gated session changes |
 | `g.appendEntry()` / `g.entries()` | persist extension data in the session |
+| `g.setLabel()` | label an event for bookmark/tree UIs |
 | `g.events.emit()` / `g.events.on()` | extension-to-extension events |
 
 `g.mode` is `tui` or `print`. `g.idle()`, `g.pending()`, `g.abort()`, and
@@ -197,6 +204,8 @@ filter.lift();
 g.model();
 await g.models();
 await g.setModel("anthropic/claude-opus-5", "high");
+await g.setThinkingLevel("medium");
+g.provider({ id: "company", create: (modelId) => companyModel(modelId) });
 ```
 
 all active tool filters must agree. filters remove tools from the model schema;
@@ -210,7 +219,10 @@ all active tool filters must agree. filters remove tools from the model schema;
 | `g.status(render)` | status-line segment |
 | `g.footer(render)` | rows above the status line |
 | `g.activity(render)` | running activity row |
-| `g.markdown(transform)` | assistant display transform |
+| `g.markdown(transform)` | assistant markdown transform |
+| `g.messageRenderer(render)` | durable message rendering |
+| `g.entryRenderer(type, render)` | custom session-entry rendering |
+| `g.autocomplete(provider)` | custom composer completions |
 
 render functions return `Line[]`, arrays of spans:
 

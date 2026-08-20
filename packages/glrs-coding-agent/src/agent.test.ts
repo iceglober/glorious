@@ -8,6 +8,7 @@ import {
   requestSettings,
   settleQuietly,
   shouldResend,
+  terminatingToolCalled,
   withInjected,
   worthRetrying,
 } from "./agent";
@@ -206,6 +207,17 @@ describe("what we ask the provider for", () => {
 // `code` — name is "Error". Matching on name alone made "The socket connection
 // was closed unexpectedly" look permanent, so a single blip killed the turn
 // instead of being retried. That is the failure a retry exists for.
+describe("terminating extension tools", () => {
+  test("the active turn stops after a named tool call", () => {
+    expect(
+      terminatingToolCalled([{ toolCalls: [{ toolName: "final" }] }], new Set(["final"])),
+    ).toBe(true);
+    expect(terminatingToolCalled([{ toolCalls: [{ toolName: "read" }] }], new Set(["final"]))).toBe(
+      false,
+    );
+  });
+});
+
 describe("which failures are worth retrying", () => {
   const withCode = (code: string): Error =>
     Object.assign(new Error("The socket connection was closed unexpectedly."), { code });

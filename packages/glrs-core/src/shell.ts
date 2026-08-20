@@ -32,6 +32,10 @@ export const capText = (text: string, limit: number): string =>
     ? `${text.slice(0, limit)}\n[truncated, ${text.length - limit} chars omitted]`
     : text;
 
+/** Keep the newest part of text and mark that its head was omitted. */
+export const truncateHead = (text: string, limit: number): string =>
+  text.length <= limit ? text : `…${text.slice(-Math.max(0, limit))}`;
+
 const signalGroup = (pid: number, name: NodeJS.Signals): void => {
   try {
     process.kill(-pid, name);

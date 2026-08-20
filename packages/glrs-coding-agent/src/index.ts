@@ -5,6 +5,7 @@ import { messagesOf, type SessionEvent, usageTotals } from "../../glrs-core/src/
 import { loadAgentRules } from "../../glrs-core/src/guidance";
 import {
   createSession,
+  forkSession as forkStoredSession,
   loadPromptHistory,
   openSession,
   savePromptHistory,
@@ -27,6 +28,7 @@ import {
   noteFor,
   PROVIDERS,
   providerSpec,
+  registerExtensionProvider,
 } from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { helpText, route } from "./argv";
@@ -388,6 +390,7 @@ const main = async (): Promise<void> => {
     );
   };
 
+  let systemPromptOverride: string | undefined;
   const agent = createAgent({
     root,
     model,
@@ -404,6 +407,8 @@ const main = async (): Promise<void> => {
       toolSink = onTool;
       return registry.tools;
     },
+    terminatingTools: () => registry.terminatingTools,
+    systemPromptOverride: () => systemPromptOverride,
     // The advertisement rides here, in the per-turn message, and never the
     // system prompt: that has to stay byte-identical or the provider's cache
     // misses every turn. `<extensions>` is already a PREAMBLE_TAG, so this is
@@ -491,11 +496,24 @@ const main = async (): Promise<void> => {
     const stepped = advanceToolRun(group, event);
     group = stepped.run;
     if (stepped.footer.length > 0) screen.print(stepped.footer, false);
-    const { lines, gap } = eventBlock(
+    const rendered = registry.messageRenderers
+      .map((renderer) => safely(() => renderer(event)))
+      .find((lines) => lines !== undefined);
+    const entry =
+      event.type === "custom"
+        ? safely(() => registry.entryRenderers.get(event.custom)?.(event.data))
+        : undefined;
+    const fallback = eventBlock(
       event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
       renderTool,
       screen.columnsNow(),
     );
+    const { lines, gap } =
+      rendered !== undefined
+        ? { lines: rendered, gap: true }
+        : entry !== undefined
+          ? { lines: entry, gap: true }
+          : fallback;
     // A streamed answer is already on screen. Seal that block with its final
     // rendering rather than printing the same text a second time; the event is
     // recorded either way.
@@ -546,6 +564,8 @@ const main = async (): Promise<void> => {
         if (!produced) screen.print(noticeBlock("(no response)"), false);
         break;
       case "idle":
+        void fire(registry, "agent_end", { text: lastAnswer }, onExtensionFailure);
+        systemPromptOverride = undefined;
         void fire(registry, "idle", {}, onExtensionFailure);
         maybeCompact();
         // anything still buffered belongs to the turn that just ended
@@ -585,11 +605,12 @@ const main = async (): Promise<void> => {
           repaint();
           return;
         }
-        const typed = said ?? text;
+        const typed = typeof said === "object" ? said.text : (said ?? text);
+        const delivery = typeof said === "object" ? (said.streamingBehavior ?? kind) : kind;
         const { prompt, attached, missing } = await expandMentions(root, typed);
         for (const path of missing)
           render({ type: "notice", text: `(no such file: @${path} — sent as text)` });
-        chat.send(prompt, attached.length === 0 ? null : typed, kind);
+        chat.send(prompt, attached.length === 0 ? null : typed, delivery);
         repaint();
       });
     },
@@ -602,76 +623,79 @@ const main = async (): Promise<void> => {
       repaint();
     },
     onShell: (command) => {
-      screen.print(userBlock(`!${command}`), true);
-      void fire(registry, "user_bash", { command }, onExtensionFailure);
-      const shell = { id: ++userShellId, command, since: Date.now() };
-      userShells.push(shell);
-      repaint();
-
-      let shown = 0;
-      let clipped = false;
-      let hadOutput = false;
-      let flushTimer: ReturnType<typeof setTimeout> | undefined;
-      const buffered = { stdout: "", stderr: "" };
-      const flush = (): void => {
-        clearTimeout(flushTimer);
-        flushTimer = undefined;
-        for (const stream of ["stdout", "stderr"] as const) {
-          const text = buffered[stream].trimEnd();
-          buffered[stream] = "";
-          if (text === "") continue;
-          screen.print(
-            noticeBlock(
-              stream === "stderr" ? `stderr:\n${text}` : text,
-              stream === "stderr" ? "warning" : "muted",
-            ),
-            false,
-          );
-        }
+      void fire(registry, "user_bash", { command }, onExtensionFailure).then((verdict) => {
+        if (verdict === false) return;
+        const actual = verdict && typeof verdict === "object" ? verdict.command : command;
+        screen.print(userBlock(`!${actual}`), true);
+        const shell = { id: ++userShellId, command: actual, since: Date.now() };
+        userShells.push(shell);
         repaint();
-      };
-      const display = (text: string, stream: "stdout" | "stderr"): void => {
-        const clean = cleanShellChunk(text);
-        if (clean === "") return;
-        hadOutput = true;
-        if (shown >= 30_000) {
-          if (!clipped) {
+
+        let shown = 0;
+        let clipped = false;
+        let hadOutput = false;
+        let flushTimer: ReturnType<typeof setTimeout> | undefined;
+        const buffered = { stdout: "", stderr: "" };
+        const flush = (): void => {
+          clearTimeout(flushTimer);
+          flushTimer = undefined;
+          for (const stream of ["stdout", "stderr"] as const) {
+            const text = buffered[stream].trimEnd();
+            buffered[stream] = "";
+            if (text === "") continue;
+            screen.print(
+              noticeBlock(
+                stream === "stderr" ? `stderr:\n${text}` : text,
+                stream === "stderr" ? "warning" : "muted",
+              ),
+              false,
+            );
+          }
+          repaint();
+        };
+        const display = (text: string, stream: "stdout" | "stderr"): void => {
+          const clean = cleanShellChunk(text);
+          if (clean === "") return;
+          hadOutput = true;
+          if (shown >= 30_000) {
+            if (!clipped) {
+              clipped = true;
+              buffered.stderr += "\n[output truncated at 30,000 characters]";
+              flush();
+            }
+            return;
+          }
+          const remaining = 30_000 - shown;
+          buffered[stream] += clean.slice(0, remaining);
+          shown += Math.min(clean.length, remaining);
+          if (!clipped && clean.length > remaining) {
             clipped = true;
             buffered.stderr += "\n[output truncated at 30,000 characters]";
-            flush();
           }
-          return;
-        }
-        const remaining = 30_000 - shown;
-        buffered[stream] += clean.slice(0, remaining);
-        shown += Math.min(clean.length, remaining);
-        if (!clipped && clean.length > remaining) {
-          clipped = true;
-          buffered.stderr += "\n[output truncated at 30,000 characters]";
-        }
-        clearTimeout(flushTimer);
-        flushTimer = setTimeout(flush, 80);
-      };
-      const finish = (): void => {
-        flush();
-        const slot = userShells.findIndex((entry) => entry.id === shell.id);
-        if (slot >= 0) userShells.splice(slot, 1);
-      };
-      void runShell(root, command, [], display)
-        .then((result) => {
-          finish();
-          const completion = shellCompletion(result, hadOutput);
-          if (completion) screen.print(noticeBlock(completion.text, completion.tone), false);
-          repaint();
-        })
-        .catch((thrown) => {
-          finish();
-          screen.print(
-            noticeBlock(`(shell command failed to run — ${errorText(thrown)})`, "danger"),
-            false,
-          );
-          repaint();
-        });
+          clearTimeout(flushTimer);
+          flushTimer = setTimeout(flush, 80);
+        };
+        const finish = (): void => {
+          flush();
+          const slot = userShells.findIndex((entry) => entry.id === shell.id);
+          if (slot >= 0) userShells.splice(slot, 1);
+        };
+        void runShell(root, actual, [], display)
+          .then((result) => {
+            finish();
+            const completion = shellCompletion(result, hadOutput);
+            if (completion) screen.print(noticeBlock(completion.text, completion.tone), false);
+            repaint();
+          })
+          .catch((thrown) => {
+            finish();
+            screen.print(
+              noticeBlock(`(shell command failed to run — ${errorText(thrown)})`, "danger"),
+              false,
+            );
+            repaint();
+          });
+      });
     },
     cwd: root,
     onCommand: (name, args) => {
@@ -738,13 +762,25 @@ const main = async (): Promise<void> => {
     options: { instruction?: string; keep?: number },
     automatic: boolean,
   ) => {
+    const gate = await fire(
+      registry,
+      "session_before_compact",
+      { automatic, instruction: options.instruction },
+      onExtensionFailure,
+    );
+    if (gate === false) return { outcome: "failed" as const, error: "blocked by extension" };
     const before = tokens;
+    const instruction =
+      (typeof gate === "object" ? gate.instruction : undefined) ??
+      options.instruction ??
+      "Summarise the conversation so far.";
     const outcome = await chat.compact(
-      options.instruction ?? "Summarise the conversation so far.",
+      instruction,
       options.keep ?? KEEP_TOKENS,
       // Asked for by hand, compact whatever there is rather than declining
       // because the conversation has not yet reached the automatic threshold.
       !automatic,
+      typeof gate === "object" ? gate.summary : undefined,
     );
     if (outcome.outcome === "compacted") {
       compactedAt = tokens ?? 0;
@@ -794,13 +830,26 @@ const main = async (): Promise<void> => {
     onEvent: render,
     onSignal: react,
     onBeforeRequest: async (prompt, messages) => {
+      const beforeAgent = await fire(
+        registry,
+        "before_agent_start",
+        { prompt, systemPrompt: agent.prompt() },
+        onExtensionFailure,
+      );
+      if (beforeAgent && typeof beforeAgent === "object")
+        systemPromptOverride = beforeAgent.systemPrompt;
+      await fire(registry, "agent_start", { prompt }, onExtensionFailure);
       const added = await fire(
         registry,
         "before_request",
         { prompt, messages },
         onExtensionFailure,
       );
-      return typeof added === "string" ? added : undefined;
+      const contributions = [
+        typeof beforeAgent === "object" ? beforeAgent.prompt : beforeAgent,
+        added,
+      ].filter((value): value is string => typeof value === "string");
+      return contributions.length === 0 ? undefined : contributions.join("\n\n");
     },
     history: messagesOf(session.events),
     steeringMode: config.config.steeringMode,
@@ -858,6 +907,13 @@ const main = async (): Promise<void> => {
     },
     columns: () => screen.columnsNow(),
     capture: (spec) => screen.capture(spec),
+    mount: (spec) => screen.mount(spec),
+    notify: (message, tone = "muted") => {
+      screen.print(noticeBlock(message, tone), false);
+      repaint();
+    },
+    setTheme: (theme) => screen.setTheme(theme),
+    autocomplete: (provider) => screen.addAutocompleteProvider(provider),
     inspect: () => ({
       commands: commands(),
       skills: skills.summaries,
@@ -912,6 +968,45 @@ const main = async (): Promise<void> => {
         onExtensionFailure,
       );
       repaint();
+    },
+    registerProvider: (provider) => {
+      const registration = registerExtensionProvider(provider);
+      if (provider.id === model.provider) agent.setModel(model);
+      return registration;
+    },
+    history: () => chat.history,
+    forkSession: async (at) => {
+      const verdict = await fire(
+        registry,
+        "session_before_fork",
+        { id: session.id, at },
+        onExtensionFailure,
+      );
+      if (verdict === false) throw new Error("an extension blocked the session fork");
+      const forked = await forkStoredSession(session.id, at);
+      return {
+        id: forked.id,
+        file: sessionFile(forked.id),
+        title: forked.title,
+        events: forked.events.length,
+      };
+    },
+    switchSession: async (id) => {
+      const verdict = await fire(
+        registry,
+        "session_before_switch",
+        { from: session.id, to: id },
+        onExtensionFailure,
+      );
+      if (verdict === false || chat.busy) return false;
+      const next = await openSession(id, async () => {
+        throw new Error(`Session not found: ${id}`);
+      });
+      Object.assign(session, next);
+      return chat.replaceHistory(messagesOf(next.events));
+    },
+    setLabel: (event, label) => {
+      record({ type: "custom", custom: "glrs:label", data: { event, label } });
     },
     idle: () => !chat.busy,
     pending: () => chat.queued.length,
@@ -1116,8 +1211,6 @@ const main = async (): Promise<void> => {
       return typeof replaced === "string" ? replaced : undefined;
     },
   });
-  await fire(registry, "session_start", { root }, onExtensionFailure);
-
   let release = (): void => {};
   const closed = new Promise<void>((resolve) => {
     release = resolve;
@@ -1134,7 +1227,9 @@ const main = async (): Promise<void> => {
   // the screen stops as soon as this resolves.
   const quit = (): void => {
     chat.abort();
-    void fire(registry, "session_end", { root }, onExtensionFailure).finally(release);
+    void fire(registry, "session_shutdown", { root }, onExtensionFailure)
+      .then(() => fire(registry, "session_end", { root }, onExtensionFailure))
+      .finally(release);
   };
 
   const onSigint = (): void => {
@@ -1161,6 +1256,10 @@ const main = async (): Promise<void> => {
     process.on("SIGINT", onSigint);
     process.on("unhandledRejection", onStray);
     process.on("uncaughtException", onStray);
+    const trust = await fire(registry, "project_trust", { root }, onExtensionFailure);
+    if (registry.handlers.has("project_trust") && trust !== "trusted")
+      throw new Error(`Project trust was ${trust ?? "not decided"} by an extension.`);
+    await fire(registry, "session_start", { root }, onExtensionFailure);
     await closed;
     process.exitCode = 0;
   } finally {

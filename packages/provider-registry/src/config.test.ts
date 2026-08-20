@@ -72,7 +72,8 @@ describe("loadConfig", () => {
   });
 
   test("a non-string value is dropped rather than trusted", async () => {
-    const { config } = await loadConfig(await project(`{"model":42,"variant":""}`));
+    const root = await project(`{"model":42,"variant":""}`);
+    const { config } = await loadConfig(root, join(root, "nohome"), {});
     expect(config.model).toBeUndefined();
     expect(config.variant).toBeUndefined();
   });

@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { loadAgentRules } from "../../glrs-core/src/guidance";
 import { runShell } from "../../glrs-core/src/shell";
-import { currentModel, envSetting, loadConfig, modelMetadata } from "../../provider-registry/src";
+import {
+  currentModel,
+  envSetting,
+  loadConfig,
+  modelMetadata,
+  registerExtensionProvider,
+} from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { createRegistry, describeContribution, fire, promptContributions } from "./extension-api";
 import {
@@ -67,6 +73,7 @@ export const runPrint = async (
       ? envToolTimeout
       : loadedConfig.config.toolTimeoutMs;
 
+  let systemPromptOverride: string | undefined;
   const agent = createAgent({
     root: where.root,
     model,
@@ -89,6 +96,7 @@ export const runPrint = async (
       return registry.tools;
     },
     extensionPrompt: () => promptContributions(registry.promptLines),
+    systemPromptOverride: () => systemPromptOverride,
     onContext: async (messages, step) => {
       const said = await fire(registry, "context", { messages, step }, note);
       return Array.isArray(said) ? said : undefined;
@@ -137,6 +145,12 @@ export const runPrint = async (
       capture: () => {
         throw new Error("ui.capture() has no meaning in print mode: there is no composer");
       },
+      mount: () => {
+        throw new Error("ui.mount() has no meaning in print mode: there is no screen");
+      },
+      notify: (message) => note(message),
+      setTheme: () => ({ restore: () => {} }),
+      autocomplete: () => ({ dispose: () => {} }),
       // Extensions load headlessly too, so anything they inspect has to answer.
       // A one-shot run has no command table of its own.
       inspect: () => ({
@@ -184,6 +198,13 @@ export const runPrint = async (
       setModel: async () => {
         throw new Error("setModel() has no meaning in a one-shot run");
       },
+      registerProvider: registerExtensionProvider,
+      history: () => [],
+      forkSession: async () => {
+        throw new Error("forkSession() has no meaning in print mode");
+      },
+      switchSession: async () => false,
+      setLabel: () => {},
       idle: () => false,
       pending: () => 0,
       abort: () => {
@@ -265,6 +286,9 @@ export const runPrint = async (
         return typeof replaced === "string" ? replaced : undefined;
       },
     });
+    const trust = await fire(registry, "project_trust", { root: where.root }, note);
+    if (registry.handlers.has("project_trust") && trust !== "trusted")
+      throw new Error(`Project trust was ${trust ?? "not decided"} by an extension.`);
     await fire(registry, "session_start", { root: where.root }, note);
     await fire(registry, "turn_start", { text: prompt }, note);
     const { prompt: asked, missing } = await expandMentions(where.root, prompt);
@@ -273,8 +297,21 @@ export const runPrint = async (
     // createChat, which print mode does not use, so every context-injecting
     // extension worked interactively and silently did nothing here — including
     // in the runs the agent uses to check its own work.
+    const beforeAgent = await fire(
+      registry,
+      "before_agent_start",
+      { prompt: asked, systemPrompt: agent.prompt() },
+      note,
+    );
+    if (beforeAgent && typeof beforeAgent === "object")
+      systemPromptOverride = beforeAgent.systemPrompt;
+    await fire(registry, "agent_start", { prompt: asked }, note);
     const added = await fire(registry, "before_request", { prompt: asked, messages: 0 }, note);
-    const sent = typeof added === "string" && added !== "" ? `${asked}\n\n${added}` : asked;
+    const contributions = [
+      typeof beforeAgent === "object" ? beforeAgent.prompt : beforeAgent,
+      added,
+    ].filter((value): value is string => typeof value === "string" && value !== "");
+    const sent = contributions.length === 0 ? asked : `${asked}\n\n${contributions.join("\n\n")}`;
     const result = await agent.run(sent, [], {
       signal: stop.signal,
       onDelta: ({ kind, text }) => {
@@ -356,6 +393,8 @@ export const runPrint = async (
     closeRun();
     if (!streamed && result.text.trim() !== "") process.stdout.write(result.text);
     process.stdout.write("\n");
+    await fire(registry, "agent_end", { text: result.text }, note);
+    systemPromptOverride = undefined;
     await fire(registry, "turn_end", { text: result.text }, note);
     // The queue is empty and nothing is running: the same thing "idle" means in
     // the TUI. An extension that reports totals when a turn settles has to fire
@@ -377,6 +416,7 @@ export const runPrint = async (
   } finally {
     // A one-shot run ends too, and an extension with something to flush has to
     // be told. session_start fired without a matching session_end.
+    await fire(registry, "session_shutdown", { root: where.root }, note);
     await fire(registry, "session_end", { root: where.root }, note);
     process.off("SIGINT", onSigint);
   }
