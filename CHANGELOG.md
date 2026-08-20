@@ -1,4 +1,139 @@
-# @glrs-dev/glorious
+# @glrs-dev/glrs
+
+## 1.0.0-next.55
+
+### Major Changes
+
+- c46dcd7: The extension API is declared once, so an extension author sees the same surface a maintainer does.
+
+  There were two descriptions of one thing: the object `extension-api.ts` builds, and a hand-maintained copy in `glrs-core` that every extension imported. They had drifted. The copy carried 26 members; the object carried 44. `model`, `tools`, `status`, `footer`, `key`, `flag`, `abort`, `activity`, `events`, `filterTools`, `idle`, `markdown`, `models`, `pending`, `setModel`, `setSessionName`, `shutdown` and `systemPrompt` all worked at runtime and were invisible to anyone writing an extension against the type.
+
+  The copy existed for a reason: `packages/extensions` may not import the coding agent, so the type could not live where it was implemented. So the declaration moved the other way — into `glrs-core`, where extensions already reach it — and the agent now _implements_ that type rather than declaring its own. An implementation that falls behind can no longer compile.
+
+  `Tone` and `Span` had drifted the same way and travelled with it, along with the event payload types, so the whole contract is in one place.
+
+  **`UiHost` is gone.** A second, optional-everything description of the same surface, referenced by nothing. It declared `print`, `ask`, `status`, `footer` and `activity` — none of which any host implements, `ask` being residue of a removed widget — and omitted `setInput`, which all three do. Because every member was optional, `g.ui.status?.(…)` typechecked and was `undefined` at runtime.
+
+  **`/help` reads what was registered.** `KeySpec.description` and `FlagSpec.description` were required at registration and printed nowhere: help carried a hardcoded table, and a flag could not even be mentioned. `g.inspect()` now returns the bound keys and flags, and help renders them under glrs's own bindings.
+
+- 91719f9: No default model, no default provider, and every provider is asked in its own words.
+
+  **There is no default.** `model` fell back to `azure/gpt-5.6-luna`, and a model id naming no provider meant azure. So the most likely provider was the one nobody chose — and it was the single branch that dropped `providers.azure.api`, meaning a gateway or private resource silently went to the public endpoint. The guess and the misconfiguration compounded. Both are gone: nothing configured is an error naming the three ways to set one, and `glrs doctor` reports it as a state rather than dying on it, listing the providers that ship.
+
+  **Azure gets its base URL**, like every other provider. `createAzure` was called without `baseURL` while `amazon-bedrock` three lines below passed it.
+
+  **`providers.<id>.api` survives for bedrock and vertex.** It parsed, validated, merged, and then vanished before the model was built.
+
+  **`variant` reaches the provider that will answer it.** The whole options object was nested under the `openai` namespace whatever the provider was. The openai SDK also serves azure, so those two worked and the other fourteen received a key they do not read — `{"model":"anthropic/…","variant":"high"}` parsed, passed `doctor`, and did nothing at all.
+
+  Reasoning effort is not one setting with one spelling, so it is now translated per provider, with the shapes read out of the installed SDKs rather than assumed:
+
+  | provider                         | what is sent                                                  |
+  | -------------------------------- | ------------------------------------------------------------- |
+  | openai, azure, OpenAI-compatible | `reasoningEffort`                                             |
+  | anthropic                        | `thinking: { type: "enabled", budgetTokens }`                 |
+  | google                           | `thinkingConfig: { thinkingBudget, includeThoughts }`         |
+  | amazon-bedrock                   | `reasoningConfig: { type, budgetTokens, maxReasoningEffort }` |
+
+  Vertex follows the model rather than the host, so an Anthropic model served through vertex is asked the Anthropic way.
+
+  **A provider's `note` reaches `doctor`.** ADC for vertex and the credential chain for bedrock were written on the spec and read by nobody, so `doctor` said a credential was missing without saying how to supply it.
+
+  `compatibleNote` existed three times — once exported and unreferenced, twice inline. It is one function now.
+
+### Minor Changes
+
+- ea1bc4a: The published package has an entry point, and the manifests stop claiming things that were not true.
+
+  **`sdk.ts` can be imported.** It declares `createCodingAgent`, `createAgentCore`, `jsonSessionRepository` and `createProviderRegistry`, TypeDoc generates the docs site from it, and it shipped inside every tarball — but the published package declared no `main`, `module` or `exports`, and the manifest naming it as an entry is `private: true`. Nothing could resolve it. The root package now exports it, and `./extension-api` alongside it.
+
+  **Claims removed rather than repaired**, because each was for machinery that does not run:
+
+  - `packages/glrs-coding-agent/package.json` declared `bin.glrs` pointing at `bin/glrs` — a path that does not exist in that directory. The shim is at the repo root.
+  - Its `prepack` ran `sync-docs.ts` on a package that is never packed; the release publishes the root package, which has no `prepack`, and root `files` excludes `scripts/`. Both are gone, and `docsPath()` loses the branch that script existed to fill — it could not be satisfied, so the fallback was always the live path.
+  - Its `exports` and `files` cannot be resolved by anything: there are no workspaces, so no package name resolves within the repo.
+
+  **`bun.lock` called the project `agentj`**, three renames ago. `bun install --frozen-lockfile` was verified to still work afterwards.
+
+  **CI typechecks `scripts/` and `eval/` now.** Both were outside `include` and both are clean. `docs/**/*.ts` came out because it matches nothing. Eval fixtures are excluded — they are deliberately broken, being the input an eval runs against.
+
+  **The docs dev server watches source again.** It had watched `packages/glorious-core` and `packages/glorious-coding-agent` since the rename, and a `.filter(existsSync)` swallowed both, so it had quietly stopped rebuilding on source changes.
+
+- 9d5fc14: `glrs --help` exists, and a flag's value is no longer whatever token sat beside it.
+
+  argv was read by index arithmetic inside `main()`, and every bug it had came from one root. `--model -p hi` set the model to `"-p"` and ran headless anyway. `--resume --model x` looked for a session called `--model`. A trailing `--model` was dropped in silence and started an ordinary session. `--Foo` disappeared without even the `(unknown flag:)` line, because the scan was `/^--([a-z][a-z0-9-]*)$/u` and never matched a capital. And `-p` was matched wherever it appeared, so `glrs wt -p hi` ran a headless turn and threw the subcommand away.
+
+  cmd-ts owns glrs's own surface now. Unknown flags and missing values are rejected by construction; the two it does not catch — a value that is really the next flag, and a model id naming no provider — are expressed as a cmd-ts type, so `--model` refuses `-p` and refuses `gpt-5` with a sentence saying why.
+
+  **cmd-ts cannot own the whole tree, and does not.** A subcommand an extension added is not known until extensions load, and glrs deliberately does not load them for a bare `glrs`, a `-p` run or `glrs doctor`. So the first bare word is classified before parsing, and only a word glrs does not claim reaches the extension host. Whichever of `-p` and a bare word comes first now wins, which is what makes `glrs wt -p hi` the worktree subcommand and `glrs -p what failed` a prompt rather than a subcommand called `failed`.
+
+  `--help` is the one route that loads extensions, because help that omitted `glrs wt` would be help that lies — the specs are read from what each extension registered rather than written down twice. `--version` and `--help` also stopped requiring that they be the only argument.
+
+  Errors arrive as one sentence. cmd-ts reports through a coloured multi-line block meant for a terminal; the offending fragment and the reason are lifted out of it, so a parse failure reads like everything else glrs writes to stderr.
+
+- b4e11c9: A provider setting either reaches the model or says why it did not.
+
+  Every provider block accepts `api`, `region`, `project` and `location`, and each provider consumes only some of them. The rest were parsed, validated, merged across config files, and then dropped without a word — `{"providers":{"anthropic":{"region":"us-east-1"}}}` looked exactly like a setting that worked.
+
+  Which settings a provider reads is now declared in one place, and two things follow from it. A key its provider does not read becomes a diagnostic naming the ones it does. And the test suite walks that table rather than checking cases someone remembered, so every key it lists is proved to survive the trip into the model options — a provider added later is covered by construction rather than by someone thinking to add a test.
+
+  This is the answer to shaping config from the AI SDK's own provider types. Importing sixteen provider packages for their settings types would tie the config schema to their release cadence, and those types describe what each client accepts rather than what glrs passes it — which is where the bugs were. The property that matters is that the mapping is total, and that is what is now checked.
+
+- 67dd5a4: Prompt caching works on every provider, to the same standard.
+
+  Caching was OpenAI-shaped throughout: a `promptCacheKey` and nothing else. OpenAI and Google cache a prompt prefix without being asked, so it worked for them — and on Anthropic and Bedrock, which cache only what is explicitly marked, it did nothing at all. Every turn re-read the whole conversation at full price on the providers where that costs the most.
+
+  The two are different seams and are handled separately. `providerOptions` carries what a provider reads about the call; a cache breakpoint has to be written into the messages. Anthropic gets `cacheControl: { type: "ephemeral", ttl: "1h" }`, Bedrock gets `cachePoint`, and a Claude model served through Vertex is marked the Anthropic way because the mark follows the model rather than the host.
+
+  The mark goes on the second-to-last message: everything up to and including it is cached, and it is the newest point that will still be present next turn. The breakpoint therefore advances every turn, which is the point — these providers match on prefix, so a longer prefix beginning with the cached one hits it and extends it rather than starting over. A conversation with nothing stable yet is left unmarked and costs nothing.
+
+  Options a message already carried are preserved rather than replaced.
+
+- 52a812f: `/fork` copies this session to a new id, so you can branch and come back.
+
+  `forkSession` was written, complete and correct — it slices a session's events at a point, mints a fresh id, recomputes the context count and saves. It was reachable only through a repository object whose single consumer was the SDK entry nothing can import, so it had never run outside its own file and had no test.
+
+  `/fork` calls it. `/fork 12` cuts at the twelfth event, `/fork` alone copies the lot, and either way it prints the `glrs --resume <id>` that opens the copy. The original is untouched.
+
+  Nothing about this needed a new API member. `g.session()` already names the session and an extension may reach `glrs-core`, so the command is written with exactly the surface a third-party extension has — which is the point: a first-party command that needed a private door would mean the public one was incomplete.
+
+  `Tone` and `Span` are declared once now, which is what forced this into the open: the renderer paints seven tones and the type extensions import named five, so `/fork` could not report success in the success tone. `italic` and `underline` were honoured by the renderer and missing from the type in the same way.
+
+- c589c34: `allowed-tools` restricts what a skill can use, `~/.glrs/skills` is read, and frontmatter nobody could read now reaches something.
+
+  **`allowed-tools` was a control that controlled nothing.** It was parsed, carried into the summary, and enforced by no filter — a skill declaring it needed only `read` and `grep` could call `bash`. It now holds the turn that activated it to that list, in the TUI and under `-p` alike. The turn is the boundary because activation is a turn-scoped act: the model asked for the skill in order to do something now. `activate_skill` is always kept, so a narrow list cannot trap the model inside the skill it just loaded.
+
+  Wiring it exposed a parser bug worth naming: the list was split on whitespace alone, so the ordinary `allowed-tools: read, grep` produced `["read,", "grep"]`. A tool named `read,` matches nothing. Harmless while the field was enforced by nobody; it would have silently withheld the very tool the skill asked for.
+
+  **`~/.glrs/skills` was never read.** `.glrs` and `.glorious` were searched at the project root only, while the ancestor walk looked for `.agents/skills` alone — so the one directory that holds your config, commands and extensions was the one place a skill could not live. All three agent directories are now searched at every level, still deduped.
+
+  **`license` and `metadata` never left the parser**, and `compatibility` reached the summary with no reader. All three are on `SkillSummary` now. A field a skill author can set and nothing can read is a field that does not exist.
+
+  `SkillSummary` itself was declared twice — once in `glrs-core` and once in `skills.ts` — which is how the two came to disagree about which fields exist. One declaration now, the same fix the extension API got.
+
+- a9ce4c0: The rest of the code that was not on a live path is either wired up or gone.
+
+  **Three were wired up, because each was a missing connection rather than a mistake.**
+
+  `forgetListings` emptied the `@`-completion file cache and nothing could call it — the cache had no invalidation hook anywhere. `/reload` is the user saying the tree changed, so it drops the listing there.
+
+  Machine-wide rules were read from four of amp's locations and none of glrs's own, so an administrator could install rules for amp on a machine and had no way to install them for glrs. `/etc/glrs/AGENTS.md`, the platform equivalents, and `~/.config/glrs/AGENTS.md` are read now, after amp's and therefore nearer.
+
+  `QueueMode`, `QUEUE_MODES` and `isQueueMode` were declared twice — once in the coding agent and once privately in provider-registry, which validates the setting. Neither package may import the other, which is the same reason the extension API had a duplicate, and the same fix: one declaration in `glrs-core`.
+
+  **The rest were removed**: `repoName`, which both call sites re-derived inline; the `task` key in `firstDetail`, matching no registered tool since a delegation tool was taken out; the `amazon-bedrock` and `google-vertex` entries of the provider factory map, which `createModel` returns before ever consulting; a `?? ""` and a `?? "load"` that no input could reach; three fields destructured from `probe()` and never read; and `packages/glrs-coding-agent/bin/glorious`, whose manifest entry went with the packaging fixes and which the published `files` never shipped.
+
+  **Five items stopped being dead without being touched.** Exporting the SDK made `createAgentCore`, `jsonSessionRepository`, `createProviderRegistry`, `Extension` and `glrs-core`'s own module body reachable, since `sdk.ts` value-exports them and is now the package entry. `ModelOption.apiKey` is in the same position: no config file sets it — credentials stay environment-only, deliberately, because a config file is a thing people commit — but a caller building an option through the SDK can, and that caller exists now.
+
+- 3d1b1f4: A resumed transcript is drawn by the extensions you have loaded.
+
+  Replay ran hundreds of lines before the extensions did, so `renderTool` returned undefined and the markdown transform chain was the identity. However many renderers an extension registered, history got glrs's own default rendering — and because the transcript is printed once into scrollback rather than re-rendered on later paints, "before the extensions" meant "wrong for the rest of the session".
+
+  The replay now happens after they load and still before the startup notices, so the transcript reads first and whatever went wrong at startup reads under it.
+
+  No assertion about output could catch this: both orders produce a transcript, and the wrong one produces a perfectly valid default. The order is the bug, so the order is what is pinned — and the guard is checked against the old arrangement to confirm it fails on it.
+
+  The tone table also stops carrying ANSI escape codes nobody read. Each entry was a `[hex, SGR]` pair and only the hex was ever used; the codes were residue of a renderer that no longer exists, alongside three exported colours with no reader.
 
 ## 1.0.0-next.54
 
