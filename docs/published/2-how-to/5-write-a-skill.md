@@ -45,12 +45,12 @@ allowed-tools: read, grep, glob
 
 the model activating the skill is held to that list for the rest of the turn.
 typing the slash command sends the body with nothing narrowed.
-[tools](../9-reference/3-tools.md).
+[tools](../9-reference/5-tools.md).
 
 ## where they are found
 
 the project's `.glrs/skills/` and `.agents/skills/`, then the same two for the
 user. the first root to claim a name keeps it. full list and every frontmatter
-field: [commands and skills](../9-reference/6-commands-and-skills.md).
+field: [instructions](../9-reference/6-instructions.md).
 
 next: [set project rules](./6-set-project-rules.md)

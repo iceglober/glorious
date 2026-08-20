@@ -14,7 +14,7 @@ highest first:
 4. Project `.glrs/config.json`
 5. User `<user config>/config.json`
 
-there is no default. an unset model raises `No model configured.` paths and merge rules: [configuration](./5-configuration.md).
+there is no default. an unset model raises `No model configured.` paths and merge rules: [configuration](./8-configuration.md).
 
 ## the id
 
@@ -93,4 +93,4 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
 
-see also: [connect a provider](../2-how-to/2-connect-a-provider.md), [configuration](./5-configuration.md)
+see also: [connect a provider](../2-how-to/2-connect-a-provider.md), [configuration](./8-configuration.md)

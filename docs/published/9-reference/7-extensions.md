@@ -15,7 +15,7 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | bundled, when on | bundled |
 | absolute paths in `extensions.load` | config |
 
-`name.ts` or `name/index.ts`, walked in that order. the first claim on a name wins. `<user config>` is the directory named under [configuration](./5-configuration.md). one that throws on import or in its function costs only itself and says so at startup; `glrs doctor` resolves the list without running any of it.
+`name.ts` or `name/index.ts`, walked in that order. the first claim on a name wins. `<user config>` is the directory named under [configuration](./8-configuration.md). one that throws on import or in its function costs only itself and says so at startup; `glrs doctor` resolves the list without running any of it.
 
 ## bundled
 
@@ -37,7 +37,7 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | turn | `send` `abort` `idle` `pending` `usage` `systemPrompt` `prompt` `clear` `compact` `model` `models` `setModel` `tools` `filterTools` `session` `setSessionName` `appendEntry` `entries` |
 | draw | `print` `columns` `clip` `status` `footer` `activity` `markdown` `ui.capture` `ui.setInput` |
 
-every signature: the generated **Extension API** page, built from `packages/glrs-coding-agent/src/public-extension-api.ts`. every payload: [events](./8-events.md).
+every signature: the generated **Extension API** page, built from `packages/glrs-coding-agent/src/public-extension-api.ts`. every payload: [events](./7-extensions.md).
 
 a tool filter narrows what the model may call, from the next model call. every filter has to agree, so they can only narrow; `filterTools` returns `{ lift }`, which removes your own and nobody else's. a handler returning `undefined` changes nothing. a tool name already claimed is refused, and `/extensions` lists it as shadowed.
 
@@ -66,4 +66,69 @@ type Line = Span[];
 
 `@glrs-dev/glrs` exports `createAgentCore`, `createCodingAgent`, `createProviderRegistry` and `jsonSessionRepository` for embedding a session in another host: the generated **SDK** page, built from `packages/glrs-coding-agent/src/sdk.ts`. an extension imports `@glrs-dev/glrs/extension-api` instead.
 
-see also: [your first extension](../1-tutorials/2-first-extension.md), [events](./8-events.md)
+# events
+
+an extension observes and changes a turn through `g.on`.
+
+## g.on
+
+```typescript
+export default (g) => {
+  g.on("tool_call", ({ name }) => (name === "write" ? "this session is read-only" : undefined));
+};
+```
+
+1. handlers run in registration order, one at a time, each awaited.
+2. a handler that throws is reported and the chain continues: `<event> handler failed: <message>`, prefixed `(extension)` in the TUI, on stderr under `-p`.
+3. `false` ends the chain. no later handler runs.
+4. otherwise the last handler returning anything but `undefined` wins.
+5. an event with an empty cell below ignores what its handlers return.
+
+## events
+
+| event | payload | returning |
+| --- | --- | --- |
+| `session_start` | `{root}` | |
+| `session_end` | `{root}` | |
+| `input` | `{text}` | string replaces what was typed, `false` swallows it |
+| `user_bash` | `{command}` | |
+| `turn_start` | `{text}` | |
+| `turn_end` | `{text}` | |
+| `idle` | `{}` | |
+| `message` | `{kind: "text" \| "reasoning", text}` | |
+| `before_request` | `{prompt, messages}` | string appended to this turn's message |
+| `tool_call` | `{name, input}` | string or `false` blocks the call |
+| `tool_start` | `{name, input}` | |
+| `tool_end` | `{name, input, ok, result, detail, elapsedMs}` | string replaces what the model is told the tool returned |
+| `model_select` | `{model, variant?}` | |
+| `usage` | `{input, output, cached, cost?, contextTokens}` | |
+| `reasoning` | `{text, elapsedMs}` | |
+| `error` | `{message}` | |
+| `compact` | `{dropped, kept, automatic}` | |
+| `context` | `{messages, step}` | `ModelMessage[]` replaces what this call sends |
+| `before_provider_request` | `{url, headers, body}` | `headers` merge over the request's, `body` replaces it |
+| `after_provider_response` | `{url, status, headers}` | |
+| `agent_start` | `{ prompt }` | nothing |
+| `agent_end` | `{ text }` | nothing |
+| `before_agent_start` | `{ prompt, systemPrompt }` | a string replaces the prompt, `false` cancels the turn, an object replaces either field |
+| `project_trust` | `{ root }` | `trusted`, `denied` or `deferred` |
+| `session_before_compact` | `{ automatic, instruction? }` | `false` cancels it, an object supplies the summary or the instruction |
+| `session_before_fork` | `{ id, at? }` | `false` cancels the fork |
+| `session_before_switch` | `{ from, to }` | `false` cancels the switch |
+| `session_shutdown` | `{ root }` | nothing, awaited before the process exits |
+
+## print mode
+
+`glrs -p` fires every event except `input`, `user_bash`, `model_select` and `compact`.
+
+## sharp edges
+
+- `context` fires once per stream attempt, not once per step. `step` is the attempt number, from 1, and a re-sent stream fires it again.
+- `context` replaces what one call sends. the stored conversation is untouched.
+- `before_request.messages` is a count of stored messages, not the messages. read them in `context`.
+- under `-p`, `before_request.messages` is always `0`.
+- a blocked `tool_call` reaches the model as the tool's result: `ERROR: <your string>`, or `ERROR: an extension blocked <name> for this turn.` for `false`. the turn continues.
+- the TUI fires `idle` then `turn_end`. `-p` fires `turn_end` then `idle`.
+- both hosts await `session_end`, so work on the way out finishes. the TUI's screen stops as soon as it resolves, so printing there lands nowhere.
+
+see also: [your first extension](../1-tutorials/2-first-extension.md), [events](./7-extensions.md)

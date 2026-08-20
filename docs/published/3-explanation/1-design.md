@@ -45,4 +45,23 @@ a default provider guesses whose account is billed and which endpoint sees the t
 - **project root**: `git rev-parse --show-toplevel`, or the working directory outside a repo
 - **cache breakpoint**: a mark on the second-to-last message; Anthropic and Bedrock cache everything up to it
 
-see also: [a turn](./3-a-turn.md), [permissions](./2-permissions.md), [extensions](../9-reference/7-extensions.md)
+## permissions
+# permissions
+
+glrs runs with the permissions of its process: any file you can edit, any
+command you can run. there is no sandbox and no approval prompt.
+
+## paths
+
+the file tools resolve relative paths against the project root and take
+absolute ones as given. nothing is refused: `bash` sits unconfined beside them,
+so a path check would only send the model the long way round.
+
+## boundaries
+
+a confirmation prompt is not a boundary once an agent can edit and execute
+code. an extension can refuse a call from the `tool_call` hook, but it runs in
+the same process. real boundaries come from outside: git review, worktrees,
+containers, or operating-system controls.
+
+see also: [a turn](./2-a-turn.md), [design](./1-design.md), [extensions](../9-reference/7-extensions.md)

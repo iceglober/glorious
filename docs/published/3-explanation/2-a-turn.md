@@ -26,7 +26,7 @@ the mark therefore advances each turn. these providers match on prefix, so a lon
 
 steering appends to the messages at the next step boundary of the running turn. the model reads it before it chooses its next action, and the prefix ahead of it is untouched, so it costs the tokens of what was said and nothing more.
 
-a follow-up is its own turn, delivered once the agent has run out of work, so it cannot change what the running turn does. steering is the deliberate act, so it is the one that carries a modifier ([keys](../9-reference/2-keys.md)).
+a follow-up is its own turn, delivered once the agent has run out of work, so it cannot change what the running turn does. steering is the deliberate act, so it is the one that carries a modifier ([turns](../9-reference/4-turns.md)).
 
 steering that arrives too late to join the turn becomes a follow-up, ahead of the ones already waiting.
 
@@ -42,14 +42,9 @@ the third exists because the first two cannot see a mid-response drop: fetch res
 
 ## compaction
 
-past 75% of the context window the older part of the conversation is summarised and replaced by one message:
+the context cannot grow forever, so past a threshold the older part is
+replaced by a summary. the cut lands on a user message because a tool result
+separated from its call is an invalid request. mechanics and thresholds:
+[sessions](../9-reference/3-sessions.md).
 
-```text
-<earlier-conversation>
-…
-</earlier-conversation>
-```
-
-a tool result separated from the call it answers is an invalid request, so the cut walks back to the newest user message that still leaves about 20k tokens of recent work. everything after it survives verbatim. everything before it is the brief.
-
-see also: [events](../9-reference/8-events.md), [models](../9-reference/4-models.md)
+see also: [events](../9-reference/7-extensions.md), [models](../9-reference/2-models.md)

@@ -59,6 +59,6 @@ an unknown prefix is an OpenAI-compatible endpoint and needs a base URL: Ollama,
 }
 ```
 
-model ids and precedence: [models](../9-reference/4-models.md).
+model ids and precedence: [models](../9-reference/2-models.md).
 
-see also: [models](../9-reference/4-models.md), [configuration](../9-reference/5-configuration.md)
+see also: [models](../9-reference/2-models.md), [configuration](../9-reference/8-configuration.md)

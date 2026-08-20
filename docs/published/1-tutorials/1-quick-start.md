@@ -57,4 +57,4 @@ glrs --model anthropic/claude-opus-5 --resume
 
 arrows move, `enter` opens, `esc` cancels. the session picks up where it stopped.
 
-next: [your first extension](./2-first-extension.md), [keys](../9-reference/2-keys.md)
+next: [your first extension](./2-first-extension.md), [turns](../9-reference/4-turns.md)

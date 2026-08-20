@@ -565,13 +565,23 @@ describe("the request pipeline is interceptable", () => {
   });
 });
 
-// docs/published/9-reference/8-events.md is the page the model is pointed at to learn what
+// docs/published/9-reference/7-extensions.md is the page the model is pointed at to learn what
 // it can hook. A page that lists an event glrs does not have, or omits one
 // it does, is worse than no page.
 describe("the internals page matches the code", () => {
-  const page = (): string =>
+  // Scoped to the events section. The page carries other tables with the same
+  // row shape (discovery, the bundled roster, the API), and counting those as
+  // events made the guard fail on rows that were never events.
+  const page = (): string => {
+    const whole = eventsPage();
+    const start = whole.indexOf("## events");
+    const end = whole.indexOf("\n## ", start + 1);
+    return start < 0 ? whole : whole.slice(start, end < 0 ? undefined : end);
+  };
+
+  const eventsPage = (): string =>
     readFileSync(
-      join(here, "..", "..", "..", "docs", "published", "9-reference", "8-events.md"),
+      join(here, "..", "..", "..", "docs", "published", "9-reference", "7-extensions.md"),
       "utf8",
     );
 

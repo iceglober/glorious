@@ -64,4 +64,4 @@ drop the stash when you are done:
 git stash drop
 ```
 
-next: [extensions](../9-reference/7-extensions.md), [events](../9-reference/8-events.md)
+next: [extensions](../9-reference/7-extensions.md), [events](../9-reference/7-extensions.md)

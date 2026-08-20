@@ -4,7 +4,7 @@ title: configuration
 
 # configuration
 
-JSON files, hand-edited; unknown keys are ignored. every key is in the schema at `https://glrs.dev/config.schema.json`, which `$schema` points editors at. the `providers` block: [models](./4-models.md).
+JSON files, hand-edited; unknown keys are ignored. every key is in the schema at `https://glrs.dev/config.schema.json`, which `$schema` points editors at. the `providers` block: [models](./2-models.md).
 
 ## files
 
@@ -78,20 +78,6 @@ reported in the transcript as `(config)`, on stderr as `[config]` under `-p`, an
 
 ## sessions
 
-`$XDG_DATA_HOME/glrs/sessions/<id>.json`, else `~/.local/share/glrs/sessions/`. prompt history is `prompts.json` beside them.
+where they are stored, and what is in one: [sessions](./3-sessions.md).
 
-```json
-{
-  "schema": 2,
-  "id": "3f9c1a20",
-  "createdAt": "",
-  "updatedAt": "",
-  "cwd": "",
-  "events": [],
-  "contextTokens": 0
-}
-```
-
-`.../glorious/sessions/` is read, never written: a session resumed from there is saved to the new path.
-
-see also: [turn things off](../2-how-to/8-turn-things-off.md), [models](./4-models.md)
+see also: [turn things off](../2-how-to/8-turn-things-off.md), [models](./2-models.md)

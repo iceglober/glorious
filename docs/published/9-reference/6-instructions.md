@@ -10,7 +10,7 @@ a command is a prompt you invoke with `/name`. a skill is instructions the model
 
 | kind | roots, in order |
 | --- | --- |
-| commands | `<root>/.glrs/commands/*.md`, [`<user config>`](./5-configuration.md)`/commands/*.md` |
+| commands | `<root>/.glrs/commands/*.md`, [`<user config>`](./8-configuration.md)`/commands/*.md` |
 | skills | `<root>/.glrs/skills`, `<root>/.agents/skills`, `<user config>/skills`, `~/.config/agents/skills`, then each loaded extension's `skills/` |
 
 ## built-in commands

@@ -73,13 +73,13 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   Read them whole; they are written for you and they cross-reference each other.
 
   - 9-reference/7-extensions.md          writing an extension: the API, discovery, rendering
-  - 9-reference/8-events.md              every lifecycle event, what it carries, what returning changes
-  - 9-reference/6-commands-and-skills.md \`/name\` markdown commands, SKILL.md skills, and AGENTS.md
-  - 9-reference/3-tools.md               the tools that reach the machine and their limits
-  - 9-reference/5-configuration.md       the three config files, merge rules, diagnostics
-  - 9-reference/4-models.md              choosing a model, providers, variants, context metadata
+  - 9-reference/3-sessions.md             sessions on disk, events, resume, fork, compaction
+  - 9-reference/6-instructions.md         \`/name\` markdown commands, SKILL.md skills, and AGENTS.md
+  - 9-reference/5-tools.md               the tools that reach the machine and their limits
+  - 9-reference/8-configuration.md       the three config files, merge rules, diagnostics
+  - 9-reference/2-models.md              choosing a model, providers, variants, context metadata
   - 9-reference/1-cli.md                 argv routing, \`-p\`, and subcommands
-  - 3-explanation/3-a-turn.md            how a turn runs, caching, steering, compaction
+  - 3-explanation/2-a-turn.md            how a turn runs, caching, steering, compaction
   - 1-tutorials/2-first-extension.md     a worked extension, start to finish
 
   Read them when the user asks about glrs itself, and especially when they

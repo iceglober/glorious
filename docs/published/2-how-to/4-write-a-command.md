@@ -6,7 +6,7 @@ title: write a command
 
 a markdown file becomes a slash command. glrs has three kinds: native ones that
 ship, markdown ones you write, and skills, which answer to `/skill:name`. see
-[commands and skills](../9-reference/6-commands-and-skills.md).
+[instructions](../9-reference/6-instructions.md).
 
 ## write it
 
@@ -37,7 +37,7 @@ with no placeholder gets the arguments appended in an `<arguments>` block.
 ## make it available everywhere
 
 put the file in `<user config>/commands/` instead of the project. on a name
-clash the project wins. [configuration](../9-reference/5-configuration.md)
+clash the project wins. [configuration](../9-reference/8-configuration.md)
 resolves `<user config>`.
 
 `/reload` picks up a new file without restarting.

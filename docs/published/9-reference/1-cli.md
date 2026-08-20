@@ -50,9 +50,7 @@ a long flag glrs does not know is lifted out before parsing, lowercased, and han
 
 ## subcommands
 
-a first bare word glrs does not claim is offered to the extensions, which load to answer. no session, no model, no alternate screen. `g.print` goes to stdout undecorated, and session-only members of the extension API throw. an unclaimed word is `Unknown subcommand 'x'.` plus the help text, exit 1.
-
-`--help` is the only other route that loads extensions. `update` runs `bun add -g @glrs-dev/glrs@next` with its output attached.
+a first bare word glrs does not claim goes to the extensions: [subcommands](./9-subcommands.md).
 
 ## print mode
 
@@ -76,4 +74,4 @@ extensions: builtins (bundled)
 
 with credentials present the third line is `credentials: found`. with no model the first is `model: not configured`, followed by the reason and the built-in provider ids. `--json` emits the same report as an object: `diagnostics`, `model`, `provider`, `missing`, `note`, `extensions`.
 
-see also: [models](./4-models.md), [configuration](./5-configuration.md), [run in a pipeline](../2-how-to/9-run-in-a-pipeline.md)
+see also: [models](./2-models.md), [configuration](./8-configuration.md), [run in a pipeline](../2-how-to/9-run-in-a-pipeline.md)

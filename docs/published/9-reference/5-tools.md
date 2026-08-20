@@ -19,7 +19,7 @@ title: tools
 
 every tool but `activate_skill` comes from an extension. that one stays in the core because it needs the skill body, which the extension API does not carry; it registers first, so an extension can still replace it. `tools.disable` withholds a name. `ask_user` needs the TUI.
 
-`read` prefixes each line with `N|`, display only. relative paths resolve against the project root, absolute ones are taken as given. nothing is refused: [permissions](../3-explanation/2-permissions.md). `grep` and `glob` respect .gitignore and skip `.git`; `includeIgnored` reaches ignored and hidden files.
+`read` prefixes each line with `N|`, display only. relative paths resolve against the project root, absolute ones are taken as given. nothing is refused: [design](../3-explanation/1-design.md). `grep` and `glob` respect .gitignore and skip `.git`; `includeIgnored` reaches ignored and hidden files.
 
 ## limits
 
@@ -39,4 +39,4 @@ one string. `bash` returns stdout, then stderr, then `[exit N]` when it fails. a
 
 `edit` resolves every replacement in every file before writing anything. one bad replacement leaves every file unchanged. each file is renamed into place.
 
-see also: [permissions](../3-explanation/2-permissions.md), [turn things off](../2-how-to/8-turn-things-off.md)
+see also: [design](../3-explanation/1-design.md), [turn things off](../2-how-to/8-turn-things-off.md)
