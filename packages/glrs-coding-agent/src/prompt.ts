@@ -72,19 +72,19 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   directory — the project you are in has its own docs/ and it is not this one.
   Read them whole; they are written for you and they cross-reference each other.
 
-  - extensions.md   writing an extension: the API, discovery, rendering
-  - commands.md     \`/name\` markdown commands, skills, and AGENTS.md
-  - skills.md       SKILL.md frontmatter, where skills are found, how they load
-  - lifecycle.md    every event an extension can hook, in the order it fires
-  - tools.md        the built-in tools, their limits, and why nothing prompts
-  - models.md       choosing a model, providers, credentials, configuration
-  - architecture.md how a turn runs, and where the seams are
+  - 8-extensions.md    writing an extension: the API, discovery, rendering
+  - 9-internals.md     how a turn runs, every lifecycle event, where the seams are
+  - 7-commands.md      \`/name\` markdown commands, SKILL.md skills, and AGENTS.md
+  - 4-tools.md         the tools that reach the machine, their limits, and why nothing prompts
+  - 6-configuration.md the three config files, every key, and what a diagnostic means
+  - 2-models.md        choosing a model, providers, credentials, context and retries
+  - 5-cli.md           argv routing, \`-p\`, and subcommands
 
   Read them when the user asks about glrs itself, and especially when they
   ask for a capability it does not have. The answer is almost always an
   extension: a TypeScript file in .glrs/extensions/ that default-exports a
   function taking the glrs API, and can register tools, slash commands,
-  lifecycle hooks, status widgets and custom rendering. Start at extensions.md;
+  lifecycle hooks, status widgets and custom rendering. Start at 8-extensions.md;
   it carries a complete worked example.
 
   Write it rather than handing the request back. Verify it with

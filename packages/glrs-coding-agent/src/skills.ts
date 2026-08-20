@@ -45,7 +45,7 @@ export type Skills = {
 // `disable-model-invocation` is NOT part of the Agent Skills specification.
 // Enough agents grew the same field independently that a skill carrying it now
 // expects it to be honoured everywhere, so glrs honours it — but it is a
-// convention, not a standard, and is documented as one in docs/skills.md.
+// convention, not a standard, and is documented as one in docs/published/7-commands.md.
 const MODEL_INVOCATION_FIELD = "disable-model-invocation";
 
 // Skills answer to `/skill:name`. They used to take the bare `/name`, which put

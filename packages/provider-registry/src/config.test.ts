@@ -71,8 +71,14 @@ describe("loadConfig", () => {
     });
   });
 
+  // The scratch home matters: `loadConfig` reads the personal scope as well as
+  // the project one, so without it this asserted against whatever the developer
+  // running it happens to have in ~/.config/glrs/config.json. It passed on CI,
+  // which has none, and failed on any machine that had configured a model.
   test("a non-string value is dropped rather than trusted", async () => {
-    const { config } = await loadConfig(await project(`{"model":42,"variant":""}`));
+    const home = await mkdtemp(join(tmpdir(), "glrs-home-"));
+    roots.push(home);
+    const { config } = await loadConfig(await project(`{"model":42,"variant":""}`), home);
     expect(config.model).toBeUndefined();
     expect(config.variant).toBeUndefined();
   });

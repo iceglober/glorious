@@ -109,15 +109,15 @@ export const generateDocuments = async (
   const schema = JSON.parse(await readFile(join(site, "public", "config.schema.json"), "utf8")) as Schema & {
     $id: string;
   };
-  const directory = join(site, "generated", "4-reference");
+  const directory = join(site, "generated", "9-reference");
   await mkdir(directory, { recursive: true });
   await Promise.all([
     writeFile(
-      join(directory, "4-configuration-options.md"),
+      join(directory, "1-configuration-options.md"),
       document("configuration options", configReference(schema)),
     ),
     writeFile(
-      join(directory, "5-all-providers.md"),
+      join(directory, "2-all-providers.md"),
       document("all providers", providerReference(PROVIDERS, PROVIDER_ALIASES)),
     ),
   ]);

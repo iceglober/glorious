@@ -32,9 +32,9 @@ describe("generated documentation", () => {
     await mkdir(join(site, "public"), { recursive: true });
     await writeFile(join(site, "public", "config.schema.json"), JSON.stringify(schema));
     await generateDocuments(site);
-    expect(await readFile(join(site, "generated", "4-reference", "4-configuration-options.md"), "utf8"))
+    expect(await readFile(join(site, "generated", "9-reference", "1-configuration-options.md"), "utf8"))
       .toContain("title: configuration options");
-    expect(await readFile(join(site, "generated", "4-reference", "5-all-providers.md"), "utf8"))
+    expect(await readFile(join(site, "generated", "9-reference", "2-all-providers.md"), "utf8"))
       .toContain("title: all providers");
     await rm(site, { recursive: true, force: true });
   });
