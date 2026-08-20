@@ -83,9 +83,9 @@ export type Usage = {
 // applied. Provider connection settings are deliberately outside this compact
 // view; an extension that needs them can read config itself.
 export type Settings = {
-  tool_timeout_ms?: number;
-  steering_mode?: "one-at-a-time" | "all";
-  follow_up_mode?: "one-at-a-time" | "all";
+  toolTimeoutMs?: number;
+  steeringMode?: "one-at-a-time" | "all";
+  followUpMode?: "one-at-a-time" | "all";
 };
 
 export type ExtensionContext = {

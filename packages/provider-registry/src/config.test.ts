@@ -30,12 +30,12 @@ afterAll(async () => {
 describe("loadConfig", () => {
   test("reads the model, variant, and tool timeout a project pins", async () => {
     const root = await project(
-      `{"model":"anthropic/claude-opus-5","variant":"high","tool_timeout_ms":120000}`,
+      `{"model":"anthropic/claude-opus-5","variant":"high","toolTimeoutMs":120000}`,
     );
     expect((await loadConfig(root, join(root, "nohome"))).config).toMatchObject({
       model: "anthropic/claude-opus-5",
       variant: "high",
-      tool_timeout_ms: 120000,
+      toolTimeoutMs: 120000,
     });
   });
 
@@ -287,26 +287,24 @@ describe("how a queue delivers", () => {
   test("nothing sets either mode by default", async () => {
     const root = await project('{"model":"azure/x"}');
     const { config } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBeUndefined();
-    expect(config.follow_up_mode).toBeUndefined();
+    expect(config.steeringMode).toBeUndefined();
+    expect(config.followUpMode).toBeUndefined();
   });
 
-  test("the snake_case spellings glrs uses elsewhere", async () => {
-    const root = await project('{"steering_mode":"all","follow_up_mode":"one-at-a-time"}');
-    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBe("all");
-    expect(config.follow_up_mode).toBe("one-at-a-time");
-    expect(diagnostics).toEqual([]);
-  });
-
-  // The camelCase names are what these settings are called in the docs of the
-  // agent this queue was modelled on, so they are what gets typed first.
-  test("the camelCase spellings are read too", async () => {
+  test("the camelCase spellings are read", async () => {
     const root = await project('{"steeringMode":"all","followUpMode":"all"}');
     const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBe("all");
-    expect(config.follow_up_mode).toBe("all");
+    expect(config.steeringMode).toBe("all");
+    expect(config.followUpMode).toBe("all");
     expect(diagnostics).toEqual([]);
+  });
+
+  test("snake_case names are not config keys", async () => {
+    const root = await project('{"steering_mode":"all","follow_up_mode":"all"}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(config.steeringMode).toBeUndefined();
+    expect(config.followUpMode).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain("nothing here is a glrs setting");
   });
 
   // A recognised key with an unusable value is otherwise dropped exactly as
@@ -314,16 +312,16 @@ describe("how a queue delivers", () => {
   test("a value that is not a mode is reported under the name that was written", async () => {
     const root = await project('{"steeringMode":"batch"}');
     const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
-    expect(config.steering_mode).toBeUndefined();
+    expect(config.steeringMode).toBeUndefined();
     expect(diagnostics.join("\n")).toContain('"steeringMode" should be "one-at-a-time" or "all"');
   });
 
   test("Project wins over User, one key at a time", async () => {
-    const home = await userConfig('{"steering_mode":"all","follow_up_mode":"all"}');
-    const root = await project('{"follow_up_mode":"one-at-a-time"}');
+    const home = await userConfig('{"steeringMode":"all","followUpMode":"all"}');
+    const root = await project('{"followUpMode":"one-at-a-time"}');
     const { config } = await loadConfig(root, home);
-    expect(config.steering_mode).toBe("all");
-    expect(config.follow_up_mode).toBe("one-at-a-time");
+    expect(config.steeringMode).toBe("all");
+    expect(config.followUpMode).toBe("one-at-a-time");
   });
 });
 

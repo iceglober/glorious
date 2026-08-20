@@ -80,7 +80,7 @@ const originOf = (g: Glrs, path: string): string => {
 };
 
 export default function builtins(g: Glrs): void {
-  for (const spec of createCodingTools(g.root, g.settings().tool_timeout_ms)) g.tool(spec);
+  for (const spec of createCodingTools(g.root, g.settings().toolTimeoutMs)) g.tool(spec);
 
   // Registered only where the answer can actually be written down. Without it
   // a decline lasts until the next turn and the same offer comes back forever,

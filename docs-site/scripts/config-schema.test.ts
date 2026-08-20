@@ -15,14 +15,20 @@ describe("hosted config schema", () => {
     expect(schema.$id).toBe(CONFIG_SCHEMA_URL);
   });
 
+  test("uses camelCase for every config key", () => {
+    expect(
+      Object.keys(schema.properties).some((key) => key !== "$schema" && key.includes("_")),
+    ).toBe(false);
+  });
+
   test("covers every documented top-level setting", () => {
     for (const key of [
       "$schema",
       "model",
       "variant",
-      "tool_timeout_ms",
-      "steering_mode",
-      "follow_up_mode",
+      "toolTimeoutMs",
+      "steeringMode",
+      "followUpMode",
       "extensions",
       "tools",
       "agentConfigAllowlist",

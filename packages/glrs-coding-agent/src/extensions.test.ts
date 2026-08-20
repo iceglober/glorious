@@ -47,7 +47,7 @@ const host: ExtensionHost = {
     captured.push(spec);
     return { close: () => {}, repaint: () => {} };
   },
-  settings: () => ({ tool_timeout_ms: 1000 }),
+  settings: () => ({ toolTimeoutMs: 1000 }),
   available: () => [],
   setExtension: async () => "not-allowed" as const,
   inspect: () => ({ commands: [], skills: [], extensions: [] }),

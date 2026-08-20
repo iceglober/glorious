@@ -45,7 +45,7 @@ const harness = () => {
   const host = {
     root: "/tmp/project",
     mode: "tui" as const,
-    settings: () => ({ tool_timeout_ms: 4242, steering_mode: "all" as const }),
+    settings: () => ({ toolTimeoutMs: 4242, steeringMode: "all" as const }),
     available: () => [
       { name: "builtins", summary: "the tools and commands", state: "on" as const },
       { name: "web-fetch", summary: "fetches web pages", state: "undecided" as const },
@@ -278,8 +278,8 @@ describe("what the host tells an extension about the session", () => {
   test("settings carry the resolved config, without the provider blocks", () => {
     const { g } = harness();
     const settings = g.settings();
-    expect(settings.tool_timeout_ms).toBe(4242);
-    expect(settings.steering_mode).toBe("all");
+    expect(settings.toolTimeoutMs).toBe(4242);
+    expect(settings.steeringMode).toBe("all");
     // Provider settings hold API keys. An extension that wants them can read
     // the config files itself rather than being handed them.
     expect("providers" in settings).toBe(false);

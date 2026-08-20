@@ -222,7 +222,7 @@ const main = async (): Promise<void> => {
   const toolTimeoutMs =
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
       ? envToolTimeout
-      : config.config.tool_timeout_ms;
+      : config.config.toolTimeoutMs;
   let skills = await loadSkills(root);
   // Slash commands come from two places: markdown files in a commands
   // directory, and skills, which answer under a `skill:` prefix of their own.
@@ -770,8 +770,8 @@ const main = async (): Promise<void> => {
       return typeof added === "string" ? added : undefined;
     },
     history: messagesOf(session.events),
-    steeringMode: config.config.steering_mode,
-    followUpMode: config.config.follow_up_mode,
+    steeringMode: config.config.steeringMode,
+    followUpMode: config.config.followUpMode,
   });
 
   // Loaded after the screen exists, so a failure has somewhere to be seen, and
@@ -800,9 +800,9 @@ const main = async (): Promise<void> => {
       return outcome;
     },
     settings: () => ({
-      tool_timeout_ms: toolTimeoutMs,
-      steering_mode: config.config.steering_mode,
-      follow_up_mode: config.config.follow_up_mode,
+      toolTimeoutMs: toolTimeoutMs,
+      steeringMode: config.config.steeringMode,
+      followUpMode: config.config.followUpMode,
     }),
     send: (text, options) => {
       chat.send(text, options.label ?? null, options.steer === true ? "steer" : "follow-up");

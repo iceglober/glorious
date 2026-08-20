@@ -47,7 +47,7 @@ export const runPrint = async (
   const toolTimeoutMs =
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
       ? envToolTimeout
-      : loadedConfig.config.tool_timeout_ms;
+      : loadedConfig.config.toolTimeoutMs;
 
   const agent = createAgent({
     root: where.root,
@@ -100,7 +100,7 @@ export const runPrint = async (
     {
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
-      settings: () => ({ tool_timeout_ms: toolTimeoutMs }),
+      settings: () => ({ toolTimeoutMs: toolTimeoutMs }),
       available: () => firstPartyExtensions(loadedConfig.config.extensions),
       // A headless run is one turn with no one to answer, so there is nobody to
       // agree to anything and nothing to record.

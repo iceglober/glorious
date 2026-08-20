@@ -44,11 +44,11 @@ export type Config = {
   // Reasoning effort, when the model advertises one.
   variant?: string;
   // Maximum time in milliseconds for a built-in shell/search tool.
-  tool_timeout_ms?: number;
+  toolTimeoutMs?: number;
   // Alt+Enter messages, delivered into the turn that is already running.
-  steering_mode?: QueueMode;
+  steeringMode?: QueueMode;
   // Enter messages, delivered once the agent has finished all its work.
-  follow_up_mode?: QueueMode;
+  followUpMode?: QueueMode;
   extensions?: ExtensionSettings;
   tools?: ToolSettings;
   // Config is hand-edited by default: nothing glrs does writes it. Listing a
@@ -233,14 +233,6 @@ const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
 const queueModeOf = (value: unknown): QueueMode | undefined =>
   QUEUE_MODES.includes(value as QueueMode) ? (value as QueueMode) : undefined;
 
-// The camelCase spellings are what the two settings are called in the docs of
-// the agent this queue was modelled on, so they are what someone arriving from
-// there types first. Reading both costs a line and saves a silent no-op.
-const ALSO_KNOWN: Record<string, keyof Config> = {
-  steeringMode: "steering_mode",
-  followUpMode: "follow_up_mode",
-};
-
 // Forgetting an entry here is not cosmetic: a file that configures only
 // extensions would be told "nothing here is a glrs setting — the whole file is
 // ignored" while the extensions loaded anyway, which is a diagnostic that
@@ -249,14 +241,13 @@ const KNOWN = [
   "$schema",
   "model",
   "variant",
-  "tool_timeout_ms",
-  "steering_mode",
-  "follow_up_mode",
+  "toolTimeoutMs",
+  "steeringMode",
+  "followUpMode",
   "extensions",
   "tools",
   "agentConfigAllowlist",
   "providers",
-  ...Object.keys(ALSO_KNOWN),
 ];
 
 // Read what is recognised and ignore the rest — a config that has grown a key
@@ -282,19 +273,12 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     wrong("model", 'a string like "azure/gpt-5.6-sol"');
   if (raw.variant !== undefined && stringOf(raw.variant) === undefined)
     wrong("variant", 'a string like "high"');
-  if (raw.tool_timeout_ms !== undefined && positiveNumberOf(raw.tool_timeout_ms) === undefined)
-    wrong("tool_timeout_ms", "a positive number");
-  // Read under either spelling, and reported under the one that was written so
-  // the message points at the line in the file.
-  const queueMode = (key: "steering_mode" | "follow_up_mode"): QueueMode | undefined => {
-    const alias = Object.keys(ALSO_KNOWN).find((name) => ALSO_KNOWN[name] === key);
-    for (const name of [key, alias].filter((one): one is string => one !== undefined)) {
-      if (raw[name] === undefined) continue;
-      const mode = queueModeOf(raw[name]);
-      if (mode === undefined) wrong(name, '"one-at-a-time" or "all"');
-      else return mode;
-    }
-    return undefined;
+  if (raw.toolTimeoutMs !== undefined && positiveNumberOf(raw.toolTimeoutMs) === undefined)
+    wrong("toolTimeoutMs", "a positive number");
+  const queueMode = (key: "steeringMode" | "followUpMode"): QueueMode | undefined => {
+    const mode = queueModeOf(raw[key]);
+    if (raw[key] !== undefined && mode === undefined) wrong(key, '"one-at-a-time" or "all"');
+    return mode;
   };
   // Per entry, not per list: an array with one number in it is a list that half
   // works, and the half that does not is otherwise invisible.
@@ -386,9 +370,9 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   return {
     model: stringOf(raw.model),
     variant: stringOf(raw.variant),
-    tool_timeout_ms: positiveNumberOf(raw.tool_timeout_ms),
-    steering_mode: queueMode("steering_mode"),
-    follow_up_mode: queueMode("follow_up_mode"),
+    toolTimeoutMs: positiveNumberOf(raw.toolTimeoutMs),
+    steeringMode: queueMode("steeringMode"),
+    followUpMode: queueMode("followUpMode"),
     ...(extensions !== undefined ? { extensions } : {}),
     ...(tools !== undefined ? { tools } : {}),
     ...(allowlist !== undefined ? { agentConfigAllowlist: allowlist } : {}),
@@ -421,9 +405,9 @@ const mergedLists = <T extends Record<string, readonly string[] | undefined>>(
 const merge = (near: Config, far: Config): Config => ({
   model: near.model ?? far.model,
   variant: near.variant ?? far.variant,
-  tool_timeout_ms: near.tool_timeout_ms ?? far.tool_timeout_ms,
-  steering_mode: near.steering_mode ?? far.steering_mode,
-  follow_up_mode: near.follow_up_mode ?? far.follow_up_mode,
+  toolTimeoutMs: near.toolTimeoutMs ?? far.toolTimeoutMs,
+  steeringMode: near.steeringMode ?? far.steeringMode,
+  followUpMode: near.followUpMode ?? far.followUpMode,
   extensions: mergedLists<ExtensionSettings>(["load", "disable"], near.extensions, far.extensions),
   tools: mergedLists<ToolSettings>(["disable"], near.tools, far.tools),
   // Nearest wins rather than adding up: permission to write your config is not
