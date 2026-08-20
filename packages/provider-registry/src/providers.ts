@@ -52,7 +52,7 @@ export const PROVIDERS: readonly ProviderSpec[] = [
     // Application Default Credentials, not an API key.
     env: ["GOOGLE_APPLICATION_CREDENTIALS"],
     needs: ["GOOGLE_CLOUD_PROJECT or providers.google-vertex.project"],
-    note: "Authenticates with ADC — `gcloud auth application-default login` is usually enough.",
+    note: "Authenticates with ADC, `gcloud auth application-default login` is usually enough.",
   },
   {
     id: "amazon-bedrock",
@@ -149,7 +149,7 @@ export const missingFor = (
     return [
       near === undefined
         ? compatibleNote(id)
-        : `unknown provider "${id}" — did you mean "${near}"? Otherwise set providers.${id}.api ` +
+        : `unknown provider "${id}", did you mean "${near}"? Otherwise set providers.${id}.api ` +
           "for an OpenAI-compatible endpoint",
     ];
   }

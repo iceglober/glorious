@@ -96,7 +96,7 @@ export default function builtins(g: Glrs): void {
     g.tool({
       name: "configure_extension",
       description:
-        "Record that a first-party extension should or should not load, once the user has said so. Only for a clear answer to a suggestion you made — never to change what is loaded on your own initiative. Takes effect after a reload or restart.",
+        "Record that a first-party extension should or should not load, once the user has said so. Only for a clear answer to a suggestion you made, never to change what is loaded on your own initiative. Takes effect after a reload or restart.",
       input: g.z.object({
         name: g.z.string().describe("The extension's name, as listed in the available section"),
         enable: g.z
@@ -141,7 +141,7 @@ export default function builtins(g: Glrs): void {
           { name: "!", note: "run the rest of the line as a shell command" },
           {
             name: "@",
-            note: "reference a file or directory — its contents, or its listing, travel with the message",
+            note: "reference a file or directory, its contents, or its listing, travel with the message",
           },
           ...keys.map((one) => ({ name: chord(one), note: one.description })),
         ]),
@@ -196,7 +196,7 @@ export default function builtins(g: Glrs): void {
         if (!which) return g.print(`Usage: /extensions ${verb} <name>`, "warning");
         const outcome = await g.setExtension(which, verb === "enable");
         const said: Record<typeof outcome, string> = {
-          written: `${which} will ${verb === "enable" ? "load" : "not load"} — reload or restart to apply`,
+          written: `${which} will ${verb === "enable" ? "load" : "not load"}, reload or restart to apply`,
           already: `${which} is already ${verb === "enable" ? "enabled" : "disabled"}`,
           unknown: `${which} is not a first-party extension`,
           "not-allowed":
@@ -254,7 +254,7 @@ export default function builtins(g: Glrs): void {
       if (outcome === "cleared") return g.print("(context cleared)");
       g.print(
         outcome === "busy"
-          ? "(cannot clear while a turn is running — press Esc first)"
+          ? "(cannot clear while a turn is running, press Esc first)"
           : "(nothing to clear)",
       );
     },
@@ -266,7 +266,7 @@ export default function builtins(g: Glrs): void {
       await g.reload();
       const { skills, commands, extensions } = g.inspect();
       g.print(
-        `(reloaded — ${extensions.length} extensions, ${skills.length} skills, ${commands.length} commands)`,
+        `(reloaded, ${extensions.length} extensions, ${skills.length} skills, ${commands.length} commands)`,
       );
     },
   });

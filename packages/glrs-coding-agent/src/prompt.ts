@@ -60,7 +60,7 @@ export const systemPrompt = (ctx: { rules: string }): string => `
     on every later turn, so grep for the line before reading the file it is in.
   - Verify with this repo's own tests, linter, and typechecker. Find those
     commands in the repo; never invent them. Static checks do not prove
-    user-facing behaviour — check that separately.
+    user-facing behaviour: check that separately.
   - Be concise. Show file paths clearly. Close with what changed and the
     evidence that it works.
 </guidelines>
@@ -69,7 +69,7 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   glrs's own documentation is on this machine, at
   ${docsPath()}
   Resolve every path below under that directory, never under the working
-  directory — the project you are in has its own docs/ and it is not this one.
+  directory, the project you are in has its own docs/ and it is not this one.
   Read them whole; they are written for you and they cross-reference each other.
 
   - 8-extensions.md    writing an extension: the API, discovery, rendering

@@ -7,7 +7,7 @@ title: getting started
 glrs is a terminal coding agent. you type a turn, it reads the repository, edits
 files and runs commands, and it tells you what it did.
 
-two things stand between a clean machine and a first turn — the program, and a
+two things stand between a clean machine and a first turn, the program, and a
 model to point it at. there is no default for the second.
 
 ## install
@@ -21,7 +21,7 @@ on PATH it asks, runs the installer from `bun.sh`, and re-checks. if Bun lands
 somewhere your shell cannot see, the script stops and tells you to restart the
 shell and re-run rather than installing on top of a broken PATH.
 
-git is required and is never installed for you — a missing `git` ends the
+git is required and is never installed for you, a missing `git` ends the
 script. `gh` is reported and nothing more; glrs works without it.
 
 then `bun add --global @glrs-dev/glrs@next`, and a last check that `glrs`
@@ -57,7 +57,7 @@ export GLRS_MODEL=anthropic/claude-opus-5
 
 until then anything that would call a model exits with `No model configured.
 Set GLRS_MODEL="provider/model-id" or add "model" to glrs config.` on stderr.
-`glrs doctor` is the one route that does not stop there — reporting that state
+`glrs doctor` is the one route that does not stop there, reporting that state
 is its whole job.
 
 each provider carries its own credential variables, and the first one set wins:
@@ -126,7 +126,7 @@ would accept, and `glrs doctor --json` prints the same report as an object.
 glrs update
 ```
 
-that runs `bun add -g @glrs-dev/glrs@next` and nothing else — it goes through
+that runs `bun add -g @glrs-dev/glrs@next` and nothing else, it goes through
 Bun whatever manager installed glrs. if you installed with pnpm, yarn or npm,
 re-run that manager's install command instead, or you end up with two copies and
 PATH order decides which one you get.
@@ -153,5 +153,5 @@ sessions and the cache use those XDG paths on every platform, Windows included.
 each repository also keeps its own `.glrs/` directory, which goes with the
 repository. history from before the rename lives in
 `~/.local/share/glorious/sessions` and migrates itself a session at a time, so
-deleting only the `glrs` directory leaves the older half behind —
+deleting only the `glrs` directory leaves the older half behind,
 [the session](./3-session.md) has the rest of that.

@@ -588,7 +588,7 @@ const main = async (): Promise<void> => {
         const typed = said ?? text;
         const { prompt, attached, missing } = await expandMentions(root, typed);
         for (const path of missing)
-          render({ type: "notice", text: `(no such file: @${path} — sent as text)` });
+          render({ type: "notice", text: `(no such file: @${path}, sent as text)` });
         chat.send(prompt, attached.length === 0 ? null : typed, kind);
         repaint();
       });
@@ -667,7 +667,7 @@ const main = async (): Promise<void> => {
         .catch((thrown) => {
           finish();
           screen.print(
-            noticeBlock(`(shell command failed to run — ${errorText(thrown)})`, "danger"),
+            noticeBlock(`(shell command failed to run: ${errorText(thrown)})`, "danger"),
             false,
           );
           repaint();
@@ -700,7 +700,7 @@ const main = async (): Promise<void> => {
       }
       // Falling off the end silently cleared the composer and produced no turn,
       // which reads as the app being dead.
-      render({ type: "notice", text: `(unknown command: /${name} — /help lists what exists)` });
+      render({ type: "notice", text: `(unknown command: /${name}. /help lists what exists)` });
       repaint();
     },
     onKeyBinding: (event) => {
@@ -751,7 +751,7 @@ const main = async (): Promise<void> => {
       render({
         type: "notice",
         text:
-          `(compacted — ${outcome.dropped} messages summarised, ${outcome.kept} kept` +
+          `(compacted: ${outcome.dropped} messages summarised, ${outcome.kept} kept` +
           `${before === null ? "" : `, from ${before} tokens`})`,
       });
       await fire(

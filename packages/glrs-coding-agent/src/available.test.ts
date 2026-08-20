@@ -41,7 +41,7 @@ describe("what the model is told about what it could have", () => {
 
   test("an undecided extension is named, with what it is for", () => {
     const lines = availableLines(shipped(["undecided"]), true).join("\n");
-    expect(lines).toContain("ext-0 — does thing 0");
+    expect(lines).toContain("ext-0: does thing 0");
   });
 
   // The section disappearing is the point. An agent that keeps offering
@@ -76,7 +76,7 @@ describe("what the model is told about what it could have", () => {
 // system prompt the provider's cache would miss on every one of them.
 //
 // Read from source rather than exercised, because the failure this rules out
-// is somebody moving one call in index.ts — which no assertion about output
+// is somebody moving one call in index.ts: which no assertion about output
 // would notice, since both paths reach the model.
 describe("where the advertisement is allowed to go", () => {
   const source = readFileSync(join(import.meta.dir, "index.ts"), "utf8");

@@ -310,7 +310,7 @@ export const createAgent = (setup: Setup) => {
           "decisions taken and why, exact paths and symbols touched, what has been verified and " +
           "how, what failed and what that ruled out, and what is left to do. Drop: narration, " +
           "tool output that has served its purpose, and anything already superseded. Prefer " +
-          "specifics — a path, a command, an error string — over description of them.",
+          "specifics (a path, a command, an error string) over description of them.",
         messages: [
           ...messages,
           {

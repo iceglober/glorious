@@ -20,7 +20,7 @@ describe("direct shell feedback", () => {
         { output: "trace\n[exit 1]", stdout: "", stderr: "trace", code: 1, ok: false },
         true,
       ),
-    ).toEqual({ text: "(shell command failed — [exit 1])", tone: "danger" });
+    ).toEqual({ text: "(shell command failed: [exit 1])", tone: "danger" });
   });
 
   test("terminal color and carriage-return controls do not leak into the transcript", () => {

@@ -109,7 +109,7 @@ export const createCodingTools = (root: string, timeoutMs = COMMAND_MS): ToolSpe
     spec({
       name: "read",
       description:
-        "Read a UTF-8 text file. Each output line is prefixed with `N|`, its 1-based line number. That prefix is display-only and is not part of the file — never write it back.",
+        "Read a UTF-8 text file. Each output line is prefixed with `N|`, its 1-based line number. That prefix is display-only and is not part of the file, never write it back.",
       input: z.object({
         path: z.string().describe("File to read, relative to the project root or absolute"),
       }),
@@ -126,7 +126,7 @@ export const createCodingTools = (root: string, timeoutMs = COMMAND_MS): ToolSpe
     spec({
       name: "write",
       description:
-        "Write a UTF-8 text file, creating parent directories as needed. Replaces the whole file when it already exists — use edit to change part of an existing file.",
+        "Write a UTF-8 text file, creating parent directories as needed. Replaces the whole file when it already exists: use edit to change part of an existing file.",
       input: z.object({
         path: z.string().describe("File to write, relative to the project root or absolute"),
         content: z.string().describe("Full file contents"),
@@ -139,7 +139,7 @@ export const createCodingTools = (root: string, timeoutMs = COMMAND_MS): ToolSpe
     spec({
       name: "edit",
       description:
-        "Change one or more files in a single call. Each entry names a file and the exact string replacements to apply to it, in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set — add surrounding lines to make it unique. Every edit in every file is resolved before anything is written, so if one fails no file changes, and each file is swapped into place rather than rewritten. Prefer one call covering every file you need to touch. Never include the `N|` prefixes shown by read.",
+        "Change one or more files in a single call. Each entry names a file and the exact string replacements to apply to it, in order, each against the result of the previous one. Every old_string must match exactly, whitespace included, and occur exactly once unless replace_all is set: add surrounding lines to make it unique. Every edit in every file is resolved before anything is written, so if one fails no file changes, and each file is swapped into place rather than rewritten. Prefer one call covering every file you need to touch. Never include the `N|` prefixes shown by read.",
       input: z.object({
         files: z
           .array(

@@ -15,14 +15,14 @@ commands are read from `.glrs/commands/` in the project, then from
 `<User>/commands/`. skills have five roots, listed further down, and follow the
 same rule: Project before User, first directory to claim a name keeps it. a
 Project `/review` replaces a User one for this project rather than both
-appearing. nothing is inherited from arbitrary parent directories — a checkout
+appearing. nothing is inherited from arbitrary parent directories, a checkout
 sitting under another project does not pick up its commands.
 
 `<User>` is the one user directory that also holds config, extensions and
 skills; [configuration](./6-configuration.md) resolves it.
 
-`/reload` re-reads all of it — commands, skills, extensions, and the `extensions`
-and `tools` blocks of config — without restarting. nothing else in config is
+`/reload` re-reads all of it, commands, skills, extensions, and the `extensions`
+and `tools` blocks of config, without restarting. nothing else in config is
 re-read: the model a session started with is the model it keeps, unless an
 extension changes it through `g.setModel`.
 
@@ -43,7 +43,7 @@ none of them are built in. the core registers no commands at all; all eight
 arrive from the bundled `builtins` extension through the same API a third party
 gets. replacing one is a matter of taking that extension's name: a `builtins.ts`
 in `.glrs/extensions/` loads in its place, and costs the six tools along with the
-commands — glrs says so at startup rather than leaving the model with nothing to
+commands, glrs says so at startup rather than leaving the model with nothing to
 call. registering `help` a second time is not a replacement. command names are
 not first-claim-kept the way tool names are: the listing keeps the first
 registration, the last one is what actually runs, and files on disk are walked
@@ -65,7 +65,7 @@ opposite way later actually changes the answer. it applies after a reload or
 restart.
 
 this works only for first-party extensions, and only when config carries
-`"agentConfigAllowlist": ["extensions"]` — without it the command says glrs may
+`"agentConfigAllowlist": ["extensions"]`, without it the command says glrs may
 not write your config and names the line to add.
 [extensions](./8-extensions.md) has the rest of it.
 
@@ -88,8 +88,8 @@ show.
 
 **the frontmatter must open with `---` on the very first line.** a file starting
 with a comment, a heading, or a blank line has no frontmatter at all: the
-description falls back to `Run the review command`, and the whole file —
-`description:` line and all — is what reaches the model. a file with no
+description falls back to `Run the review command`, and the whole file,
+`description:` line and all, is what reaches the model. a file with no
 frontmatter is legal, the whole file being the prompt, which is why this fails
 quietly rather than refusing to load.
 
@@ -139,7 +139,7 @@ still finds `/skill:deploy`.
 | `description` | required. what it does and when to use it |
 | `allowed-tools` | the tools this skill may use, comma- or space-separated |
 | `trigger` | renames the command after `skill:` |
-| `disable-model-invocation` | `true` — or `yes`, `1`, `on` — hides the skill from the model entirely |
+| `disable-model-invocation` | `true` (or `yes`, `1`, `on`) hides the skill from the model entirely |
 | `license` | carried in the skill summary rather than acted on; an extension can read it |
 | `compatibility` | same, and over 500 characters warns |
 | `metadata` | arbitrary key/value pairs, indented under `metadata:` |
@@ -159,7 +159,7 @@ it is not documentation. the `activate_skill` call installs a tool filter for
 the rest of that turn, the transcript says what was narrowed
 (`(changelog limits this turn to: …)`), and anything outside the list is
 withheld from the model until the session goes idle. typing the skill's own
-command sends its body with nothing narrowed — the model reaching for a skill is
+command sends its body with nothing narrowed, the model reaching for a skill is
 what arms the filter. [tools](./4-tools.md) has how it composes with
 `tools.disable`, why `activate_skill` is always kept, and what `-p` does with it.
 
@@ -167,10 +167,10 @@ what arms the filter. [tools](./4-tools.md) has how it composes with
 
 five roots, in this order:
 
-1. `.glrs/skills/` — Project, glrs's own
-2. `.agents/skills/` — Project, portable
-3. `<User>/skills/` — User, glrs's own
-4. `~/.config/agents/skills/` — User, portable (`$XDG_CONFIG_HOME/agents/skills`
+1. `.glrs/skills/`, Project, glrs's own
+2. `.agents/skills/`, Project, portable
+3. `<User>/skills/`, User, glrs's own
+4. `~/.config/agents/skills/`, User, portable (`$XDG_CONFIG_HOME/agents/skills`
    when set)
 5. the `skills/` directory of every extension that would load
 
@@ -179,8 +179,8 @@ name still beats one that arrived with an extension. which extensions would load
 is worked out without running any of them, which is what lets skills load at
 startup while extensions load much later.
 
-each root is searched recursively — grouping skills into folders is how anyone
-with more than a handful organises them — through the root and four levels of
+each root is searched recursively, grouping skills into folders is how anyone
+with more than a handful organises them, through the root and four levels of
 directories under it, because a skills root is a place someone put skills, not
 somewhere to go hunting through a checkout. `node_modules`, `.git`, `scripts`,
 `references` and `assets` are never entered, and a directory holding a `SKILL.md`
@@ -194,7 +194,7 @@ startup as `(skill) …` and again on every `/reload`, which is when a file was
 just edited and its mistakes matter most.
 
 four things stop a skill loading: no `---` at the top, frontmatter never closed,
-no `name`, no `description` — a skill nothing can choose is not a loaded skill.
+no `name`, no `description`, a skill nothing can choose is not a loaded skill.
 the rest warn and load anyway: a name over 64 characters or outside the
 standard's shape, a folder named differently from the frontmatter (a rename, not
 a mistake worth refusing over), a `compatibility` over 500 characters, and a
@@ -209,7 +209,7 @@ that exists. the full order, nearest last:
 
 1. `/etc/ampcode/AGENTS.md`, then `/Library/Application Support/ampcode/AGENTS.md`
    on macOS; `%ProgramData%\ampcode\AGENTS.md` on Windows
-2. the same pair for glrs — `/etc/glrs/AGENTS.md`,
+2. the same pair for glrs, `/etc/glrs/AGENTS.md`,
    `/Library/Application Support/glrs/AGENTS.md`, `%ProgramData%\glrs\AGENTS.md`
 3. `~/.config/amp/AGENTS.md`, then `~/.config/glrs/AGENTS.md`, then
    `~/.config/AGENTS.md`
@@ -221,7 +221,7 @@ starts at the filesystem root instead. each path is read once, empty files
 contribute nothing, and the closest file has the last word.
 
 rules are fenced into the system prompt itself, as `<repo-rules>`. everything
-else volatile — environment, git state, skills, extensions — rides in the
+else volatile (environment, git state, skills, extensions) rides in the
 per-turn message so the prefix stays byte-identical and the provider's cache
 holds. rules are the exception, so two projects produce two different system
 prompts.
@@ -232,6 +232,6 @@ in `packages/api/AGENTS.md` reaches the model the moment it opens a file there,
 whether or not that directory was on the path when the session started.
 
 use rules for short standing instructions. use a skill for a procedure that
-should be loaded only when it applies. when neither is enough — when the answer
-needs a tool, a keybinding, a subcommand or a row on the screen — the answer is
+should be loaded only when it applies. when neither is enough, when the answer
+needs a tool, a keybinding, a subcommand or a row on the screen, the answer is
 an [extension](./8-extensions.md).

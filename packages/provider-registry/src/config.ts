@@ -418,7 +418,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   }
   const wrong = (key: string, wanted: string): void => {
     diagnostics.push(
-      `${where}: "${key}" should be ${wanted}, got ${Array.isArray(raw[key]) ? "an array" : typeof raw[key]} — ignored`,
+      `${where}: "${key}" should be ${wanted}, got ${Array.isArray(raw[key]) ? "an array" : typeof raw[key]}, ignored`,
     );
   };
   if (raw.model !== undefined && stringOf(raw.model) === undefined)
@@ -439,14 +439,14 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     // A top-level list has no inner key, so the label is just its own name.
     const label = key === "" ? block : `${block}.${key}`;
     if (!Array.isArray(value)) {
-      diagnostics.push(`${where}: ${label} should be an array of names — ignored`);
+      diagnostics.push(`${where}: ${label} should be an array of names, ignored`);
       return undefined;
     }
     const kept: string[] = [];
     value.forEach((entry, at) => {
       const name = stringOf(entry);
       if (name === undefined)
-        diagnostics.push(`${where}: ${label}[${at}] should be a string — ignored`);
+        diagnostics.push(`${where}: ${label}[${at}] should be a string, ignored`);
       else kept.push(name.trim());
     });
     return kept.length > 0 ? kept : undefined;
@@ -474,7 +474,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
       const inside = Object.keys(value);
       if (inside.length > 0)
         diagnostics.push(
-          `${where}: "${block}" has no ${keys.map((key) => `"${key}"`).join(" or ")} (${inside.slice(0, 4).join(", ")}) — ignored`,
+          `${where}: "${block}" has no ${keys.map((key) => `"${key}"`).join(" or ")} (${inside.slice(0, 4).join(", ")}), ignored`,
         );
       return undefined;
     }
@@ -499,14 +499,14 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   const requestOptions = (value: unknown, path: string): JsonObject | undefined => {
     if (value === undefined) return undefined;
     if (!isObject(value)) {
-      diagnostics.push(`${where}: ${path} should be an object — ignored`);
+      diagnostics.push(`${where}: ${path} should be an object, ignored`);
       return undefined;
     }
     const kept = { ...value } as JsonObject;
     for (const key of AGENT_OWNED_REQUEST_OPTIONS)
       if (Object.hasOwn(kept, key)) {
         delete kept[key];
-        diagnostics.push(`${where}: ${path}.${key} is owned by glrs — ignored`);
+        diagnostics.push(`${where}: ${path}.${key} is owned by glrs, ignored`);
       }
     return kept;
   };
@@ -517,7 +517,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   ): Record<string, JsonObject> | undefined => {
     if (value === undefined) return undefined;
     if (!isObject(value)) {
-      diagnostics.push(`${where}: ${path} should be an object — ignored`);
+      diagnostics.push(`${where}: ${path} should be an object, ignored`);
       return undefined;
     }
     return Object.fromEntries(
@@ -525,7 +525,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
         // null is JSON Merge Patch's deletion marker and has to survive until
         // the three scopes are combined.
         if (options === null || isObject(options)) return [[namespace, options]];
-        diagnostics.push(`${where}: ${path}.${namespace} should be an object — ignored`);
+        diagnostics.push(`${where}: ${path}.${namespace} should be an object, ignored`);
         return [];
       }),
     ) as Record<string, JsonObject>;
@@ -534,7 +534,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   const modelMetadata = (value: unknown, path: string): ModelMetadataSettings | undefined => {
     if (value === undefined) return undefined;
     if (!isObject(value)) {
-      diagnostics.push(`${where}: ${path} should be an object — ignored`);
+      diagnostics.push(`${where}: ${path} should be an object, ignored`);
       return undefined;
     }
     const metadata: Record<string, unknown> = {};
@@ -545,7 +545,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     ): void => {
       if (value[key] === undefined) return;
       if (value[key] === null || valid(value[key])) metadata[key] = value[key];
-      else diagnostics.push(`${where}: ${path}.${key} should be ${wanted} — ignored`);
+      else diagnostics.push(`${where}: ${path}.${key} should be ${wanted}, ignored`);
     };
     keep("name", (candidate) => stringOf(candidate) !== undefined, "a non-empty string");
     keep("context", (candidate) => positiveNumberOf(candidate) !== undefined, "a positive number");
@@ -562,12 +562,12 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     if (value.variants === null) metadata.variants = null;
     else if (value.variants !== undefined) {
       if (!Array.isArray(value.variants))
-        diagnostics.push(`${where}: ${path}.variants should be an array of strings — ignored`);
+        diagnostics.push(`${where}: ${path}.variants should be an array of strings, ignored`);
       else {
         const variants = value.variants.flatMap((candidate, index) => {
           const variant = stringOf(candidate);
           if (variant !== undefined) return [variant];
-          diagnostics.push(`${where}: ${path}.variants[${index}] should be a string — ignored`);
+          diagnostics.push(`${where}: ${path}.variants[${index}] should be a string, ignored`);
           return [];
         });
         metadata.variants = variants;
@@ -580,7 +580,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   if (isObject(raw.providers))
     for (const [name, value] of Object.entries(raw.providers)) {
       if (!isObject(value)) {
-        diagnostics.push(`${where}: providers.${name} should be an object — ignored`);
+        diagnostics.push(`${where}: providers.${name} should be an object, ignored`);
         continue;
       }
       const provider = { ...value } as ProviderSettings;
@@ -591,16 +591,14 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
       if (providerRequests === undefined) delete provider.requestOptions;
       else provider.requestOptions = providerRequests;
       if (value.factoryOptions !== undefined && !isObject(value.factoryOptions)) {
-        diagnostics.push(
-          `${where}: providers.${name}.factoryOptions should be an object — ignored`,
-        );
+        diagnostics.push(`${where}: providers.${name}.factoryOptions should be an object, ignored`);
         delete provider.factoryOptions;
       } else if (isObject(value.factoryOptions)) {
         provider.factoryOptions = { ...value.factoryOptions } as JsonObject;
         if (Object.hasOwn(provider.factoryOptions, "fetch")) {
           delete provider.factoryOptions.fetch;
           diagnostics.push(
-            `${where}: providers.${name}.factoryOptions.fetch is owned by glrs — ignored`,
+            `${where}: providers.${name}.factoryOptions.fetch is owned by glrs, ignored`,
           );
         }
       }
@@ -611,14 +609,14 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
       if (providerCallOptions === undefined) delete provider.providerOptions;
       else provider.providerOptions = providerCallOptions;
       if (value.models !== undefined && !isObject(value.models)) {
-        diagnostics.push(`${where}: providers.${name}.models should be an object — ignored`);
+        diagnostics.push(`${where}: providers.${name}.models should be an object, ignored`);
         delete provider.models;
       } else if (isObject(value.models)) {
         provider.models = Object.fromEntries(
           Object.entries(value.models).flatMap(([modelId, model]) => {
             if (!isObject(model)) {
               diagnostics.push(
-                `${where}: providers.${name}.models.${modelId} should be an object — ignored`,
+                `${where}: providers.${name}.models.${modelId} should be an object, ignored`,
               );
               return [];
             }
@@ -647,7 +645,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
       }
       for (const key of ["api", "region", "project", "location"] as const)
         if (provider[key] !== undefined && !settingsFor(name).includes(key)) {
-          diagnostics.push(`${where}: providers.${name}.${key} is not used by ${name} — ignored`);
+          diagnostics.push(`${where}: providers.${name}.${key} is not used by ${name}, ignored`);
           delete provider[key];
         }
       providers[name] = provider;
@@ -658,7 +656,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   const keys = Object.keys(raw);
   if (keys.length > 0 && !keys.some((key) => KNOWN.includes(key)))
     diagnostics.push(
-      `${where}: nothing here is a glrs setting (${keys.slice(0, 4).join(", ")}${keys.length > 4 ? ", …" : ""}) — the whole file is ignored`,
+      `${where}: nothing here is a glrs setting (${keys.slice(0, 4).join(", ")}${keys.length > 4 ? ", …" : ""}), the whole file is ignored`,
     );
 
   return {

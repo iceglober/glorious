@@ -21,14 +21,14 @@ export const availableLines = (
   if (undecided.length === 0) return [];
   return [
     "Not loaded, but available to turn on if the work calls for one:",
-    ...undecided.map((one) => `- ${one.name} — ${one.summary}`),
+    ...undecided.map((one) => `- ${one.name}: ${one.summary}`),
     canRecord
       ? // The tool is what stops the offer repeating. Without recording the
         // answer somewhere durable, a decline lasts until the next turn.
         "Suggest one only when the task actually needs it. If the user agrees or " +
         "declines, call configure_extension to record the answer so it is not raised again."
       : "Suggest one only when the task actually needs it. To turn one on, the user adds " +
-        "it to `extensions.load` in .glrs/config.json — glrs cannot write that file " +
+        "it to `extensions.load` in .glrs/config.json. glrs cannot write that file " +
         'unless "extensions" is listed in agentConfigAllowlist.',
   ];
 };

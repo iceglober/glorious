@@ -5,8 +5,8 @@ title: how glrs works
 # how glrs works
 
 a model, tools, context, and a turn loop over a git repository. that is the
-whole of it. everything else — the six tools that touch the machine, every
-slash command, the question widget, the worktree subcommand — arrives as an
+whole of it. everything else, the six tools that touch the machine, every
+slash command, the question widget, the worktree subcommand, arrives as an
 extension, registered through the same API a file in `.glrs/extensions/` uses.
 the core registers no tools and no commands at all. that is the test: if
 `/help` or `bash` could not be written as an extension, "extensible" would be a
@@ -25,7 +25,7 @@ these docs are, then fences whatever `AGENTS.md`, `AGENT.md` or `CLAUDE.md`
 supplied into `<repo-rules>`. nothing else.
 
 it is re-sent on every model call, and a provider caches a prompt prefix only
-for as long as the prefix does not move — so it is kept byte-identical across
+for as long as the prefix does not move, so it is kept byte-identical across
 turns and across sessions. the date, the working directory, git state, the
 skills catalogue and every extension's contribution are volatile, so they ride
 in the per-turn user message instead, where changing them costs the tokens of
@@ -48,7 +48,7 @@ each stable for as long as its own rules file is.
 `scripts/check-boundaries.ts` enforces the direction: core imports neither of
 the others, and `packages/extensions` imports neither the coding agent nor the
 provider registry. that is why the `Glrs` type is declared in core rather than
-beside the object implementing it — a shipped extension has to be able to name
+beside the object implementing it, a shipped extension has to be able to name
 the API it is handed. it was two types once, the real one and a copy for
 extensions to import, and they drifted to 44 members against 26: `model`,
 `flag`, `abort` and fifteen more existed at runtime and were invisible to
@@ -58,18 +58,18 @@ anyone writing against the type.
 
 `g.mode` says which one you are in.
 
-- **tui** — the alternate screen. a transcript, two message queues, a session
+- **tui**, the alternate screen. a transcript, two message queues, a session
   file, and a 100 ms paint tick with unchanged frames dropped before they reach
   the renderer. nothing animates; the only thing moving between ticks is an
   elapsed reading.
-- **print** — `glrs -p`, one turn, no session file. assistant text goes to
+- **print**, `glrs -p`, one turn, no session file. assistant text goes to
   stdout and the tool trail to stderr, which is what makes it composable: it is
   how the agent verifies its own changes, and how one glrs spawns another
   through `bash` with every step of the child visible in the parent's output.
   members with no headless meaning refuse out loud rather than doing nothing
-  quietly — `ui.capture()` throws, `send()` and `reload()` write a note to
+  quietly, `ui.capture()` throws, `send()` and `reload()` write a note to
   stderr.
-- **cli** — a subcommand an extension registered, such as `glrs wt list`. it
+- **cli**, a subcommand an extension registered, such as `glrs wt list`. it
   loads the extensions, hands one its arguments, and exits. no model, no screen,
   no session, so every session-bound member throws by name rather than returning
   a plausible empty value.
@@ -86,8 +86,8 @@ a follow-up message waits for the agent to run out of work; a steering message
 joins the turn already running. when one is delivered:
 
 1. the transcript records it. a delivery with no label is a `user` event and
-   fires `turn_start`. one carrying a label — a slash command's expanded body,
-   `g.send(text, { label })`, a message whose `@path` mentions were expanded —
+   fires `turn_start`. one carrying a label, a slash command's expanded body,
+   `g.send(text, { label })`, a message whose `@path` mentions were expanded,
    is recorded as a `notice` under that label instead, so `turn_start` does not
    fire for it and the session is not buried under a page of expanded prompt.
 2. if the previous turn was interrupted, failed, or hit the step limit, a
@@ -98,12 +98,12 @@ joins the turn already running. when one is delivered:
    turn's message.
 4. the per-turn preamble is assembled ahead of the prompt: `<where-you-are>`
    with os, date, directory and git state; `<skills>` with the catalogue; and
-   `<extensions>` with every contribution registered through `g.prompt`, plus —
-   in the TUI — the first-party extensions still undecided, an offer that stops
+   `<extensions>` with every contribution registered through `g.prompt`, plus,
+   in the TUI, the first-party extensions still undecided, an offer that stops
    being made once you have answered it. those three tags and the
    `[system-reminder]` brackets are named in one list, and that list is what
    strips them back off when a transcript is rebuilt from the stored provider
-   messages — a preamble block not on it would show up as though the user had
+   messages, a preamble block not on it would show up as though the user had
    typed it.
 5. `context` fires with the whole message list. returning an array replaces
    what is sent for this attempt; the stored conversation is untouched, so
@@ -116,11 +116,11 @@ joins the turn already running. when one is delivered:
    more, and only the final text ends the stream. between steps the queue is
    asked for steering messages, which are appended so the cached prefix survives.
    the turn stops at 100 model steps; stopping there without final text prints
-   `(step limit reached — send "continue" to resume)`, and under `-p` writes
+   `(step limit reached: send "continue" to resume)`, and under `-p` writes
    `[stopped at the step limit without finishing]` to stderr and exits 1.
 8. each HTTP request fires `before_provider_request` and
-   `after_provider_response`, and carries its own deadlines — 30 minutes, then
-   10, then 10 — which cover a request that fails while it is being made.
+   `after_provider_response`, and carries its own deadlines, 30 minutes, then
+   10, then 10, which cover a request that fails while it is being made.
 9. each model call inside the stream reports `usage`: input, output, cached,
    cost, and the context size the provider observed. three rounds of tools
    report four times.
@@ -131,7 +131,7 @@ joins the turn already running. when one is delivered:
 
 a connection can drop long after `fetch()` resolved, while the body is being
 read, and the deadline retry underneath cannot see that. so a dropped stream is
-re-sent — but only while the attempt is unobservable: nothing written, nothing
+re-sent, but only while the attempt is unobservable: nothing written, nothing
 thought aloud, no tool run. once a tool has run the world has moved, and the
 failure surfaces instead. steering messages the dead attempt took out of the
 queue go back into it. [models and providers](./2-models.md) has all three retry
@@ -150,34 +150,34 @@ and what `/compact` does differently are in
 ## lifecycle events
 
 subscribe with `g.on(name, handler)`. handlers run in registration order and
-are awaited. a handler that throws is reported — into the transcript in the
-TUI, to stderr under `-p` — and the chain continues, because an extension is
-third-party code and the session is not. `false` ends the chain immediately —
-no later handler can undo another's refusal — and otherwise the **last**
+are awaited. a handler that throws is reported, into the transcript in the
+TUI, to stderr under `-p`, and the chain continues, because an extension is
+third-party code and the session is not. `false` ends the chain immediately,
+no later handler can undo another's refusal, and otherwise the **last**
 non-undefined return wins.
 
 | event | payload | return value |
 | --- | --- | --- |
-| `session_start` | `{ root }` | — |
+| `session_start` | `{ root }` |, |
 | `input` | `{ text }` | string replaces what was typed; `false` swallows it |
-| `user_bash` | `{ command }` | — |
-| `turn_start` | `{ text }` | — |
+| `user_bash` | `{ command }` |, |
+| `turn_start` | `{ text }` |, |
 | `before_request` | `{ prompt, messages }` | string appends to this turn's message |
 | `context` | `{ messages, step }` | array replaces the messages for this attempt |
 | `before_provider_request` | `{ url, headers, body }` | headers merge; body replaces |
-| `after_provider_response` | `{ url, status, headers }` | — |
-| `message` | `{ kind, text }` | — |
-| `reasoning` | `{ text, elapsedMs }` | — |
+| `after_provider_response` | `{ url, status, headers }` |, |
+| `message` | `{ kind, text }` |, |
+| `reasoning` | `{ text, elapsedMs }` |, |
 | `tool_call` | `{ name, input }` | `false` blocks; a string blocks with that reason |
-| `tool_start` | `{ name, input }` | — |
+| `tool_start` | `{ name, input }` |, |
 | `tool_end` | `{ name, input, ok, result, detail, elapsedMs }` | string replaces what the model is told |
-| `usage` | `{ input, output, cached, cost, contextTokens }` | — |
-| `error` | `{ message }` | — |
-| `model_select` | `{ model, variant }` | — |
-| `compact` | `{ dropped, kept, automatic }` | — |
-| `idle` | `{}` | — |
-| `turn_end` | `{ text }` | — |
-| `session_end` | `{ root }` | —; awaited before the process exits |
+| `usage` | `{ input, output, cached, cost, contextTokens }` |, |
+| `error` | `{ message }` |, |
+| `model_select` | `{ model, variant }` |, |
+| `compact` | `{ dropped, kept, automatic }` |, |
+| `idle` | `{}` |, |
+| `turn_end` | `{ text }` |, |
+| `session_end` | `{ root }` | none; awaited before the process exits |
 
 `input`, `user_bash`, `model_select` and `compact` do not fire in print mode:
 there is no composer to type into, `!` is a composer key, a one-shot run cannot
@@ -190,7 +190,7 @@ handler.
 ### sharp edges
 
 **`context` fires once per provider stream attempt, not once per model call.**
-a turn with three rounds of tools fires it once — the tool loop runs inside a
+a turn with three rounds of tools fires it once, the tool loop runs inside a
 single `streamText` call and never consults it. it fires a second time only if
 the stream drops and is re-sent. `step` is therefore the attempt number, 1 on
 the first send. an extension written as though `context` runs per model call
@@ -206,13 +206,13 @@ from `tool_call` sends `ERROR: an extension blocked <name> for this turn.`;
 returning a string sends `ERROR: <your reason>`. the call never runs, and the
 model reads the refusal as that tool's result. `g.filterTools()` is the other
 half of the pair and the stronger one: it withholds the tool from the schema
-entirely — see [tools](./4-tools.md).
+entirely: see [tools](./4-tools.md).
 
 **the two hosts end a turn in opposite order.** the TUI fires `idle` and then
 `turn_end`; print mode fires `turn_end` and then `idle`. an extension that
 reports totals should hook the one it means rather than assuming they are
 adjacent. `session_end` is awaited in both, so an extension that writes a file
-or posts a result on the way out actually finishes — though it cannot usefully
+or posts a result on the way out actually finishes, though it cannot usefully
 print, since the screen stops as soon as it resolves.
 
 ## sessions on disk
@@ -224,10 +224,10 @@ were encrypted once, under a Keychain key, which bought little against a
 transcript sitting on the same disk as the repo it is about and cost a prompt
 that has nowhere to go under a pty. observability is the point: `cat` the file.
 
-the log carries what the transcript redraws from — `user` (with a `steer` flag
+the log carries what the transcript redraws from, `user` (with a `steer` flag
 when it joined a running turn), `assistant`, `tool` with its input, result,
 duration and outcome, `reasoning`, `notice`, `error`, `usage`, `cleared`,
-`compacted` — and, separately, `turn` events holding the raw provider messages.
+`compacted`, and, separately, `turn` events holding the raw provider messages.
 `custom` entries are an extension's own data: persisted, never sent to the
 model, and read back with `g.entries(type)`.
 
@@ -239,16 +239,16 @@ every `usage` event in the file, because clearing drops what the model replays,
 not what the run cost. extension entries survive the same way.
 
 print mode writes no session file at all, and takes a fresh id of the form
-`print-<8 hex>` per run — that id becomes the provider's prompt cache key, and a
+`print-<8 hex>` per run, that id becomes the provider's prompt cache key, and a
 constant one would tell the backend that two unrelated runs were the same
 conversation.
 
 ## embedding the core
 
-`@glrs-dev/glrs` resolves to `sdk.ts`. it exports the contracts a host needs —
+`@glrs-dev/glrs` resolves to `sdk.ts`. it exports the contracts a host needs,
 `AgentCore`, `Session`, `SessionEvent`, `SessionRepository`, `Turn`,
 `ModelProvider`, `ProviderAdapter`, `ProviderRegistry`, `Extension`,
-`CodingAgent`, `CodingAgentDependencies` — and four values: `createAgentCore`,
+`CodingAgent`, `CodingAgentDependencies`, and four values: `createAgentCore`,
 `createCodingAgent`, `jsonSessionRepository`, which is the plain-JSON session
 store described above, and `createProviderRegistry`, which returns an empty
 `register`/`get`/`list` over provider adapters.
@@ -257,10 +257,10 @@ be clear about what it does not do. `createAgentCore` takes your `session`, your
 `runTurn` and your `reloadExtensions` and hands them back on an object;
 `createCodingAgent` bundles that runtime with a session repository, a provider
 registry and any extensions you constructed. neither composes the turn loop,
-the tool set, extension discovery or the TUI — those live in
+the tool set, extension discovery or the TUI, those live in
 `glrs-coding-agent` and are
 reached by running `glrs`. this is a boundary for a host that wants glrs's
 session format and provider vocabulary under its own runtime, not glrs in a
 library. extension authors want `@glrs-dev/glrs/extension-api` instead, which
-exports `Glrs` and every type an extension names — see
+exports `Glrs` and every type an extension names, see
 [extensions](./8-extensions.md).

@@ -83,7 +83,7 @@ describe("the question widget, driven by keys", () => {
     asked.type("local only");
     expect(asked.screen()).toContain("note: local only");
     asked.press("return");
-    expect(await asked.answer).toBe("Q: Which database?\nA: SQLite — local only");
+    expect(await asked.answer).toBe("Q: Which database?\nA: SQLite (local only)");
   });
 
   test("backspace edits the note", async () => {
@@ -94,7 +94,7 @@ describe("the question widget, driven by keys", () => {
     asked.press("backspace");
     expect(asked.screen()).toContain("note: ab");
     asked.press("return");
-    expect(await asked.answer).toContain("— ab");
+    expect(await asked.answer).toContain("(ab)");
   });
 
   // An arrow key arrives as an escape sequence; appending it would put raw
@@ -106,7 +106,7 @@ describe("the question widget, driven by keys", () => {
     asked.type("ab");
     asked.press("up", `${String.fromCharCode(27)}[A`);
     asked.press("return");
-    expect(await asked.answer).toContain("— ab");
+    expect(await asked.answer).toContain("(ab)");
     expect(await asked.answer).not.toContain("[A");
   });
 

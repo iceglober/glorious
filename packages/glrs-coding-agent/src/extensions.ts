@@ -75,7 +75,7 @@ const failureText = (thrown: unknown): string => {
 // commands and an agent without them cannot do anything at all.
 const shadowNote: Record<string, string> = {
   builtins:
-    "shadows the extension that provides bash, read, write, edit, grep, glob and every slash command — the model has no tools unless yours registers them",
+    "shadows the extension that provides bash, read, write, edit, grep, glob and every slash command, the model has no tools unless yours registers them",
 };
 
 // `defaultOn` is what separates the extension the agent cannot work without
@@ -231,7 +231,7 @@ export const resolveExtensions = async (
     if (entry.includes(":")) {
       failures.push({
         origin: entry,
-        message: `"${entry.split(":")[0]}:" packages need an installer glrs does not have yet — name a bundled extension or a path`,
+        message: `"${entry.split(":")[0]}:" packages need an installer glrs does not have yet: name a bundled extension or a path`,
       });
       continue;
     }
@@ -239,7 +239,7 @@ export const resolveExtensions = async (
       const near = bundled.map((one) => one.name).join(", ");
       failures.push({
         origin: entry,
-        message: `no extension by that name is bundled or on disk — glrs ships ${near}`,
+        message: `no extension by that name is bundled or on disk, glrs ships ${near}`,
       });
       continue;
     }
@@ -311,7 +311,7 @@ export const loadExtensions = async (
           options.token === undefined ? specifier : `${specifier}?${options.token}`
         )) as { default?: (glrs: ReturnType<typeof createApi>) => void | Promise<void> };
         if (typeof module.default !== "function")
-          throw new Error("no default export — an extension exports a function taking (glrs)");
+          throw new Error("no default export, an extension exports a function taking (glrs)");
         // Awaited before the session starts, so an extension that fetches or
         // reads on the way up has finished registering before the first turn.
         await module.default(createApi(host, registry, onToolEvent, entry.path));

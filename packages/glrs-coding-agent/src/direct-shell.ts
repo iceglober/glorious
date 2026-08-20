@@ -12,5 +12,5 @@ export const shellCompletion = (
   if (result.code === 0)
     return hadOutput ? null : { text: "(shell command completed with no output)", tone: "muted" };
   const reason = result.output.split("\n").at(-1) || `exit ${result.code}`;
-  return { text: `(shell command failed — ${reason})`, tone: "danger" };
+  return { text: `(shell command failed: ${reason})`, tone: "danger" };
 };

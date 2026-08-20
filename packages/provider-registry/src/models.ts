@@ -390,7 +390,7 @@ export const createModel = (option: ModelOption, fetcher: typeof fetch = fetch):
         near === undefined
           ? `${option.provider} is not a built-in provider. Give it a base URL to use it as an ` +
               `OpenAI-compatible endpoint: {"providers":{"${option.provider}":{"api":"…"}}}`
-          : `Unknown provider "${option.provider}" — did you mean "${near}"?`,
+          : `Unknown provider "${option.provider}", did you mean "${near}"?`,
       );
     }
     return createOpenAICompatible({

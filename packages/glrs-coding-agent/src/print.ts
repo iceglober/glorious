@@ -268,7 +268,7 @@ export const runPrint = async (
     await fire(registry, "session_start", { root: where.root }, note);
     await fire(registry, "turn_start", { text: prompt }, note);
     const { prompt: asked, missing } = await expandMentions(where.root, prompt);
-    for (const path of missing) note(`(no such file: @${path} — sent as text)`);
+    for (const path of missing) note(`(no such file: @${path}, sent as text)`);
     // The same hook the TUI fires before a request. It was wired through
     // createChat, which print mode does not use, so every context-injecting
     // extension worked interactively and silently did nothing here — including

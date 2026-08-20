@@ -38,14 +38,14 @@ export default extension;
 ```
 
 Bun runs `.ts` directly, so there is no build step, and the `import type` above
-is erased before the file executes — an extension needs no imports at all, and
+is erased before the file executes, an extension needs no imports at all, and
 the only thing it depends on at runtime is `g`. zod arrives as `g.z` rather than
 being imported: an extension in your User config directory has no `node_modules`
 to resolve zod from, and one that works in a project but not in your home
 directory is not a working extension.
 
-for types, `@glrs-dev/glrs/extension-api` exports what you write against —
-`Glrs`, `Extension`, `ToolSpec`, `Line`, `Tone`, `EventPayload` and the rest —
+for types, `@glrs-dev/glrs/extension-api` exports what you write against,
+`Glrs`, `Extension`, `ToolSpec`, `Line`, `Tone`, `EventPayload` and the rest,
 and `@glrs-dev/glrs` re-exports `Extension` beside the SDK entry. both are
 type-only here.
 
@@ -74,8 +74,8 @@ walked before anything shipped, which is what makes shadowing work: a file calle
 `web-fetch.ts` replaces the bundled `web-fetch` outright.
 
 shadowing `builtins` is a larger act than it looks, and glrs interrupts to say
-so — `builtins.ts shadows the extension that provides bash, read, write, edit,
-grep, glob and every slash command — the model has no tools unless yours
+so, `builtins.ts shadows the extension that provides bash, read, write, edit,
+grep, glob and every slash command, the model has no tools unless yours
 registers them`. everything else is shadowed in silence, as intended.
 
 `extensions.load` takes bundled names, package specifiers such as
@@ -83,9 +83,9 @@ registers them`. everything else is shadowed in silence, as intended.
 config file that declared them, while it is still known which of the three files
 that was; `~/` is resolved against your home directory. only the prefixes that
 are unambiguously a path are touched, so a bare relative name is read as a name
-and fails with `no extension by that name is bundled or on disk — glrs ships
+and fails with `no extension by that name is bundled or on disk, glrs ships
 ask-user, builtins, worktree, web-fetch`. `extensions.disable` beats everything,
-in any config scope — the two lists are unioned across Project-User, Project and
+in any config scope, the two lists are unioned across Project-User, Project and
 User, so a name disabled anywhere stays disabled.
 
 an extension that throws while importing or initializing costs only itself; the
@@ -104,7 +104,7 @@ where each came from, and what each registered.
 `builtins` defaults on because it carries the tools the agent cannot work
 without. none of the four is built in: the core registers no tools and no
 commands at all, and every one of them arrives through the same API this page
-describes — which is the point, and [how glrs works](./9-internals.md) says why.
+describes, which is the point, and [how glrs works](./9-internals.md) says why.
 
 `ask-user` registers nothing unless `g.hasUI`, because `ui.capture` throws
 headlessly and a registered `ask_user` would hang the model on a question nobody
@@ -127,11 +127,11 @@ hand-editing is the default and the only route that always works. the two other
 routes end at the same writer, and neither may use it unless
 `"agentConfigAllowlist": ["extensions"]` says glrs may write config at all:
 `/extensions enable worktree` from the composer, described in
-[commands, skills and rules](./7-commands.md), and `g.setExtension(name, on)` —
+[commands, skills and rules](./7-commands.md), and `g.setExtension(name, on)`,
 which the agent reaches through the `configure_extension` tool, and only to
 record an answer you gave.
 
-while a first-party extension is undecided — named in neither list — the per-turn
+while a first-party extension is undecided, named in neither list, the per-turn
 preamble says it is available; the offer stops once every one has been decided,
 because an agent that keeps offering something you already declined is worse than
 one that never offered. without the allowlist `setExtension` answers
@@ -189,11 +189,11 @@ that frame and nothing else.
 | member | what it does |
 | --- | --- |
 | `g.root` | the absolute project root. resolve paths against it, not `process.cwd()` |
-| `g.settings()` | this session's merged `toolTimeoutMs`, `steeringMode`, `followUpMode`. provider blocks are absent — they hold API keys |
+| `g.settings()` | this session's merged `toolTimeoutMs`, `steeringMode`, `followUpMode`. provider blocks are absent, they hold API keys |
 | `g.inspect()` | what is loaded: commands, skills, extensions, keys, flags |
 | `g.tools()` | tool names the model can currently call |
 | `g.model()` | the model in force, with its context window and variants |
-| `g.models()` | every model the catalogue carries, credentials or not — the list a model picker would be built from |
+| `g.models()` | every model the catalogue carries, credentials or not, the list a model picker would be built from |
 | `g.usage()` | the context size the provider last reported, and the session's totals: input, output, cached, cost, steps |
 | `g.session()` | id, file on disk, title, event count |
 | `g.entries(type)` | everything this session recorded under `type`, including before a `--resume` |
@@ -245,13 +245,13 @@ the stronger of the two.
 ## three hosts
 
 `g.mode` is `"tui"` in an interactive session, `"print"` for a `-p` run, and
-`"cli"` for a subcommand — the route decides it, one host each.
+`"cli"` for a subcommand, the route decides it, one host each.
 
 the print host has no composer and no session file, so `ui.capture`, `models()`
 and `setModel()` throw; `send()`, `setInput()`, `reload()` and `setExtension()`
 say on stderr that they mean nothing here and are ignored; `session()` answers
 with a stub and `appendEntry` has nothing to write to. `g.print` writes to
-stderr — assistant text is the only thing on stdout, so `glrs -p … | pbcopy`
+stderr, assistant text is the only thing on stdout, so `glrs -p … | pbcopy`
 copies the answer and not your extension's chatter.
 
 the cli host is thinner still. `glrs wt list` opens no session, calls no model
@@ -268,7 +268,7 @@ undecorated and unwrapped, so `glrs wt list` pipes into the next command.
 `g.root`, `g.exec`, `g.settings`, `g.columns` and `g.available` answer as usual;
 `g.setExtension` returns `not-allowed`, since changing the roster is something
 somebody agreed to in conversation and there is no conversation. `glrs --help`
-lists what was registered, under `Added by extensions:` — see
+lists what was registered, under `Added by extensions:`, see
 [command line](./5-cli.md) for how a bare word reaches you at all.
 
 flags registered with `g.flag` reach the TUI only: everything after `-p` is the
@@ -279,7 +279,7 @@ delivers, and what happens to a flag nobody claimed, is in
 
 ## lines and spans
 
-everything drawn — transcript output, tool rows, the footer, a capture — is
+everything drawn (transcript output, tool rows, the footer, a capture) is
 `Line[]`, glrs's own span structure rather than the renderer's types, so the
 renderer can be replaced without touching an extension.
 
@@ -307,19 +307,19 @@ glrs branch                   # the subcommand, no session, no model
 glrs -p "use stash_list"      # the tool, one headless turn
 ```
 
-print mode loads extensions exactly as the TUI does — a tool the agent writes for
+print mode loads extensions exactly as the TUI does, a tool the agent writes for
 itself has to exist when it verifies with `-p`, or self-extension is a claim
 nothing can check.
 
 `/reload` re-reads skills, commands and extensions from disk, re-imports each
 extension file with a cache-busting token so an edit is actually picked up, and
 re-reads the `extensions` and `tools` blocks of config. it does not re-read the
-model, does not touch the conversation, and does not fire `session_start` again —
+model, does not touch the conversation, and does not fire `session_start` again,
 state an extension computes there stays as it was until you restart. tool filters
 are reset, then the configured bans re-applied.
 
 an extension runs with the permissions of the process that launched glrs and
-there is no approval gate — see [tools](./4-tools.md) for why. `/extensions` is
+there is no approval gate: see [tools](./4-tools.md) for why. `/extensions` is
 the account you get of what loaded and what it did.
 
 the turn loop your hooks fire inside, every lifecycle event in the order it

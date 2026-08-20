@@ -136,7 +136,7 @@ const parseSkill = (
   const where = location.replace(home, "~");
   const lines = text.split("\n");
   if (lines[0]?.trim() !== "---")
-    return { skill: null, warnings: [`${where}: no frontmatter — a skill needs --- at the top`] };
+    return { skill: null, warnings: [`${where}: no frontmatter, a skill needs --- at the top`] };
   const end = lines.indexOf("---", 1);
   if (end < 0) return { skill: null, warnings: [`${where}: frontmatter is never closed with ---`] };
 
@@ -197,7 +197,7 @@ const parseSkill = (
   if (name.length > NAME_MAX) warnings.push(`${where}: name is longer than ${NAME_MAX} characters`);
   if (!LEGAL_NAME.test(name))
     warnings.push(
-      `${where}: "${name}" is not a standard skill name — lowercase letters, numbers and single inner hyphens. Loaded anyway.`,
+      `${where}: "${name}" is not a standard skill name, lowercase letters, numbers and single inner hyphens. Loaded anyway.`,
     );
   if (description.length > DESCRIPTION_MAX)
     warnings.push(
@@ -288,7 +288,7 @@ const discover = async (
       const already = seen.get(skill.name);
       if (already !== undefined) {
         warnings.push(
-          `two skills are named "${skill.name}" — using ${already.replace(home, "~")}, ignoring ${location.replace(home, "~")}`,
+          `two skills are named "${skill.name}", using ${already.replace(home, "~")}, ignoring ${location.replace(home, "~")}`,
         );
         continue;
       }
@@ -309,7 +309,7 @@ const skillContent = (skill: Skill): string =>
 // instruction. Handed over bare, the block reads as reference material and the
 // model answers with "what would you like me to work on?" instead of acting.
 const triggerPrompt = (skill: Skill): string =>
-  `Run the ${skill.name} skill now. The user invoked it as a slash command, so the instructions below are what to carry out — not background material, and not something to summarise or ask about. Follow them from the top. Any text after the command name is the skill's arguments.\n\n${skillContent(skill)}`;
+  `Run the ${skill.name} skill now. The user invoked it as a slash command, so the instructions below are what to carry out, not background material, and not something to summarise or ask about. Follow them from the top. Any text after the command name is the skill's arguments.\n\n${skillContent(skill)}`;
 
 // Told when a skill is activated, so the caller can hold it to what it said it
 // needs. `allowed-tools` was parsed into the summary and enforced by nothing —

@@ -17,7 +17,7 @@ the arguments are classified once, before anything loads:
 
 1. `-v` or `--version` anywhere → print the version and exit.
 2. `-h` or `--help` anywhere → print help and exit.
-3. the first bare word — the first token that neither starts with `-` nor
+3. the first bare word, the first token that neither starts with `-` nor
    follows one that does. if it is neither `doctor` nor `update`, and it comes
    before any `-p`, it is a subcommand and everything after it belongs to that
    subcommand.
@@ -34,7 +34,7 @@ argument list wins.
 | --- | --- |
 | `glrs wt -p hi` | the `wt` subcommand, handed `-p hi` |
 | `glrs -p wt list` | one headless turn on the prompt `wt list` |
-| `glrs wt doctor` | the `wt` subcommand, handed `doctor` — glrs's own `doctor` is not reached |
+| `glrs wt doctor` | the `wt` subcommand, handed `doctor`, glrs's own `doctor` is not reached |
 | `glrs hello world` | subcommand `hello` with `["world"]`, or an error naming what does exist |
 | `glrs -p what failed` | one headless turn on the prompt `what failed` |
 
@@ -52,7 +52,7 @@ says nothing about the flag.
 
 the rest of the line is joined with spaces and taken verbatim; it does not reach
 the parser at all. `glrs -p why did --model fail` sends that sentence to the
-model — a prompt that mentions a flag is still a prompt, and a bare word after
+model, a prompt that mentions a flag is still a prompt, and a bare word after
 `-p` is not a subcommand.
 
 one seam remains: the `--model` check in step 5 scans the whole line, prompt
@@ -72,21 +72,21 @@ provider, so a bare id names nothing:
 ```text
 glrs --model                 → --model needs a value.
 glrs --model -p hi           → --model needs a model id, and "-p" is another flag.
-glrs --model bare-id         → --model bare-id — --model needs provider/model-id, and
-                               "bare-id" names no provider. There is no default provider —
-                               see `glrs doctor`.
+glrs --model bare-id         → --model bare-id: --model needs provider/model-id, and
+                               "bare-id" names no provider. There is no
+                               default provider. See `glrs doctor`.
 ```
 
 an empty value is the form that still slips through. `--model=` and `--model ""`
 are both read as absent, and the session starts on whatever the config or the
 environment says.
 
-the sharp edge is `doctor`. `glrs --model x/y doctor` is not an override —
+the sharp edge is `doctor`. `glrs --model x/y doctor` is not an override,
 `doctor` accepts only `--json`, so the leading flag is a parse error:
 
 ```text
 glrs --model anthropic/claude-opus-4-1 doctor
---model anthropic/claude-opus-4-1 — Unknown arguments
+--model anthropic/claude-opus-4-1: Unknown arguments
 ```
 
 to ask `doctor` about a different model, set the variable for the command:
@@ -111,7 +111,7 @@ is discoverable no other way, and help that omitted `glrs wt` would be help that
 lies.
 
 ```text
-glrs — a terminal coding agent
+glrs: a terminal coding agent
 
 Usage: glrs [options]           start a session
        glrs -p <prompt>         one headless turn
@@ -130,7 +130,7 @@ Options:
 ```
 
 when an extension has registered a subcommand, an `Added by extensions:` block
-sits between Commands and Options — the name and the one line the extension
+sits between Commands and Options, the name and the one line the extension
 described it with:
 
 ```text
@@ -181,7 +181,7 @@ members of the API answer there and which refuse is in
 
 an extension registers `--name` with `g.flag`, and glrs lifts any long flag it
 does not know out of the arguments before parsing. what is lifted is lowercased,
-so `--Foo` looks for a flag registered as `foo` — it used to match nothing and
+so `--Foo` looks for a flag registered as `foo`, it used to match nothing and
 disappear without a word. registration is not lowercased in turn: `g.flag`
 stores the name as written, minus a leading `--`, so a name registered with a
 capital in it can never be matched.
@@ -194,7 +194,7 @@ capital in it can never be matched.
 
 flags are dispatched once the extensions have loaded, in the order they appear.
 a flag nobody claimed is a transcript notice, `(unknown flag: --name)`, not a
-failure — the extension that would have claimed it may be one you turned off. a
+failure, the extension that would have claimed it may be one you turned off. a
 handler that throws is reported by name: `(extension) --name failed: <message>`.
 
 extension flags reach the interactive session only. the print branch parses what
@@ -216,7 +216,7 @@ cat build.log | glrs -p
 with no prompt and nothing piped, the run ends before it starts:
 `Nothing to run: -p needs a prompt or piped input.`
 
-assistant text goes to stdout and everything else to stderr — the tool trail,
+assistant text goes to stdout and everything else to stderr, the tool trail,
 retries, extension and skill notes, config diagnostics. a redirect keeps the
 answer clean and `2>&1` puts the trail back in order around it. that split is
 what lets one glrs spawn another through `bash` with every step of the child
@@ -230,11 +230,11 @@ SIGINT interrupts it (`[interrupted]` on stderr), and when the turn hits the
 each run gets a fresh session id, `print-<8 hex>`. hashed together with the
 project root, it becomes the `promptCacheKey` sent to OpenAI-shaped providers,
 and a constant one would tell the backend that unrelated runs are the same
-conversation — after which it looks for reasoning items the previous run left
+conversation, after which it looks for reasoning items the previous run left
 behind and fails the turn with `Item with id 'rs_…' not found`. nothing is
 written to the session store, so a `-p` run cannot be resumed.
 
-extensions load here too — a tool the agent writes for itself has to exist when
+extensions load here too, a tool the agent writes for itself has to exist when
 it verifies with `-p`, or self-extension is a claim nothing can check. what has
 no meaning in a one-shot run refuses out loud: `send()`, `setInput()`,
 `reload()` and `setExtension()` say so on stderr and continue; `models()`,

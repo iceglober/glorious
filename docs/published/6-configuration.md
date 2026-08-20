@@ -20,12 +20,12 @@ supplies provider settings it never mentions.
 
 ## the User directory
 
-`<User>` is resolved once and holds every user-scoped glrs resource — config,
+`<User>` is resolved once and holds every user-scoped glrs resource, config,
 `extensions/`, `commands/`, `skills/`:
 
 1. `GLRS_CONFIG_HOME`, resolved to an absolute path
 2. `$XDG_CONFIG_HOME/glrs`
-3. on Windows, `%APPDATA%\glrs` — or `<home>\AppData\Roaming\glrs` when
+3. on Windows, `%APPDATA%\glrs`, or `<home>\AppData\Roaming\glrs` when
    `APPDATA` is unset
 4. `<home>/.config/glrs`
 
@@ -39,13 +39,13 @@ starting a session, `glrs -p` and `glrs doctor` each make sure the files exist
 before reading them; `glrs update`, `--version`, `--help` and extension
 subcommands do not. an absent file is created holding one key,
 `"$schema": "https://glrs.dev/config.schema.json"`. a file that exists without
-one has it inserted in place — every other key, and the formatting around it,
+one has it inserted in place, every other key, and the formatting around it,
 survives. the schema is metadata for editors; glrs reads nothing from it.
 
 inside a git repository all three files are created, along with
 `<project>/.glrs/.gitignore` holding `/config.local.json`. outside one, only the
 User scope is touched. a `.glrs/config.json` in a directory that is not a
-repository is still read — it is only never written.
+repository is still read, it is only never written.
 
 ## how three files become one
 
@@ -63,7 +63,7 @@ that has to be safe.
 to write your config is not something a cloned repository gets to widen.
 
 **`providers` is merged as JSON Merge Patch.** objects merge key by key at every
-depth, arrays and scalars replace, and `null` deletes — so one file can drop a
+depth, arrays and scalars replace, and `null` deletes, so one file can drop a
 single header another sets, without restating the block.
 
 ## keys
@@ -109,20 +109,20 @@ outside the four is ignored in silence.
 }
 ```
 
-- `api` — base URL, accepted for every provider.
-- `region` — Bedrock only. `project` and `location` — Vertex only. set anywhere
+- `api`, base URL, accepted for every provider.
+- `region`, Bedrock only. `project` and `location`, Vertex only. set anywhere
   else, each is dropped with a diagnostic naming it.
-- `factoryOptions` — handed to the installed AI SDK provider factory;
+- `factoryOptions`, handed to the installed AI SDK provider factory;
   `factoryOptions.apiKey` beats the environment. `fetch` is removed and
   reported: glrs's own carries the request deadlines and the provider lifecycle
   hooks, so it is the one factory option config cannot replace.
-- `requestOptions` — AI SDK call settings for every call. the forty-five keys
-  that name the agent's own job — `model`, `messages`, `tools`,
-  `providerOptions`, `abortSignal`, every `on*` callback — are removed and
+- `requestOptions`, AI SDK call settings for every call. the forty-five keys
+  that name the agent's own job, `model`, `messages`, `tools`,
+  `providerOptions`, `abortSignal`, every `on*` callback, are removed and
   reported one at a time.
-- `providerOptions` — namespaced AI SDK options, merged *over* what glrs
+- `providerOptions`, namespaced AI SDK options, merged *over* what glrs
   computed for the turn.
-- `models.<exact-model-id>` — `requestOptions` and `providerOptions` merged over
+- `models.<exact-model-id>`, `requestOptions` and `providerOptions` merged over
   the provider's, plus `metadata` carrying `name`, `context`, `inputCost`,
   `outputCost` and `variants`. metadata you configure wins over the models.dev
   catalogue, which is how a model the catalogue has never heard of still reports
@@ -140,14 +140,14 @@ setting belongs in, and what each provider reads from it, is
 `"tools": ["bash"]` as `tools.disable`.
 
 in `extensions.load`, only `~/`, `./` and `../` are treated as paths, and they
-resolve against **the config file that declared them** — `./tools/reviewer.ts`
+resolve against **the config file that declared them**, `./tools/reviewer.ts`
 in `<project>/.glrs/config.json` means `<project>/.glrs/tools/reviewer.ts`. it
 happens while that file is still known, since a line later the three scopes are
 one object. anything else is a name, and fails as one:
 
 ```text
-extensions.load "tools/reviewer.ts": no extension by that name is bundled or on disk — glrs ships ask-user, builtins, worktree, web-fetch
-extensions.load "npm:cool-ext": "npm:" packages need an installer glrs does not have yet — name a bundled extension or a path
+extensions.load "tools/reviewer.ts": no extension by that name is bundled or on disk. glrs ships ask-user, builtins, worktree, web-fetch
+extensions.load "npm:cool-ext": "npm:" packages need an installer glrs does not have yet. name a bundled extension or a path
 ```
 
 ## letting glrs record one answer
@@ -159,7 +159,7 @@ hand-edited, with one opt-in exception:
 { "agentConfigAllowlist": ["extensions"] }
 ```
 
-with that set, glrs may record whether a first-party extension should load —
+with that set, glrs may record whether a first-party extension should load,
 without somewhere to keep the answer, declining lasts until the next turn and
 you are asked the same question every session. the write lands in Project
 `.glrs/config.json`, never the `.local.` file, because which extensions a
@@ -167,7 +167,7 @@ project needs belongs with the project. other keys are read and written back
 untouched; hand-formatting is not, since the file is re-serialised.
 
 `"extensions"` is the only section understood, and the two routes that reach it
-are `/extensions enable` in the composer and the `configure_extension` tool —
+are `/extensions enable` in the composer and the `configure_extension` tool,
 [extensions](./8-extensions.md) has both. restart after changing anything else;
 `/reload` re-reads the extension and tool blocks.
 
@@ -212,12 +212,12 @@ came from, written in full, with `$HOME` shortened to `~`.
 
 ```text
 ~/.config/glrs/config.json: not valid JSON, ignored
-~/work/app/.glrs/config.json: "model" should be a string like "azure/gpt-5.6-sol", got object — ignored
-~/work/app/.glrs/config.json: "steeringMode" should be "one-at-a-time" or "all", got string — ignored
-~/work/app/.glrs/config.json: "extensions" has no "load" or "disable" (enable) — ignored
-~/work/app/.glrs/config.json: extensions.load[2] should be a string — ignored
-~/work/app/.glrs/config.json: providers.openai.region is not used by openai — ignored
-~/work/app/.glrs/config.json: providers.openai.factoryOptions.fetch is owned by glrs — ignored
+~/work/app/.glrs/config.json: "model" should be a string like "azure/gpt-5.6-sol", got object, ignored
+~/work/app/.glrs/config.json: "steeringMode" should be "one-at-a-time" or "all", got string, ignored
+~/work/app/.glrs/config.json: "extensions" has no "load" or "disable" (enable), ignored
+~/work/app/.glrs/config.json: extensions.load[2] should be a string, ignored
+~/work/app/.glrs/config.json: providers.openai.region is not used by openai, ignored
+~/work/app/.glrs/config.json: providers.openai.factoryOptions.fetch is owned by glrs, ignored
 ```
 
 `{"model": {"selected": "azure/gpt-5.6-sol"}}` is why they exist: it ran for a
@@ -226,15 +226,15 @@ wrong type, so it was dropped exactly as silently as a typo. anything glrs knows
 the name of and cannot use now says so, per key and per list entry.
 
 a key it has never heard of, sitting beside one it knows, stays ignored and
-silent — a config carrying a setting from a newer or older glrs is not a broken
+silent, a config carrying a setting from a newer or older glrs is not a broken
 config. a file where it recognises nothing at all is a different case:
 
 ```text
-~/work/app/.glrs/config.json: nothing here is a glrs setting (mcpServers, theme, permissions, hooks, …) — the whole file is ignored
+~/work/app/.glrs/config.json: nothing here is a glrs setting (mcpServers, theme, permissions, hooks, …), the whole file is ignored
 ```
 
 that is almost always a file written for something else. you meet it on a config
-glrs has not written to — a project file outside a git repository — because
+glrs has not written to, a project file outside a git repository, because
 everywhere else the `$schema` line it inserts is itself a key it knows. a file
 whose top level is not an object at all is refused the same way, as
 `expected a JSON object, ignored`.
