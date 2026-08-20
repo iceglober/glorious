@@ -6,6 +6,7 @@ import {
   modelCost,
   type ProviderOptions,
   requestOptions,
+  withCacheBreakpoints,
 } from "../../provider-registry/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { errorText } from "./render";
@@ -419,7 +420,10 @@ export const createAgent = (setup: Setup) => {
         const result = streamText({
           ...settings(),
           tools: toolsFor(turn.onTool),
-          messages: [...shown],
+          // Anthropic and Bedrock cache only what is marked, so the marks go
+          // in here rather than in providerOptions. OpenAI and Google cache a
+          // prefix unasked and are handed the list unchanged.
+          messages: withCacheBreakpoints([...shown], setup.model.provider, setup.model.modelId),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.
           // Appending keeps the cached prefix intact, so steering costs the
