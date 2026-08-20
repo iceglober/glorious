@@ -1,4 +1,5 @@
 # Node / TS
+node_modules
 node_modules/
 dist/
 *.tsbuildinfo
