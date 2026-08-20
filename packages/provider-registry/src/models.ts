@@ -122,6 +122,24 @@ export const modelCost = (
     ? undefined
     : ((model.inputCost ?? 0) * input + (model.outputCost ?? 0) * output) / 1_000_000;
 
+// Which provider settings each provider actually reads.
+//
+// Every provider block accepts all four keys, and `providerSettings` below hands
+// out only the ones its provider uses — so `{"providers":{"anthropic":{"region":
+// "us-east-1"}}}` parsed, validated, merged and then vanished without a word.
+// This table is what makes that sayable: a key a provider does not read is now
+// a diagnostic rather than silence, and the test suite walks it to prove every
+// key it does list survives the trip to the model options.
+export const PROVIDER_SETTINGS: Record<string, readonly string[]> = {
+  "amazon-bedrock": ["api", "region"],
+  "google-vertex": ["api", "project", "location"],
+};
+
+// Every other provider — including every OpenAI-compatible endpoint — takes a
+// base URL and nothing else.
+export const settingsFor = (provider: string): readonly string[] =>
+  PROVIDER_SETTINGS[provider] ?? ["api"];
+
 const providerSettings = (
   provider: string,
   config?: Config,

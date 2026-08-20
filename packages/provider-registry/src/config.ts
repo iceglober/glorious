@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { settingsFor } from "./models";
 
 // Two files, read-only, no schema. The four-layer merge with provenance
 // tracking that used to live here served two fields once the model picker and
@@ -250,6 +251,15 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
         project: stringOf(value.project),
         location: stringOf(value.location),
       };
+      // A key this provider does not read is reported rather than dropped. It
+      // used to parse, validate, merge and then disappear, which looks exactly
+      // like a setting that worked.
+      const reads = settingsFor(name);
+      for (const key of ["api", "region", "project", "location"] as const)
+        if (stringOf(value[key]) !== undefined && !reads.includes(key))
+          diagnostics.push(
+            `${where}: providers.${name}.${key} is not used by ${name} — it reads ${reads.join(", ")}`,
+          );
     }
 
   // A file full of keys, none of which mean anything here, is almost always one
