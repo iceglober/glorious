@@ -104,7 +104,7 @@ export const providerReference = (
 };
 
 export const generatedRegion = (name: string, markdown: string): string =>
-  `<!-- generated:${name}:start -->\n${markdown.trimEnd()}\n<!-- generated:${name}:end -->`;
+  `<!-- generated:${name}:start -->\n<div class="glrs-generated-boundary">generated content starts</div>\n\n${markdown.trimEnd()}\n\n<div class="glrs-generated-boundary">generated content ends</div>\n<!-- generated:${name}:end -->`;
 
 const inject = (document: DocumentReflection, name: string, markdown: string): void => {
   const start = `<!-- generated:${name}:start -->`;

@@ -6,7 +6,7 @@ import { configReference, generatedRegion, providerReference } from "./generated
 describe("generated documentation", () => {
   test("marks the start and end of generated content", () => {
     expect(generatedRegion("example", "generated\n")).toBe(
-      "<!-- generated:example:start -->\ngenerated\n<!-- generated:example:end -->",
+      '<!-- generated:example:start -->\n<div class="glrs-generated-boundary">generated content starts</div>\n\ngenerated\n\n<div class="glrs-generated-boundary">generated content ends</div>\n<!-- generated:example:end -->',
     );
   });
 
