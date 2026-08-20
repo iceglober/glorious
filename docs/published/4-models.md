@@ -8,7 +8,7 @@ title: models
 
 highest precedence first:
 
-1. `--model provider/model-id`
+1. cli: `--model provider/model-id`
 2. `GLRS_MODEL` and `GLRS_VARIANT`
 3. Project-User `.glrs/config.local.json`
 4. Project `.glrs/config.json`
@@ -21,8 +21,7 @@ highest precedence first:
 }
 ```
 
-`model` must be `provider/model-id`. there is no default provider or model; a
-missing model or bare ID is an error. `variant` is reasoning effort when the
+`model` must be `provider/model-id`. `variant` is reasoning effort when the
 model supports it.
 
 configure a model before starting with `--model`, `GLRS_MODEL`, or config. the core has no
@@ -32,14 +31,14 @@ model picker. an extension can switch the next turn with `g.setModel()`.
 
 glrs includes fifteen providers and any OpenAI-compatible endpoint with a base
 URL. credentials come from environment variables. see
-[model providers](./4-providers.md).
+[model providers](./3-providers.md).
 
 ```json
 {
   "providers": {
     "amazon-bedrock": { "region": "eu-west-1" },
     "google-vertex": { "project": "my-project", "location": "europe-west4" },
-    "ollama": { "api": "http://localhost:11434/v1" }
+    "ollama": { "factoryOptions": { "baseURL": "http://localhost:11434/v1" } }
   }
 }
 ```
@@ -54,7 +53,9 @@ ${XDG_CACHE_HOME:-~/.cache}/glrs/models.dev.json
 ```
 
 without metadata the model still runs; context percentage and cost may be
-unknown.
+unknown. exact entries under `providers.<provider>.models.<model-id>.metadata`
+override models.dev. the same model entry can override standard request options
+and provider-specific options; see [configuration](./5-customize/1-configuration.md).
 
 provider pricing can be adjusted:
 

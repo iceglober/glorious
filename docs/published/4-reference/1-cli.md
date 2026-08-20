@@ -35,7 +35,7 @@ extensions can register additional `--name value` flags.
 | `XDG_CACHE_HOME` | model metadata cache base |
 | `NO_COLOR` | disable color |
 
-provider credential variables are listed under [model providers](../2-use/4-providers.md).
+provider credential variables are listed under [model providers](../3-providers.md).
 
 ## config precedence
 
@@ -43,7 +43,7 @@ provider credential variables are listed under [model providers](../2-use/4-prov
 CLI > environment > Project-User > Project > User > error
 ```
 
-see [configuration](../3-customize/1-configuration.md) for paths and schema.
+see [configuration](../5-customize/1-configuration.md) for paths and schema.
 
 ## exit status
 

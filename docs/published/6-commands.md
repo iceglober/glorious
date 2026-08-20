@@ -4,15 +4,19 @@ title: commands
 
 # commands
 
+a command is a slash-prefixed action run from the TUI composer: type `/`, choose
+or finish a name, add any arguments, then press Enter. commands either expand to
+a model prompt or run extension code directly. they are available in interactive
+sessions, not `glrs -p` print mode.
+
 ## markdown commands
 
 a markdown file becomes `/name`:
 
 ```markdown
-<!-- .glrs/commands/review.md -->
----
-description: review the working diff for anything that would fail CI
----
+## <!-- .glrs/commands/review.md -->
+
+## description: review the working diff for anything that would fail CI
 
 read `git diff` and report anything that would fail CI. do not fix it yet.
 ```
@@ -36,7 +40,8 @@ prompt:
 export default function (g) {
   g.command("branch", {
     description: "show the current branch",
-    run: async () => g.print((await g.exec("git branch --show-current")).stdout),
+    run: async () =>
+      g.print((await g.exec("git branch --show-current")).stdout),
   });
 }
 ```

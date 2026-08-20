@@ -46,7 +46,7 @@ npm install -g @glrs-dev/glrs@next
 all package-manager installs still require Bun at runtime.
 
 get started with [quickstart](./1-quickstart.md). a model is required before the
-first run; see [configuration](./3-customize/1-configuration.md).
+first run; see [configuration](./5-customize/1-configuration.md).
 
 ## update
 
@@ -92,11 +92,11 @@ npm uninstall -g @glrs-dev/glrs
 uninstalling the package leaves User config and session history in place.
 remove them separately only when you want the data gone:
 
-| data | macOS and Linux default | Windows default |
-| --- | --- | --- |
-| config and resources | `~/.config/glrs` | `%APPDATA%\glrs` |
-| sessions | `~/.local/share/glrs` | `~/.local/share/glrs` |
-| model cache | `~/.cache/glrs` | `~/.cache/glrs` |
+| data                 | macOS and Linux default | Windows default       |
+| -------------------- | ----------------------- | --------------------- |
+| config and resources | `~/.config/glrs`        | `%APPDATA%\glrs`      |
+| sessions             | `~/.local/share/glrs`   | `~/.local/share/glrs` |
+| model cache          | `~/.cache/glrs`         | `~/.cache/glrs`       |
 
 `GLRS_CONFIG_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_CACHE_HOME`
 can move those directories.

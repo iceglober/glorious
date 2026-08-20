@@ -9,16 +9,14 @@ Reviewed 2026-08-19 against the branch implementation.
 | root `README.md` | `install.sh`, `bin/glrs`, `package.json` | retained the terse landing page; corrected release channel and Bun/git requirements |
 | `1-quickstart.md` | `ui/screen.ts`, `composer.ts`, first-party commands, CLI startup | corrected install link, command inventory, queue/interrupt keys, exit/resume behavior |
 | `2-installation.md` | `docs-site/public/install.sh`, `bin/glrs`, `index.ts`, `package.json` | corrected `next` channel, Bun requirement, update behavior, uninstall commands, and artifact paths; removed nonexistent update/uninstall scripts |
-| `3-customize/1-configuration.md` | `provider-registry/config.ts`, `writeconfig.ts`, reload host | aligned all three scopes, platform paths, precedence, aliases, additive lists, shorthand, writable section, and restart/reload boundary |
-| `2-use/2-sessions.md` | `glrs-core/session.ts`, `/session`, compaction code, print host | added persistence/resume/storage/clear/compact details; clarified that print mode creates no session |
-| `2-use/1-basics.md` | composer, mentions, queue, direct shell, guidance loader | aligned attachments, shell mode, queue keys, and actual rule-file walk |
-| `2-use/4-providers.md` | `PROVIDERS`, `ALIASES`, `missingFor`, model provider settings | completed provider/alias lists and aligned environment/config fallbacks; documented doctor limitations |
-| `2-use/3-models.md` | model resolution, metadata cache, request retry loop | aligned required selection, precedence, cache, provider settings, and three-attempt retry behavior |
+| `5-customize/1-configuration.md` | `provider-registry/config.ts`, `writeconfig.ts`, reload host | aligned all three scopes, platform paths, precedence, camelCase keys, additive lists, shorthand, writable section, and restart/reload boundary |
+| `3-providers.md` | `PROVIDERS`, `ALIASES`, `missingFor`, model provider settings | completed provider/alias lists and aligned environment/config fallbacks; documented doctor limitations |
+| `4-models.md` | model resolution, metadata cache, request retry loop | aligned required selection, precedence, cache, provider settings, and three-attempt retry behavior |
 | `4-reference/1-cli.md` | argument parser and print host | aligned every core command/alias, stream split, extension flags, precedence, and exit status |
-| `3-customize/2-commands.md` | command parser, first-party commands, user commands, guidance loader | aligned expansion, search order, collision order, skill namespace, and actual rule paths |
-| `3-customize/3-skills.md` | `skills.ts` | aligned all four roots, depth, validation, aliases, invocation, and model opt-out |
-| `3-customize/4-extensions.md` | extension resolver, API, both hosts, registry, toolkit | aligned discovery, first-party roster, collisions, permissions, mode differences, hooks, rendering, and host capabilities |
-| `2-use/5-tools.md` | builtins tools, toolkit wrapper, web/ask/configure extensions | added conditional tools and aligned timeout, paths, output cap, filters, and permissions |
+| `6-commands.md` | command parser, first-party commands, user commands, guidance loader | aligned expansion, search order, collision order, skill namespace, and actual rule paths |
+| `5-customize/3-skills.md` | `skills.ts` | aligned all four roots, depth, validation, aliases, invocation, and model opt-out |
+| `5-customize/4-extensions.md` | extension resolver, API, both hosts, registry, toolkit | aligned discovery, first-party roster, collisions, permissions, mode differences, hooks, rendering, and host capabilities |
+| `5-tools.md` | builtins tools, toolkit wrapper, web/ask/configure extensions | added conditional tools and aligned timeout, paths, output cap, filters, and permissions |
 | `4-reference/3-troubleshooting.md` | doctor, config diagnostics, extension resolver, stores | aligned diagnostics, precedence, reload behavior, cache/session paths, and permissions |
 | `4-reference/2-terminal-setup.md` | OpenTUI setup, key normalization, color and selection code | aligned Windows remap, Alt conventions, color, OSC 52, and terminal-owned keys |
 | `5-internals/1-philosophy.md` | prompt construction, extension seams, permission model | factual; shortened to the implementation's current constraints |
@@ -33,10 +31,13 @@ useful guidance beyond those pages.
 
 1. quickstart
 2. installation
-3. **use** — basics, sessions, models, model providers, tools
-4. **customize** — configuration, commands, skills, extensions
-5. **reference** — CLI, terminal setup, troubleshooting
-6. **internals** — philosophy, architecture, lifecycle
+3. model providers
+4. models
+5. tools
+6. commands
+7. **customize** — configuration, skills, extensions
+8. **reference** — CLI, terminal setup, troubleshooting
+9. **internals** — philosophy, architecture, lifecycle
 
 Numeric file and directory prefixes preserve page order and are removed from
 visible page/group titles by frontmatter and the document-groups plugin. Group
@@ -58,8 +59,8 @@ rows are labels, not pages or links.
 1. **slash commands** — export first-party command metadata from the builtins extension. use it for registration, `/help`, and the quickstart table. the stale `esc` help text found in this audit is the same class of drift.
 2. **keys** — define one key/action manifest beside the composer dispatcher. use it for `/help`, quickstart, basics, and terminal setup. key behavior is currently split across `screen.ts`, `composer.ts`, and prose.
 3. **tools** — export first-party tool metadata from builtins, web-fetch, ask-user, and `configure_extension`. generate tools and quickstart tables and keep availability predicates in the same records.
-4. **providers and aliases** — `PROVIDERS` and `ALIASES` are already data. expose a serializable documentation view and render the provider table directly.
-5. **config schema** — replace the hand-maintained `Config` type + `KNOWN` list + shape parser + documentation table with one schema/metadata source. generate keys, types, defaults, aliases, and merge behavior.
+4. **providers and aliases — done** — the docs build now renders the provider and alias reference directly from `PROVIDERS` and `PROVIDER_ALIASES`.
+5. **config schema — partial** — the configuration reference is generated from the hosted schema. `Config`, `KNOWN`, and the shape parser still duplicate that schema and should eventually share one runtime metadata source.
 
 ### next
 

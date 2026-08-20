@@ -25,19 +25,37 @@ resolution order for the User directory:
 3. the platform default above
 
 Project-User can change one setting without copying the rest of Project. Project
-can choose a model while User supplies its provider settings.
+can choose a model while User supplies its provider settings. on its first run,
+glrs creates User config. inside a Git repository, it also creates both project
+config files and `.glrs/.gitignore` keeps `config.local.json` local. each config
+gets the hosted schema link when missing; existing settings and formatting stay
+in place.
 
 older `~/.glrs`, `.glorious`, and `~/.config/glorious` paths are not read.
+
+## editor autocomplete
+
+add the hosted JSON Schema to any config file:
+
+```json
+{
+  "$schema": "https://glrs.dev/config.schema.json"
+}
+```
+
+editors that support JSON Schema use it for completion, descriptions, and
+validation. `$schema` is metadata and does not affect runtime config.
 
 ## example
 
 ```json
 {
+  "$schema": "https://glrs.dev/config.schema.json",
   "model": "provider/model-id",
   "variant": "high",
-  "tool_timeout_ms": 600000,
-  "steering_mode": "one-at-a-time",
-  "follow_up_mode": "one-at-a-time",
+  "toolTimeoutMs": 600000,
+  "steeringMode": "one-at-a-time",
+  "followUpMode": "one-at-a-time",
   "extensions": { "load": ["web-fetch"], "disable": [] },
   "tools": { "disable": [] },
   "providers": {
@@ -48,26 +66,50 @@ older `~/.glrs`, `.glorious`, and `~/.config/glorious` paths are not read.
 }
 ```
 
-| setting | value |
-| --- | --- |
-| `model` | required as `provider/model-id`; no default or bare-ID fallback |
-| `variant` | reasoning effort when the model supports it |
-| `tool_timeout_ms` | built-in shell/search timeout in milliseconds |
-| `steering_mode` | `one-at-a-time` or `all` |
-| `follow_up_mode` | `one-at-a-time` or `all` |
-| `extensions.load` | first-party extension names or paths |
-| `extensions.disable` | extension names that must not load |
-| `tools.disable` | tool names withheld from the model |
-| `agentConfigAllowlist` | sections glrs may write; currently only `extensions` |
-| `providers.<name>.api` | OpenAI-compatible base URL |
-| `providers.<name>.region` | AWS Bedrock region |
-| `providers.<name>.project` | Google Vertex project |
-| `providers.<name>.location` | Google Vertex location |
+see [all configuration options](../../../docs-site/generated/4-reference/4-configuration-options.md) for types,
+defaults, and descriptions generated from the schema.
+
+## provider and model overrides
+
+provider settings have three passthrough layers:
+
+- `factoryOptions` goes directly to the installed AI SDK provider factory.
+- `requestOptions` supplies standard AI SDK call options.
+- `providerOptions` supplies the AI SDK's provider-namespaced call options.
+
+an exact model id under `models` overrides the provider's request and provider
+options. `metadata` overrides models.dev values:
+
+```json
+{
+  "providers": {
+    "openai": {
+      "factoryOptions": {
+        "baseURL": "https://proxy.example.com/v1",
+        "headers": { "x-proxy-key": "..." }
+      },
+      "requestOptions": { "temperature": 0.2 },
+      "providerOptions": { "openai": { "store": false } },
+      "models": {
+        "gpt-5": {
+          "requestOptions": { "maxOutputTokens": 32000 },
+          "providerOptions": { "openai": { "reasoningEffort": "high" } },
+          "metadata": { "context": 400000 }
+        }
+      }
+    }
+  }
+}
+```
+
+option objects merge recursively across scopes. arrays and scalar values replace
+inherited values; `null` removes one. glrs passes unknown JSON-compatible options
+through so new AI SDK options do not require a glrs release. model, messages,
+tools, callbacks, wrapped fetch, and abort handling remain owned by glrs.
 
 `extensions` may also be an array, shorthand for `extensions.load`.
 
-`steeringMode` and `followUpMode` are accepted aliases. both queue modes default
-to `one-at-a-time`.
+both queue modes default to `one-at-a-time`.
 
 extension and tool lists are sets: they add up across all three files.
 `disable` wins over `load`. every other setting is nearest-wins.
