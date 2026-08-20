@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve, win32 } from "node:path";
 
@@ -61,6 +61,9 @@ export type Config = {
 
 export type LoadedConfig = { config: Config; diagnostics: string[] };
 
+export const CONFIG_SCHEMA_URL = "https://glrs.dev/config.schema.json";
+const initialConfig = `${JSON.stringify({ $schema: CONFIG_SCHEMA_URL }, null, 2)}\n`;
+
 const userConfigBase = (
   home: string,
   env: NodeJS.ProcessEnv,
@@ -115,6 +118,43 @@ export const configScopes = (
     name: (["Project-User", "Project", "User"] as const)[index],
     path,
   }));
+
+export const ensureConfigFiles = async (
+  root: string,
+  options: {
+    project: boolean;
+    home?: string;
+    env?: NodeJS.ProcessEnv;
+    platform?: NodeJS.Platform;
+  },
+): Promise<string[]> => {
+  const home = options.home ?? homedir();
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const scopes = configScopes(root, home, env, platform);
+  const targets = options.project ? scopes : scopes.filter((scope) => scope.name === "User");
+  if (options.project) {
+    const projectDirectory = dirname(scopes[0].path);
+    await mkdir(projectDirectory, { recursive: true });
+    await writeFile(join(projectDirectory, ".gitignore"), "/config.local.json\n", {
+      encoding: "utf8",
+      flag: "wx",
+    }).catch((thrown) => {
+      if ((thrown as NodeJS.ErrnoException).code !== "EEXIST") throw thrown;
+    });
+  }
+  const created: string[] = [];
+  for (const target of targets) {
+    await mkdir(dirname(target.path), { recursive: true });
+    try {
+      await writeFile(target.path, initialConfig, { encoding: "utf8", flag: "wx" });
+      created.push(target.path);
+    } catch (thrown) {
+      if ((thrown as NodeJS.ErrnoException).code !== "EEXIST") throw thrown;
+    }
+  }
+  return created;
+};
 
 export const glrsDirectories = (
   root: string,

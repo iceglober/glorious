@@ -11,6 +11,7 @@
   "plugin": [
     "./theme/index.ts",
     "./plugins/group-documents.ts",
+    "./plugins/generated-documents.ts",
     "@boneskull/typedoc-plugin-mermaid"
   ],
   "theme": "glrs",

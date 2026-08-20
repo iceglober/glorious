@@ -78,7 +78,7 @@ const byId = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
 // is why Vertex is `google-vertex` and Bedrock is `amazon-bedrock` — reasonable
 // as identifiers, not what anyone reaches for. An alias that resolves is worth
 // more than an error that is technically correct.
-const ALIASES: Record<string, string> = {
+export const PROVIDER_ALIASES: Readonly<Record<string, string>> = {
   vertex: "google-vertex",
   "google-vertex-ai": "google-vertex",
   gemini: "google",
@@ -95,7 +95,7 @@ const ALIASES: Record<string, string> = {
   "open-router": "openrouter",
 };
 
-export const canonicalProvider = (id: string): string => ALIASES[id] ?? id;
+export const canonicalProvider = (id: string): string => PROVIDER_ALIASES[id] ?? id;
 
 export const providerSpec = (id: string): ProviderSpec | undefined =>
   byId.get(canonicalProvider(id));

@@ -2,7 +2,14 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configScopes, envSetting, loadConfig, userConfigDirectory } from "./config";
+import {
+  CONFIG_SCHEMA_URL,
+  configScopes,
+  ensureConfigFiles,
+  envSetting,
+  loadConfig,
+  userConfigDirectory,
+} from "./config";
 
 const roots: string[] = [];
 
@@ -68,6 +75,58 @@ describe("loadConfig", () => {
     const { config } = await loadConfig(await project(`{"model":42,"variant":""}`));
     expect(config.model).toBeUndefined();
     expect(config.variant).toBeUndefined();
+  });
+});
+
+describe("initializing config files", () => {
+  test("a non-project run creates only User config", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-root-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    const created = await ensureConfigFiles(root, {
+      project: false,
+      home,
+      env: {},
+      platform: "linux",
+    });
+    expect(created).toEqual([join(home, ".config", "glrs", "config.json")]);
+    expect(JSON.parse(await Bun.file(created[0]).text())).toEqual({ $schema: CONFIG_SCHEMA_URL });
+    expect(await Bun.file(join(root, ".glrs", "config.json")).exists()).toBe(false);
+  });
+
+  test("a project run creates Project-User, Project, and User config", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-project-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    const created = await ensureConfigFiles(root, {
+      project: true,
+      home,
+      env: {},
+      platform: "linux",
+    });
+    expect(created).toEqual([
+      join(root, ".glrs", "config.local.json"),
+      join(root, ".glrs", "config.json"),
+      join(home, ".config", "glrs", "config.json"),
+    ]);
+    for (const path of created)
+      expect(JSON.parse(await Bun.file(path).text())).toEqual({ $schema: CONFIG_SCHEMA_URL });
+    expect(await Bun.file(join(root, ".glrs", ".gitignore")).text()).toBe("/config.local.json\n");
+  });
+
+  test("existing config is never replaced", async () => {
+    const root = await mkdtemp(join(tmpdir(), "glrs-init-existing-"));
+    const home = await mkdtemp(join(tmpdir(), "glrs-init-home-"));
+    roots.push(root, home);
+    await mkdir(join(root, ".glrs"), { recursive: true });
+    await writeFile(join(root, ".glrs", "config.json"), '{"model":"openai/custom"}\n');
+    await ensureConfigFiles(root, { project: true, home, env: {}, platform: "linux" });
+    expect(await Bun.file(join(root, ".glrs", "config.json")).text()).toBe(
+      '{"model":"openai/custom"}\n',
+    );
+    expect(
+      await ensureConfigFiles(root, { project: true, home, env: {}, platform: "linux" }),
+    ).toEqual([]);
   });
 });
 

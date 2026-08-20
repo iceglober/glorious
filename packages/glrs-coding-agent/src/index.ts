@@ -14,6 +14,7 @@ import {
 import { runShell } from "../../glrs-core/src/shell";
 import {
   currentModel,
+  ensureConfigFiles,
   envSetting,
   loadCatalogue,
   loadConfig,
@@ -94,6 +95,7 @@ const probe = () => {
   const root = top === "" ? cwd : top;
   return {
     root,
+    isGit: top !== "",
     os,
     branch: branch === "" ? "HEAD" : branch,
     worktree: root === cwd ? null : cwd.slice(`${root}/`.length),
@@ -138,7 +140,8 @@ const main = async (): Promise<void> => {
       .filter((part) => part !== "")
       .join("\n\n");
     if (prompt === "") throw new Error("Nothing to run: -p needs a prompt or piped input.");
-    const { root, os, git } = probe();
+    const { root, isGit, os, git } = probe();
+    await ensureConfigFiles(root, { project: isGit });
     process.exitCode = await runPrint(prompt, { root, os, git });
     return;
   }
@@ -167,7 +170,8 @@ const main = async (): Promise<void> => {
       at += 1;
     }
   }
-  const { root, os, branch, worktree, git, label } = probe();
+  const { root, isGit, os, branch, worktree, git, label } = probe();
+  await ensureConfigFiles(root, { project: isGit });
   const resolvedConfig = await loadConfig(root);
   if (doctor) {
     const chosen = currentModel(resolvedConfig.config);

@@ -28,10 +28,22 @@
       "default": 600000,
       "description": "Timeout for built-in shell and search tools, in milliseconds."
     },
-    "steering_mode": { "$ref": "#/$defs/queueMode" },
-    "steeringMode": { "$ref": "#/$defs/queueMode" },
-    "follow_up_mode": { "$ref": "#/$defs/queueMode" },
-    "followUpMode": { "$ref": "#/$defs/queueMode" },
+    "steering_mode": {
+      "$ref": "#/$defs/queueMode",
+      "description": "How Alt+Enter messages are delivered into the active turn."
+    },
+    "steeringMode": {
+      "$ref": "#/$defs/queueMode",
+      "description": "Camel-case alias for steering_mode."
+    },
+    "follow_up_mode": {
+      "$ref": "#/$defs/queueMode",
+      "description": "How Enter messages are delivered after the active turn finishes."
+    },
+    "followUpMode": {
+      "$ref": "#/$defs/queueMode",
+      "description": "Camel-case alias for follow_up_mode."
+    },
     "extensions": {
       "description": "First-party extension names or extension paths to load, plus names to disable.",
       "oneOf": [
@@ -39,8 +51,14 @@
         {
           "type": "object",
           "properties": {
-            "load": { "$ref": "#/$defs/nameList" },
-            "disable": { "$ref": "#/$defs/nameList" }
+            "load": {
+              "$ref": "#/$defs/nameList",
+              "description": "First-party extension names or extension paths to load."
+            },
+            "disable": {
+              "$ref": "#/$defs/nameList",
+              "description": "Extension names that must not load."
+            }
           },
           "additionalProperties": true
         }
@@ -53,7 +71,10 @@
         {
           "type": "object",
           "properties": {
-            "disable": { "$ref": "#/$defs/nameList" }
+            "disable": {
+              "$ref": "#/$defs/nameList",
+              "description": "Tool names to withhold from the model."
+            }
           },
           "additionalProperties": true
         }

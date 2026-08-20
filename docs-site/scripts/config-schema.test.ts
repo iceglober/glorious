@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CONFIG_SCHEMA_URL } from "../../packages/provider-registry/src/config";
 
 const schema = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "public", "config.schema.json"), "utf8"),
@@ -11,7 +12,7 @@ const schema = JSON.parse(
 
 describe("hosted config schema", () => {
   test("uses the public glrs.dev URL", () => {
-    expect(schema.$id).toBe("https://glrs.dev/config.schema.json");
+    expect(schema.$id).toBe(CONFIG_SCHEMA_URL);
   });
 
   test("covers every documented top-level setting", () => {
