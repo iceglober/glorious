@@ -10,8 +10,17 @@ title: turn things off
 
 ```json
 {
-  "tools": { "disable": ["bash", "web_fetch"] },
-  "extensions": { "disable": ["web-fetch"] },
+  "tools": {
+    "disable": [
+      "bash",
+      "web_fetch"
+    ]
+  },
+  "extensions": {
+    "disable": [
+      "web-fetch"
+    ]
+  },
   "toolTimeoutMs": 120000
 }
 ```

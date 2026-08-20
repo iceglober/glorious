@@ -19,7 +19,15 @@ a missing file is not an error. the User directory is the first of `$GLRS_CONFIG
 in `extensions.load`, `~/` resolves against home and `./` or `../` against the directory of the file that named them. every other entry is a bare name.
 
 ```json
-{ "extensions": { "load": ["web-fetch", "./tools/reviewer.ts", "~/lab/tap.ts"] } }
+{
+  "extensions": {
+    "load": [
+      "web-fetch",
+      "./tools/reviewer.ts",
+      "~/lab/tap.ts"
+    ]
+  }
+}
 ```
 
 ## first run
@@ -37,7 +45,11 @@ in a git repository all three files are created, outside one only the User file.
 ## agentConfigAllowlist
 
 ```json
-{ "agentConfigAllowlist": ["extensions"] }
+{
+  "agentConfigAllowlist": [
+    "extensions"
+  ]
+}
 ```
 
 `"extensions"` is the only section understood. it lets glrs write `<root>/.glrs/config.json`, never `config.local.json`, recording one extension as loaded or disabled. the write is a JSON round trip: comments and formatting do not survive. without the entry the write returns `not-allowed`.
@@ -69,7 +81,15 @@ reported in the transcript as `(config)`, on stderr as `[config]` under `-p`, an
 `$XDG_DATA_HOME/glrs/sessions/<id>.json`, else `~/.local/share/glrs/sessions/`. prompt history is `prompts.json` beside them.
 
 ```json
-{ "schema": 2, "id": "3f9c1a20", "createdAt": "", "updatedAt": "", "cwd": "", "events": [], "contextTokens": 0 }
+{
+  "schema": 2,
+  "id": "3f9c1a20",
+  "createdAt": "",
+  "updatedAt": "",
+  "cwd": "",
+  "events": [],
+  "contextTokens": 0
+}
 ```
 
 `.../glorious/sessions/` is read, never written: a session resumed from there is saved to the new path.

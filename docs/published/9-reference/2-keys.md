@@ -19,6 +19,26 @@ title: keys
 
 a `g.key()` binding matches name, ctrl and shift, and runs before every row above.
 
+## terminals that take a key first
+
+| terminal | key | fix |
+| --- | --- | --- |
+| Windows Terminal | `alt+enter` | claims it for fullscreen. open its settings with `ctrl+,` (**Settings**, then **Open JSON file**) and unbind it |
+
+```json
+{
+  "actions": [
+    {
+      "command": "unbound",
+      "keys": "alt+enter"
+    }
+  ]
+}
+```
+
+restart glrs afterward. a key the terminal consumes never reaches glrs, so
+nothing in glrs's own configuration can recover it.
+
 ## queues
 | queue | key | delivery | setting |
 | --- | --- | --- | --- |

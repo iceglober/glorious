@@ -6,7 +6,7 @@ title: manage extensions
 
 ## turn one on
 
-```text
+```bash
 /extensions                    list loaded, then bundled ones that are not
 /extensions enable web-fetch   records it in .glrs/config.json
 /reload                        applies it
@@ -25,7 +25,11 @@ disk wins over bundled, project before user. `.glrs/extensions/web-fetch.ts` loa
 ## let glrs record the choice
 
 ```json
-{ "agentConfigAllowlist": ["extensions"] }
+{
+  "agentConfigAllowlist": [
+    "extensions"
+  ]
+}
 ```
 
 without it `/extensions enable` and the agent's `configure_extension` tool refuse and print the config line to add yourself. see the [extensions reference](../9-reference/7-extensions.md).

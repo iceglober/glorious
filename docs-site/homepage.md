@@ -7,7 +7,7 @@ an agent ecosystem
 
 ## how-to guides
 
-- [install](../docs/published/2-how-to/1-install.md)
+- [install & update](../docs/published/2-how-to/1-install-and-update.md)
 - [connect a provider](../docs/published/2-how-to/2-connect-a-provider.md)
 - [resume and fork](../docs/published/2-how-to/3-resume-and-fork.md)
 - [write a command](../docs/published/2-how-to/4-write-a-command.md)

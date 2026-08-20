@@ -15,7 +15,7 @@ the picker lists every session newest first, titled by your last message, with i
 
 ## fork
 
-```text
+```bash
 /session     # read the event count
 /fork 42     # copy the first 42 events to a new id
 /fork        # copy all of them

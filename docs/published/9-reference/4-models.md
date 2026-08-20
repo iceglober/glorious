@@ -55,10 +55,22 @@ config wins. a key a provider does not accept is dropped with a diagnostic. `glr
 `providers.<id>.models.<exact-model-id>` takes `requestOptions` and `providerOptions`; each merges over the provider's. `metadata` is model-level only.
 
 ```json
-{ "providers": { "openai": {
-  "requestOptions": { "maxOutputTokens": 8000 },
-  "models": { "gpt-5.6": { "metadata": { "context": 400000 } } }
-} } }
+{
+  "providers": {
+    "openai": {
+      "requestOptions": {
+        "maxOutputTokens": 8000
+      },
+      "models": {
+        "gpt-5.6": {
+          "metadata": {
+            "context": 400000
+          }
+        }
+      }
+    }
+  }
+}
 ```
 
 ## variant

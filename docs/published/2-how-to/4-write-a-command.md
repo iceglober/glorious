@@ -22,7 +22,7 @@ review the working diff for anything that would fail CI. pay attention to $ARGUM
 
 ## run it
 
-```text
+```bash
 /review the migration
 ```
 

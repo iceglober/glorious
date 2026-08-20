@@ -45,7 +45,14 @@ renderers run synchronously during a paint. `footer` returns `Line[]`, `activity
 
 ```typescript
 type Tone = "accent" | "highlight" | "muted" | "prompt" | "success" | "warning" | "danger";
-type Span = { text: string; tone?: Tone; bold?: boolean; italic?: boolean; underline?: boolean; fill?: boolean };
+type Span = {
+  text: string;
+  tone?: Tone;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fill?: boolean;
+};
 type Line = Span[];
 ```
 

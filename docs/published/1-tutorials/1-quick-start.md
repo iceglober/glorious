@@ -11,7 +11,7 @@ curl -fsSL https://glrs.dev/install.sh | bash
 ```
 
 the script requires git and offers to install Bun when it is missing. for
-package managers, PATH fixes and uninstalling: [install](../2-how-to/1-install.md).
+package managers, PATH fixes and uninstalling: [install](../2-how-to/1-install-and-update.md).
 
 ## set a provider key
 

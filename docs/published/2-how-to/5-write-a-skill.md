@@ -31,7 +31,7 @@ and says so at startup.
 
 ## invoke it yourself
 
-```text
+```bash
 /skill:graphify
 ```
 

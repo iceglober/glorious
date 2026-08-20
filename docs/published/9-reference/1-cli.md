@@ -38,7 +38,7 @@ a bare word is the first token that neither starts with `-` nor follows one that
 
 `--model` must have a value, that value must not be another flag, and it must name a provider:
 
-```text
+```bash
 glrs --model           → --model needs a value.
 glrs --model -p hi     → --model needs a model id, and "-p" is another flag.
 glrs --model bare-id   → --model bare-id: --model needs provider/model-id, and "bare-id" names no provider. There is no default provider. See `glrs doctor`.

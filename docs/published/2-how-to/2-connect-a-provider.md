@@ -30,10 +30,17 @@ Bedrock reads `AWS_REGION` or `AWS_DEFAULT_REGION`; region falls back to `us-eas
 `GOOGLE_VERTEX_LOCATION`; location defaults to `global`. config wins:
 
 ```json
-{ "providers": {
-  "amazon-bedrock": { "region": "us-west-2" },
-  "google-vertex": { "project": "acme-dev", "location": "us-central1" }
-} }
+{
+  "providers": {
+    "amazon-bedrock": {
+      "region": "us-west-2"
+    },
+    "google-vertex": {
+      "project": "acme-dev",
+      "location": "us-central1"
+    }
+  }
+}
 ```
 
 ## a local server, or anything unlisted
@@ -42,7 +49,14 @@ an unknown prefix is an OpenAI-compatible endpoint and needs a base URL: Ollama,
 (`http://localhost:1234/v1`), vLLM, a gateway. `doctor` reports `missing: providers.<id>.api …`.
 
 ```json
-{ "model": "ollama/qwen3-coder", "providers": { "ollama": { "api": "http://localhost:11434/v1" } } }
+{
+  "model": "ollama/qwen3-coder",
+  "providers": {
+    "ollama": {
+      "api": "http://localhost:11434/v1"
+    }
+  }
+}
 ```
 
 model ids and precedence: [models](../9-reference/4-models.md).
