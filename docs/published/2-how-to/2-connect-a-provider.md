@@ -4,10 +4,11 @@ title: connect a provider
 
 # connect a provider
 
-set the credential, then check it with `glrs doctor`: a connected provider reports
-`credentials: found`, anything else prints `missing:` and the variable it wants.
+each provider reads its credential from the environment. the full list of
+providers, their aliases and the variables each one reads:
+[models](../9-reference/4-models.md).
 
-## a keyed provider
+## api key
 
 ```bash
 export ANTHROPIC_API_KEY=sk-…
@@ -45,8 +46,9 @@ Bedrock reads `AWS_REGION` or `AWS_DEFAULT_REGION`; region falls back to `us-eas
 
 ## a local server, or anything unlisted
 
-an unknown prefix is an OpenAI-compatible endpoint and needs a base URL: Ollama, LM Studio
-(`http://localhost:1234/v1`), vLLM, a gateway. `doctor` reports `missing: providers.<id>.api …`.
+if the provider prefix in the model string is unknown, it is treated as an
+OpenAI-compatible endpoint. it needs a base URL, and nothing else: Ollama,
+LM Studio (`http://localhost:1234/v1`), vLLM, or a gateway.
 
 ```json
 {
@@ -59,6 +61,13 @@ an unknown prefix is an OpenAI-compatible endpoint and needs a base URL: Ollama,
 }
 ```
 
-model ids and precedence: [models](../9-reference/2-models.md).
+## check it
 
-see also: [models](../9-reference/2-models.md), [configuration](../9-reference/8-configuration.md)
+```bash
+glrs doctor
+```
+
+a connected provider reports `credentials: found`. anything else prints
+`missing:` and the variable it wants.
+
+see also: [models](../9-reference/4-models.md), [configuration](../9-reference/14-configuration.md)

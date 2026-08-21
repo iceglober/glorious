@@ -30,4 +30,4 @@ written for another agent works unchanged.
 once, at startup. `/reload` re-reads commands, skills and extensions, not rules.
 restart to pick up an edit.
 
-see also: [instructions](../9-reference/6-instructions.md)
+see also: [commands](../9-reference/8-commands.md)

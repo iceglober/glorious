@@ -72,13 +72,16 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   directory, the project you are in has its own docs/ and it is not this one.
   Read them whole; they are written for you and they cross-reference each other.
 
-  - 9-reference/7-extensions.md          writing an extension: the API, discovery, rendering
-  - 9-reference/3-sessions.md             sessions on disk, events, resume, fork, compaction
-  - 9-reference/6-instructions.md         \`/name\` markdown commands, SKILL.md skills, and AGENTS.md
-  - 9-reference/5-tools.md               the tools that reach the machine and their limits
-  - 9-reference/8-configuration.md       the three config files, merge rules, diagnostics
-  - 9-reference/2-models.md              choosing a model, providers, variants, context metadata
-  - 9-reference/1-cli.md                 argv routing, \`-p\`, and subcommands
+  - 9-reference/11-extensions.md         writing an extension: the API, discovery, rendering
+  - 9-reference/12-events.md             every lifecycle event, what it carries, what returning changes
+  - 9-reference/8-commands.md            \`/name\` commands, and the three kinds
+  - 9-reference/9-skills.md              SKILL.md, frontmatter, and where skills are found
+  - 9-reference/10-rules.md              AGENTS.md, and which directories are read
+  - 9-reference/7-tools.md               the tools that reach the machine and their limits
+  - 9-reference/14-configuration.md      the three config files, merge rules, diagnostics
+  - 9-reference/4-models.md              choosing a model, providers, variants, context metadata
+  - 9-reference/5-sessions.md            sessions on disk, events, resume, fork, compaction
+  - 9-reference/1-cli.md                 commands, flags, print mode
   - 3-explanation/2-a-turn.md            how a turn runs, caching, steering, compaction
   - 1-tutorials/2-first-extension.md     a worked extension, start to finish
 
@@ -87,7 +90,7 @@ export const systemPrompt = (ctx: { rules: string }): string => `
   extension: a TypeScript file in .glrs/extensions/ that default-exports a
   function taking the glrs API, and can register tools, slash commands,
   lifecycle hooks, status widgets and custom rendering. Start at
-  1-tutorials/2-first-extension.md, then 9-reference/7-extensions.md.
+  1-tutorials/2-first-extension.md, then 9-reference/11-extensions.md.
 
   Write it rather than handing the request back. Verify it with
   \`glrs -p "<prompt>"\`, which loads extensions exactly as the app does.

@@ -83,4 +83,4 @@ brief.
 `/compact` forces it early. `/compact <instruction>` steers what the brief
 keeps.
 
-see also: [turns](./4-turns.md), [a turn](../3-explanation/2-a-turn.md), [resume and fork](../2-how-to/3-resume-and-fork.md)
+see also: [turns](./6-turns.md), [a turn](../3-explanation/2-a-turn.md), [resume and fork](../2-how-to/3-resume-and-fork.md)

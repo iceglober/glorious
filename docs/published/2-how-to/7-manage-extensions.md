@@ -4,19 +4,17 @@ title: manage extensions
 
 # manage extensions
 
-## turn one on
+## what is loaded
 
 ```bash
-/extensions                    list loaded, then bundled ones that are not
-/extensions enable web-fetch   records it in .glrs/config.json
-/reload                        applies it
+/extensions
 ```
 
-bundled: `builtins` (on unless disabled), `ask-user`, `worktree`, `web-fetch`. by hand: `{"extensions": {"load": ["web-fetch"]}}` in any config file.
+all four first-party extensions load, plus anything in `.glrs/extensions/`.
 
 ## reload after an edit
 
-`/reload` re-reads extensions, skills and commands from disk. they live in `<root>/.glrs/extensions/` and `<user config>/extensions/`, as `name.ts` or `name/index.ts`.
+`/reload` re-reads extensions, skills and commands from disk. they live in `<project root>`/.glrs/extensions/` and `<user config>`/extensions/`, as `name.ts` or `name/index.ts`.
 
 ## replace a bundled one
 
@@ -32,6 +30,6 @@ disk wins over bundled, project before user. `.glrs/extensions/web-fetch.ts` loa
 }
 ```
 
-without it `/extensions enable` and the agent's `configure_extension` tool refuse and print the config line to add yourself. see the [extensions reference](../9-reference/7-extensions.md).
+without it `/extensions disable` reports the config line to add instead.
 
-see also: [extensions](../9-reference/7-extensions.md), [your first extension](../1-tutorials/2-first-extension.md)
+see also: [extensions](../9-reference/11-extensions.md), [your first extension](../1-tutorials/2-first-extension.md)

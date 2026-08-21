@@ -26,6 +26,4 @@ glrs -p "count the TODOs" 2>&1 | tee run.log  # answer with the trail
 
 `0` finished. `1` failed, was interrupted, or hit the step limit.
 
-codes and flags: [cli](../9-reference/1-cli.md)
-
 see also: [cli](../9-reference/1-cli.md)

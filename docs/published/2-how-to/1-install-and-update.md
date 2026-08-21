@@ -4,7 +4,7 @@ title: install & update
 
 # install & update
 
-## install script
+## install script (recommended)
 
 ```bash
 curl -fsSL https://glrs.dev/install.sh | bash

@@ -42,4 +42,4 @@ allowed-tools: read, grep, glob
 
 in a skill's frontmatter: the turn that activates the skill gets those tools and no others. disabling is not a security boundary, see [design](../3-explanation/1-design.md).
 
-see also: [configuration](../9-reference/8-configuration.md), [tools](../9-reference/5-tools.md)
+see also: [configuration](../9-reference/14-configuration.md), [tools](../9-reference/7-tools.md)

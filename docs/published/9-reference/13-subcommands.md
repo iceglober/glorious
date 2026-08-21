@@ -24,7 +24,7 @@ what they added.
 
 | subcommand | from | does |
 | --- | --- | --- |
-| `wt` | the `worktree` extension, off by default | creates and audits git worktrees |
+| `wt` | the `worktree` extension | creates and audits git worktrees |
 | `update` | glrs | runs `bun add -g @glrs-dev/glrs@next` |
 | `doctor` | glrs | reports what would run, without running it |
 
@@ -46,4 +46,4 @@ g.cli("wt", { description: "manage git worktrees", run: (args) => {} });
 
 `args` is everything after the subcommand name. glrs does not interpret it.
 
-see also: [extensions](./7-extensions.md), [cli](./1-cli.md)
+see also: [extensions](./11-extensions.md), [cli](./1-cli.md)

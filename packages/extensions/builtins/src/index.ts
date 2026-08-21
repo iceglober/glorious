@@ -210,7 +210,7 @@ export default function builtins(g: Glrs): void {
       const offered = g.available().filter((one) => one.state !== "on");
       const { extensions } = g.inspect();
       if (extensions.length === 0) {
-        return g.print("No extensions loaded. See docs/published/9-reference/7-extensions.md.");
+        return g.print("No extensions loaded. See docs/published/9-reference/11-extensions.md.");
       }
       g.print([
         heading(g, "Extensions", "these run with your full permissions"),

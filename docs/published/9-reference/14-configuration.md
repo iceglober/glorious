@@ -4,15 +4,15 @@ title: configuration
 
 # configuration
 
-JSON files, hand-edited; unknown keys are ignored. every key is in the schema at `https://glrs.dev/config.schema.json`, which `$schema` points editors at. the `providers` block: [models](./2-models.md).
+JSON files, hand-edited; unknown keys are ignored. every key is in the schema at `https://glrs.dev/config.schema.json`, which `$schema` points editors at. the `providers` block: [models](./4-models.md).
 
 ## files
 
 | scope | path |
 | --- | --- |
-| Project-User | `<root>/.glrs/config.local.json` |
-| Project | `<root>/.glrs/config.json` |
-| User | `<user config>/config.json` |
+| Project-User | `<project root>`/.glrs/config.local.json` |
+| Project | `<project root>`/.glrs/config.json` |
+| User | `<user config>`/config.json` |
 
 a missing file is not an error. the User directory is the first of `$GLRS_CONFIG_HOME`, `$XDG_CONFIG_HOME/glrs`, `%APPDATA%/glrs` on Windows, `~/.config/glrs`. `LOCALAPPDATA` is not used.
 
@@ -52,7 +52,7 @@ in a git repository all three files are created, outside one only the User file.
 }
 ```
 
-`"extensions"` is the only section understood. it lets glrs write `<root>/.glrs/config.json`, never `config.local.json`, recording one extension as loaded or disabled. the write is a JSON round trip: comments and formatting do not survive. without the entry the write returns `not-allowed`.
+`"extensions"` is the only section understood. it lets glrs write `<project root>`/.glrs/config.json`, never `config.local.json`, recording one extension as loaded or disabled. the write is a JSON round trip: comments and formatting do not survive. without the entry the write returns `not-allowed`.
 
 ## environment
 
@@ -78,6 +78,6 @@ reported in the transcript as `(config)`, on stderr as `[config]` under `-p`, an
 
 ## sessions
 
-where they are stored, and what is in one: [sessions](./3-sessions.md).
+where they are stored, and what is in one: [sessions](./5-sessions.md).
 
-see also: [turn things off](../2-how-to/8-turn-things-off.md), [models](./2-models.md)
+see also: [turn things off](../2-how-to/8-turn-things-off.md), [models](./4-models.md)

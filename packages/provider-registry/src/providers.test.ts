@@ -123,7 +123,7 @@ describe("the names people actually type", () => {
 describe("the models page lists every alias", () => {
   const page = (): string =>
     readFileSync(
-      join(import.meta.dir, "..", "..", "..", "docs", "published", "9-reference", "2-models.md"),
+      join(import.meta.dir, "..", "..", "..", "docs", "published", "9-reference", "4-models.md"),
       "utf8",
     );
 

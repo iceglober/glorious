@@ -1,11 +1,31 @@
 ---
-title: keys
+title: the tui
 ---
 
-# keys
+# the tui
+
+the **TUI** (the full-screen terminal interface) is what `glrs` opens with no
+arguments. it has four parts.
+
+```text
+┌──────────────────────────────────────────────┐
+│ transcript      what has happened so far     │
+│                                              │
+│ activity row    the running turn, or blank   │
+│ composer        where you type               │
+│ status line     model, context, cost         │
+└──────────────────────────────────────────────┘
+```
+
+| part | shows | owned by |
+| --- | --- | --- |
+| **transcript** | messages, tool calls and notices, oldest first | glrs, or an extension's renderer |
+| **activity row** | the phase, elapsed time, queued count. blank when idle | glrs, or `g.activity` |
+| **composer** | what you are typing, with completion and queued messages above it | glrs, or `g.ui.capture` |
+| **status line** | model, context used, cost | glrs, plus `g.status` segments |
 
 ## composer
-| key | action |
+
 | --- | --- |
 | `enter` | send; while busy, queue a follow-up; on an empty composer, release a held queue |
 | `alt+enter` | steer the running turn at its next step |
@@ -19,52 +39,6 @@ title: keys
 
 a `g.key()` binding matches name, ctrl and shift, and runs before every row above.
 
-## terminals that take a key first
-
-| terminal | key | fix |
-| --- | --- | --- |
-| Windows Terminal | `alt+enter` | claims it for fullscreen. open its settings with `ctrl+,` (**Settings**, then **Open JSON file**) and unbind it |
-
-```json
-{
-  "actions": [
-    {
-      "command": "unbound",
-      "keys": "alt+enter"
-    }
-  ]
-}
-```
-
-restart glrs afterward. a key the terminal consumes never reaches glrs, so
-nothing in glrs's own configuration can recover it.
-
-## queues
-| queue | key | delivery | setting |
-| --- | --- | --- | --- |
-| follow-up | `enter` | its own turn once the current one finishes | `followUpMode` |
-| steering | `alt+enter` | joins the running turn at its next step | `steeringMode` |
-
-`one-at-a-time` (the default) delivers the oldest waiting message. `all` delivers everything waiting, joined by a blank line. with nothing running, `alt+enter` is just a turn.
-
-## caching
-
-a provider charges less for a prefix it has seen before, so the prefix is kept
-stable: the system prompt is byte-identical every turn, and steering is appended
-rather than inserted.
-
-| provider | how |
-| --- | --- |
-| openai, google | caches a prefix without being asked |
-| anthropic | needs a breakpoint written into the messages |
-| amazon bedrock | needs a `cachePoint` |
-
-the breakpoint goes on the second-to-last message, the newest point still
-present next turn. it advances each turn, which extends the cached prefix rather
-than replacing it.
-
-why it is shaped that way: [a turn](../3-explanation/2-a-turn.md).
-
 ## completion
 `/` completes commands and `@` completes paths; shell mode offers `/` only. `enter` completes instead of sending while the menu is open. the menu shows at most 10 rows, and never more than the terminal height minus 8, with `↑ n above` and `↓ n more` for the rest. esc keeps it shut until the text changes. paths come from ripgrep, re-listed every 5s, 50 candidates.
 
@@ -74,7 +48,7 @@ why it is shaped that way: [a turn](../3-explanation/2-a-turn.md).
 ## shell
 a leading `!` runs the line in the shell instead of sending it. the caret becomes `<cwd> $ ` and backspace on an empty line leaves. output has ANSI escapes stripped and is capped at 30,000 characters. exit 0 with no output prints `(shell command completed with no output)`; any other code prints `(shell command failed: <last line>)`.
 
-## screen
+## status line
 ```text
 transcript
 progress      running tools, queued messages, held queue
@@ -87,7 +61,7 @@ status        provider/model-id (variant) · ctx 41.2k(32%) · g.status() segmen
 
 the activity row is drawn only while busy or compacting, and `g.activity()` replaces it. the phase is `sending`, `waiting`, `thinking`, `writing`, or `compacting`. tokens and percentage read `unknown` without catalogue metadata. mouse selection copies through OSC 52 (a terminal escape the emulator turns into a clipboard write).
 
-## picker
+## session picker
 `up` `down` or `k` `j` move, `shift+up` `shift+down` move 5, `enter` opens, `esc` cancels.
 
-see also: [resume and fork](../2-how-to/3-resume-and-fork.md), [a turn](../3-explanation/2-a-turn.md)
+see also: [keys](./3-keys.md), [extensions](./11-extensions.md)

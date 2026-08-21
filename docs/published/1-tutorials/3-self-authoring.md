@@ -8,12 +8,17 @@ glrs is given its own documentation and told to write an extension when asked
 for something it cannot do. you will ask for a capability it lacks and watch it
 build one.
 
-you need the repository from [quick start](./1-quick-start.md).
+## set up a scratch repo
+
+```bash
+mkdir /tmp/glrs-tour && cd /tmp/glrs-tour && git init
+printf 'hello\n' > greeting.txt
+git add -A && git commit -m start
+```
 
 ## ask for something it cannot do
 
 ```bash
-cd /tmp/glrs-tour
 glrs --model anthropic/claude-opus-5
 ```
 
@@ -30,7 +35,7 @@ there is no `/branches` command and no tool that lists branches.
 it reads its own documentation before writing anything:
 
 ```text
-read   9-reference/7-extensions.md   142 lines
+read   9-reference/11-extensions.md   142 lines
 read   1-tutorials/2-first-extension.md   70 lines
 write  .glrs/extensions/branches.ts
 ```
@@ -60,4 +65,4 @@ the system prompt names nine documentation pages and tells the model to read
 them when asked about glrs itself. the documentation is the contract it writes
 against, which is why it is kept accurate and why it does not point at source.
 
-next: [design](../3-explanation/1-design.md), [extensions](../9-reference/7-extensions.md)
+next: [design](../3-explanation/1-design.md), [extensions](../9-reference/11-extensions.md)

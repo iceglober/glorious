@@ -6,25 +6,19 @@ title: cli
 
 `glrs` and `glorious` are the same command: `bin/glrs`, a shell script that follows its own symlinks, then execs `bun packages/glrs-coding-agent/src/index.ts`.
 
-## classification
+## commands
 
-argv is read once, before anything loads. first match wins:
-
-1. `--version` or `-v` anywhere
-2. `--help` or `-h` anywhere
-3. the first bare word, when it is neither `doctor` nor `update` and no `-p` precedes it: a subcommand, handed the rest of the line
-4. `update`, then `doctor`, which accepts only `--json`
-5. `--model`, checked for a value
-6. `-p` or `--print`: one headless turn. otherwise: an interactive session
-
-a bare word is the first token that neither starts with `-` nor follows one that does. everything after `-p` is joined with spaces and taken verbatim; only what precedes `-p` is parsed.
-
-| invocation | runs |
+| command | does |
 | --- | --- |
-| `glrs wt -p hi` | the `wt` subcommand, handed `-p hi` |
-| `glrs -p wt list` | one turn on the prompt `wt list` |
-| `glrs wt doctor` | the `wt` subcommand, handed `doctor` |
-| `glrs -p run it -v` | the version |
+| `glrs` | open a session |
+| `glrs -p <prompt>` | one headless turn, then exit |
+| `glrs doctor` | report what would run, without running it |
+| `glrs update` | reinstall the latest release |
+| `glrs <word>` | a [subcommand](./13-subcommands.md) an extension registered |
+
+`--version` and `--help` win wherever they appear. everything after `-p` is the
+prompt, taken verbatim, so it may contain what looks like a flag. a subcommand
+before `-p` wins; `-p` before a bare word wins.
 
 ## flags
 
@@ -50,7 +44,7 @@ a long flag glrs does not know is lifted out before parsing, lowercased, and han
 
 ## subcommands
 
-a first bare word glrs does not claim goes to the extensions: [subcommands](./9-subcommands.md).
+a first bare word glrs does not claim goes to the extensions: [subcommands](./13-subcommands.md).
 
 ## print mode
 
@@ -74,4 +68,4 @@ extensions: builtins (bundled)
 
 with credentials present the third line is `credentials: found`. with no model the first is `model: not configured`, followed by the reason and the built-in provider ids. `--json` emits the same report as an object: `diagnostics`, `model`, `provider`, `missing`, `note`, `extensions`.
 
-see also: [models](./2-models.md), [configuration](./8-configuration.md), [run in a pipeline](../2-how-to/9-run-in-a-pipeline.md)
+see also: [models](./4-models.md), [configuration](./14-configuration.md), [run in a pipeline](../2-how-to/9-run-in-a-pipeline.md)

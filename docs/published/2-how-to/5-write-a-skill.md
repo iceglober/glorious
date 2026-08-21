@@ -31,11 +31,13 @@ and says so at startup.
 
 ## invoke it yourself
 
+every skill answers to a **skill command**:
+
 ```bash
 /skill:graphify
 ```
 
-`trigger: graph` in the frontmatter makes that `/skill:graph`.
+`trigger: graph` makes that `/skill:graph`.
 
 ## limit what it can reach
 
@@ -45,12 +47,26 @@ allowed-tools: read, grep, glob
 
 the model activating the skill is held to that list for the rest of the turn.
 typing the slash command sends the body with nothing narrowed.
-[tools](../9-reference/5-tools.md).
+[tools](../9-reference/7-tools.md).
+
+## the specification
+
+glrs implements the [Agent Skills specification](https://agentskills.io/specification).
+worth reading before writing more than one:
+[best practices](https://agentskills.io/skill-creation/best-practices) and
+[optimizing descriptions](https://agentskills.io/skill-creation/optimizing-descriptions).
+
+two fields glrs reads are not in the specification:
+
+| field | what it does |
+| --- | --- |
+| `disable-model-invocation` | hides the skill from the model, leaving only the skill command. popularised by Claude Code and widely recognised |
+| `trigger` | renames the skill command |
 
 ## where they are found
 
 the project's `.glrs/skills/` and `.agents/skills/`, then the same two for the
 user. the first root to claim a name keeps it. full list and every frontmatter
-field: [instructions](../9-reference/6-instructions.md).
+field: [commands](../9-reference/8-commands.md).
 
 next: [set project rules](./6-set-project-rules.md)

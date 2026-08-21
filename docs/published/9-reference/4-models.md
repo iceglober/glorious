@@ -12,9 +12,9 @@ highest first:
 2. `GLRS_MODEL`, `GLRS_VARIANT`
 3. Project-User `.glrs/config.local.json`
 4. Project `.glrs/config.json`
-5. User `<user config>/config.json`
+5. User `<user config>`/config.json`
 
-there is no default. an unset model raises `No model configured.` paths and merge rules: [configuration](./8-configuration.md).
+there is no default. an unset model raises `No model configured.` paths and merge rules: [configuration](./14-configuration.md).
 
 ## the id
 
@@ -54,6 +54,8 @@ config wins. a key a provider does not accept is dropped with a diagnostic. `glr
 
 `providers.<id>.models.<exact-model-id>` takes `requestOptions` and `providerOptions`; each merges over the provider's. `metadata` is model-level only.
 
+both levels together:
+
 ```json
 {
   "providers": {
@@ -75,13 +77,25 @@ config wins. a key a provider does not accept is dropped with a diagnostic. `glr
 
 ## variant
 
-reasoning effort, case-insensitive: `minimal` 1024 tokens, `low` 4096, `medium` 12288, `high` 24576. any other value means no reasoning effort. one namespace is emitted per call.
+reasoning effort. the accepted values are the model's own, published by
+models.dev as `reasoning_options` and overridable with
+`providers.<id>.models.<id>.metadata.variants`. across the catalogue they vary
+widely: `low, medium, high` for many, `low, medium, high, xhigh, max` for some,
+`none, high` for others, and no scale at all for most.
+
+a value the model does not publish is dropped rather than sent: a provider that
+rejects it fails the turn, and one that ignores it bills for effort nobody
+chose. for providers that want a token budget instead of a word, the budget comes
+from where the value sits in that model's own scale, so a three-level model and a
+five-level model both reach the ceiling at their top.
+
+one namespace is emitted per call.
 
 | namespace | provider | payload |
 | --- | --- | --- |
 | `anthropic` | `anthropic`; `google-vertex` when the model id contains `claude` | `thinking.budgetTokens` |
 | `google` | `google`; other `google-vertex` | `thinkingConfig.thinkingBudget` |
-| `bedrock` | `amazon-bedrock` | `reasoningConfig.budgetTokens`, plus `maxReasoningEffort` except at `minimal` |
+| `bedrock` | `amazon-bedrock` | `reasoningConfig.budgetTokens`, plus `maxReasoningEffort` for `low`, `medium`, `high` |
 | `openai` | `openai`, `azure`, every other provider | `reasoningEffort` |
 
 ## metadata
@@ -93,4 +107,4 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
 
-see also: [connect a provider](../2-how-to/2-connect-a-provider.md), [configuration](./8-configuration.md)
+see also: [connect a provider](../2-how-to/2-connect-a-provider.md), [configuration](./14-configuration.md)
