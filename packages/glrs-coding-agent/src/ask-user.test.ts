@@ -40,8 +40,8 @@ const open = (questions: Array<{ question: string; options: string[] }>) => {
   const answer = tool.execute({ questions }, { abortSignal: undefined });
   const press = (key: string, text = ""): void =>
     held?.onKey({ key, ctrl: false, shift: false, text } as Key);
-  const screen = (): string =>
-    (held?.render(80) ?? []).map((line) => line.map((span) => span.text).join("")).join("\n");
+  const screen = (columns = 80): string =>
+    (held?.render(columns) ?? []).map((line) => line.map((span) => span.text).join("")).join("\n");
   const type = (text: string): void => {
     for (const char of text) press(char, char);
   };
@@ -57,6 +57,22 @@ describe("the question widget, driven by keys", () => {
     expect(asked.screen()).toContain("Which database?");
     expect(asked.screen()).toContain("Postgres");
     expect(asked.screen()).toContain("SQLite");
+    asked.press("return");
+    await asked.answer;
+  });
+
+  test("a long question wraps instead of disappearing past the viewport", async () => {
+    const question = "Should this deliberately long question remain readable in a narrow viewport?";
+    const asked = open([{ question, options: ["Yes", "No"] }]);
+    await settle();
+    const lines = asked.screen(32).split("\n");
+    const heading = lines.slice(
+      0,
+      lines.findIndex((line) => line.includes("Yes")),
+    );
+    expect(heading.join(" ").replaceAll(/\s+/gu, " ")).toContain(question);
+    expect(heading.length).toBeGreaterThan(1);
+    expect(heading.every((line) => line.length <= 32)).toBe(true);
     asked.press("return");
     await asked.answer;
   });
