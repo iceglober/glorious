@@ -11,6 +11,7 @@ import {
   registerExtensionProvider,
   resolveApiKey,
 } from "./models";
+import type { ProviderOptions } from "./shaping";
 
 describe("model pricing", () => {
   test("reads provider-specific multipliers", () => {
@@ -342,7 +343,7 @@ describe("Azure model routing", () => {
   const requestFor = async (
     modelId: string,
     modelType?: "responses" | "chat" | "deepseek",
-    providerOptions: Record<string, Record<string, unknown>> = {
+    providerOptions: ProviderOptions = {
       azure: { reasoningEffort: "max" },
     },
   ) => {
