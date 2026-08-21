@@ -47,12 +47,20 @@ in a git repository all three files are created, outside one only the User file.
 ```json
 {
   "agentConfigAllowlist": [
-    "extensions"
+    "extensions",
+    "model"
   ]
 }
 ```
 
-`"extensions"` is the only section understood. it lets glrs write `<project root>/.glrs/config.json`, never `config.local.json`, recording one extension as loaded or disabled. the write is a JSON round trip: comments and formatting do not survive. without the entry glrs prints the config line for you to add by hand and changes nothing.
+two sections are understood; anything else in the list does nothing.
+
+| section | what glrs may then write |
+| --- | --- |
+| `extensions` | `extensions.load` and `extensions.disable`, recording one as loaded or disabled |
+| `model` | `model` and `variant`, recording what `/model` chose |
+
+it writes `<project root>/.glrs/config.json`, never `config.local.json`. the write is a JSON round trip: comments and formatting do not survive. without the entry glrs prints the config line for you to add by hand and changes nothing.
 
 ## environment
 

@@ -17,6 +17,9 @@ footer         empty unless an extension draws here
 status         provider/model-id (variant) · ctx 41.2k(32%)
 ```
 
+the status row reads `no model` until one is chosen, and the picker opens over
+the composer on the first paint: [models](./4-models.md).
+
 | row | drawn | replaceable with |
 | --- | --- | --- |
 | transcript | always | a tool renderer, `g.markdown` |

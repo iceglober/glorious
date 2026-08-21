@@ -8,13 +8,80 @@ title: models
 
 highest first:
 
-1. `--model provider/model-id`
-2. `GLRS_MODEL`, `GLRS_VARIANT`
-3. Project-User `.glrs/config.local.json`
-4. Project `.glrs/config.json`
-5. User `<user config>/config.json`
+1. `/model`, for the rest of the session
+2. `--model provider/model-id`
+3. `GLRS_MODEL`, `GLRS_VARIANT`
+4. Project-User `.glrs/config.local.json`
+5. Project `.glrs/config.json`
+6. User `<user config>/config.json`
 
-there is no default. an unset model raises `No model configured.` paths and merge rules: [configuration](./14-configuration.md).
+there is no default. paths and merge rules: [configuration](./14-configuration.md).
+
+## nothing set
+
+the TUI opens anyway, and `/model` picks one:
+
+```
+glrs
+? Choose model  7243/7243
+  search: ▏
+› anthropic/claude-opus-5
+  anthropic/claude-sonnet-5
+```
+
+the picker is the `model-picker` extension, which loads by default. it opens
+itself when nothing is set. `esc` cancels, and the status line then reads
+`no model`; pressing `enter` on a message answers
+`(no model chosen: /model picks one)` and leaves what you typed in the composer.
+
+with `model-picker` disabled the message names the config instead. either way
+nothing is sent to a provider until a model exists.
+
+`-p` is the exception. a pipeline has nowhere to ask, so it still exits with
+`No model configured.` before anything runs:
+
+```bash
+glrs -p "what failed?"     → No model configured. Set GLRS_MODEL="provider/model-id" …
+```
+
+## keeping the choice
+
+`/model` writes `model` and `variant` into `<project root>/.glrs/config.json`
+when `agentConfigAllowlist` names `model`:
+
+```json
+{
+  "agentConfigAllowlist": [
+    "model"
+  ]
+}
+```
+
+without it the choice lasts the session and `/model` prints the line to paste.
+picking the default reasoning effort removes `variant` rather than writing null.
+for every project, put `model` in the User config by hand:
+[configuration](./14-configuration.md).
+
+## a provider with no credentials
+
+choosing one always succeeds. the row says what is absent, the switch happens,
+and the turn is still sent:
+
+```
+› openrouter/~anthropic/claude-opus-latest  needs OPENROUTER_API_KEY
+```
+
+```
+Model switched to openrouter/~anthropic/claude-opus-latest.
+openrouter: glrs cannot see OPENROUTER_API_KEY. Turns are still sent, and the
+provider decides.
+```
+
+glrs reads the environment and config and nothing else, so an empty list is not
+a promise that a call will succeed and a full one is not proof it will fail.
+Bedrock through an SSO profile, Vertex through application default credentials,
+and any provider an extension registers all report a gap and all work. the
+provider's own refusal is the authority, so glrs warns and does not block.
 
 ## the id
 

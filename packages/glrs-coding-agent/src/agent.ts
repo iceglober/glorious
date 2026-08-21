@@ -5,6 +5,7 @@ import {
   type JsonObject,
   type ModelOption,
   modelCost,
+  NoModelChosen,
   type ProviderOptions,
   requestOptions,
   withCacheBreakpoints,
@@ -116,7 +117,9 @@ const fetchWithDeadline = async (
 type Setup = Parameters<typeof systemPrompt>[0] &
   Parameters<typeof environmentPrompt>[0] & {
     root: string;
-    model: ModelOption;
+    // Null until one is chosen. The session opens first and the model arrives
+    // second, so everything that needs one asks for it at the moment it runs.
+    model: ModelOption | null;
     sessionId: string;
     skills: string;
     skillTools: import("./skills").Skills;
@@ -253,7 +256,16 @@ export const createAgent = (setup: Setup) => {
     return response;
   };
 
-  let model = createModel(setup.model, providerFetch as typeof fetch);
+  let model = setup.model === null ? null : createModel(setup.model, providerFetch as typeof fetch);
+  // Both halves of the answer, or the refusal. A turn is the first thing that
+  // truly needs a model, so this is where its absence is reported rather than
+  // at construction: the session, its tools and its transcript all work without
+  // one, and only the call to a provider cannot.
+  const ready = (): { option: ModelOption; language: NonNullable<typeof model> } => {
+    if (setup.model === null || model === null)
+      throw new NoModelChosen("No model is selected, so there is nothing to send this to.");
+    return { option: setup.model, language: model };
+  };
   const environment = environmentPrompt(setup);
   // the last context size the provider reported, handed back to the model on the
   // next turn so it can see the budget it is spending
@@ -303,10 +315,10 @@ export const createAgent = (setup: Setup) => {
       setup.terminatingTools?.() ?? new Set(),
     );
 
-  const settings = () => ({
+  const settings = (chosen: ReturnType<typeof ready>) => ({
     maxRetries: 5,
-    ...requestSettings(setup.model, cacheKey(setup.sessionId)),
-    model,
+    ...requestSettings(chosen.option, cacheKey(setup.sessionId)),
+    model: chosen.language,
     instructions: setup.systemPromptOverride?.() ?? systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool],
   });
@@ -321,11 +333,12 @@ export const createAgent = (setup: Setup) => {
       instruction: string,
       signal?: AbortSignal,
     ): Promise<string> => {
+      const chosen = ready();
       const result = await generateText({
         maxOutputTokens: 4_000,
         maxRetries: 3,
-        ...requestSettings({ ...setup.model, variant: undefined }, cacheKey("compact")),
-        model,
+        ...requestSettings({ ...chosen.option, variant: undefined }, cacheKey("compact")),
+        model: chosen.language,
         instructions:
           "You are compacting a coding session so work can continue past the context limit. " +
           "Write a dense brief for the agent that will pick this up with none of the detail " +
@@ -399,6 +412,7 @@ export const createAgent = (setup: Setup) => {
       // system prompt: the system prompt has to stay byte-identical for the
       // cache, and an extension that registers mid-session would otherwise
       // invalidate it. See PREAMBLE_TAGS.
+      const chosen = ready();
       const contributed = setup.extensionPrompt?.() ?? [];
       const sent: ModelMessage[] = [
         ...history,
@@ -462,16 +476,16 @@ export const createAgent = (setup: Setup) => {
         // so this changes the call and never the history.
         const shown = (await setup.onContext?.(sent, attempt)) ?? sent;
         const result = streamText({
-          ...settings(),
+          ...settings(chosen),
           tools: toolsFor(turn.onTool),
           // Anthropic and Bedrock cache only what is marked, so the marks go
           // in here rather than in providerOptions. OpenAI and Google cache a
           // prefix unasked and are handed the list unchanged.
           messages: withCacheBreakpoints(
             [...shown],
-            setup.model.provider,
-            setup.model.modelId,
-            setup.model.modelType,
+            chosen.option.provider,
+            chosen.option.modelId,
+            chosen.option.modelType,
           ),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.
@@ -500,7 +514,7 @@ export const createAgent = (setup: Setup) => {
               contextTokens: observed,
               cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
               outputTokens: usage?.outputTokens ?? 0,
-              cost: modelCost(setup.model, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
+              cost: modelCost(chosen.option, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
             });
           },
         });

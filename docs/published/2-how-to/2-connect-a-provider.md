@@ -15,6 +15,9 @@ export ANTHROPIC_API_KEY=sk-…
 GLRS_MODEL=anthropic/claude-opus-5 glrs doctor
 ```
 
+with the key exported and no model set anywhere, `glrs` still starts: the picker
+opens and every Anthropic model is at the top of the list.
+
 ## azure
 
 `AZURE_FOUNDRY_API_KEY`, `AZURE_API_KEY`, or `AZURE_OPENAI_API_KEY`; the first one set wins.
@@ -69,5 +72,12 @@ glrs doctor
 
 a connected provider reports `credentials: found`. anything else prints
 `missing:` and the variable it wants.
+
+`/model` reports the same thing per model, listing the ones glrs has credentials
+for first and marking the rest `needs OPENROUTER_API_KEY`. it does not stop you
+choosing one it cannot see a credential for: Bedrock through an SSO profile and
+Vertex through application default credentials both look unconfigured here and
+both work, so the turn is sent and the provider decides:
+[models](../9-reference/4-models.md).
 
 see also: [models](../9-reference/4-models.md), [configuration](../9-reference/14-configuration.md)

@@ -39,13 +39,29 @@ the core does not quietly keep a copy.
 | extension | provides |
 | --- | --- |
 | `builtins` | the file, search and shell tools, and every slash command |
+| `model-picker` | `/model`, and the picker that opens when no model is set |
 | `ask-user` | the `ask_user` tool and its widget, built on `g.ui.capture` |
 | `web-fetch` | the `web_fetch` tool |
 | `worktree` | the `glrs wt` subcommand and `/wt` |
 
-all four load. asking you to turn one on puts a decision in front of you that you
+all five load. asking you to turn one on puts a decision in front of you that you
 had no way to evaluate. disable what you do not want, or shadow it with a file
 of the same name: disk wins over first-party.
+
+## choosing the model is not core either
+
+the core carries a model or a null, and refuses a turn without one. it ships no
+way to pick one, exactly as it ships no way to read a file. `model-picker` reads
+the catalogue through `g.models()`, chooses through `g.setModel()`, and writes
+the choice through `g.rememberModel()`. every one of those is a public member an
+extension you write can call.
+
+that is why the TUI now opens without a model. `/model` is a slash command, and
+slash commands exist only inside a session, so refusing to open a session until
+a model was set meant the only ways in were `--model` and `GLRS_MODEL`. what the
+core owes is the state, not a picker: the status row says `no model`, a turn is
+refused rather than sent, and `ModelInfo.missing` reports what each provider
+wants so whatever fills the gap can say so ([models](../9-reference/4-models.md)).
 
 ## permissions
 

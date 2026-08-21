@@ -168,7 +168,8 @@ export type Config = {
   // Config is hand-edited by default: nothing glrs does writes it. Listing a
   // section here is how you opt one out of that, so the agent can record an
   // answer you gave it rather than asking you to paste a line every session.
-  // Only "extensions" is understood today.
+  // "extensions" and "model" are understood; anything else in the list does
+  // nothing.
   agentConfigAllowlist?: readonly string[];
   providers?: ProvidersSettings;
 };

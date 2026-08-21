@@ -135,18 +135,15 @@ const bundled = [
   },
 ];
 
+// Two states, not three. Every first-party extension loads, so `extensions.load`
+// has nothing left to say here and only `disable` moves anything.
 export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyExtension[] => {
-  const on = new Set((settings?.load ?? []).map(key));
   const off = new Set((settings?.disable ?? []).map(key));
-  return bundled.map(({ name, origin, defaultOn, summary }) => {
-    const named = on.has(key(name)) || on.has(key(origin));
-    const banned = off.has(key(name)) || off.has(key(origin));
-    return {
-      name,
-      summary,
-      state: banned ? "off" : "on",
-    };
-  });
+  return bundled.map(({ name, origin, summary }) => ({
+    name,
+    summary,
+    state: off.has(key(name)) || off.has(key(origin)) ? "off" : "on",
+  }));
 };
 
 // What config says about which extensions load. Declared here rather than

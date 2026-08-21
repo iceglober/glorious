@@ -508,3 +508,51 @@ describe("where a steering message lands in the turn's record", () => {
     expect(withInjected(responses, [])).not.toBe(responses);
   });
 });
+
+// The session opens before a model is chosen, so the agent is built without one
+// and every part of it works except the one that has to call a provider.
+describe("an agent built before a model was chosen", () => {
+  const bare = () =>
+    createAgent({
+      root: "/tmp",
+      model: null,
+      sessionId: "no-model",
+      rules: "",
+      cwd: "/tmp",
+      os: "darwin",
+      date: "2026-08-18",
+      git: "",
+      skills: "",
+      skillTools: { catalog: "", commands: [], summaries: [], warnings: [], tool: undefined },
+      extensionTools: () => ({}) as ToolSet,
+    });
+
+  test("it builds, and its tools and prompt are there", () => {
+    const agent = bare();
+    expect(agent.toolNames()).toEqual(expect.any(Array));
+    expect(agent.prompt().length).toBeGreaterThan(0);
+  });
+
+  test("running a turn refuses rather than calling a provider", async () => {
+    await expect(
+      bare().run("hello", [], {
+        signal: new AbortController().signal,
+        onStep: () => {},
+        onTool: () => {},
+        onDelta: () => {},
+        onReasoningEnd: () => {},
+        onPhase: () => {},
+      }),
+    ).rejects.toThrow("No model is selected");
+  });
+
+  test("compacting refuses too, rather than summarising into nothing", async () => {
+    await expect(bare().summarise([], "brief")).rejects.toThrow("No model is selected");
+  });
+
+  test("setting one makes it usable without rebuilding the agent", () => {
+    const agent = bare();
+    const model: ModelOption = { name: "test", provider: "azure", modelId: "test", env: [] };
+    expect(() => agent.setModel(model)).not.toThrow();
+  });
+});

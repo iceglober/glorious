@@ -413,6 +413,14 @@ export type ModelInfo = {
   variant?: string;
   variants?: readonly string[];
   context?: number;
+  /**
+   * What glrs cannot find before this provider can answer: environment variable
+   * names, or a config key. Empty means it found everything it knows to look
+   * for, which is not the same as a call that will succeed. An AWS profile on
+   * disk, Vertex application default credentials and a provider an extension
+   * registers are all reachable and all report nothing here.
+   */
+  missing: readonly string[];
 };
 
 export type SessionInfo = {
@@ -553,11 +561,21 @@ export type Glrs = {
   filterTools: (keep: (name: string) => boolean) => { lift: () => void };
 
   /** The model in force, with its context window and reasoning variants. */
-  model: () => ModelInfo;
-  /** Every model the catalogue knows for the providers you have credentials for. */
+  /** The active model, or null when nothing has been chosen yet. */
+  model: () => ModelInfo | null;
+  /** Every model the catalogue knows, each carrying what its provider is missing. */
   models: () => Promise<readonly ModelInfo[]>;
   /** Switch model, as "provider/model-id". Takes effect on the next turn. */
   setModel: (label: string, variant?: string) => Promise<void>;
+  /**
+   * Write the active model and variant into the project's config, so the next
+   * session starts on it. Returns `"not-allowed"` unless `agentConfigAllowlist`
+   * names `"model"`, or when no model has been chosen and there is nothing to
+   * record; `"already"` when the file already says this. Separate from
+   * `setModel` on purpose: switching for one turn and choosing for good are
+   * different acts, and only the second is worth writing to disk.
+   */
+  rememberModel: () => Promise<WriteOutcome>;
   /** Change reasoning effort without changing the active model. */
   setThinkingLevel: (level: string) => Promise<void>;
 

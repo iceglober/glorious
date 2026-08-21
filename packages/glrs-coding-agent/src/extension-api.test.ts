@@ -84,10 +84,14 @@ const harness = () => {
     },
     setToolFilters: record("setToolFilters"),
     tools: () => ["bash", "read"],
-    model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
+    model: () => ({ label: "azure/test", provider: "azure", modelId: "test", missing: [] }),
     models: async () => [],
     setModel: async (...args: unknown[]) => {
       calls.push({ method: "setModel", args });
+    },
+    rememberModel: async (...args: unknown[]) => {
+      calls.push({ method: "rememberModel", args });
+      return "not-allowed" as const;
     },
     registerProvider: () => ({ dispose: () => {} }),
     history: () => [],
@@ -219,10 +223,20 @@ describe("what an extension can reach", () => {
 
   test("the model, and switching it", async () => {
     const { g, calls } = harness();
-    expect(g.model().label).toBe("azure/test");
+    expect(g.model()?.label).toBe("azure/test");
     expect(await g.models()).toEqual([]);
     await g.setModel("anthropic/claude-opus-5", "high");
     expect(calls.some((one) => one.method === "setModel")).toBe(true);
+  });
+
+  // Switching for a turn and choosing for good are separate calls, so an
+  // extension can offer the first without writing to anyone's config.
+  test("recording the model is asked for separately from switching to it", async () => {
+    const { g, calls } = harness();
+    await g.setModel("anthropic/claude-opus-5");
+    expect(calls.some((one) => one.method === "rememberModel")).toBe(false);
+    expect(await g.rememberModel()).toBe("not-allowed");
+    expect(calls.some((one) => one.method === "rememberModel")).toBe(true);
   });
 
   test("tools can be listed and narrowed, and the filter lifted", () => {

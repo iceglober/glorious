@@ -5,6 +5,7 @@ import {
   currentModel,
   envSetting,
   loadConfig,
+  missingFor,
   modelMetadata,
   registerExtensionProvider,
 } from "../../provider-registry/src";
@@ -194,6 +195,8 @@ export const runPrint = async (
       setInput: () => note("[extension] setInput() has no meaning in print mode; ignored"),
       tools: () => agent.toolNames(),
       setToolFilters: (filters) => agent.setToolFilters(filters),
+      // Never null here: a one-shot run has nowhere to ask, so `currentModel`
+      // above has already refused if nothing is set.
       model: () => ({
         label: `${model.provider}/${model.modelId}`,
         provider: model.provider,
@@ -201,6 +204,7 @@ export const runPrint = async (
         variant: model.variant,
         variants: model.variants,
         context: model.context,
+        missing: missingFor(model.provider, loadedConfig.config.providers?.[model.provider]),
       }),
       models: async () => {
         throw new Error("models() needs the catalogue; not loaded in print mode");
@@ -208,6 +212,9 @@ export const runPrint = async (
       setModel: async () => {
         throw new Error("setModel() has no meaning in a one-shot run");
       },
+      // The model came from the environment or the config that is already on
+      // disk, so there is nothing here a write would preserve.
+      rememberModel: async () => "already" as const,
       registerProvider: registerExtensionProvider,
       history: () => [],
       forkSession: async () => {

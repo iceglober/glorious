@@ -30,10 +30,21 @@ git add -A && git commit -m start
 ## take one turn
 
 ```bash
-glrs --model anthropic/claude-opus-5
+glrs
 ```
 
-type this and press `enter`:
+no model is set yet, so the picker opens. type to filter, `enter` chooses:
+
+```text
+? Choose model  7243/7243
+  search: opus▏
+› anthropic/claude-opus-5
+```
+
+models glrs has credentials for are listed first; the rest say what they want,
+like `needs OPENAI_API_KEY`.
+
+then type this and press `enter`:
 
 ```text
 rewrite greeting.txt so it greets this repository by name
@@ -52,15 +63,15 @@ git diff
 ## come back
 
 ```bash
-glrs --model anthropic/claude-opus-5 --resume
+glrs --resume
 ```
 
 arrows move, `enter` opens, `esc` cancels. the session picks up where it stopped.
 
 ## make the model stick
 
-repeating `--model` gets old. the first run wrote `.glrs/config.json` for you;
-add a model to it:
+picking one every launch gets old. the first run wrote `.glrs/config.json` for
+you; add a model to it:
 
 ```json
 {
@@ -69,8 +80,10 @@ add a model to it:
 }
 ```
 
-every later `glrs` in this project uses it. for every project, put the same line
-in `<user config>/config.json`: [configuration](../9-reference/14-configuration.md).
+every later `glrs` in this project uses it, and the picker stays out of the way.
+to let `/model` write that line itself, add `"agentConfigAllowlist": ["model"]`.
+for every project, put `model` in `<user config>/config.json`:
+[configuration](../9-reference/14-configuration.md).
 
 next: [your first extension](./2-first-extension.md)
 

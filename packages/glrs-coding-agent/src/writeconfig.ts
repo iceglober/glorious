@@ -7,12 +7,16 @@ import type { Config } from "../../provider-registry/src";
 // runtime any more — you edit the file", and that stays true by default: this
 // runs only for sections named in `agentConfigAllowlist`.
 //
-// What it is for is narrow. The agent can suggest turning on an extension the
-// work needs; without somewhere to record your answer, a decline lasts until
-// the next turn and you are asked the same question forever.
+// What it is for is narrow. Two answers are worth keeping past the session that
+// gave them: which extensions this project loads, and which model it uses.
+// Without somewhere to record the second, a session that opens without a model
+// asks you to pick one on every launch, forever.
 
 /** Result of attempting an allowlisted Project-config update. */
 export type WriteOutcome = "written" | "not-allowed" | "already" | "failed";
+
+/** The sections `agentConfigAllowlist` understands. Anything else in it does nothing. */
+export const WRITABLE_SECTIONS = ["extensions", "model"] as const;
 
 const permitted = (config: Config, section: string): boolean =>
   (config.agentConfigAllowlist ?? []).some((one) => one.trim().toLowerCase() === section);
@@ -69,6 +73,37 @@ export const recordExtensionChoice = async (
   try {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${JSON.stringify({ ...raw, extensions: block }, null, 2)}\n`, "utf8");
+    return "written";
+  } catch {
+    return "failed";
+  }
+};
+
+// Writes `model`, and `variant` beside it, so the model you chose in the picker
+// is the model the next `glrs` in this project starts on. `variant` is removed
+// rather than set to null when you picked the default: an absent key and a null
+// one read the same to config, and only one of them is what a person would have
+// typed.
+//
+// Project scope, like the extension choice above. For every project, put the
+// same two keys in the User config by hand.
+export const recordModelChoice = async (
+  root: string,
+  config: Config,
+  model: string,
+  variant?: string,
+): Promise<WriteOutcome> => {
+  if (!permitted(config, "model")) return "not-allowed";
+  const path = target(root);
+  const raw = await readRaw(path);
+  const current = typeof raw.variant === "string" ? raw.variant : undefined;
+  if (raw.model === model && current === variant) return "already";
+  const next: Record<string, unknown> = { ...raw, model };
+  if (variant === undefined) delete next.variant;
+  else next.variant = variant;
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
     return "written";
   } catch {
     return "failed";
