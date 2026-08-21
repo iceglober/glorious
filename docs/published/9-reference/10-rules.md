@@ -4,30 +4,58 @@ title: rules
 
 # rules
 
-rules are text that rides in the system prompt on every turn. nothing
-invokes them.
+rules are text that reaches the model without anyone invoking it. they come from
+`AGENTS.md`, and from `AGENT.md` or `CLAUDE.md` when that is absent, so a
+repository written for another agent works unchanged.
 
-## AGENTS.md
+```markdown
+- run `bun check` before calling a change done.
+- match the file you are editing: naming, layout, error handling.
+```
 
-every text found is concatenated, nearest last: `/etc/ampcode/AGENTS.md` and `/etc/glrs/AGENTS.md` (macOS adds `/Library/Application Support/…`, Windows uses `%ProgramData%`), then `~/.config/amp/AGENTS.md`, `~/.config/glrs/AGENTS.md`, `~/.config/AGENTS.md`, then every directory from `$HOME` down to the working directory. in those directories the first of `AGENTS.md`, `AGENT.md`, `CLAUDE.md` is read.
+## two kinds, arriving two ways
 
-## which directories are read
+| kind | read | arrives in |
+| --- | --- | --- |
+| startup rules | once, when glrs opens | the system prompt |
+| a file's own rules | every time a tool reads a file | that read's result |
 
-| when | read from |
+this distinction matters. the system prompt is byte-identical on every turn, so
+that a provider's cache keeps hitting ([a turn](../3-explanation/2-a-turn.md)).
+rules discovered mid-session cannot go there, so they ride back with the file
+that brought them, under `AGENTS.md guidance:`.
+
+## startup rules
+
+read once, from every directory between your home directory and the project
+root, nearest last:
+
+| location | applies to |
 | --- | --- |
-| startup | every directory from your home directory down to the project root, nearest last |
-| startup | `/etc/glrs/AGENTS.md` and the platform equivalents, plus `~/.config/glrs/AGENTS.md` |
-| every `read` | the directory of the file being read, and its ancestors |
+| `/etc/glrs/AGENTS.md` | every project on the machine |
+| `~/.config/glrs/AGENTS.md` | every project of yours |
+| `~/.config/AGENTS.md` | every agent you run, not only glrs |
+| each directory down to `<project root>` | that directory and below |
 
-that last row is why a rule beside the code it governs applies when the model
-opens that file, without being loaded for every unrelated turn.
+on macOS `/Library/Application Support/glrs/AGENTS.md` is read too; on Windows
+`%ProgramData%\glrs\AGENTS.md`.
 
-`AGENT.md` and `CLAUDE.md` are read when `AGENTS.md` is absent, so a repository
-written for another agent works unchanged.
+glrs also reads amp's machine-wide locations (`/etc/ampcode/AGENTS.md` and
+`~/.config/amp/AGENTS.md`) for the same reason it reads `CLAUDE.md`: a machine
+already set up for another agent works without being set up again.
+
+## a file's own rules
+
+when a tool reads a file, glrs looks for rules in that file's own directory and
+its ancestors, and appends what it finds to the result the model sees.
+
+a rule beside the code it governs therefore applies when the model opens that
+code, and costs nothing on turns that never touch it.
 
 ## when they are re-read
 
-startup only, except the per-`read` lookup above. `/reload` re-reads commands,
-skills and extensions, not rules.
+startup rules are read once. `/reload` re-reads commands, skills and extensions,
+not rules; restart to pick up an edit. a file's own rules are read on every
+`read`, so editing one takes effect immediately.
 
 see also: [commands](./8-commands.md), [set project rules](../2-how-to/6-set-project-rules.md)

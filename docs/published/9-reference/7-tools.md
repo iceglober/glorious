@@ -18,8 +18,8 @@ title: tools
 
 every tool but `activate_skill` comes from an extension. that one is core
 because [skills](./9-skills.md) are core; it registers first, so an extension can
-still replace it. `tools.disable` withholds a name. `ask_user` needs the
-[TUI](./2-tui.md).
+still replace it. `tools.disable` withholds a name. `ask_user` is registered only when a TUI is present, so under `-p` the model
+never sees it ([the tui](./2-tui.md)).
 
 - `read` prefixes each line with `N|`. display only, not part of the file.
 - relative paths resolve against the project root. absolute paths are taken as given.

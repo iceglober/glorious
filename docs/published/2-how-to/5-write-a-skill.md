@@ -65,8 +65,7 @@ two fields glrs reads are not in the specification:
 
 ## where they are found
 
-the project's `.glrs/skills/` and `.agents/skills/`, then the same two for the
-user. the first root to claim a name keeps it. full list and every frontmatter
-field: [commands](../9-reference/8-commands.md).
+four roots, project before user, first to claim a name wins:
+[skills](../9-reference/9-skills.md).
 
 next: [set project rules](./6-set-project-rules.md)

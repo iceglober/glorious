@@ -8,7 +8,7 @@ a skill is instructions the model loads when it judges them relevant. you
 invoke a [command](./8-commands.md); the model activates a skill.
 
 glrs implements the [Agent Skills specification](https://agentskills.io/specification).
-two fields below are extensions to it, marked where they appear.
+two fields below are not in the specification, and are marked.
 
 ## frontmatter
 
@@ -16,7 +16,7 @@ two fields below are extensions to it, marked where they appear.
 | --- | --- |
 | `name` | required. the skill's name |
 | `description` | required. what the model reads to decide |
-| `trigger` | renames the command to `/skill:<trigger>` |
+| `trigger` (not in the specification) | renames the command to `/skill:<trigger>` |
 | `allowed-tools` | tools the turn is held to, comma or space separated |
 | `disable-model-invocation` | `true` withholds it from the model, leaving the command. a convention, not part of the Agent Skills standard |
 | `license`, `compatibility`, `metadata` | parsed, offered to extensions by `g.inspect()`, not acted on |
@@ -25,9 +25,18 @@ every skill answers to `/skill:<name>` and unknown fields are ignored. `allowed-
 
 ## where they are found
 
-the project's `.glrs/skills/` and `.agents/skills/`, then the same two under your
-home directory, then `~/.config/agents/skills/`, then each loaded extension's
-`skills/`. the first root to claim a name keeps it.
+in order. the first root to claim a name keeps it.
+
+| root | holds |
+| --- | --- |
+| `<project root>/.glrs/skills` | this project's skills |
+| `<project root>/.agents/skills` | this project's, in the shared agent location |
+| `<user config>/skills` | yours, for every project |
+| `~/.config/agents/skills` | yours, in the shared agent location |
+| an extension's `skills/` | shipped with an extension, read last |
+
+a skill is any directory holding a `SKILL.md`, found by a walk four levels deep
+that skips `node_modules`, `.git`, `scripts`, `references` and `assets`.
 
 ## the skill command
 

@@ -27,7 +27,13 @@ written for another agent works unchanged.
 
 ## when they are read
 
-once, at startup. `/reload` re-reads commands, skills and extensions, not rules.
-restart to pick up an edit.
+`AGENTS.md` files from your home directory down to the project root are read once,
+at startup. restart to pick up an edit; `/reload` does not re-read them.
 
-see also: [commands](../9-reference/8-commands.md)
+a file's own directory is searched again every time a tool reads that file, so a
+rule beside the code it governs takes effect immediately and applies only when
+that code is opened. both paths: [rules](../9-reference/10-rules.md).
+
+next: [manage extensions](./7-manage-extensions.md)
+
+see also: [rules](../9-reference/10-rules.md)

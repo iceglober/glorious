@@ -4,8 +4,8 @@ title: turns
 
 # turns
 
-a turn is one exchange: your message, the model works, it answers. a step is one
-model call inside it.
+a turn is one exchange: your message, the model's work, its answer. a step is
+one model call inside it.
 
 ## queues
 

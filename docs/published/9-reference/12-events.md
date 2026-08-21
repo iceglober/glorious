@@ -7,6 +7,9 @@ title: events
 an event is something glrs announces while it runs. an extension handles one
 with `g.on`.
 
+these are not the [entries](./5-sessions.md) written to a session file. events
+are announcements; entries are the record.
+
 most handlers only observe. for the events marked below, what the handler
 returns changes what happens next; returning nothing leaves it alone.
 
@@ -70,5 +73,13 @@ export default (g) => {
 - a blocked `tool_call` reaches the model as the tool's result: `ERROR: <your string>`, or `ERROR: an extension blocked <name> for this turn.` for `false`. the turn continues.
 - the TUI fires `idle` then `turn_end`. `-p` fires `turn_end` then `idle`.
 - both hosts await `session_end`, so work on the way out finishes. the TUI's screen stops as soon as it resolves, so printing there lands nowhere.
+
+## project_trust
+
+fired when a session opens. if no handler is registered, nothing happens and the
+session starts. if one is, glrs refuses to start unless it answers `trusted`.
+
+nothing ships a handler, so this is a seam for building an approval gate rather
+than a gate glrs provides ([design](../3-explanation/1-design.md)).
 
 see also: [extensions](./11-extensions.md), [a turn](../3-explanation/2-a-turn.md)

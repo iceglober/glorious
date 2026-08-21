@@ -9,7 +9,7 @@ you will write a `branches` tool, load it, and watch the model call it.
 ## set up a scratch repo
 
 ```bash
-mkdir /tmp/glrs-tour && cd /tmp/glrs-tour && git init
+mkdir /tmp/glrs-ext && cd /tmp/glrs-ext && git init
 printf 'hello\n' > greeting.txt
 git add -A && git commit -m start
 git branch fix-login

@@ -10,8 +10,8 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 
 | path | source |
 | --- | --- |
-| `<project root>`/.glrs/extensions/` | disk, Project |
-| `<user config>`/extensions/` | disk, User |
+| `<project root>/.glrs/extensions/` | disk, Project |
+| `<user config>/extensions/` | disk, User |
 | bundled, when on | bundled |
 | absolute paths in `extensions.load` | config |
 
@@ -37,7 +37,7 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | turn | `send` `abort` `idle` `pending` `usage` `systemPrompt` `prompt` `clear` `compact` `model` `models` `setModel` `tools` `filterTools` `session` `setSessionName` `appendEntry` `entries` |
 | draw | `print` `columns` `clip` `status` `footer` `activity` `markdown` `ui.capture` `ui.setInput` |
 
-every signature: the generated **Extension API** page, built from `packages/glrs-coding-agent/src/public-extension-api.ts`. every payload: [events](./11-extensions.md).
+every signature: the generated **Extension API** page, built from `packages/glrs-coding-agent/src/public-extension-api.ts`. every payload: [events](./12-events.md).
 
 a tool filter narrows what the model may call, from the next model call. every filter has to agree, so they can only narrow; `filterTools` returns `{ lift }`, which removes your own and nobody else's. a handler returning `undefined` changes nothing. a tool name already claimed is refused, and `/extensions` lists it as shadowed.
 
@@ -68,8 +68,4 @@ type Line = Span[];
 
 `@glrs-dev/glrs` exports `createAgentCore`, `createCodingAgent`, `createProviderRegistry` and `jsonSessionRepository` for embedding a session in another host: the generated **SDK** page, built from `packages/glrs-coding-agent/src/sdk.ts`. an extension imports `@glrs-dev/glrs/extension-api` instead.
 
-# events
-
-an extension observes and changes a turn through `g.on`.
-
-see also: [your first extension](../1-tutorials/2-first-extension.md), [events](./11-extensions.md)
+see also: [your first extension](../1-tutorials/2-first-extension.md), [events](./12-events.md)

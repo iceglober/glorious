@@ -22,8 +22,8 @@ a command is a prompt you invoke with `/name`. a skill is instructions the model
 
 | kind | roots, in order |
 | --- | --- |
-| commands | `<project root>`/.glrs/commands/*.md`, [`<user config>`](./14-configuration.md)`/commands/*.md` |
-| skills | `<project root>`/.glrs/skills`, `<project root>`/.agents/skills`, `<user config>`/skills`, `~/.config/agents/skills`, then each loaded extension's `skills/` |
+| commands | `<project root>/.glrs/commands/*.md`, [`<user config>`](./14-configuration.md)`/commands/*.md` |
+| skills | `<project root>/.glrs/skills`, `<project root>/.agents/skills`, `<user config>/skills`, `~/.config/agents/skills`, then each loaded extension's `skills/` |
 
 ## what ships
 
@@ -33,9 +33,10 @@ a command is a prompt you invoke with `/name`. a skill is instructions the model
 | `/skills` | every skill, its origin, and whether the model is offered it |
 | `/extensions [enable\|disable <name>]` | list loaded extensions, or record the choice in config |
 | `/clear` | drop the conversation the model replays, keep the transcript |
+| `/wt` | the worktree extension: `new`, `list`, `doctor` |
 | `/reload` | re-read extensions, skills and commands |
 | `/compact [instruction]` | summarise the conversation so far |
-| `/fork [n]` | copy the session to a new id, at event `n` or whole |
+| `/fork [n]` | copy the session to a new id, up to entry `n` or whole |
 | `/session` | id, context, tokens, cost, events, file |
 
 ## command files

@@ -15,7 +15,7 @@ prompt history is `prompts.json` beside them.
 ```json
 {
   "schema": 2,
-  "id": "3f9c1a20",
+  "id": "3f9a1c2b",
   "createdAt": "",
   "updatedAt": "",
   "cwd": "",
@@ -27,9 +27,16 @@ prompt history is `prompts.json` beside them.
 `.../glorious/sessions/` is read, never written. a session resumed from there is
 saved to the new path.
 
-## events
+## entries
 
-| event | recorded when |
+a session is a log. each record in it is an entry. the extension API calls them
+entries too (`g.appendEntry`, `g.entries`).
+
+these are not [lifecycle events](./12-events.md), which are announcements an
+extension hooks while glrs runs. entries are what is on disk.
+
+
+| entry | recorded when |
 | --- | --- |
 | `user` | you send a message. carries `steer` when it joined a running turn |
 | `assistant` | the model answers |
@@ -51,7 +58,7 @@ reaches disk on the next of those.
 | `glrs --resume <id>` | reopen that session |
 | `glrs --resume` | pick from a list, newest first |
 | `/fork` | copy the whole session to a new id |
-| `/fork 42` | copy its first 42 events to a new id |
+| `/fork 42` | copy the session up to entry 42 into a new id |
 
 a fork leaves the original untouched. the copy is on disk immediately, so
 `glrs --resume <new-id>` opens it.

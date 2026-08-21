@@ -162,7 +162,7 @@ export const generateDocuments = async (
   if (existsSync(published))
     await writeFile(
       join(site, "homepage.md"),
-      `an agent ecosystem\n\n${await outline(published)}`,
+      `${await readFile(join(site, "homepage.md.head"), "utf8")}\n${await outline(published)}`,
     );
   await Promise.all([
     writeFile(

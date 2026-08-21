@@ -8,7 +8,7 @@ glrs is a model, a turn loop, and a set of extensions over a git repository.
 
 ## small core
 
-the core registers no tools and no commands. it discovers, it loads, it runs a
+the core registers no commands and one tool. it discovers, it loads, it runs a
 turn. everything the model can reach arrives through a public seam:
 
 | seam | registers |
@@ -19,8 +19,8 @@ turn. everything the model can reach arrives through a public seam:
 | `g.on` | a handler for a lifecycle event |
 | `g.status`, `g.footer`, `g.activity` | parts of the screen |
 
-the seam is only real if the obvious things are built on it. if `/help` or
-`bash` needed a private door, the claim would be decoration.
+`/help` and `bash` are registered through `g.command` and `g.tool`, the same
+members any extension uses. neither has a private path into the core.
 
 one tool is core: `activate_skill`. skills are a core concept, discovered and
 catalogued by the core and injected into every prompt, and that tool is the
@@ -43,18 +43,24 @@ the core does not quietly keep a copy.
 | `web-fetch` | the `web_fetch` tool |
 | `worktree` | the `glrs wt` subcommand and `/wt` |
 
-all four load. asking you to turn one on put a decision in front of you that you
+all four load. asking you to turn one on puts a decision in front of you that you
 had no way to evaluate. disable what you do not want, or shadow it with a file
 of the same name: disk wins over first-party.
 
 ## permissions
 
 there is no permissions system. glrs runs with the permissions of its process:
-any file you can edit, any command you can run. no sandbox, no approval prompt.
+any file you can edit, any command you can run. no sandbox, and nothing asks
+before it acts.
 
-a confirmation prompt is not a boundary once an agent can edit and execute code.
-an extension can refuse a call from the `tool_call` hook, but it runs in the
+one seam exists for building a gate. glrs fires `project_trust` when a session
+opens, and refuses to start if a handler answers anything but `trusted`. no
+extension ships one, so out of the box the event fires and nothing listens
+([events](../9-reference/12-events.md)). a gate built on it still runs in the
 same process.
+
+an extension can refuse a call from the `tool_call` hook, but it runs in the
+same process as the thing it is refusing.
 
 real boundaries come from outside the process:
 
@@ -64,7 +70,7 @@ real boundaries come from outside the process:
 - **review before merge**, which is the boundary you already have
 
 file tools resolve relative paths against the project root and take absolute
-ones as given. nothing is refused, because `bash` sits unconfined beside them
-and a path check would only send the model the long way round.
+ones as given. nothing is refused. `bash` is unconfined, so a path check on the file tools
+would stop nothing and cost a step.
 
 see also: [a turn](./2-a-turn.md), [extensions](../9-reference/11-extensions.md), [tools](../9-reference/7-tools.md)

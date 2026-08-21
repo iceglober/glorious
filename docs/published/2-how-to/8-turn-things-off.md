@@ -27,7 +27,7 @@ title: turn things off
 
 - `tools.disable` withholds a tool from the model, whichever extension registered it.
 - `extensions.disable` takes that extension's commands with it. disable `builtins` and nothing is left, no tools and no slash commands.
-- `toolTimeoutMs` is milliseconds, default 600000, for `bash`, `grep` and `glob`. `GLRS_TOOL_TIMEOUT_MS` wins over it.
+- `toolTimeoutMs` is milliseconds, default 600000. it is the deadline any tool runs under. `GLRS_TOOL_TIMEOUT_MS` wins over it.
 - disable lists union across the three config scopes. off in one file is off in all.
 
 `/extensions disable web-fetch` writes that line for you, when `agentConfigAllowlist` includes `extensions`. `/reload` applies both lists. a markdown command stops loading when its file leaves `.glrs/commands/`.

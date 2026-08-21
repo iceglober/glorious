@@ -4,7 +4,17 @@ title: cli
 
 # cli
 
-`glrs` and `glorious` are the same command: `bin/glrs`, a shell script that follows its own symlinks, then execs `bun packages/glrs-coding-agent/src/index.ts`.
+`glrs` is short for glorious. both names run the same binary, so use whichever
+you prefer.
+
+## project root
+
+everything resolves against the project root: file tools, config discovery,
+[rules](./10-rules.md). it is `git rev-parse --show-toplevel`, or the directory
+you started in when that is not a repository.
+
+glrs works outside a repository. the first run still writes config, and the file
+tools still resolve against where you started.
 
 ## commands
 
@@ -48,7 +58,7 @@ a first bare word glrs does not claim goes to the extensions: [subcommands](./13
 
 ## print mode
 
-assistant text goes to stdout. the tool trail, retries, extension notes and `[config]` diagnostics go to stderr. piped stdin joins the prompt, fenced as `<input>…</input>`. nothing reaches the session store. `g.columns()` reads `COLUMNS`, else 100.
+assistant text goes to stdout. the tool trail, retries, extension notes and `[config]` diagnostics go to stderr. piped stdin joins the prompt, fenced as `<input>…</input>`. nothing reaches the session store.
 
 | exit | when |
 | --- | --- |

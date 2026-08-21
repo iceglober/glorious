@@ -57,4 +57,21 @@ glrs --model anthropic/claude-opus-5 --resume
 
 arrows move, `enter` opens, `esc` cancels. the session picks up where it stopped.
 
-next: [your first extension](./2-first-extension.md), [turns](../9-reference/6-turns.md)
+## make the model stick
+
+repeating `--model` gets old. the first run wrote `.glrs/config.json` for you;
+add a model to it:
+
+```json
+{
+  "$schema": "https://glrs.dev/config.schema.json",
+  "model": "anthropic/claude-opus-5"
+}
+```
+
+every later `glrs` in this project uses it. for every project, put the same line
+in `<user config>/config.json`: [configuration](../9-reference/14-configuration.md).
+
+next: [your first extension](./2-first-extension.md)
+
+see also: [turns](../9-reference/6-turns.md), [keys](../9-reference/3-keys.md)

@@ -36,7 +36,7 @@ with no placeholder gets the arguments appended in an `<arguments>` block.
 
 ## make it available everywhere
 
-put the file in `<user config>`/commands/` instead of the project. on a name
+put the file in `<user config>/commands/` instead of the project. on a name
 clash the project wins. [configuration](../9-reference/14-configuration.md)
 resolves `<user config>`.
 

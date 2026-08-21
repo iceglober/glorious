@@ -43,7 +43,7 @@ extends the cached prefix rather than replacing it.
 | **steering** | the running turn, at its next step | the tokens of what was said |
 | **follow-up** | its own turn, once the agent runs out of work | a new turn |
 
-steering is the deliberate act, so it carries the modifier. steering that
+steering takes a modifier because it interrupts; a follow-up does not. steering that
 arrives too late to join becomes a follow-up, ahead of the ones already waiting.
 
 ## when a stream dies

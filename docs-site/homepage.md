@@ -1,4 +1,16 @@
-an agent ecosystem
+# glrs
+
+a model, a turn loop, and a set of extensions over a git repository.
+
+```bash
+curl -fsSL https://glrs.dev/install.sh | bash
+glrs --model anthropic/claude-opus-5
+```
+
+the core registers no commands and one tool. the file and shell tools, every
+slash command, the question widget and git worktrees all arrive as extensions,
+through the same API anyone can write against.
+
 
 ## tutorials
 
@@ -35,7 +47,7 @@ an agent ecosystem
 - [keys](../docs/published/9-reference/3-keys.md)
 - [models](../docs/published/9-reference/4-models.md)
 - [sessions](../docs/published/9-reference/5-sessions.md)
-- [keys](../docs/published/9-reference/6-turns.md)
+- [turns](../docs/published/9-reference/6-turns.md)
 - [tools](../docs/published/9-reference/7-tools.md)
 - [commands](../docs/published/9-reference/8-commands.md)
 - [skills](../docs/published/9-reference/9-skills.md)

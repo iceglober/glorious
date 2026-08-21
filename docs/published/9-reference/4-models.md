@@ -12,7 +12,7 @@ highest first:
 2. `GLRS_MODEL`, `GLRS_VARIANT`
 3. Project-User `.glrs/config.local.json`
 4. Project `.glrs/config.json`
-5. User `<user config>`/config.json`
+5. User `<user config>/config.json`
 
 there is no default. an unset model raises `No model configured.` paths and merge rules: [configuration](./14-configuration.md).
 
@@ -39,6 +39,7 @@ aliases resolve before anything reads the id, so they work in `--model`, `GLRS_M
 | provider | config keys | environment fallback |
 | --- | --- | --- |
 | `amazon-bedrock` | `api`, `region` | `AWS_REGION`, `AWS_DEFAULT_REGION`; region defaults to `us-east-1` |
+| `azure` | `api` | `AZURE_RESOURCE_NAME` is required alongside the key |
 | `google-vertex` | `api`, `project`, `location` | `GOOGLE_CLOUD_PROJECT` or `GOOGLE_VERTEX_PROJECT`, `GOOGLE_CLOUD_LOCATION` or `GOOGLE_VERTEX_LOCATION`; location defaults to `global` |
 | everything else | `api` | |
 

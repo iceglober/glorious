@@ -10,9 +10,9 @@ JSON files, hand-edited; unknown keys are ignored. every key is in the schema at
 
 | scope | path |
 | --- | --- |
-| Project-User | `<project root>`/.glrs/config.local.json` |
-| Project | `<project root>`/.glrs/config.json` |
-| User | `<user config>`/config.json` |
+| Project-User | `<project root>/.glrs/config.local.json` |
+| Project | `<project root>/.glrs/config.json` |
+| User | `<user config>/config.json` |
 
 a missing file is not an error. the User directory is the first of `$GLRS_CONFIG_HOME`, `$XDG_CONFIG_HOME/glrs`, `%APPDATA%/glrs` on Windows, `~/.config/glrs`. `LOCALAPPDATA` is not used.
 
@@ -52,7 +52,7 @@ in a git repository all three files are created, outside one only the User file.
 }
 ```
 
-`"extensions"` is the only section understood. it lets glrs write `<project root>`/.glrs/config.json`, never `config.local.json`, recording one extension as loaded or disabled. the write is a JSON round trip: comments and formatting do not survive. without the entry the write returns `not-allowed`.
+`"extensions"` is the only section understood. it lets glrs write `<project root>/.glrs/config.json`, never `config.local.json`, recording one extension as loaded or disabled. the write is a JSON round trip: comments and formatting do not survive. without the entry glrs prints the config line for you to add by hand and changes nothing.
 
 ## environment
 
@@ -72,7 +72,7 @@ reported in the transcript as `(config)`, on stderr as `[config]` under `-p`, an
 | message | meaning |
 | --- | --- |
 | `<path>: not valid JSON, ignored` | the file was not parsed |
-| `<path>: "model" should be a string like "azure/gpt-5.6-sol", got number, ignored` | wrong type, the key is dropped |
+| `<path>: "model" should be a string like "azure/gpt-5.6", got number, ignored` | wrong type, the key is dropped |
 | `<path>: nothing here is a glrs setting (k1, k2, …), the whole file is ignored` | no known key in the file |
 | `<path>: providers.X.requestOptions.model is owned by glrs, ignored` | glrs sets that call option itself |
 

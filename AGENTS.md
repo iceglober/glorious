@@ -59,8 +59,20 @@ meant.
 
 Say what is needed in as few words as possible.
 
-No slogans, no sayings, no humour, no marketing. These are not style choices,
-they are noise a reader has to skip.
+No slogans, no sayings, no humour, no marketing, and no aphorisms. These are not
+style choices, they are noise a reader has to skip.
+
+An aphorism is a sentence that sounds like a conclusion and carries no fact.
+They are the easiest thing to write and the hardest to act on:
+
+> if `/help` or `bash` needed a private door, the claim would be decoration
+> sessions are the only one you cannot get back
+> steering is the deliberate act, so it carries the modifier
+
+Each states nothing checkable. Replace with the fact underneath it, or delete:
+
+> `/help` and `bash` are registered through `g.command` and `g.tool`, the same
+> members an extension uses
 
 Prefer:
 

@@ -11,7 +11,7 @@ build one.
 ## set up a scratch repo
 
 ```bash
-mkdir /tmp/glrs-tour && cd /tmp/glrs-tour && git init
+mkdir /tmp/glrs-authored && cd /tmp/glrs-authored && git init
 printf 'hello\n' > greeting.txt
 git add -A && git commit -m start
 ```
@@ -61,8 +61,8 @@ a `g.command()` call, a `g.exec()` for the git work, and a default export.
 
 ## why this works
 
-the system prompt names nine documentation pages and tells the model to read
-them when asked about glrs itself. the documentation is the contract it writes
-against, which is why it is kept accurate and why it does not point at source.
+the system prompt lists the reference pages by path and tells the model to read them
+when asked about glrs itself. it is pointed at documentation rather than at
+`packages/`, so what it can read about glrs is what it can rely on.
 
 next: [design](../3-explanation/1-design.md), [extensions](../9-reference/11-extensions.md)

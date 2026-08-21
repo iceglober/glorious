@@ -14,7 +14,7 @@ all four first-party extensions load, plus anything in `.glrs/extensions/`.
 
 ## reload after an edit
 
-`/reload` re-reads extensions, skills and commands from disk. they live in `<project root>`/.glrs/extensions/` and `<user config>`/extensions/`, as `name.ts` or `name/index.ts`.
+`/reload` re-reads extensions, skills and commands from disk. they live in `<project root>/.glrs/extensions/` and `<user config>/extensions/`, as `name.ts` or `name/index.ts`.
 
 ## replace a bundled one
 
@@ -30,6 +30,6 @@ disk wins over bundled, project before user. `.glrs/extensions/web-fetch.ts` loa
 }
 ```
 
-without it `/extensions disable` reports the config line to add instead.
+without it `/extensions disable` prints the config line for you to add by hand, and changes nothing.
 
 see also: [extensions](../9-reference/11-extensions.md), [your first extension](../1-tutorials/2-first-extension.md)

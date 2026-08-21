@@ -27,13 +27,15 @@ glrs ships on the `next` tag. every manager below installs the same package.
 | npm | `npm i -g @glrs-dev/glrs@next` | `npm update -g @glrs-dev/glrs` | `npm uninstall -g @glrs-dev/glrs` |
 | yarn | `yarn global add @glrs-dev/glrs@next` | `yarn global upgrade @glrs-dev/glrs` | `yarn global remove @glrs-dev/glrs` |
 
-## update from inside glrs
+## glrs update
 
 ```bash
 glrs update
 ```
 
-reinstalls the latest `@next` with Bun, whichever manager you installed with.
+reinstalls the latest release with Bun. if you installed with npm, pnpm or yarn,
+that leaves their copy in place and Bun's on PATH; use your own manager's update
+command instead.
 
 ## uninstall
 
@@ -41,11 +43,11 @@ remove the package with your manager from the table above, then the data it
 left:
 
 ```bash
-rm -rf ~/.config/glrs      # configuration
-rm -rf ~/.local/share/glrs # sessions and prompt history
-rm -rf ~/.cache/glrs       # the model catalogue
+rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/glrs"    # configuration
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/glrs" # sessions and prompt history
+rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/glrs"      # the model catalogue
 ```
 
-sessions are the only one you cannot get back.
+configuration and the catalogue can be recreated. sessions cannot.
 
 next: [quick start](../1-tutorials/1-quick-start.md), [connect a provider](./2-connect-a-provider.md), [cli](../9-reference/1-cli.md)
