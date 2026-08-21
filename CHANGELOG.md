@@ -1,5 +1,111 @@
 # @glrs-dev/glrs
 
+## 1.0.0-next.56
+
+### Major Changes
+
+- 2c6ee34: Unify configuration and resources into three named scopes: Project-User, Project, and User.
+
+  Project-User remains `.glrs/config.local.json`, Project remains `.glrs/config.json`, and User now owns `config.json`, extensions, commands, and skills in one platform-aware directory. User defaults to `~/.config/glrs` on macOS and Linux and `%APPDATA%\glrs` on Windows, with `GLRS_CONFIG_HOME` and `XDG_CONFIG_HOME` overrides.
+
+  Stop walking arbitrary ancestors and stop reading the legacy `.glorious`, personal `~/.glrs`, and non-skill `.agents` locations. Portable Agent Skills remain supported in Project and User `agents/skills` directories.
+
+  Use camelCase exclusively for config keys, including `toolTimeoutMs`, `steeringMode`, and `followUpMode`.
+
+  Pass JSON-compatible `factoryOptions`, `requestOptions`, and provider-namespaced `providerOptions` through to the AI SDK. Support recursively merged provider defaults, exact model overrides, and model metadata overrides for models.dev.
+
+- 2c6ee34: Require every run to configure a fully qualified `provider/model-id` through CLI, environment, or config. Remove the implicit Azure provider and default model fallbacks.
+
+  Rename shipped-extension terminology to first-party extensions and publish richer TSDoc for the Extension API and SDK.
+
+### Minor Changes
+
+- 2f7df4a: Route Azure DeepSeek deployments through the Azure SDK's DeepSeek chat adapter, support `xhigh` and `max` reasoning efforts, and allow exact Azure model overrides to select `responses`, `chat`, or `deepseek` with `modelType`.
+- f59d29b: Documentation reorganised on [Diataxis](https://diataxis.fr): tutorials, how-to guides, explanation, reference.
+
+  One type per page. A tutorial that stops to explain has stopped being a tutorial, so it links out instead.
+
+  Twenty pages, 1,019 lines, down from 2,253. Two tutorials are new: a first turn, and a first extension. Duplication collapsed: `glrs doctor` had three copies, `/extensions enable` had four.
+
+  Reference pages stop hand-copying what TypeDoc already generates from `public-extension-api.ts`.
+
+- 060a245: Expand the extension contract with custom providers, lifecycle and session gates, terminating tools, structured tool results, custom message and entry renderers, conversation/session controls, autocomplete, theme overrides, and mountable editor, widget, header, footer, and overlay surfaces.
+- 2c6ee34: Initialize missing User config on the first CLI run and, inside a Git repository, initialize Project and Project-User config with the hosted JSON Schema link. Existing config keeps its settings and formatting while gaining the schema link when it is missing.
+- 5ceadcd: Keep provider-supplied reasoning visible in transcripts and print mode by default. Add `reasoningDisplay` config to hide it or require a minimum configured reasoning effort.
+- 4cfd40c: Start the TUI without a model, and let `/model` choose one.
+
+  ```bash
+  glrs          # was: No model configured. Set GLRS_MODEL="provider/model-id" …
+  ```
+
+  `/model` is a slash command, and slash commands exist only inside a session, so refusing to open a session until a model was set meant the only ways in were `--model` and `GLRS_MODEL`. Now the session opens, the status row reads `no model`, and the picker opens over the composer on the first paint. `esc` cancels it; pressing enter on a message answers `(no model chosen: /model picks one)` and leaves what you typed in the composer rather than burning it on a failed turn.
+
+  `-p` is unchanged. A pipeline has nowhere to ask, so it still exits with `No model configured.` before anything runs.
+
+  The picker is the `model-picker` extension, which ships on. None of this is in the core: the core carries a `ModelOption | null`, refuses a turn without one, and exposes `g.model()` (now nullable), `g.models()`, `g.setModel()` and `g.rememberModel()`. An extension of your own can replace the whole flow.
+
+  **A provider with no credentials is a warning, not a refusal.** Every `ModelInfo` now carries `missing`: the variables or config keys glrs could not find for that provider. The picker lists models it has credentials for first and marks the rest:
+
+  ```
+  › openrouter/~anthropic/claude-opus-latest  needs OPENROUTER_API_KEY
+  ```
+
+  Choosing one still switches, and the turn is still sent. glrs reads the environment and config and nothing else, so Bedrock through an SSO profile, Vertex through application default credentials, and any provider an extension registers all look unconfigured and all work. Blocking on that check would break them. The provider's own refusal is the authority.
+
+  **The choice can be kept.** `agentConfigAllowlist` understands `"model"` alongside `"extensions"`, and `/model` then writes `model` and `variant` into the project's `.glrs/config.json`. Without it the choice lasts the session and `/model` prints the line to paste. Picking the default reasoning effort removes `variant` rather than writing null.
+
+### Patch Changes
+
+- 2c6ee34: Host a JSON Schema at `https://glrs.dev/config.schema.json` for editor autocomplete and validation, and recognize the `$schema` metadata key in config files.
+- d9f2d16: Repository writing rules, and glrs stops printing em-dashes.
+
+  `AGENTS.md` now sits at the repository root, which means `guidance.ts` loads it into the model's system prompt as `<repo-rules>`. glrs follows these rules when it works on itself.
+
+  Three rules: examples over explanations, no em-dashes anywhere, and progressive disclosure for heavy material.
+
+  The second one applies to output, not only to prose about output, so twelve user-facing strings changed:
+
+  ```
+  before   glrs — a terminal coding agent
+  after    glrs: a terminal coding agent
+
+  before   (step limit reached — send "continue" to resume)
+  after    (step limit reached: send "continue" to resume)
+
+  before   A: rewrite it — with tests
+  after    A: rewrite it (with tests)
+  ```
+
+  Each mark was chosen for what the dash was standing in for. A colon where the second half explains the first, a comma where the clause is parenthetical, a full stop where it can stand alone, parentheses where the aside is genuinely an aside.
+
+  The published documentation quotes glrs's output in about a dozen places, so those samples were regenerated against the running binary rather than edited to look right.
+
+- 2c6ee34: Rewrite the published guides in a terse, task-first voice; keep quickstart and installation at the root and organize the rest into use, customize, reference, and internals groups; remove redundant feature/glossary pages; correct installation, configuration, session, keybinding, provider, tool, and extension details; complete the quickstart, basics, and sessions pages; align first-party help text with actual queue behavior, give each package-manager command its own copyable block.
+- 2c6ee34: Show the dequeue shortcut beside the queued-message count in the activity row, using `Opt+↑` on macOS and `Alt+↑` elsewhere.
+- 7f9cc21: Stop the AI SDK printing provider warnings over the TUI.
+
+  The SDK logs them with `process.emitWarning`, which writes to stderr at whatever cursor position happens to be current. Over the alternate screen that shreds the display, and `azure.responses` emits one per model call:
+
+  ```
+  AI SDK Warning (azure.responses / gpt-5.6-luna): Non-OpenAI reasoning parts are
+  not supported. Skipping reasoning part: {"type":"reasoning","text":"…
+  ```
+
+  The message embeds the part it is complaining about, so each copy carried a whole reasoning block with it: roughly 2.4kB per call, interleaved with everything glrs was drawing.
+
+  They now go where every other notice goes, clipped and said once:
+
+  ```
+  (provider warning) azure.responses/gpt-5.6-luna: Non-OpenAI reasoning parts are
+  not supported. Skipping reasoning part: {"type":"reasoning","text":"The user…
+  ```
+
+  Deduplicated per provider, model and first sentence, for the life of the process. Keying on the whole message would not have worked: the offending value sits in the rest of it, so every copy looks new. Under `-p` they go to stderr tagged `[provider]`, and the SDK's own "to turn off warning logging" notice is gone with them.
+
+  Same decision as `onError`, which has silenced the SDK's `console.error` since the alternate screen existed. The warning still travels, it just travels through glrs.
+
+  Documented in `9-reference/4-models.md` under "provider warnings", with the stderr tag added to `9-reference/1-cli.md` and `2-how-to/9-run-in-a-pipeline.md` beside the `[config]` diagnostics they already listed.
+
 ## 1.0.0-next.55
 
 ### Major Changes
