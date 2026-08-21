@@ -19,7 +19,13 @@ import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
 import type { ExtensionProvider } from "../../glrs-core/src";
-import { type Config, envSetting, type JsonObject, type ModelSettings } from "./config";
+import {
+  type AzureModelType,
+  type Config,
+  envSetting,
+  type JsonObject,
+  type ModelSettings,
+} from "./config";
 import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
 
 export { PROVIDER_SETTINGS, settingsFor } from "./providers";
@@ -47,6 +53,7 @@ export type ModelOption = ModelRef & {
   region?: string;
   project?: string;
   location?: string;
+  modelType?: AzureModelType;
   factoryOptions?: JsonObject;
   requestOptions?: JsonObject;
   providerOptions?: Record<string, JsonObject>;
@@ -158,6 +165,7 @@ const providerSettings = (
     | "project"
     | "location"
     | "factoryOptions"
+    | "modelType"
     | "requestOptions"
     | "providerOptions"
     | "name"
@@ -173,6 +181,7 @@ const providerSettings = (
   const common = {
     api: providerSettings?.api,
     factoryOptions: providerSettings?.factoryOptions,
+    modelType: model?.modelType,
     requestOptions: mergeObjects(providerSettings?.requestOptions, model?.requestOptions),
     providerOptions: mergeObjects(
       providerSettings?.providerOptions as JsonObject | undefined,
@@ -405,8 +414,13 @@ export const createModel = (
     // is the one provider factory option config cannot replace.
     fetch: fetcher as typeof fetch,
   };
-  if (option.provider === "azure" || option.npm === "@ai-sdk/azure")
-    return createAzure(common as Parameters<typeof createAzure>[0])(option.modelId);
+  if (option.provider === "azure" || option.npm === "@ai-sdk/azure") {
+    const provider = createAzure(common as Parameters<typeof createAzure>[0]);
+    const modelType =
+      option.modelType ??
+      (option.modelId.toLowerCase().includes("deepseek") ? "deepseek" : "responses");
+    return provider[modelType](option.modelId);
+  }
   if (option.provider === "amazon-bedrock")
     return createAmazonBedrock({
       ...common,

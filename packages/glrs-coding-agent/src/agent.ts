@@ -178,13 +178,14 @@ const mergeOptions = (far: JsonObject, near: JsonObject): JsonObject => {
 };
 
 export const providerOptions = (
-  model: Pick<ModelOption, "provider" | "modelId" | "variant" | "providerOptions">,
+  model: Pick<ModelOption, "provider" | "modelId" | "modelType" | "variant" | "providerOptions">,
   cacheKey: string,
 ): ProviderOptions =>
   mergeOptions(
     requestOptions({
       provider: model.provider,
       modelId: model.modelId,
+      modelType: model.modelType,
       variant: model.variant,
       cacheKey,
     }) as JsonObject,
@@ -194,7 +195,7 @@ export const providerOptions = (
 export const requestSettings = (
   model: Pick<
     ModelOption,
-    "provider" | "modelId" | "variant" | "requestOptions" | "providerOptions"
+    "provider" | "modelId" | "modelType" | "variant" | "requestOptions" | "providerOptions"
   >,
   cacheKey: string,
 ): JsonObject => ({
@@ -462,7 +463,12 @@ export const createAgent = (setup: Setup) => {
           // Anthropic and Bedrock cache only what is marked, so the marks go
           // in here rather than in providerOptions. OpenAI and Google cache a
           // prefix unasked and are handed the list unchanged.
-          messages: withCacheBreakpoints([...shown], setup.model.provider, setup.model.modelId),
+          messages: withCacheBreakpoints(
+            [...shown],
+            setup.model.provider,
+            setup.model.modelId,
+            setup.model.modelType,
+          ),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.
           // Appending keeps the cached prefix intact, so steering costs the

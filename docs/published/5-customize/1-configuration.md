@@ -103,6 +103,10 @@ options. `metadata` overrides models.dev values:
 }
 ```
 
+Azure deployments default to `responses`. set an exact model override's
+`modelType` to `chat` or `deepseek` when that deployment uses the corresponding
+Azure SDK API. model ids containing `deepseek` select `deepseek` automatically.
+
 option objects merge recursively across scopes. arrays and scalar values replace
 inherited values; `null` removes one. glrs passes unknown JSON-compatible options
 through so new AI SDK options do not require a glrs release. model, messages,

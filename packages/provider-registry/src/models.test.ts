@@ -338,6 +338,69 @@ describe("extension providers", () => {
   });
 });
 
+describe("Azure model routing", () => {
+  const requestFor = async (
+    modelId: string,
+    modelType?: "responses" | "chat" | "deepseek",
+    providerOptions: Record<string, Record<string, unknown>> = {
+      azure: { reasoningEffort: "max" },
+    },
+  ) => {
+    let url = "";
+    let body: Record<string, unknown> = {};
+    const model = createModel(
+      {
+        provider: "azure",
+        modelId,
+        name: modelId,
+        env: [],
+        modelType,
+        factoryOptions: { apiKey: "test", baseURL: "https://azure.example/openai" },
+      },
+      (async (input: RequestInfo | URL, init?: RequestInit) => {
+        url = String(input);
+        body = JSON.parse(String(init?.body));
+        return new Response("{}", { status: 400 });
+      }) as typeof fetch,
+    );
+    await generateText({
+      model,
+      prompt: "hi",
+      maxRetries: 0,
+      providerOptions,
+    }).catch(() => {});
+    return { url, body };
+  };
+
+  test("DeepSeek deployments use Azure's DeepSeek chat adapter", async () => {
+    const { url, body } = await requestFor("deepseek-v4-flash");
+    expect(url).toContain("/chat/completions");
+    expect(body.reasoning_effort).toBe("max");
+    expect(body).not.toHaveProperty("reasoning");
+  });
+
+  test("compaction can use the deployment default without sending an effort", async () => {
+    const { url, body } = await requestFor("deepseek-v4-flash", undefined, {});
+    expect(url).toContain("/chat/completions");
+    expect(body).not.toHaveProperty("reasoning_effort");
+    expect(body).not.toHaveProperty("text.verbosity");
+  });
+
+  test("ordinary Azure models continue using Responses", async () => {
+    const { url, body } = await requestFor("gpt-5.6-luna");
+    expect(url).toContain("/responses");
+    expect(body).toHaveProperty("reasoning.effort", "max");
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  test("an explicit model type handles private deployment aliases", async () => {
+    expect((await requestFor("private-name", "deepseek")).url).toContain("/chat/completions");
+    expect((await requestFor("deepseek-named-but-responses", "responses")).url).toContain(
+      "/responses",
+    );
+  });
+});
+
 describe("provider factory passthrough", () => {
   test("an explicitly configured factory API key overrides the environment", async () => {
     process.env.OPENAI_API_KEY = "environment-key";

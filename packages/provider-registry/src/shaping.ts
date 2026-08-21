@@ -1,3 +1,5 @@
+import type { AzureModelType } from "./config";
+
 // How a request is shaped for the provider that will answer it.
 //
 // This used to be one object nested under the `openai` namespace, applied to
@@ -22,7 +24,7 @@
 // A provider glrs does not know is treated as OpenAI-compatible everywhere
 // else, so it is treated as OpenAI-compatible here too.
 
-export type Variant = "minimal" | "low" | "medium" | "high";
+export type Variant = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 // The AI SDK carries provider options as JSON, so this is JSON-shaped rather
 // than `unknown` — otherwise it will not satisfy the SDK's own option type.
@@ -38,6 +40,8 @@ const BUDGET: Record<Variant, number> = {
   low: 4096,
   medium: 12288,
   high: 24576,
+  xhigh: 32768,
+  max: 65536,
 };
 
 const asVariant = (value: string | undefined): Variant | undefined => {
@@ -46,11 +50,16 @@ const asVariant = (value: string | undefined): Variant | undefined => {
   return word in BUDGET ? (word as Variant) : undefined;
 };
 
-// Which provider-options namespace a provider reads. azure is served by the
-// openai SDK and reads openai's; vertex serves both Google's own models and
-// Anthropic's, and the namespace follows the model rather than the host.
-export const namespaceFor = (provider: string, modelId = ""): string => {
-  if (provider === "azure") return "openai";
+// Which provider-options namespace a provider reads. Azure's models all read
+// `azure`, even though the responses and chat implementations come from the
+// OpenAI SDK. Vertex serves both Google's own models and Anthropic's, and the
+// namespace follows the model rather than the host.
+export const namespaceFor = (
+  provider: string,
+  modelId = "",
+  _modelType?: AzureModelType,
+): string => {
+  if (provider === "azure") return "azure";
   if (provider === "google-vertex")
     return modelId.toLowerCase().includes("claude") ? "anthropic" : "google";
   if (provider === "amazon-bedrock") return "bedrock";
@@ -65,6 +74,7 @@ export const namespaceFor = (provider: string, modelId = ""): string => {
 export type Shape = {
   provider: string;
   modelId?: string;
+  modelType?: AzureModelType;
   /** The configured reasoning effort, in glrs's words. */
   variant?: string;
   /** Stable per-conversation key, for providers that route on one. */
@@ -74,7 +84,7 @@ export type Shape = {
 // The `providerOptions` for one call: exactly one namespace, carrying only what
 // that provider actually reads.
 export const requestOptions = (shape: Shape): ProviderOptions => {
-  const namespace = namespaceFor(shape.provider, shape.modelId);
+  const namespace = namespaceFor(shape.provider, shape.modelId, shape.modelType);
   const variant = asVariant(shape.variant);
   const budget = variant === undefined ? undefined : BUDGET[variant];
 
@@ -111,7 +121,27 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
       },
     };
 
-  // openai, azure, and every OpenAI-compatible endpoint.
+  if (namespace === "azure") {
+    const deepseek =
+      shape.modelType === "deepseek" ||
+      (shape.modelType === undefined && (shape.modelId ?? "").toLowerCase().includes("deepseek"));
+    if (deepseek)
+      return {
+        azure: {
+          ...(variant === undefined ? {} : { reasoningEffort: variant }),
+        },
+      };
+    return {
+      azure: {
+        ...(variant === undefined ? {} : { reasoningEffort: variant }),
+        textVerbosity: "low",
+        ...(shape.cacheKey === undefined ? {} : { promptCacheKey: shape.cacheKey }),
+        store: false,
+      },
+    };
+  }
+
+  // openai and every OpenAI-compatible endpoint.
   //
   // `store: false` is deliberate. With it true the provider keeps server-side
   // reasoning state and answers "Item 'rs_…' not found" whenever that lookup
@@ -131,14 +161,31 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
 // Whether a provider caches a prompt prefix without being asked. The ones that
 // do not need cache breakpoints written into the messages themselves, which is
 // a different seam from `providerOptions` — see `cacheHint`.
-export const cachesAutomatically = (provider: string, modelId = ""): boolean =>
-  namespaceFor(provider, modelId) === "openai" || namespaceFor(provider, modelId) === "google";
+export const cachesAutomatically = (
+  provider: string,
+  modelId = "",
+  modelType?: AzureModelType,
+): boolean => {
+  if (provider === "azure")
+    return !(
+      modelType === "deepseek" ||
+      (modelType === undefined && modelId.toLowerCase().includes("deepseek"))
+    );
+  return (
+    namespaceFor(provider, modelId, modelType) === "openai" ||
+    namespaceFor(provider, modelId, modelType) === "google"
+  );
+};
 
 // What to mark a message with so the provider caches everything up to it.
 // Anthropic and Bedrock cache only what is explicitly marked; returning
 // undefined means the provider needs no mark and the caller writes nothing.
-export const cacheHint = (provider: string, modelId = ""): ProviderOptions | undefined => {
-  const namespace = namespaceFor(provider, modelId);
+export const cacheHint = (
+  provider: string,
+  modelId = "",
+  modelType?: AzureModelType,
+): ProviderOptions | undefined => {
+  const namespace = namespaceFor(provider, modelId, modelType);
   if (namespace === "anthropic")
     return { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } };
   if (namespace === "bedrock") return { bedrock: { cachePoint: { type: "default" } } };
@@ -165,8 +212,9 @@ export const withCacheBreakpoints = <Message extends object>(
   messages: readonly Message[],
   provider: string,
   modelId = "",
+  modelType?: AzureModelType,
 ): Message[] => {
-  const hint = cacheHint(provider, modelId);
+  const hint = cacheHint(provider, modelId, modelType);
   if (hint === undefined || messages.length < 2) return [...messages];
   const at = messages.length - 2;
   return messages.map((message, index) => {

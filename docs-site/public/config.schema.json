@@ -113,6 +113,11 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
+                "modelType": {
+                  "type": "string",
+                  "enum": ["responses", "chat", "deepseek"],
+                  "description": "Azure SDK language-model constructor for this deployment."
+                },
                 "requestOptions": {
                   "$ref": "#/$defs/requestOptions"
                 },

@@ -11,8 +11,9 @@ import {
 // to everyone. These pin that each provider is asked in its own words.
 
 describe("which namespace a provider reads", () => {
-  test("azure is served by the openai SDK, so it reads openai's", () => {
-    expect(namespaceFor("azure")).toBe("openai");
+  test("azure uses its own provider-options namespace", () => {
+    expect(namespaceFor("azure", "gpt-5.6-luna")).toBe("azure");
+    expect(namespaceFor("azure", "deepseek-v4-flash")).toBe("azure");
   });
 
   test("vertex follows the model, not the host", () => {
@@ -50,6 +51,23 @@ describe("reasoning effort reaches the provider that answers", () => {
     ).toMatchObject({ bedrock: { reasoningConfig: { maxReasoningEffort: "medium" } } });
   });
 
+  test("Azure DeepSeek gets only the options its chat adapter accepts", () => {
+    expect(
+      requestOptions({ provider: "azure", modelId: "deepseek-v4-flash", variant: "max" }),
+    ).toEqual({ azure: { reasoningEffort: "max" } });
+  });
+
+  test("extended efforts are forwarded rather than silently discarded", () => {
+    expect(requestOptions({ provider: "openai", modelId: "o", variant: "xhigh" })).toHaveProperty(
+      "openai.reasoningEffort",
+      "xhigh",
+    );
+    expect(requestOptions({ provider: "openai", modelId: "o", variant: "max" })).toHaveProperty(
+      "openai.reasoningEffort",
+      "max",
+    );
+  });
+
   test("an effort nobody configured asks for none", () => {
     expect(requestOptions({ provider: "anthropic", modelId: "c" }).anthropic).toEqual({});
     expect(requestOptions({ provider: "openai", modelId: "o" }).openai).not.toHaveProperty(
@@ -71,6 +89,8 @@ describe("cache breakpoints", () => {
   test("providers that cache a prefix unasked are handed the list unchanged", () => {
     expect(cachesAutomatically("openai")).toBe(true);
     expect(cachesAutomatically("google")).toBe(true);
+    expect(cachesAutomatically("azure", "gpt-5.6-luna")).toBe(true);
+    expect(cachesAutomatically("azure", "deepseek-v4-flash")).toBe(false);
     expect(cacheHint("openai")).toBeUndefined();
     const messages = conversation(4);
     expect(withCacheBreakpoints(messages, "openai")).toEqual(messages);
