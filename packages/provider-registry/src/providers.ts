@@ -22,7 +22,7 @@ export type ProviderSpec = {
   note?: string;
 };
 
-export const PROVIDERS: readonly ProviderSpec[] = [
+const PROVIDER_DEFINITIONS = [
   {
     id: "anthropic",
     label: "Anthropic",
@@ -70,9 +70,12 @@ export const PROVIDERS: readonly ProviderSpec[] = [
   { id: "xai", label: "xAI", env: ["XAI_API_KEY"] },
   { id: "perplexity", label: "Perplexity", env: ["PERPLEXITY_API_KEY"] },
   { id: "togetherai", label: "Together AI", env: ["TOGETHER_AI_API_KEY"] },
-];
+] as const satisfies readonly ProviderSpec[];
 
-const byId = new Map(PROVIDERS.map((provider) => [provider.id, provider]));
+export type BuiltinProviderId = (typeof PROVIDER_DEFINITIONS)[number]["id"];
+export const PROVIDERS: readonly ProviderSpec[] = PROVIDER_DEFINITIONS;
+
+const byId = new Map<string, ProviderSpec>(PROVIDERS.map((provider) => [provider.id, provider]));
 
 // What people actually type. The canonical ids follow the SDK packages, which
 // is why Vertex is `google-vertex` and Bedrock is `amazon-bedrock` — reasonable

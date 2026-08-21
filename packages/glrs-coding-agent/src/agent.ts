@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import {
+  type CacheOwner,
   createModel,
+  isExtensionProvider,
   type JsonObject,
   type ModelOption,
   modelCost,
@@ -180,17 +182,24 @@ const mergeOptions = (far: JsonObject, near: JsonObject): JsonObject => {
 export const providerOptions = (
   model: Pick<ModelOption, "provider" | "modelId" | "modelType" | "variant" | "providerOptions">,
   cacheKey: string,
+  cacheOwner: CacheOwner = "glrs",
 ): ProviderOptions =>
   mergeOptions(
-    requestOptions({
-      provider: model.provider,
-      modelId: model.modelId,
-      modelType: model.modelType,
-      variant: model.variant,
-      cacheKey,
-    }) as JsonObject,
+    requestOptions(
+      {
+        provider: model.provider,
+        modelId: model.modelId,
+        modelType: model.modelType,
+        variant: model.variant,
+        cacheKey,
+      },
+      cacheOwner,
+    ) as JsonObject,
     (model.providerOptions ?? {}) as JsonObject,
   ) as ProviderOptions;
+
+export const cacheOwnerFor = (provider: string): CacheOwner =>
+  isExtensionProvider(provider) ? "extension" : "glrs";
 
 export const requestSettings = (
   model: Pick<
@@ -198,9 +207,10 @@ export const requestSettings = (
     "provider" | "modelId" | "modelType" | "variant" | "requestOptions" | "providerOptions"
   >,
   cacheKey: string,
+  cacheOwner: CacheOwner = "glrs",
 ): JsonObject => ({
   ...(model.requestOptions ?? {}),
-  providerOptions: providerOptions(model, cacheKey) as JsonObject,
+  providerOptions: providerOptions(model, cacheKey, cacheOwner) as JsonObject,
 });
 
 export const terminatingToolCalled = (
@@ -299,9 +309,13 @@ export const createAgent = (setup: Setup) => {
       setup.terminatingTools?.() ?? new Set(),
     );
 
+  // Extension providers own their protocol, including cache controls. Asked at
+  // call time because an extension provider may register after model resolution.
+  const cacheOwner = (): CacheOwner => cacheOwnerFor(setup.model.provider);
+
   const settings = () => ({
     maxRetries: 5,
-    ...requestSettings(setup.model, cacheKey(setup.sessionId)),
+    ...requestSettings(setup.model, cacheKey(setup.sessionId), cacheOwner()),
     model,
     instructions: setup.systemPromptOverride?.() ?? systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool],
@@ -320,7 +334,11 @@ export const createAgent = (setup: Setup) => {
       const result = await generateText({
         maxOutputTokens: 4_000,
         maxRetries: 3,
-        ...requestSettings({ ...setup.model, variant: undefined }, cacheKey("compact")),
+        ...requestSettings(
+          { ...setup.model, variant: undefined },
+          cacheKey("compact"),
+          cacheOwner(),
+        ),
         model,
         instructions:
           "You are compacting a coding session so work can continue past the context limit. " +
@@ -460,14 +478,15 @@ export const createAgent = (setup: Setup) => {
         const result = streamText({
           ...settings(),
           tools: toolsFor(turn.onTool),
-          // Anthropic and Bedrock cache only what is marked, so the marks go
-          // in here rather than in providerOptions. OpenAI and Google cache a
-          // prefix unasked and are handed the list unchanged.
+          // Explicit-cache providers get a moving stable-prefix breakpoint.
+          // Automatic/provider-managed endpoints and extension providers are
+          // handed the list unchanged.
           messages: withCacheBreakpoints(
             [...shown],
             setup.model.provider,
             setup.model.modelId,
             setup.model.modelType,
+            cacheOwner(),
           ),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.

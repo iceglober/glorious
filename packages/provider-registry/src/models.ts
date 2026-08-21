@@ -27,6 +27,7 @@ import {
   type ModelSettings,
 } from "./config";
 import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
+import { azureModelTypeFor } from "./shaping";
 
 export { PROVIDER_SETTINGS, settingsFor } from "./providers";
 
@@ -331,6 +332,8 @@ type ProviderFactory = (options?: Record<string, unknown>) => (id: string) => Re
 
 const extensionProviders = new Map<string, ExtensionProvider>();
 
+export const isExtensionProvider = (provider: string): boolean => extensionProviders.has(provider);
+
 export const registerExtensionProvider = (provider: ExtensionProvider): { dispose: () => void } => {
   if (extensionProviders.has(provider.id)) return { dispose: () => {} };
   extensionProviders.set(provider.id, provider);
@@ -416,9 +419,7 @@ export const createModel = (
   };
   if (option.provider === "azure" || option.npm === "@ai-sdk/azure") {
     const provider = createAzure(common as Parameters<typeof createAzure>[0]);
-    const modelType =
-      option.modelType ??
-      (option.modelId.toLowerCase().includes("deepseek") ? "deepseek" : "responses");
+    const modelType = azureModelTypeFor(option.modelId, option.modelType);
     return provider[modelType](option.modelId);
   }
   if (option.provider === "amazon-bedrock")
