@@ -45,6 +45,10 @@ describe("hosted config schema", () => {
     };
     expect(openai.properties).toHaveProperty("reasoningEffort");
     expect(openai.properties).toHaveProperty("store");
+    const models = providers.additionalProperties.properties.models as {
+      additionalProperties?: { properties?: Record<string, unknown> };
+    };
+    expect(models.additionalProperties?.properties).toHaveProperty("modelType");
   });
 
   test("covers every documented top-level setting", () => {

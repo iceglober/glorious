@@ -153,6 +153,31 @@ describe("initializing config files", () => {
 });
 
 describe("provider and model overrides", () => {
+  test("an Azure model can select its SDK model type", async () => {
+    const root = await project(
+      JSON.stringify({
+        model: "azure/private-alias",
+        providers: {
+          azure: {
+            models: {
+              "private-alias": { modelType: "deepseek" },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"), {});
+    expect(config.providers?.azure?.models?.["private-alias"]?.modelType).toBe("deepseek");
+    expect(diagnostics).toEqual([]);
+  });
+
+  test("rejects an unknown Azure model type", async () => {
+    const root = await project('{"providers":{"azure":{"models":{"x":{"modelType":"magic"}}}}}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"), {});
+    expect(config.providers?.azure?.models?.x?.modelType).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain("modelType should be responses, chat, or deepseek");
+  });
+
   test("retains arbitrary JSON options instead of filtering provider-specific config", async () => {
     const root = await project(
       JSON.stringify({

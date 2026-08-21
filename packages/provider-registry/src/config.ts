@@ -62,7 +62,11 @@ export type ModelMetadataSettings = {
   variants?: string[];
 };
 
+export type AzureModelType = "responses" | "chat" | "deepseek";
+
 export type ModelSettings = {
+  /** Which Azure SDK language-model constructor serves this deployment. */
+  modelType?: AzureModelType;
   requestOptions?: RequestSettings;
   providerOptions?: ProviderCallOptions;
   metadata?: ModelMetadataSettings;
@@ -641,6 +645,15 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
               return [];
             }
             const configured = { ...model } as ModelSettings;
+            if (
+              model.modelType !== undefined &&
+              !["responses", "chat", "deepseek"].includes(String(model.modelType))
+            ) {
+              delete configured.modelType;
+              diagnostics.push(
+                `${where}: providers.${name}.models.${modelId}.modelType should be responses, chat, or deepseek — ignored`,
+              );
+            }
             const modelRequests = requestOptions(
               model.requestOptions,
               `providers.${name}.models.${modelId}.requestOptions`,
