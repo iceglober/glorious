@@ -1,10 +1,14 @@
 ---
-title: keys
+title: turns
 ---
 
-# keys
+# turns
+
+a turn is one exchange: your message, the model works, it answers. a step is one
+model call inside it.
 
 ## queues
+
 | queue | key | delivery | setting |
 | --- | --- | --- | --- |
 | follow-up | `enter` | its own turn once the current one finishes | `followUpMode` |
@@ -29,6 +33,5 @@ present next turn. it advances each turn, which extends the cached prefix rather
 than replacing it.
 
 why it is shaped that way: [a turn](../3-explanation/2-a-turn.md).
-
 
 see also: [resume and fork](../2-how-to/3-resume-and-fork.md), [a turn](../3-explanation/2-a-turn.md)
