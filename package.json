@@ -21,6 +21,7 @@
     "!packages/provider-registry/src/**/*.test.ts",
     "packages/extensions/ask-user/src",
     "packages/extensions/builtins/src",
+    "packages/extensions/model-picker/src",
     "packages/extensions/web-fetch/src",
     "packages/extensions/worktree/src",
     "packages/extensions/worktree/skills",

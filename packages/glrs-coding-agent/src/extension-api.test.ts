@@ -718,7 +718,7 @@ describe("the extension API is declared once", () => {
 
   test("extensions reach it without importing the coding agent", () => {
     // The boundary check forbids it, which is what forced the copy originally.
-    for (const name of ["builtins", "ask-user", "web-fetch", "worktree"]) {
+    for (const name of ["builtins", "ask-user", "model-picker", "web-fetch", "worktree"]) {
       const source = readFileSync(
         join(here, "..", "..", "extensions", name, "src", "index.ts"),
         "utf8",

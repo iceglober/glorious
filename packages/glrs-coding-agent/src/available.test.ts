@@ -11,8 +11,9 @@ describe("which first-party extensions are still undecided", () => {
   const state = (name: string, settings?: Parameters<typeof firstPartyExtensions>[0]): string =>
     firstPartyExtensions(settings).find((one) => one.name === name)?.state ?? "missing";
 
-  test("with no config, builtins is on and the rest are undecided", () => {
+  test("with no config, product defaults are on and the rest are undecided", () => {
     expect(state("builtins")).toBe("on");
+    expect(state("model-picker")).toBe("on");
     expect(state("web-fetch")).toBe("undecided");
     expect(state("ask-user")).toBe("undecided");
   });
@@ -24,6 +25,7 @@ describe("which first-party extensions are still undecided", () => {
   test("naming one in disable makes it off, including the one that defaults on", () => {
     expect(state("web-fetch", { disable: ["web-fetch"] })).toBe("off");
     expect(state("builtins", { disable: ["builtins"] })).toBe("off");
+    expect(state("model-picker", { disable: ["model-picker"] })).toBe("off");
   });
 
   test("the package specifier counts as naming it", () => {

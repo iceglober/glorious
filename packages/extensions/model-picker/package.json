@@ -1,0 +1,15 @@
+{
+  "name": "@glrs-dev/glrs-ext-model-picker",
+  "version": "1.0.0-next.38",
+  "private": true,
+  "description": "Interactive model and reasoning picker for glrs products.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ]
+}
