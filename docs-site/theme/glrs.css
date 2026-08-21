@@ -137,3 +137,10 @@ footer { display: none; }
   .col-sidebar { border-right: 0; }
   .col-content { max-width: none; }
 }
+
+/* The index page carries a generated outline of every document. TypeDoc then
+   renders the same set again as a "Documents" member group, so the page ends
+   with a second, flatter copy of its own contents. */
+.tsd-panel-group:has(> summary[data-key="section-Documents"]) {
+  display: none;
+}

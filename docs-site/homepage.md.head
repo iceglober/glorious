@@ -1,5 +1,3 @@
-# glrs
-
 a model, a turn loop, and a set of extensions over a git repository.
 
 ```bash
