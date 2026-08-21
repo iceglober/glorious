@@ -157,6 +157,31 @@ describe("initializing config files", () => {
 });
 
 describe("provider and model overrides", () => {
+  test("an Azure model can select its SDK model type", async () => {
+    const root = await project(
+      JSON.stringify({
+        model: "azure/private-alias",
+        providers: {
+          azure: {
+            models: {
+              "private-alias": { modelType: "deepseek" },
+            },
+          },
+        },
+      }),
+    );
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"), {});
+    expect(config.providers?.azure?.models?.["private-alias"]?.modelType).toBe("deepseek");
+    expect(diagnostics).toEqual([]);
+  });
+
+  test("rejects an unknown Azure model type", async () => {
+    const root = await project('{"providers":{"azure":{"models":{"x":{"modelType":"magic"}}}}}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"), {});
+    expect(config.providers?.azure?.models?.x?.modelType).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain("modelType should be responses, chat, or deepseek");
+  });
+
   test("retains arbitrary JSON options instead of filtering provider-specific config", async () => {
     const root = await project(
       JSON.stringify({
@@ -517,6 +542,34 @@ describe("how a queue delivers", () => {
     const { config } = await loadConfig(root, home, {});
     expect(config.steeringMode).toBe("all");
     expect(config.followUpMode).toBe("one-at-a-time");
+  });
+});
+
+describe("reasoning display", () => {
+  test("is configurable as a boolean or minimum effort", async () => {
+    const hiddenRoot = await project('{"reasoningDisplay":false}');
+    const hidden = await loadConfig(hiddenRoot, join(hiddenRoot, "nohome"), {});
+    expect(hidden.config.reasoningDisplay).toBe(false);
+
+    const highRoot = await project('{"reasoningDisplay":"high"}');
+    const high = await loadConfig(highRoot, join(highRoot, "nohome"), {});
+    expect(high.config.reasoningDisplay).toBe("high");
+    expect(high.diagnostics).toEqual([]);
+  });
+
+  test("rejects a value that is not a display mode", async () => {
+    const root = await project('{"reasoningDisplay":"sometimes"}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"), {});
+    expect(config.reasoningDisplay).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain(
+      '"reasoningDisplay" should be true, false, or a reasoning level',
+    );
+  });
+
+  test("the nearest scope wins", async () => {
+    const home = await userConfig('{"reasoningDisplay":false}');
+    const root = await project('{"reasoningDisplay":"high"}');
+    expect((await loadConfig(root, home, {})).config.reasoningDisplay).toBe("high");
   });
 });
 

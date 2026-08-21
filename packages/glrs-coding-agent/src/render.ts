@@ -1,5 +1,10 @@
 import type { Activity, Span, Tone } from "../../glrs-core/src";
 import type { SessionEvent } from "../../glrs-core/src/events";
+import {
+  REASONING_LEVELS,
+  type ReasoningDisplay,
+  type ReasoningLevel,
+} from "../../provider-registry/src/config";
 import { resultSummary } from "./toolkit";
 
 // Declared in glrs-core, where extensions reach it. Two declarations is how
@@ -343,12 +348,43 @@ export const toolGroupFooter = (calls: number, elapsedMs: number, failed: number
         ],
       ];
 
-// Reasoning collapses once the answer starts: what matters afterwards is that it
-// happened and for how long, not a wall of text already read past. The full text
-// stays in the event.
-export const reasoningBlock = (elapsedMs: number): Line[] => [
-  [{ text: `░ thought for ${Math.max(1, Math.round(elapsedMs / 1000))}s`, tone: "muted" }],
-];
+export const reasoningVisible = (
+  display: ReasoningDisplay | undefined,
+  variant: string | undefined,
+): boolean => {
+  if (display === false) return false;
+  if (display === true || display === undefined) return true;
+  const threshold = REASONING_LEVELS.indexOf(display);
+  const effort = REASONING_LEVELS.indexOf(variant?.toLowerCase() as ReasoningLevel);
+  return effort >= threshold;
+};
+
+// Provider-supplied reasoning remains in the transcript by default. It is
+// visually quieter than the answer but never discarded merely because the
+// answer began.
+export const reasoningBlock = (text: string, elapsedMs: number): Line[] => {
+  const rows = clean(text)
+    .split("\n")
+    .filter((line) => line.trim() !== "");
+  const content: Line[] = rows.map((line, index) =>
+    index === 0
+      ? [
+          { text: "◐ ", tone: "muted", bold: true },
+          { text: line, tone: "muted", italic: true },
+        ]
+      : [{ text: `  ${line}`, tone: "muted", italic: true }],
+  );
+  return [
+    ...content,
+    [{ text: `  thought for ${Math.max(1, Math.round(elapsedMs / 1000))}s`, tone: "muted" }],
+  ];
+};
+
+/** Plain rendering used by print mode, preserving the same visual hierarchy. */
+export const reasoningText = (text: string, elapsedMs: number): string =>
+  reasoningBlock(text, elapsedMs)
+    .map((line) => line.map((span) => span.text).join(""))
+    .join("\n");
 
 // What is painted while reasoning is still arriving, before the collapse.
 export const reasoningDraft = (text: string): Line[] =>
@@ -395,7 +431,7 @@ export const eventBlock = (
         gap: false,
       };
     case "reasoning":
-      return { lines: reasoningBlock(event.elapsedMs), gap: true };
+      return { lines: reasoningBlock(event.text, event.elapsedMs), gap: true };
     // The brief is what the model carries forward in place of everything that
     // was dropped. It was announced and then rendered as nothing, so a
     // compaction was a line saying a number of messages went away and no way to

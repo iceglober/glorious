@@ -135,6 +135,7 @@ export type Usage = {
 // view; an extension that needs them can read config itself.
 export type Settings = {
   toolTimeoutMs?: number;
+  reasoningDisplay?: boolean | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   steeringMode?: "one-at-a-time" | "all";
   followUpMode?: "one-at-a-time" | "all";
 };

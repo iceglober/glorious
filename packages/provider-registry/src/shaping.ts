@@ -1,3 +1,5 @@
+import type { AzureModelType } from "./config";
+
 // How a request is shaped for the provider that will answer it.
 //
 // This used to be one object nested under the `openai` namespace, applied to
@@ -25,11 +27,10 @@
 // Reasoning effort is not a fixed set. models.dev publishes what each model
 // accepts in `reasoning_options`, and across the catalogue there are over a
 // hundred distinct shapes: ["low","medium","high"], ["minimal","low","medium",
-// "high"], ["low","medium","high","xhigh","max"], ["none","high"], and models
-// with no effort scale at all. A union here could only ever be wrong for most
-// of them, so the value is a string and the model's own list is what validates
-// it. `ModelOption.variants` carries that list, from the catalogue or from
-// config.
+// "high"], ["low","medium","high","xhigh","max"], ["none","high"], and many
+// models with no effort scale at all. A union here could only be right for a
+// minority, so the value is a string and the model's own list validates it.
+// `ModelOption.variants` carries that list, from the catalogue or from config.
 export type Variant = string;
 
 // The AI SDK carries provider options as JSON, so this is JSON-shaped rather
@@ -37,30 +38,25 @@ export type Variant = string;
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type ProviderOptions = Record<string, Record<string, JsonValue>>;
 
-// Token budgets for the providers that want a number rather than a word. These
-// are glrs's reading of what each word should buy, not something a provider
-// publishes — the words are the interface, and this is the one place they turn
-// into budgets, so a provider is never handed a number from nowhere.
 // Anthropic, Google and Bedrock want a token budget rather than a word. The
 // budget comes from where the variant sits in the model's own scale, so a model
-// offering three levels spreads over the same range as one offering five. A
-// model with no published scale falls back to a fixed ladder, which is the only
-// case where guessing is unavoidable.
+// offering three levels spreads over the same range as one offering six. A
+// model with no published scale falls back to the ladder below, which is the
+// only case where guessing is unavoidable.
 const FALLBACK: readonly string[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const FLOOR = 1024;
-const CEILING = 32768;
+const CEILING = 65536;
 
 const budgetFor = (variant: string, scale: readonly string[]): number | undefined => {
   const at = scale.indexOf(variant);
   if (at < 0 || scale.length === 0) return undefined;
   if (scale.length === 1) return CEILING;
-  const step = (CEILING - FLOOR) / (scale.length - 1);
-  return Math.round(FLOOR + step * at);
+  return Math.round(FLOOR + ((CEILING - FLOOR) / (scale.length - 1)) * at);
 };
 
 // The variant a caller asked for, if this model accepts it. An unknown value is
 // dropped rather than forwarded: a provider that rejects it fails the whole
-// turn, and a provider that ignores it silently bills for the wrong effort.
+// turn, and one that ignores it bills for effort nobody chose.
 const asVariant = (
   value: string | undefined,
   variants: readonly string[] | undefined,
@@ -68,15 +64,19 @@ const asVariant = (
   if (value === undefined) return undefined;
   const word = value.trim().toLowerCase();
   if (word === "") return undefined;
-  const scale = variants ?? FALLBACK;
-  return scale.includes(word) ? word : undefined;
+  return (variants ?? FALLBACK).includes(word) ? word : undefined;
 };
 
-// Which provider-options namespace a provider reads. azure is served by the
-// openai SDK and reads openai's; vertex serves both Google's own models and
-// Anthropic's, and the namespace follows the model rather than the host.
-export const namespaceFor = (provider: string, modelId = ""): string => {
-  if (provider === "azure") return "openai";
+// Which provider-options namespace a provider reads. Azure's models all read
+// `azure`, even though the responses and chat implementations come from the
+// OpenAI SDK. Vertex serves both Google's own models and Anthropic's, and the
+// namespace follows the model rather than the host.
+export const namespaceFor = (
+  provider: string,
+  modelId = "",
+  _modelType?: AzureModelType,
+): string => {
+  if (provider === "azure") return "azure";
   if (provider === "google-vertex")
     return modelId.toLowerCase().includes("claude") ? "anthropic" : "google";
   if (provider === "amazon-bedrock") return "bedrock";
@@ -91,10 +91,11 @@ export const namespaceFor = (provider: string, modelId = ""): string => {
 export type Shape = {
   provider: string;
   modelId?: string;
-  /** The configured reasoning effort. */
-  variant?: string;
-  /** What this model accepts, from the catalogue. Empty means no effort scale. */
+  modelType?: AzureModelType;
+  /** What this model accepts, from the catalogue. */
   variants?: readonly string[];
+  /** The configured reasoning effort, in glrs's words. */
+  variant?: string;
   /** Stable per-conversation key, for providers that route on one. */
   cacheKey?: string;
 };
@@ -102,7 +103,7 @@ export type Shape = {
 // The `providerOptions` for one call: exactly one namespace, carrying only what
 // that provider actually reads.
 export const requestOptions = (shape: Shape): ProviderOptions => {
-  const namespace = namespaceFor(shape.provider, shape.modelId);
+  const namespace = namespaceFor(shape.provider, shape.modelId, shape.modelType);
   const variant = asVariant(shape.variant, shape.variants);
   const scale = shape.variants ?? FALLBACK;
   const budget = variant === undefined ? undefined : budgetFor(variant, scale);
@@ -132,8 +133,8 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
               reasoningConfig: {
                 type: "enabled",
                 budgetTokens: budget,
-                // bedrock takes a word as well as a number, and only these
-                // three. Anything outside them travels as the budget alone.
+                // bedrock takes the word as well as the number, and only these
+                // three — "minimal" has no spelling there.
                 ...(["low", "medium", "high"].includes(variant)
                   ? { maxReasoningEffort: variant }
                   : {}),
@@ -142,7 +143,27 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
       },
     };
 
-  // openai, azure, and every OpenAI-compatible endpoint.
+  if (namespace === "azure") {
+    const deepseek =
+      shape.modelType === "deepseek" ||
+      (shape.modelType === undefined && (shape.modelId ?? "").toLowerCase().includes("deepseek"));
+    if (deepseek)
+      return {
+        azure: {
+          ...(variant === undefined ? {} : { reasoningEffort: variant }),
+        },
+      };
+    return {
+      azure: {
+        ...(variant === undefined ? {} : { reasoningEffort: variant }),
+        textVerbosity: "low",
+        ...(shape.cacheKey === undefined ? {} : { promptCacheKey: shape.cacheKey }),
+        store: false,
+      },
+    };
+  }
+
+  // openai and every OpenAI-compatible endpoint.
   //
   // `store: false` is deliberate. With it true the provider keeps server-side
   // reasoning state and answers "Item 'rs_…' not found" whenever that lookup
@@ -162,14 +183,31 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
 // Whether a provider caches a prompt prefix without being asked. The ones that
 // do not need cache breakpoints written into the messages themselves, which is
 // a different seam from `providerOptions` — see `cacheHint`.
-export const cachesAutomatically = (provider: string, modelId = ""): boolean =>
-  namespaceFor(provider, modelId) === "openai" || namespaceFor(provider, modelId) === "google";
+export const cachesAutomatically = (
+  provider: string,
+  modelId = "",
+  modelType?: AzureModelType,
+): boolean => {
+  if (provider === "azure")
+    return !(
+      modelType === "deepseek" ||
+      (modelType === undefined && modelId.toLowerCase().includes("deepseek"))
+    );
+  return (
+    namespaceFor(provider, modelId, modelType) === "openai" ||
+    namespaceFor(provider, modelId, modelType) === "google"
+  );
+};
 
 // What to mark a message with so the provider caches everything up to it.
 // Anthropic and Bedrock cache only what is explicitly marked; returning
 // undefined means the provider needs no mark and the caller writes nothing.
-export const cacheHint = (provider: string, modelId = ""): ProviderOptions | undefined => {
-  const namespace = namespaceFor(provider, modelId);
+export const cacheHint = (
+  provider: string,
+  modelId = "",
+  modelType?: AzureModelType,
+): ProviderOptions | undefined => {
+  const namespace = namespaceFor(provider, modelId, modelType);
   if (namespace === "anthropic")
     return { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } };
   if (namespace === "bedrock") return { bedrock: { cachePoint: { type: "default" } } };
@@ -196,8 +234,9 @@ export const withCacheBreakpoints = <Message extends object>(
   messages: readonly Message[],
   provider: string,
   modelId = "",
+  modelType?: AzureModelType,
 ): Message[] => {
-  const hint = cacheHint(provider, modelId);
+  const hint = cacheHint(provider, modelId, modelType);
   if (hint === undefined || messages.length < 2) return [...messages];
   const at = messages.length - 2;
   return messages.map((message, index) => {

@@ -22,6 +22,17 @@
       "examples": ["high"],
       "description": "Reasoning effort when supported by the selected model."
     },
+    "reasoningDisplay": {
+      "description": "Show provider-supplied reasoning. A level shows it only when the active model's configured effort is at least that level.",
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "string",
+          "enum": ["minimal", "low", "medium", "high", "xhigh", "max"]
+        }
+      ],
+      "default": true
+    },
     "toolTimeoutMs": {
       "type": "number",
       "exclusiveMinimum": 0,
@@ -102,6 +113,11 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
+                "modelType": {
+                  "type": "string",
+                  "enum": ["responses", "chat", "deepseek"],
+                  "description": "Azure SDK language-model constructor for this deployment."
+                },
                 "requestOptions": {
                   "$ref": "#/$defs/requestOptions"
                 },

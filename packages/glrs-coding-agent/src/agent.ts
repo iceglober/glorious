@@ -178,13 +178,17 @@ const mergeOptions = (far: JsonObject, near: JsonObject): JsonObject => {
 };
 
 export const providerOptions = (
-  model: Pick<ModelOption, "provider" | "modelId" | "variant" | "variants" | "providerOptions">,
+  model: Pick<
+    ModelOption,
+    "provider" | "modelId" | "modelType" | "variant" | "variants" | "providerOptions"
+  >,
   cacheKey: string,
 ): ProviderOptions =>
   mergeOptions(
     requestOptions({
       provider: model.provider,
       modelId: model.modelId,
+      modelType: model.modelType,
       variant: model.variant,
       variants: model.variants,
       cacheKey,
@@ -195,7 +199,7 @@ export const providerOptions = (
 export const requestSettings = (
   model: Pick<
     ModelOption,
-    "provider" | "modelId" | "variant" | "requestOptions" | "providerOptions"
+    "provider" | "modelId" | "modelType" | "variant" | "requestOptions" | "providerOptions"
   >,
   cacheKey: string,
 ): JsonObject => ({
@@ -329,7 +333,7 @@ export const createAgent = (setup: Setup) => {
           "decisions taken and why, exact paths and symbols touched, what has been verified and " +
           "how, what failed and what that ruled out, and what is left to do. Drop: narration, " +
           "tool output that has served its purpose, and anything already superseded. Prefer " +
-          "specifics (a path, a command, an error string) over description of them.",
+          "specifics — a path, a command, an error string — over description of them.",
         messages: [
           ...messages,
           {
@@ -463,7 +467,12 @@ export const createAgent = (setup: Setup) => {
           // Anthropic and Bedrock cache only what is marked, so the marks go
           // in here rather than in providerOptions. OpenAI and Google cache a
           // prefix unasked and are handed the list unchanged.
-          messages: withCacheBreakpoints([...shown], setup.model.provider, setup.model.modelId),
+          messages: withCacheBreakpoints(
+            [...shown],
+            setup.model.provider,
+            setup.model.modelId,
+            setup.model.modelType,
+          ),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.
           // Appending keeps the cached prefix intact, so steering costs the

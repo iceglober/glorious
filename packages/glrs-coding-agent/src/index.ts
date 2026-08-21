@@ -65,6 +65,7 @@ import {
   noticeBlock,
   queuedRow,
   reasoningDraft,
+  reasoningVisible,
   runningRow,
   statusLine,
   statusRow,
@@ -427,7 +428,11 @@ const main = async (): Promise<void> => {
   });
 
   const record = (event: SessionEvent): void => {
-    session.events.push(event);
+    session.events.push(
+      event.type === "reasoning" && event.variant === undefined
+        ? { ...event, variant: model.variant }
+        : event,
+    );
     session.updatedAt = new Date().toISOString();
     if (event.type === "usage" || event.type === "turn") void saveSession(session);
   };
@@ -487,18 +492,25 @@ const main = async (): Promise<void> => {
     const stepped = advanceToolRun(group, event);
     group = stepped.run;
     if (stepped.footer.length > 0) screen.print(stepped.footer, false);
-    const rendered = registry.messageRenderers
-      .map((renderer) => safely(() => renderer(event)))
-      .find((lines) => lines !== undefined);
+    const showReasoning =
+      event.type !== "reasoning" ||
+      reasoningVisible(config.config.reasoningDisplay, event.variant ?? model.variant);
+    const rendered = showReasoning
+      ? registry.messageRenderers
+          .map((renderer) => safely(() => renderer(event)))
+          .find((lines) => lines !== undefined)
+      : undefined;
     const entry =
       event.type === "custom"
         ? safely(() => registry.entryRenderers.get(event.custom)?.(event.data))
         : undefined;
-    const fallback = eventBlock(
-      event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
-      renderTool,
-      screen.columnsNow(),
-    );
+    const fallback = showReasoning
+      ? eventBlock(
+          event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
+          renderTool,
+          screen.columnsNow(),
+        )
+      : { lines: [], gap: false };
     const { lines, gap } =
       rendered !== undefined
         ? { lines: rendered, gap: true }
@@ -508,7 +520,7 @@ const main = async (): Promise<void> => {
     // A streamed answer is already on screen. Seal that block with its final
     // rendering rather than printing the same text a second time; the event is
     // recorded either way.
-    if (event.type === "assistant" && screen.isDrafting()) {
+    if ((event.type === "assistant" || event.type === "reasoning") && screen.isDrafting()) {
       screen.sealDraft(lines);
       repaint();
       return;
@@ -535,6 +547,11 @@ const main = async (): Promise<void> => {
       }
       case "delta":
         void fire(registry, "message", { kind: value.kind, text: value.text }, onExtensionFailure);
+        if (
+          value.kind === "reasoning" &&
+          !reasoningVisible(config.config.reasoningDisplay, model.variant)
+        )
+          break;
         live = value.kind === live.kind ? { ...live, text: live.text + value.text } : value;
         screen.draft(
           live.kind === "reasoning" ? reasoningDraft(live.text) : assistantBlock(live.text),
@@ -548,7 +565,8 @@ const main = async (): Promise<void> => {
         }
         break;
       case "sealed":
-        screen.sealDraft();
+        // The durable reasoning event arrives immediately after this signal and
+        // replaces the live tail with the complete provider-supplied text.
         live = { kind: "text", text: "" };
         break;
       case "empty":
@@ -874,6 +892,7 @@ const main = async (): Promise<void> => {
     },
     settings: () => ({
       toolTimeoutMs: toolTimeoutMs,
+      reasoningDisplay: config.config.reasoningDisplay,
       steeringMode: config.config.steeringMode,
       followUpMode: config.config.followUpMode,
     }),
@@ -1149,6 +1168,11 @@ const main = async (): Promise<void> => {
     const stepped = advanceToolRun(replayRun, event);
     replayRun = stepped.run;
     if (stepped.footer.length > 0) screen.print(stepped.footer, false);
+    if (
+      event.type === "reasoning" &&
+      !reasoningVisible(config.config.reasoningDisplay, event.variant ?? model.variant)
+    )
+      continue;
     const { lines, gap } = eventBlock(
       event.type === "assistant" ? { ...event, text: shown(event.text) } : event,
       renderTool,

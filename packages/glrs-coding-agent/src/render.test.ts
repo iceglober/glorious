@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   advanceToolRun,
+  assistantBlock,
   dequeueShortcut,
   elapsed,
   errorText,
@@ -10,6 +11,8 @@ import {
   queuedRow,
   reasoningBlock,
   reasoningDraft,
+  reasoningText,
+  reasoningVisible,
   rightClip,
   runningRow,
   statusLine,
@@ -60,22 +63,37 @@ describe("reasoning in the transcript", () => {
   const text = (lines: ReturnType<typeof reasoningBlock>) =>
     lines.map((line) => line.map((span) => span.text).join("")).join("\n");
 
-  test("it collapses to a duration, never the reasoning itself", () => {
-    expect(text(reasoningBlock(14_000))).toBe("░ thought for 14s");
+  test("completed reasoning remains visible with its duration", () => {
+    expect(text(reasoningBlock("considering\nchecking", 14_000))).toBe(
+      "◐ considering\n  checking\n  thought for 14s",
+    );
   });
 
   test("a sub-second think still reports a second rather than zero", () => {
-    expect(text(reasoningBlock(120))).toContain("1s");
+    expect(text(reasoningBlock("quick", 120))).toContain("1s");
   });
 
-  test("the event renders collapsed, so a long think cannot bury the answer", () => {
+  test("the plain representation used by print mode keeps every line", () => {
+    expect(reasoningText("considering\nchecking", 14_000)).toBe(
+      "◐ considering\n  checking\n  thought for 14s",
+    );
+  });
+
+  test("reasoning is categorically distinct from ordinary model output", () => {
+    const block = reasoningBlock("considering", 3000);
+    expect(block[0][0]).toMatchObject({ text: "◐ ", tone: "muted", bold: true });
+    expect(block[0][1]).toMatchObject({ text: "considering", tone: "muted", italic: true });
+    expect(assistantBlock("considering")[0][0].text).toBe("● ");
+  });
+
+  test("the durable event includes the reasoning text", () => {
     const block = eventBlock({
       type: "reasoning",
-      text: "a".repeat(5000),
+      text: "because this follows from that",
       elapsedMs: 3000,
     });
-    expect(text(block.lines)).toBe("░ thought for 3s");
-    expect(text(block.lines)).not.toContain("aaa");
+    expect(text(block.lines)).toContain("because this follows from that");
+    expect(text(block.lines)).toContain("thought for 3s");
   });
 
   test("while streaming it shows the tail, so the newest thinking is visible", () => {
@@ -87,6 +105,20 @@ describe("reasoning in the transcript", () => {
 
   test("blank lines are dropped rather than painting empty rows", () => {
     expect(reasoningDraft("a\n\n\nb")).toHaveLength(2);
+  });
+
+  test("reasoning is visible by default and can be disabled", () => {
+    expect(reasoningVisible(undefined, undefined)).toBe(true);
+    expect(reasoningVisible(true, undefined)).toBe(true);
+    expect(reasoningVisible(false, "max")).toBe(false);
+  });
+
+  test("a level acts as the minimum effort shown", () => {
+    expect(reasoningVisible("high", "medium")).toBe(false);
+    expect(reasoningVisible("high", "high")).toBe(true);
+    expect(reasoningVisible("high", "xhigh")).toBe(true);
+    expect(reasoningVisible("high", "max")).toBe(true);
+    expect(reasoningVisible("high", undefined)).toBe(false);
   });
 });
 

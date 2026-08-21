@@ -70,6 +70,7 @@ export const runCli = async (
       process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 100,
     settings: () => ({
       toolTimeoutMs: config.config.toolTimeoutMs,
+      reasoningDisplay: config.config.reasoningDisplay,
       steeringMode: config.config.steeringMode,
       followUpMode: config.config.followUpMode,
     }),

@@ -97,7 +97,8 @@ one namespace is emitted per call.
 | `anthropic` | `anthropic`; `google-vertex` when the model id contains `claude` | `thinking.budgetTokens` |
 | `google` | `google`; other `google-vertex` | `thinkingConfig.thinkingBudget` |
 | `bedrock` | `amazon-bedrock` | `reasoningConfig.budgetTokens`, plus `maxReasoningEffort` for `low`, `medium`, `high` |
-| `openai` | `openai`, `azure`, every other provider | `reasoningEffort` |
+| `azure` | `azure` | `reasoningEffort`; DeepSeek deployments route through chat |
+| `openai` | `openai`, and every other provider | `reasoningEffort` |
 
 ## metadata
 
