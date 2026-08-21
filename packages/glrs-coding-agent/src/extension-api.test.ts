@@ -51,7 +51,7 @@ const harness = () => {
     settings: () => ({ toolTimeoutMs: 4242, steeringMode: "all" as const }),
     available: () => [
       { name: "builtins", summary: "the tools and commands", state: "on" as const },
-      { name: "web-fetch", summary: "fetches web pages", state: "undecided" as const },
+      { name: "web-fetch", summary: "fetches web pages", state: "on" as const },
     ],
     setExtension: async (...args: unknown[]) => {
       calls.push({ method: "setExtension", args });
@@ -322,8 +322,9 @@ describe("first-party extensions that have not loaded", () => {
   test("available reports each one's state", () => {
     const { g } = harness();
     const offered = g.available();
-    expect(offered.map((one) => one.name)).toEqual(["builtins", "web-fetch"]);
-    expect(offered.find((one) => one.name === "web-fetch")?.state).toBe("undecided");
+    expect(offered.map((one) => one.name)).toContain("web-fetch");
+    // Every first-party extension loads unless disabled, so there is no third state.
+    expect(offered.find((one) => one.name === "web-fetch")?.state).toBe("on");
   });
 
   test("setExtension hands the choice to the host", async () => {

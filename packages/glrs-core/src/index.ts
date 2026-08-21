@@ -251,7 +251,7 @@ export type HandlerVerdict<E extends EventName = EventName> =
 export type FirstPartyExtension = {
   name: string;
   summary: string;
-  state: "on" | "off" | "undecided";
+  state: "on" | "off";
 };
 
 export type WriteOutcome = "written" | "not-allowed" | "already" | "failed";

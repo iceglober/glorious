@@ -32,7 +32,6 @@ import {
 } from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { helpText, route } from "./argv";
-import { availableLines } from "./available";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { runCli } from "./cli";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
@@ -409,19 +408,11 @@ const main = async (): Promise<void> => {
     },
     terminatingTools: () => registry.terminatingTools,
     systemPromptOverride: () => systemPromptOverride,
-    // The advertisement rides here, in the per-turn message, and never the
-    // system prompt: that has to stay byte-identical or the provider's cache
-    // misses every turn. `<extensions>` is already a PREAMBLE_TAG, so this is
-    // stripped from a replayed transcript without a new tag.
-    extensionPrompt: () => [
-      ...promptContributions(registry.promptLines),
-      ...availableLines(
-        firstPartyExtensions(config.config.extensions),
-        (config.config.agentConfigAllowlist ?? []).some(
-          (one) => one.trim().toLowerCase() === "extensions",
-        ),
-      ),
-    ],
+    // Contributions ride here, in the per-turn message, and never the system
+    // prompt: that has to stay byte-identical or the provider's cache misses
+    // every turn. `<extensions>` is already a PREAMBLE_TAG, so this is stripped
+    // from a replayed transcript without a new tag.
+    extensionPrompt: () => promptContributions(registry.promptLines),
     onContext: async (messages, step) => {
       const said = await fire(registry, "context", { messages, step }, onExtensionFailure);
       return Array.isArray(said) ? said : undefined;

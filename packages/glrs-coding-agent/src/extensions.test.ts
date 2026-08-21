@@ -489,17 +489,21 @@ describe("the extensions that ship with glrs", () => {
     };
   };
 
-  // builtins carries the six tools and every slash command, so it is the one
-  // the agent cannot work without. The rest add a capability and wait to be
-  // asked for.
-  test("only builtins loads when config says nothing", async () => {
+  // Every first-party extension loads. Asking the user to turn one on put a
+  // decision in front of them that they had no way to evaluate.
+  test("all of them load when config says nothing", async () => {
     const loaded = await shipped();
-    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins"]);
+    expect(loaded.extensions.map((one) => one.name).sort()).toEqual([
+      "ask-user",
+      "builtins",
+      "web-fetch",
+      "worktree",
+    ]);
   });
 
-  test("naming one in load turns it on", async () => {
+  test("naming one in load is a no-op, since it already loads", async () => {
     const loaded = await shipped({ load: ["web-fetch"] });
-    expect(loaded.extensions.map((one) => one.name).sort()).toEqual(["builtins", "web-fetch"]);
+    expect(loaded.extensions.map((one) => one.name)).toContain("web-fetch");
   });
 
   // The roster records the package specifier, so a config written now keeps
@@ -509,14 +513,14 @@ describe("the extensions that ship with glrs", () => {
     expect(loaded.extensions.map((one) => one.name)).toContain("ask-user");
   });
 
-  test("disable turns off the one that is on by default", async () => {
+  test("disable turns one off", async () => {
     const loaded = await shipped({ disable: ["builtins"] });
-    expect(loaded.extensions).toEqual([]);
+    expect(loaded.extensions.map((one) => one.name)).not.toContain("builtins");
   });
 
   test("disable beats load", async () => {
     const loaded = await shipped({ load: ["web-fetch"], disable: ["web-fetch"] });
-    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins"]);
+    expect(loaded.extensions.map((one) => one.name)).not.toContain("web-fetch");
   });
 
   test("each one says where it came from", async () => {

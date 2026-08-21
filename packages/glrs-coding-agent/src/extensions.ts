@@ -78,6 +78,11 @@ const shadowNote: Record<string, string> = {
     "shadows the extension that provides bash, read, write, edit, grep, glob and every slash command, the model has no tools unless yours registers them",
 };
 
+// Every first-party extension loads. Making the agent ask to turn one on put a
+// decision in front of the user that they had no way to evaluate: the model
+// advertised `web-fetch` before anyone had wanted a web page. Disable what you
+// do not want, or shadow it with a file of the same name.
+//
 // `defaultOn` is what separates the extension the agent cannot work without
 // from the ones that add a capability. builtins always loads unless you
 // explicitly disable it; the rest wait to be named in `extensions.load`.
@@ -89,7 +94,7 @@ const bundled = [
     name: "ask-user",
     origin: "@glrs-dev/glrs-ext-ask-user",
     load: askUser,
-    defaultOn: false,
+    defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "ask-user"),
     summary: "asks the user a multiple-choice question and waits for the answer",
   },
@@ -105,7 +110,7 @@ const bundled = [
     name: "worktree",
     origin: "@glrs-dev/glrs-ext-worktree",
     load: worktree,
-    defaultOn: false,
+    defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "worktree"),
     summary:
       "creates git worktrees, and audits which ones still have sessions working in them; adds `glrs wt`",
@@ -114,7 +119,7 @@ const bundled = [
     name: "web-fetch",
     origin: "@glrs-dev/glrs-ext-web-fetch",
     load: webFetch,
-    defaultOn: false,
+    defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "web-fetch"),
     summary:
       "fetches web pages and returns them as markdown, rendering JavaScript when Chrome is installed",
@@ -130,7 +135,7 @@ export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyEx
     return {
       name,
       summary,
-      state: banned ? "off" : named || defaultOn ? "on" : "undecided",
+      state: banned ? "off" : "on",
     };
   });
 };
