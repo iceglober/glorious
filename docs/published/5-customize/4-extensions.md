@@ -54,6 +54,7 @@ other extensions. `/extensions` shows what loaded and what each registered.
 | name | package | provides | default |
 | --- | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | six machine tools and all first-party slash commands | on |
+| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model` model and reasoning picker | on |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch` | off |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user` in the TUI | off |
 
