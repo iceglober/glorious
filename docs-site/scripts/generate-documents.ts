@@ -1,10 +1,12 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PROVIDER_ALIASES,
   PROVIDERS,
   type ProviderSpec,
 } from "../../packages/provider-registry/src/providers.ts";
+import { compareDocumentPaths } from "../plugins/group-documents-utils.ts";
 
 type Schema = {
   type?: string;
@@ -100,6 +102,45 @@ export const providerReference = (
   return `${lines.join("\n")}\n`;
 };
 
+
+// The homepage carried one line, and TypeDoc's own index links nothing, so the
+// four groups were reachable only through the sidebar. This walks the published
+// tree and writes the whole outline out, expanded, every level. Generated so a
+// page added later appears without anyone remembering to add it.
+const GROUP_TITLES: Record<string, string> = {
+  "1-tutorials": "tutorials",
+  "2-how-to": "how-to guides",
+  "3-explanation": "explanation",
+  "9-reference": "reference",
+};
+
+const titleOf = async (file: string): Promise<string> => {
+  const text = await readFile(file, "utf8");
+  return /^title:\s*(.+)$/mu.exec(text)?.[1]?.trim() ?? "";
+};
+
+const outline = async (published: string): Promise<string> => {
+  const groups = (await readdir(published, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort(compareDocumentPaths);
+
+  const lines: string[] = [];
+  for (const group of groups) {
+    const heading = GROUP_TITLES[group] ?? group;
+    lines.push(`## ${heading}`, "");
+    const files = (await readdir(join(published, group)))
+      .filter((name) => name.endsWith(".md"))
+      .sort(compareDocumentPaths);
+    for (const file of files) {
+      const title = await titleOf(join(published, group, file));
+      lines.push(`- [${title}](../docs/published/${group}/${file})`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+};
+
 const document = (title: string, content: string): string =>
   `---\ntitle: ${title}\n---\n\n${content}`;
 
@@ -109,15 +150,28 @@ export const generateDocuments = async (
   const schema = JSON.parse(await readFile(join(site, "public", "config.schema.json"), "utf8")) as Schema & {
     $id: string;
   };
-  const directory = join(site, "generated", "4-reference");
+  const directory = join(site, "generated", "9-reference");
+  // Emptied first. Writing without clearing left a previous run's filenames in
+  // place beside the new ones, and TypeDoc took both, so the nav showed
+  // "all providers" twice with the second disambiguated to "all providers-1".
+  await rm(directory, { recursive: true, force: true });
   await mkdir(directory, { recursive: true });
+  // The homepage outline needs the published tree beside the site. Tests call
+  // this against a scratch directory that has only the site half, so a missing
+  // tree skips the homepage rather than failing the reference generation.
+  const published = join(site, "..", "docs", "published");
+  if (existsSync(published))
+    await writeFile(
+      join(site, "homepage.md"),
+      `${await readFile(join(site, "homepage.md.head"), "utf8")}\n${await outline(published)}`,
+    );
   await Promise.all([
     writeFile(
-      join(directory, "4-configuration-options.md"),
+      join(directory, "15-configuration-options.md"),
       document("configuration options", configReference(schema)),
     ),
     writeFile(
-      join(directory, "5-all-providers.md"),
+      join(directory, "16-providers.md"),
       document("all providers", providerReference(PROVIDERS, PROVIDER_ALIASES)),
     ),
   ]);

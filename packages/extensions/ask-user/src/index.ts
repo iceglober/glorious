@@ -115,7 +115,7 @@ const report = (answers: Answer[]): string =>
   answers
     .map((answer) => {
       const chosen = answer.option ?? "(no option chosen)";
-      return `Q: ${answer.question}\nA: ${chosen}${answer.note === "" ? "" : ` — ${answer.note}`}`;
+      return `Q: ${answer.question}\nA: ${chosen}${answer.note === "" ? "" : ` (${answer.note})`}`;
     })
     .join("\n\n");
 

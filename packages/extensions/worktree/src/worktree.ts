@@ -153,7 +153,7 @@ export const defaultBranch = async (repo: string, exec: Exec = shell): Promise<s
     if (found.ok) return candidate.split("/").pop() ?? "main";
   }
   throw new Error(
-    "cannot work out the default branch — set it with: git remote set-head origin <branch>",
+    "cannot work out the default branch: set it with: git remote set-head origin <branch>",
   );
 };
 
@@ -209,7 +209,7 @@ export const create = async (
   // Refused rather than force-deleted. The tool this replaces ran `git branch -D`
   // on a collision, which throws away whatever was on that branch.
   const exists = await exec(repo, `git show-ref --verify --quiet refs/heads/${branch}`);
-  if (exists.ok) throw new Error(`branch ${branch} already exists — pick another description`);
+  if (exists.ok) throw new Error(`branch ${branch} already exists, pick another description`);
 
   const fetched = await exec(repo, `git fetch origin ${base} --quiet`);
   if (!fetched.ok) throw new Error(`could not fetch origin/${base}: ${fetched.stderr.trim()}`);
@@ -335,7 +335,7 @@ export const remove = async (
   );
   if (!removed.ok)
     throw new Error(
-      `could not remove ${path}: ${removed.stderr.trim() || "it may have uncommitted changes — pass --force"}`,
+      `could not remove ${path}: ${removed.stderr.trim() || "it may have uncommitted changes: pass --force"}`,
     );
 
   const branch = basename(path);
@@ -344,6 +344,6 @@ export const remove = async (
   // ignored the failure, so an unmerged branch quietly outlived its worktree
   // with nothing to tell you it was still there.
   if (!deleted.ok)
-    notes.push(`branch ${branch} kept — it is not merged; delete it with: git branch -D ${branch}`);
+    notes.push(`branch ${branch} kept, it is not merged; delete it with: git branch -D ${branch}`);
   return notes;
 };

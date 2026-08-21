@@ -30,7 +30,7 @@ const ModelId = {
     if (!raw.includes("/"))
       throw new Error(
         `--model needs provider/model-id, and "${raw}" names no provider. ` +
-          "There is no default provider — see `glrs doctor`.",
+          "There is no default provider. See `glrs doctor`.",
       );
     return raw;
   },
@@ -159,7 +159,7 @@ const failed = (result: { error?: unknown }): string => {
     return lines.find((l) => !l.startsWith("error:")) ?? "could not read the arguments";
   const why = lines[caret]?.slice(1).trim() ?? "";
   const what = lines[caret - 1] ?? "";
-  return what === "" ? why : `${what} — ${why}`;
+  return what === "" ? why : `${what}: ${why}`;
 };
 
 export const route = async (argv: readonly string[]): Promise<Route> => {
@@ -257,7 +257,7 @@ export const helpText = (
       ? []
       : ["", `${title}:`, ...items.map(([l, r]) => `  ${l.padEnd(pad)}  ${r}`)];
   return [
-    "glrs — a terminal coding agent",
+    "glrs: a terminal coding agent",
     "",
     "Usage: glrs [options]           start a session",
     "       glrs -p <prompt>         one headless turn",

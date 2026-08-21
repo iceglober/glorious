@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { WRITABLE_SECTIONS } from "../../packages/glrs-coding-agent/src/writeconfig";
 import { CONFIG_SCHEMA_URL } from "../../packages/provider-registry/src/config";
 
 const schema = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "public", "config.schema.json"), "utf8"),
 ) as {
   $id: string;
-  properties: Record<string, unknown>;
+  properties: Record<string, unknown> & {
+    agentConfigAllowlist: { items: { enum: string[] } };
+  };
   $defs: Record<string, { properties?: Record<string, unknown> }>;
 };
 
@@ -66,5 +69,14 @@ describe("hosted config schema", () => {
       "providers",
     ])
       expect(schema.properties).toHaveProperty(key);
+  });
+
+  // The schema is what an editor validates against, so a section glrs learns to
+  // write and the schema does not know is a config line the user is told is
+  // wrong while it works.
+  test("the allowlist offers exactly the sections glrs can write", () => {
+    expect([...schema.properties.agentConfigAllowlist.items.enum].sort()).toEqual(
+      [...WRITABLE_SECTIONS].sort(),
+    );
   });
 });

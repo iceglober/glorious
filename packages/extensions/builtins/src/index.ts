@@ -86,33 +86,27 @@ const originOf = (g: Glrs, path: string): string => {
 
 export default function builtins(g: Glrs): void {
   for (const spec of createCodingTools(g.root, g.settings().toolTimeoutMs)) g.tool(spec);
-
-  // Registered only where the answer can actually be written down. Without it
-  // a decline lasts until the next turn and the same offer comes back forever,
-  // which is worse than never offering — so if glrs may not write config, the
-  // model is told to hand over the config line instead.
-  if (g.available().some((one) => one.state === "undecided"))
-    g.tool({
-      name: "configure_extension",
-      description:
-        "Record that a first-party extension should or should not load, once the user has said so. Only for a clear answer to a suggestion you made — never to change what is loaded on your own initiative. Takes effect after a reload or restart.",
-      input: g.z.object({
-        name: g.z.string().describe("The extension's name, as listed in the available section"),
-        enable: g.z
-          .boolean()
-          .describe("true when the user agreed to turn it on, false when they declined it"),
-      }),
-      execute: async ({ name, enable }) => {
-        const outcome = await g.setExtension(name, enable);
-        if (outcome === "written")
-          return `Recorded: ${name} will ${enable ? "load" : "not load"}. It applies after a reload or restart.`;
-        if (outcome === "already") return `${name} was already ${enable ? "enabled" : "disabled"}.`;
-        if (outcome === "unknown") return `ERROR: ${name} is not a first-party extension.`;
-        if (outcome === "not-allowed")
-          return 'ERROR: glrs may not write config. Tell the user to add "agentConfigAllowlist": ["extensions"] to .glrs/config.json, or to add the extension to extensions.load themselves.';
-        return "ERROR: could not write .glrs/config.json.";
-      },
-    });
+  g.tool({
+    name: "configure_extension",
+    description:
+      "Record that a first-party extension should or should not load, once the user has said so. Only for a clear answer to a suggestion you made, never to change what is loaded on your own initiative. Takes effect after a reload or restart.",
+    input: g.z.object({
+      name: g.z.string().describe("The extension's name, as listed in the available section"),
+      enable: g.z
+        .boolean()
+        .describe("true when the user agreed to turn it on, false when they declined it"),
+    }),
+    execute: async ({ name, enable }) => {
+      const outcome = await g.setExtension(name, enable);
+      if (outcome === "written")
+        return `Recorded: ${name} will ${enable ? "load" : "not load"}. It applies after a reload or restart.`;
+      if (outcome === "already") return `${name} was already ${enable ? "enabled" : "disabled"}.`;
+      if (outcome === "unknown") return `ERROR: ${name} is not a first-party extension.`;
+      if (outcome === "not-allowed")
+        return 'ERROR: glrs may not write config. Tell the user to add "agentConfigAllowlist": ["extensions"] to .glrs/config.json, or to add the extension to extensions.load themselves.';
+      return "ERROR: could not write .glrs/config.json.";
+    },
+  });
 
   g.command("help", {
     description: "Show commands and keys",
@@ -140,7 +134,7 @@ export default function builtins(g: Glrs): void {
           { name: "!", note: "run the rest of the line as a shell command" },
           {
             name: "@",
-            note: "reference a file or directory — its contents, or its listing, travel with the message",
+            note: "reference a file or directory, its contents, or its listing, travel with the message",
           },
           ...keys.map((one) => ({ name: chord(one), note: one.description })),
         ]),
@@ -195,7 +189,7 @@ export default function builtins(g: Glrs): void {
         if (!which) return g.print(`Usage: /extensions ${verb} <name>`, "warning");
         const outcome = await g.setExtension(which, verb === "enable");
         const said: Record<typeof outcome, string> = {
-          written: `${which} will ${verb === "enable" ? "load" : "not load"} — reload or restart to apply`,
+          written: `${which} will ${verb === "enable" ? "load" : "not load"}, reload or restart to apply`,
           already: `${which} is already ${verb === "enable" ? "enabled" : "disabled"}`,
           unknown: `${which} is not a first-party extension`,
           "not-allowed":
@@ -216,7 +210,7 @@ export default function builtins(g: Glrs): void {
       const offered = g.available().filter((one) => one.state !== "on");
       const { extensions } = g.inspect();
       if (extensions.length === 0) {
-        return g.print("No extensions loaded. See docs/published/3-customize/4-extensions.md.");
+        return g.print("No extensions loaded. See docs/published/9-reference/11-extensions.md.");
       }
       g.print([
         heading(g, "Extensions", "these run with your full permissions"),
@@ -253,7 +247,7 @@ export default function builtins(g: Glrs): void {
       if (outcome === "cleared") return g.print("(context cleared)");
       g.print(
         outcome === "busy"
-          ? "(cannot clear while a turn is running — press Esc first)"
+          ? "(cannot clear while a turn is running, press Esc first)"
           : "(nothing to clear)",
       );
     },
@@ -265,7 +259,7 @@ export default function builtins(g: Glrs): void {
       await g.reload();
       const { skills, commands, extensions } = g.inspect();
       g.print(
-        `(reloaded — ${extensions.length} extensions, ${skills.length} skills, ${commands.length} commands)`,
+        `(reloaded, ${extensions.length} extensions, ${skills.length} skills, ${commands.length} commands)`,
       );
     },
   });

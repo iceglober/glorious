@@ -8,7 +8,10 @@ const watched = [
   join(root, "packages", "glrs-core", "src"),
   join(root, "packages", "glrs-coding-agent", "src", "sdk.ts"),
   join(root, "packages", "provider-registry", "src"),
-  join(site, "homepage.md"),
+  // The source, not the generated homepage.md. Watching the output missed
+  // every edit to the lead, and each build rewrites it, so a single change
+  // to any watched file rebuilt in a loop until dev was killed.
+  join(site, "homepage.md.head"),
   join(site, "api"),
   join(site, "plugins"),
   join(site, "public"),

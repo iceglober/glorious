@@ -26,7 +26,7 @@
  * ```
  *
  * @module SDK
- * @group Reference
+ * @group API
  */
 
 import type { AgentCore, ModelProvider, SessionRepository } from "../../glrs-core/src";

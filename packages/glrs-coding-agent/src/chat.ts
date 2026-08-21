@@ -174,7 +174,7 @@ export const createChat = (
           inFlight = [];
           announce({
             type: "notice",
-            text: `(connection dropped — re-sending, attempt ${attempt + 1}: ${why})`,
+            text: `(connection dropped, re-sending. attempt ${attempt + 1}: ${why})`,
           });
         },
         onReasoningEnd: ({ text, elapsedMs }) => {
@@ -222,7 +222,7 @@ export const createChat = (
       if (spoken === "") signal({ type: "empty" });
       if (done.stoppedAtStepLimit) {
         note = reminder("Your last turn ran out of steps and stopped before finishing.");
-        announce({ type: "notice", text: '(step limit reached — send "continue" to resume)' });
+        announce({ type: "notice", text: '(step limit reached: send "continue" to resume)' });
       }
     }
     // A steering message that never met a step boundary — the turn answered in

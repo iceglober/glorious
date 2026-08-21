@@ -51,7 +51,7 @@ const harness = () => {
     settings: () => ({ toolTimeoutMs: 4242, steeringMode: "all" as const }),
     available: () => [
       { name: "builtins", summary: "the tools and commands", state: "on" as const },
-      { name: "web-fetch", summary: "fetches web pages", state: "undecided" as const },
+      { name: "web-fetch", summary: "fetches web pages", state: "on" as const },
     ],
     setExtension: async (...args: unknown[]) => {
       calls.push({ method: "setExtension", args });
@@ -84,10 +84,14 @@ const harness = () => {
     },
     setToolFilters: record("setToolFilters"),
     tools: () => ["bash", "read"],
-    model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
+    model: () => ({ label: "azure/test", provider: "azure", modelId: "test", missing: [] }),
     models: async () => [],
     setModel: async (...args: unknown[]) => {
       calls.push({ method: "setModel", args });
+    },
+    rememberModel: async (...args: unknown[]) => {
+      calls.push({ method: "rememberModel", args });
+      return "not-allowed" as const;
     },
     registerProvider: () => ({ dispose: () => {} }),
     history: () => [],
@@ -219,10 +223,20 @@ describe("what an extension can reach", () => {
 
   test("the model, and switching it", async () => {
     const { g, calls } = harness();
-    expect(g.model().label).toBe("azure/test");
+    expect(g.model()?.label).toBe("azure/test");
     expect(await g.models()).toEqual([]);
     await g.setModel("anthropic/claude-opus-5", "high");
     expect(calls.some((one) => one.method === "setModel")).toBe(true);
+  });
+
+  // Switching for a turn and choosing for good are separate calls, so an
+  // extension can offer the first without writing to anyone's config.
+  test("recording the model is asked for separately from switching to it", async () => {
+    const { g, calls } = harness();
+    await g.setModel("anthropic/claude-opus-5");
+    expect(calls.some((one) => one.method === "rememberModel")).toBe(false);
+    expect(await g.rememberModel()).toBe("not-allowed");
+    expect(calls.some((one) => one.method === "rememberModel")).toBe(true);
   });
 
   test("tools can be listed and narrowed, and the filter lifted", () => {
@@ -322,8 +336,9 @@ describe("first-party extensions that have not loaded", () => {
   test("available reports each one's state", () => {
     const { g } = harness();
     const offered = g.available();
-    expect(offered.map((one) => one.name)).toEqual(["builtins", "web-fetch"]);
-    expect(offered.find((one) => one.name === "web-fetch")?.state).toBe("undecided");
+    expect(offered.map((one) => one.name)).toContain("web-fetch");
+    // Every first-party extension loads unless disabled, so there is no third state.
+    expect(offered.find((one) => one.name === "web-fetch")?.state).toBe("on");
   });
 
   test("setExtension hands the choice to the host", async () => {
@@ -565,13 +580,23 @@ describe("the request pipeline is interceptable", () => {
   });
 });
 
-// docs/published/5-internals/3-lifecycle.md is the page the model is pointed at to learn what
+// docs/published/9-reference/12-events.md is the page the model is pointed at to learn what
 // it can hook. A page that lists an event glrs does not have, or omits one
 // it does, is worse than no page.
-describe("the lifecycle page matches the code", () => {
-  const page = (): string =>
+describe("the internals page matches the code", () => {
+  // Scoped to the events section. The page carries other tables with the same
+  // row shape (discovery, the bundled roster, the API), and counting those as
+  // events made the guard fail on rows that were never events.
+  const page = (): string => {
+    const whole = eventsPage();
+    const start = whole.indexOf("## events");
+    const end = whole.indexOf("\n## ", start + 1);
+    return start < 0 ? whole : whole.slice(start, end < 0 ? undefined : end);
+  };
+
+  const eventsPage = (): string =>
     readFileSync(
-      join(here, "..", "..", "..", "docs", "published", "5-internals", "3-lifecycle.md"),
+      join(here, "..", "..", "..", "docs", "published", "9-reference", "12-events.md"),
       "utf8",
     );
 

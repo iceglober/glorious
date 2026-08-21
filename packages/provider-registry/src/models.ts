@@ -239,18 +239,30 @@ export const configuredModel = (
   };
 };
 
-export const currentModel = (config?: Config): ModelOption => {
+// Null, not an exception: a session opens before a model is chosen, so "nothing
+// is set yet" is a state the TUI carries rather than a failure. `currentModel`
+// below is the same lookup for the callers that have no way to ask.
+export const chosenModel = (config?: Config): ModelOption | null => {
   const model = (envSetting("MODEL") ?? config?.model)?.trim();
-  if (!model)
-    throw new NoModelChosen(
-      'No model configured. Set GLRS_MODEL="provider/model-id" or add "model" to glrs config.',
-    );
+  if (!model) return null;
   return configuredModel(model, config, envSetting("VARIANT") ?? config?.variant);
 };
 
-// Every model the catalogue carries, for the extension API's model picker. The
-// core does not use this — it has no picker — but an extension that restores
-// one needs somewhere to get the list.
+// For `-p` and anything else running without a terminal to ask at. There is no
+// default model and never was; what changed is that the TUI no longer treats
+// its absence as fatal.
+export const currentModel = (config?: Config): ModelOption => {
+  const chosen = chosenModel(config);
+  if (chosen === null)
+    throw new NoModelChosen(
+      'No model configured. Set GLRS_MODEL="provider/model-id" or add "model" to glrs config.',
+    );
+  return chosen;
+};
+
+// Every model the catalogue carries, behind `g.models()`. The core does not use
+// it: choosing a model is not a core capability, so the list exists for whatever
+// extension does the choosing. `model-picker` is the one that ships.
 export const loadCatalogue = async (
   fetcher: typeof fetch = fetch,
 ): Promise<readonly ModelOption[]> => {
@@ -280,11 +292,10 @@ export const loadCatalogue = async (
   );
 };
 
-// Context window and per-token pricing for the model that is already selected.
-// The picker is gone, but the status line still says `ctx 12.3k(6%)` and the
-// percentage needs a denominator — so this is a metadata lookup, not a catalog.
-// One request, at startup, silent when it fails: offline the status line reads
-// `unknown` and everything else works.
+// Context window and per-token pricing for a model that has already been chosen.
+// A metadata lookup, not a catalogue: the status line says `ctx 12.3k(6%)` and
+// the percentage needs a denominator. One request, silent when it fails, and
+// offline the status line reads `unknown` while everything else works.
 export const modelMetadata = async (
   model: ModelOption,
   fetcher: typeof fetch = fetch,
@@ -382,9 +393,9 @@ const factories: Record<string, ProviderFactory> = {
 };
 
 // A provider is reachable under several environment names — azure alone answers
-// to three — but each SDK falls back to exactly one. The picker already reports
-// a provider as connected on any of them, so resolving the same list here is
-// what makes "environment credentials available" mean the session can start.
+// to three, but each SDK falls back to exactly one. `missingFor` reports a
+// provider as connected on any of them, so resolving the same list here is what
+// keeps what a picker shows and what a call actually reaches in agreement.
 export const resolveApiKey = (option: {
   apiKey?: string;
   env?: readonly string[];
@@ -448,7 +459,7 @@ export const createModel = (
     if (!option.api && typeof configured.baseURL !== "string") {
       const near = nearestProvider(option.provider);
       if (near === undefined) return lateExtensionModel(option);
-      throw new Error(`Unknown provider "${option.provider}" — did you mean "${near}"?`);
+      throw new Error(`Unknown provider "${option.provider}", did you mean "${near}"?`);
     }
     return createOpenAICompatible({
       name: option.provider,

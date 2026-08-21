@@ -140,7 +140,7 @@ export default function worktree(g: Glrs): void {
         if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
         if (verb === "doctor") return g.print(await report());
         g.print(
-          `Unknown: /wt ${verb}. Try new, list or doctor — removal is \`glrs wt rm\`.`,
+          `Unknown: /wt ${verb}. Try new, list or doctor, removal is \`glrs wt rm\`.`,
           "warning",
         );
       } catch (thrown) {
@@ -157,7 +157,7 @@ export default function worktree(g: Glrs): void {
     if (open.length === 0) return "";
     return [
       "Worktrees this session created:",
-      ...open.map((one) => `- ${one.branch} — ${one.path}`),
+      ...open.map((one) => `- ${one.branch}, ${one.path}`),
       "Work in them with absolute paths, or `bash cd <path> && …`. This session's own root is",
       "unchanged, so a relative path still resolves against the directory glrs was started in.",
     ].join("\n");

@@ -66,9 +66,10 @@ const host: ExtensionHost = {
   columns: () => 100,
   tools: () => ["read", "write"],
   setToolFilters: () => {},
-  model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
+  model: () => ({ label: "azure/test", provider: "azure", modelId: "test", missing: [] }),
   models: async () => [],
   setModel: async () => {},
+  rememberModel: async () => "not-allowed" as const,
   registerProvider: () => ({ dispose: () => {} }),
   history: () => [],
   forkSession: async () => ({ id: "fork", file: "/tmp/fork", title: "fork", events: 0 }),
@@ -489,20 +490,22 @@ describe("the extensions that ship with glrs", () => {
     };
   };
 
-  // model-picker is part of the default product surface alongside builtins;
-  // the rest add optional capabilities and wait to be asked for.
-  test("the default-on product extensions load when config says nothing", async () => {
+  // Every first-party extension loads. Asking the user to turn one on put a
+  // decision in front of them that they had no way to evaluate.
+  test("all of them load when config says nothing", async () => {
     const loaded = await shipped();
-    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins", "model-picker"]);
-  });
-
-  test("naming one in load turns it on", async () => {
-    const loaded = await shipped({ load: ["web-fetch"] });
     expect(loaded.extensions.map((one) => one.name).sort()).toEqual([
+      "ask-user",
       "builtins",
       "model-picker",
       "web-fetch",
+      "worktree",
     ]);
+  });
+
+  test("naming one in load is a no-op, since it already loads", async () => {
+    const loaded = await shipped({ load: ["web-fetch"] });
+    expect(loaded.extensions.map((one) => one.name)).toContain("web-fetch");
   });
 
   // The roster records the package specifier, so a config written now keeps
@@ -512,14 +515,14 @@ describe("the extensions that ship with glrs", () => {
     expect(loaded.extensions.map((one) => one.name)).toContain("ask-user");
   });
 
-  test("disable turns off extensions that are on by default", async () => {
-    const loaded = await shipped({ disable: ["builtins", "model-picker"] });
-    expect(loaded.extensions).toEqual([]);
+  test("disable turns one off", async () => {
+    const loaded = await shipped({ disable: ["builtins"] });
+    expect(loaded.extensions.map((one) => one.name)).not.toContain("builtins");
   });
 
   test("disable beats load", async () => {
     const loaded = await shipped({ load: ["web-fetch"], disable: ["web-fetch"] });
-    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins", "model-picker"]);
+    expect(loaded.extensions.map((one) => one.name)).not.toContain("web-fetch");
   });
 
   test("each one says where it came from", async () => {
