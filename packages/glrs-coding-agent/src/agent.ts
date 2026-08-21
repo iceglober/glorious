@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { generateText, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
+import {
+  generateText,
+  type ModelMessage,
+  stepCountIs,
+  streamText,
+  type ToolSet,
+  type Warning,
+} from "ai";
 import {
   createModel,
   type JsonObject,
@@ -11,10 +18,11 @@ import {
   withCacheBreakpoints,
 } from "../../provider-registry/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
-import { errorText } from "./render";
+import { clip, errorText } from "./render";
 import type { ToolEvent } from "./toolkit";
 
 const STEP_LIMIT = 100;
+const WARNING_CHARS = 160;
 const DEADLINES_MS = [30 * 60_000, 10 * 60_000, 10 * 60_000];
 const BREATH_MS = 500;
 const RETRY_NAMES = new Set([
@@ -112,6 +120,48 @@ const fetchWithDeadline = async (
     if (caller?.aborted) throw failure;
     return fetchWithDeadline(target, init, rest);
   }
+};
+
+// What the warning says, without the thing it is complaining about. The SDK
+// embeds that thing in the message, and for "Non-OpenAI reasoning parts are not
+// supported" it is the entire reasoning block.
+const warningText = (warning: Warning): string => {
+  if (warning.type === "deprecated") return `${warning.setting} is deprecated. ${warning.message}`;
+  if (warning.type === "other") return warning.message;
+  const state = warning.type === "unsupported" ? "is not supported" : "is in compatibility mode";
+  return `${warning.feature} ${state}${warning.details === undefined ? "" : `. ${warning.details}`}`;
+};
+
+// The first sentence, which is the part that repeats. An `other` warning carries
+// the offending value in the rest of the message, so a key made from the whole
+// string is unique every time and dedupes nothing.
+const warningKey = (text: string): string => text.split(". ")[0].slice(0, 120);
+
+// The SDK logs provider warnings with `process.emitWarning`, which writes to
+// stderr at whatever cursor position happens to be current. Over the alternate
+// screen that shreds the display, and some provider and model pairings emit one
+// per model call carrying a whole reasoning block with it. Same decision as
+// `onError` below: the warning still travels, it just travels through glrs.
+//
+// Deduplicated for the life of the process. These repeat once per call, and the
+// second "reasoning parts are not supported" says nothing the first did not.
+export const routeProviderWarnings = (report: (message: string) => void): void => {
+  const seen = new Set<string>();
+  globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
+    for (const warning of warnings) {
+      const text = warningText(warning);
+      const key = `${provider ?? ""} ${model ?? ""} ${warningKey(text)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const scope =
+        provider === undefined
+          ? "provider"
+          : model === undefined
+            ? provider
+            : `${provider}/${model}`;
+      report(`${scope}: ${clip(text, WARNING_CHARS)}`);
+    }
+  };
 };
 
 type Setup = Parameters<typeof systemPrompt>[0] &

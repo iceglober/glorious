@@ -31,7 +31,7 @@ import {
   providerSpec,
   registerExtensionProvider,
 } from "../../provider-registry/src";
-import { createAgent } from "./agent";
+import { createAgent, routeProviderWarnings } from "./agent";
 import { helpText, route } from "./argv";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { runCli } from "./cli";
@@ -857,6 +857,12 @@ const main = async (): Promise<void> => {
   const onExtensionFailure = (message: string): void => {
     render({ type: "error", text: `(extension) ${message}` });
   };
+
+  // Into the transcript, where a notice belongs, rather than onto the alternate
+  // screen wherever the cursor happens to be.
+  routeProviderWarnings((message) => {
+    render({ type: "notice", text: `(provider warning) ${message}` });
+  });
 
   // Metadata only, and only for a model that is already set. Context size and
   // pricing feed the status line's `ctx 12.3k(6%)` and the cost, and there is no

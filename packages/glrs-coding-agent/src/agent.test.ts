@@ -6,6 +6,7 @@ import {
   createAgent,
   providerOptions,
   requestSettings,
+  routeProviderWarnings,
   settleQuietly,
   shouldResend,
   terminatingToolCalled,
@@ -554,5 +555,63 @@ describe("an agent built before a model was chosen", () => {
     const agent = bare();
     const model: ModelOption = { name: "test", provider: "azure", modelId: "test", env: [] };
     expect(() => agent.setModel(model)).not.toThrow();
+  });
+});
+
+// The SDK logs these with `process.emitWarning`, which lands on the alternate
+// screen at whatever cursor position is current and shreds the display.
+describe("provider warnings", () => {
+  const captured = (): { seen: string[]; emit: typeof globalThis.AI_SDK_LOG_WARNINGS } => {
+    const seen: string[] = [];
+    routeProviderWarnings((message) => seen.push(message));
+    return { seen, emit: globalThis.AI_SDK_LOG_WARNINGS };
+  };
+
+  test("they are reported through the caller, not the terminal", () => {
+    const { seen, emit } = captured();
+    if (typeof emit !== "function") throw new Error("no logger installed");
+    emit({
+      warnings: [{ type: "unsupported", feature: "toolChoice" }],
+      provider: "azure.responses",
+      model: "gpt-5.6-luna",
+    });
+    expect(seen).toEqual(["azure.responses/gpt-5.6-luna: toolChoice is not supported"]);
+  });
+
+  // The one that buried the screen. It arrives once per model call and carries
+  // the whole reasoning block in `message`, so a key made from the full string
+  // is unique every time.
+  test("the same warning about different content is said once", () => {
+    const { seen, emit } = captured();
+    if (typeof emit !== "function") throw new Error("no logger installed");
+    const skipped = (text: string) => ({
+      type: "other" as const,
+      message: `Non-OpenAI reasoning parts are not supported. Skipping reasoning part: ${JSON.stringify({ type: "reasoning", text })}.`,
+    });
+    for (const text of ["thinking about one", "thinking about two", "thinking about three"])
+      emit({ warnings: [skipped(text)], provider: "azure.responses", model: "gpt-5.6-luna" });
+    expect(seen).toHaveLength(1);
+  });
+
+  test("a long one is clipped rather than pasted whole", () => {
+    const { seen, emit } = captured();
+    if (typeof emit !== "function") throw new Error("no logger installed");
+    emit({ warnings: [{ type: "other", message: "x".repeat(5000) }], provider: "azure" });
+    expect(seen[0].length).toBeLessThan(220);
+  });
+
+  test("two different warnings both get through", () => {
+    const { seen, emit } = captured();
+    if (typeof emit !== "function") throw new Error("no logger installed");
+    emit({
+      warnings: [
+        { type: "unsupported", feature: "toolChoice" },
+        { type: "compatibility", feature: "store", details: "replayed inline" },
+      ],
+      provider: "azure",
+      model: "gpt-5.6-luna",
+    });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toContain("store is in compatibility mode. replayed inline");
   });
 });

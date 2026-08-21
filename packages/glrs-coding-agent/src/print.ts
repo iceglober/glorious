@@ -9,7 +9,7 @@ import {
   modelMetadata,
   registerExtensionProvider,
 } from "../../provider-registry/src";
-import { createAgent } from "./agent";
+import { createAgent, routeProviderWarnings } from "./agent";
 import { createRegistry, describeContribution, fire, promptContributions } from "./extension-api";
 import {
   firstPartyExtensions,
@@ -128,6 +128,9 @@ export const runPrint = async (
   const note = (message: string): void => {
     process.stderr.write(`${message}\n`);
   };
+  // stderr either way here, but tagged like everything else glrs says, and
+  // without the whole reasoning block the SDK would have printed with it.
+  routeProviderWarnings((message) => note(`[provider] ${message}`));
   const loaded = await loadExtensions(
     where.root,
     registry,
