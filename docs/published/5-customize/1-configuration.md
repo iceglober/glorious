@@ -53,6 +53,7 @@ validation. `$schema` is metadata and does not affect runtime config.
   "$schema": "https://glrs.dev/config.schema.json",
   "model": "provider/model-id",
   "variant": "high",
+  "reasoningDisplay": true,
   "toolTimeoutMs": 600000,
   "steeringMode": "one-at-a-time",
   "followUpMode": "one-at-a-time",
@@ -108,6 +109,11 @@ through so new AI SDK options do not require a glrs release. model, messages,
 tools, callbacks, wrapped fetch, and abort handling remain owned by glrs.
 
 `extensions` may also be an array, shorthand for `extensions.load`.
+
+provider-supplied reasoning is shown by default. set `reasoningDisplay` to
+`false` to hide it, or to `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`
+to show it only when the active model's configured `variant` is at least that
+level.
 
 both queue modes default to `one-at-a-time`.
 

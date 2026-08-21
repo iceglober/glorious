@@ -17,7 +17,14 @@ import {
   skillRootsFor,
 } from "./extensions";
 import { expandMentions } from "./mentions";
-import { advanceToolRun, errorText, NO_TOOL_RUN, toolRow } from "./render";
+import {
+  advanceToolRun,
+  errorText,
+  NO_TOOL_RUN,
+  reasoningText,
+  reasoningVisible,
+  toolRow,
+} from "./render";
 import { loadSkills } from "./skills";
 import { firstDetail, resultSummary, setToolGate, type ToolEvent } from "./toolkit";
 
@@ -126,7 +133,10 @@ export const runPrint = async (
     {
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
-      settings: () => ({ toolTimeoutMs: toolTimeoutMs }),
+      settings: () => ({
+        toolTimeoutMs: toolTimeoutMs,
+        reasoningDisplay: loadedConfig.config.reasoningDisplay,
+      }),
       available: () => firstPartyExtensions(loadedConfig.config.extensions),
       // A headless run is one turn with no one to answer, so there is nobody to
       // agree to anything and nothing to record.
@@ -381,9 +391,9 @@ export const runPrint = async (
         void fire(registry, "usage", { ...lastUsage, contextTokens: step.contextTokens }, note);
       },
       onReasoningEnd: ({ text, elapsedMs }) => {
-        // Not printed — reasoning is noise in a pipe — but announced, so an
-        // extension that records or measures it works headlessly too.
         void fire(registry, "reasoning", { text, elapsedMs }, note);
+        if (!reasoningVisible(loadedConfig.config.reasoningDisplay, model.variant)) return;
+        process.stderr.write(`${reasoningText(text, elapsedMs)}\n`);
       },
       onPhase: () => {},
       onRetry: (attempt, why) => note(`[retry ${attempt + 1}] connection dropped: ${why}`),
