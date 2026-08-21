@@ -126,6 +126,10 @@ export type ProvidersSettings = Record<string, ProviderSettings> & {
 // coding agent because config cannot depend on it — see check-boundaries.ts.
 export type QueueMode = "one-at-a-time" | "all";
 
+export const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
+export type ReasoningDisplay = boolean | ReasoningLevel;
+
 // Which extensions load, and which do not. `load` names a first-party extension or
 // a path; `disable` names anything at all and stops it loading. Declared here
 // rather than imported from the coding agent for the same reason QueueMode is —
@@ -147,6 +151,8 @@ export type Config = {
   model?: string;
   // Reasoning effort, when the model advertises one.
   variant?: string;
+  // Show provider-supplied reasoning, optionally only at or above one effort.
+  reasoningDisplay?: ReasoningDisplay;
   // Maximum time in milliseconds for a built-in shell/search tool.
   toolTimeoutMs?: number;
   // Alt+Enter messages, delivered into the turn that is already running.
@@ -393,6 +399,7 @@ const KNOWN = [
   "$schema",
   "model",
   "variant",
+  "reasoningDisplay",
   "toolTimeoutMs",
   "steeringMode",
   "followUpMode",
@@ -425,6 +432,17 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     wrong("model", 'a string like "azure/gpt-5.6-sol"');
   if (raw.variant !== undefined && stringOf(raw.variant) === undefined)
     wrong("variant", 'a string like "high"');
+  const reasoningDisplay = (() => {
+    if (raw.reasoningDisplay === undefined) return undefined;
+    if (typeof raw.reasoningDisplay === "boolean") return raw.reasoningDisplay;
+    if (
+      typeof raw.reasoningDisplay === "string" &&
+      REASONING_LEVELS.includes(raw.reasoningDisplay as ReasoningLevel)
+    )
+      return raw.reasoningDisplay as ReasoningLevel;
+    wrong("reasoningDisplay", "true, false, or a reasoning level");
+    return undefined;
+  })();
   if (raw.toolTimeoutMs !== undefined && positiveNumberOf(raw.toolTimeoutMs) === undefined)
     wrong("toolTimeoutMs", "a positive number");
   const queueMode = (key: "steeringMode" | "followUpMode"): QueueMode | undefined => {
@@ -664,6 +682,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   return {
     model: stringOf(raw.model),
     variant: stringOf(raw.variant),
+    reasoningDisplay,
     toolTimeoutMs: positiveNumberOf(raw.toolTimeoutMs),
     steeringMode: queueMode("steeringMode"),
     followUpMode: queueMode("followUpMode"),
@@ -712,6 +731,7 @@ const mergeJson = (far: unknown, near: unknown): unknown | typeof removed => {
 const merge = (near: Config, far: Config): Config => ({
   model: near.model ?? far.model,
   variant: near.variant ?? far.variant,
+  reasoningDisplay: near.reasoningDisplay ?? far.reasoningDisplay,
   toolTimeoutMs: near.toolTimeoutMs ?? far.toolTimeoutMs,
   steeringMode: near.steeringMode ?? far.steeringMode,
   followUpMode: near.followUpMode ?? far.followUpMode,

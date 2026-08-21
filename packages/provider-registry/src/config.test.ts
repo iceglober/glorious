@@ -516,6 +516,34 @@ describe("how a queue delivers", () => {
   });
 });
 
+describe("reasoning display", () => {
+  test("is configurable as a boolean or minimum effort", async () => {
+    const hiddenRoot = await project('{"reasoningDisplay":false}');
+    const hidden = await loadConfig(hiddenRoot, join(hiddenRoot, "nohome"), {});
+    expect(hidden.config.reasoningDisplay).toBe(false);
+
+    const highRoot = await project('{"reasoningDisplay":"high"}');
+    const high = await loadConfig(highRoot, join(highRoot, "nohome"), {});
+    expect(high.config.reasoningDisplay).toBe("high");
+    expect(high.diagnostics).toEqual([]);
+  });
+
+  test("rejects a value that is not a display mode", async () => {
+    const root = await project('{"reasoningDisplay":"sometimes"}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"), {});
+    expect(config.reasoningDisplay).toBeUndefined();
+    expect(diagnostics.join("\n")).toContain(
+      '"reasoningDisplay" should be true, false, or a reasoning level',
+    );
+  });
+
+  test("the nearest scope wins", async () => {
+    const home = await userConfig('{"reasoningDisplay":false}');
+    const root = await project('{"reasoningDisplay":"high"}');
+    expect((await loadConfig(root, home, {})).config.reasoningDisplay).toBe("high");
+  });
+});
+
 describe("settings carried by the environment", () => {
   const clear = (): void => {
     for (const name of ["GLRS_PROBE", "GLORIOUS_PROBE"]) delete process.env[name];

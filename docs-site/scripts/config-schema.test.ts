@@ -53,6 +53,7 @@ describe("hosted config schema", () => {
       "model",
       "variant",
       "toolTimeoutMs",
+      "reasoningDisplay",
       "steeringMode",
       "followUpMode",
       "extensions",
