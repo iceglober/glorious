@@ -36,11 +36,6 @@ through the same API anyone can write against.
 ## reference
 
 - [cli](../docs/published/9-reference/1-cli.md)
-- [rules](../docs/published/9-reference/10-rules.md)
-- [extensions](../docs/published/9-reference/11-extensions.md)
-- [events](../docs/published/9-reference/12-events.md)
-- [subcommands](../docs/published/9-reference/13-subcommands.md)
-- [configuration](../docs/published/9-reference/14-configuration.md)
 - [the tui](../docs/published/9-reference/2-tui.md)
 - [keys](../docs/published/9-reference/3-keys.md)
 - [models](../docs/published/9-reference/4-models.md)
@@ -49,3 +44,8 @@ through the same API anyone can write against.
 - [tools](../docs/published/9-reference/7-tools.md)
 - [commands](../docs/published/9-reference/8-commands.md)
 - [skills](../docs/published/9-reference/9-skills.md)
+- [rules](../docs/published/9-reference/10-rules.md)
+- [extensions](../docs/published/9-reference/11-extensions.md)
+- [events](../docs/published/9-reference/12-events.md)
+- [subcommands](../docs/published/9-reference/13-subcommands.md)
+- [configuration](../docs/published/9-reference/14-configuration.md)

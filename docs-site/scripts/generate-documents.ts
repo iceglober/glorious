@@ -6,6 +6,7 @@ import {
   PROVIDERS,
   type ProviderSpec,
 } from "../../packages/provider-registry/src/providers.ts";
+import { compareDocumentPaths } from "../plugins/group-documents-utils.ts";
 
 type Schema = {
   type?: string;
@@ -122,7 +123,7 @@ const outline = async (published: string): Promise<string> => {
   const groups = (await readdir(published, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .sort((left, right) => left.localeCompare(right));
+    .sort(compareDocumentPaths);
 
   const lines: string[] = [];
   for (const group of groups) {
@@ -130,7 +131,7 @@ const outline = async (published: string): Promise<string> => {
     lines.push(`## ${heading}`, "");
     const files = (await readdir(join(published, group)))
       .filter((name) => name.endsWith(".md"))
-      .sort((left, right) => left.localeCompare(right));
+      .sort(compareDocumentPaths);
     for (const file of files) {
       const title = await titleOf(join(published, group, file));
       lines.push(`- [${title}](../docs/published/${group}/${file})`);
@@ -166,11 +167,11 @@ export const generateDocuments = async (
     );
   await Promise.all([
     writeFile(
-      join(directory, "9-configuration-options.md"),
+      join(directory, "15-configuration-options.md"),
       document("configuration options", configReference(schema)),
     ),
     writeFile(
-      join(directory, "9-providers.md"),
+      join(directory, "16-providers.md"),
       document("all providers", providerReference(PROVIDERS, PROVIDER_ALIASES)),
     ),
   ]);
