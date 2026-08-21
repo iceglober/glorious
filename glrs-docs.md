@@ -28,10 +28,21 @@ git add -A && git commit -m start
 ## take one turn
 
 ```bash
-glrs --model anthropic/claude-opus-5
+glrs
 ```
 
-type this and press `enter`:
+no model is set yet, so the picker opens. type to filter, `enter` chooses:
+
+```text
+? Choose model  7243/7243
+  search: opus▏
+› anthropic/claude-opus-5
+```
+
+models glrs has credentials for are listed first; the rest say what they want,
+like `needs OPENAI_API_KEY`.
+
+then type this and press `enter`:
 
 ```text
 rewrite greeting.txt so it greets this repository by name
@@ -50,12 +61,31 @@ git diff
 ## come back
 
 ```bash
-glrs --model anthropic/claude-opus-5 --resume
+glrs --resume
 ```
 
 arrows move, `enter` opens, `esc` cancels. the session picks up where it stopped.
 
-next: [your first extension](tutorials/your-first-extension.md), [turns](reference/turns.md)
+## make the model stick
+
+picking one every launch gets old. the first run wrote `.glrs/config.json` for
+you; add a model to it:
+
+```json
+{
+  "$schema": "https://glrs.dev/config.schema.json",
+  "model": "anthropic/claude-opus-5"
+}
+```
+
+every later `glrs` in this project uses it, and the picker stays out of the way.
+to let `/model` write that line itself, add `"agentConfigAllowlist": ["model"]`.
+for every project, put `model` in `<user config>/config.json`:
+[configuration](reference/configuration.md).
+
+next: [your first extension](tutorials/your-first-extension.md)
+
+see also: [turns](reference/turns.md), [keys](reference/keys.md)
 
 
 tutorials/your-first-extension.md
@@ -67,7 +97,7 @@ you will write a `branches` tool, load it, and watch the model call it.
 ## set up a scratch repo
 
 ```bash
-mkdir /tmp/glrs-tour && cd /tmp/glrs-tour && git init
+mkdir /tmp/glrs-ext && cd /tmp/glrs-ext && git init
 printf 'hello\n' > greeting.txt
 git add -A && git commit -m start
 git branch fix-login
@@ -136,7 +166,7 @@ build one.
 ## set up a scratch repo
 
 ```bash
-mkdir /tmp/glrs-tour && cd /tmp/glrs-tour && git init
+mkdir /tmp/glrs-authored && cd /tmp/glrs-authored && git init
 printf 'hello\n' > greeting.txt
 git add -A && git commit -m start
 ```
@@ -186,9 +216,9 @@ a `g.command()` call, a `g.exec()` for the git work, and a default export.
 
 ## why this works
 
-the system prompt names nine documentation pages and tells the model to read
-them when asked about glrs itself. the documentation is the contract it writes
-against, which is why it is kept accurate and why it does not point at source.
+the system prompt lists the reference pages by path and tells the model to read them
+when asked about glrs itself. it is pointed at documentation rather than at
+`packages/`, so what it can read about glrs is what it can rely on.
 
 next: [design](explanation/design.md), [extensions](reference/extensions.md)
 
@@ -220,13 +250,15 @@ glrs ships on the `next` tag. every manager below installs the same package.
 | npm | `npm i -g @glrs-dev/glrs@next` | `npm update -g @glrs-dev/glrs` | `npm uninstall -g @glrs-dev/glrs` |
 | yarn | `yarn global add @glrs-dev/glrs@next` | `yarn global upgrade @glrs-dev/glrs` | `yarn global remove @glrs-dev/glrs` |
 
-## update from inside glrs
+## glrs update
 
 ```bash
 glrs update
 ```
 
-reinstalls the latest `@next` with Bun, whichever manager you installed with.
+reinstalls the latest release with Bun. if you installed with npm, pnpm or yarn,
+that leaves their copy in place and Bun's on PATH; use your own manager's update
+command instead.
 
 ## uninstall
 
@@ -234,12 +266,12 @@ remove the package with your manager from the table above, then the data it
 left:
 
 ```bash
-rm -rf ~/.config/glrs      # configuration
-rm -rf ~/.local/share/glrs # sessions and prompt history
-rm -rf ~/.cache/glrs       # the model catalogue
+rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/glrs"    # configuration
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/glrs" # sessions and prompt history
+rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/glrs"      # the model catalogue
 ```
 
-sessions are the only one you cannot get back.
+configuration and the catalogue can be recreated. sessions cannot.
 
 next: [quick start](tutorials/quick-start.md), [connect a provider](how-to/connect-a-provider.md), [cli](reference/cli.md)
 
@@ -258,6 +290,9 @@ providers, their aliases and the variables each one reads:
 export ANTHROPIC_API_KEY=sk-…
 GLRS_MODEL=anthropic/claude-opus-5 glrs doctor
 ```
+
+with the key exported and no model set anywhere, `glrs` still starts: the picker
+opens and every Anthropic model is at the top of the list.
 
 ## azure
 
@@ -313,6 +348,13 @@ glrs doctor
 
 a connected provider reports `credentials: found`. anything else prints
 `missing:` and the variable it wants.
+
+`/model` reports the same thing per model, listing the ones glrs has credentials
+for first and marking the rest `needs OPENROUTER_API_KEY`. it does not stop you
+choosing one it cannot see a credential for: Bedrock through an SSO profile and
+Vertex through application default credentials both look unconfigured here and
+both work, so the turn is sent and the provider decides:
+[models](reference/models.md).
 
 see also: [models](reference/models.md), [configuration](reference/configuration.md)
 
@@ -385,7 +427,7 @@ with no placeholder gets the arguments appended in an `<arguments>` block.
 
 ## make it available everywhere
 
-put the file in `<user config>`/commands/` instead of the project. on a name
+put the file in `<user config>/commands/` instead of the project. on a name
 clash the project wins. [configuration](reference/configuration.md)
 resolves `<user config>`.
 
@@ -459,9 +501,8 @@ two fields glrs reads are not in the specification:
 
 ## where they are found
 
-the project's `.glrs/skills/` and `.agents/skills/`, then the same two for the
-user. the first root to claim a name keeps it. full list and every frontmatter
-field: [commands](reference/commands.md).
+four roots, project before user, first to claim a name wins:
+[skills](reference/skills.md).
 
 next: [set project rules](how-to/set-project-rules.md)
 
@@ -493,10 +534,16 @@ written for another agent works unchanged.
 
 ## when they are read
 
-once, at startup. `/reload` re-reads commands, skills and extensions, not rules.
-restart to pick up an edit.
+`AGENTS.md` files from your home directory down to the project root are read once,
+at startup. restart to pick up an edit; `/reload` does not re-read them.
 
-see also: [commands](reference/commands.md)
+a file's own directory is searched again every time a tool reads that file, so a
+rule beside the code it governs takes effect immediately and applies only when
+that code is opened. both paths: [rules](reference/rules.md).
+
+next: [manage extensions](how-to/manage-extensions.md)
+
+see also: [rules](reference/rules.md)
 
 
 how-to/manage-extensions.md
@@ -509,15 +556,16 @@ how-to/manage-extensions.md
 /extensions
 ```
 
-all four first-party extensions load, plus anything in `.glrs/extensions/`.
+all five first-party extensions load, plus anything in `.glrs/extensions/`:
+`builtins`, `model-picker`, `ask-user`, `web-fetch`, `worktree`.
 
 ## reload after an edit
 
-`/reload` re-reads extensions, skills and commands from disk. they live in `<project root>`/.glrs/extensions/` and `<user config>`/extensions/`, as `name.ts` or `name/index.ts`.
+`/reload` re-reads extensions, skills and commands from disk. they live in `<project root>/.glrs/extensions/` and `<user config>/extensions/`, as `name.ts` or `name/index.ts`.
 
 ## replace a bundled one
 
-disk wins over bundled, project before user. `.glrs/extensions/web-fetch.ts` loads instead of the shipped one. a `builtins.ts` of your own drops every tool and slash command with it.
+disk wins over bundled, project before user. `.glrs/extensions/web-fetch.ts` loads instead of the shipped one. a `builtins.ts` of your own drops every tool and slash command with it, and a `model-picker.ts` of your own is what `/model` then runs.
 
 ## let glrs record the choice
 
@@ -529,7 +577,7 @@ disk wins over bundled, project before user. `.glrs/extensions/web-fetch.ts` loa
 }
 ```
 
-without it `/extensions disable` reports the config line to add instead.
+without it `/extensions disable` prints the config line for you to add by hand, and changes nothing. `"model"` is the other section it understands, for what `/model` chose: [configuration](reference/configuration.md).
 
 see also: [extensions](reference/extensions.md), [your first extension](tutorials/your-first-extension.md)
 
@@ -561,7 +609,7 @@ how-to/turn-things-off.md
 
 - `tools.disable` withholds a tool from the model, whichever extension registered it.
 - `extensions.disable` takes that extension's commands with it. disable `builtins` and nothing is left, no tools and no slash commands.
-- `toolTimeoutMs` is milliseconds, default 600000, for `bash`, `grep` and `glob`. `GLRS_TOOL_TIMEOUT_MS` wins over it.
+- `toolTimeoutMs` is milliseconds, default 600000. it is the deadline any tool runs under. `GLRS_TOOL_TIMEOUT_MS` wins over it.
 - disable lists union across the three config scopes. off in one file is off in all.
 
 `/extensions disable web-fetch` writes that line for you, when `agentConfigAllowlist` includes `extensions`. `/reload` applies both lists. a markdown command stops loading when its file leaves `.glrs/commands/`.
@@ -594,7 +642,8 @@ piped input joins the prompt, fenced as `<input>`.
 
 ## output
 
-the answer goes to stdout. tool trail, retries and diagnostics go to stderr.
+the answer goes to stdout. tool trail, retries, `[config]` diagnostics and
+`[provider]` warnings go to stderr.
 
 ```bash
 glrs -p "count the TODOs" > answer.txt        # answer alone
@@ -616,7 +665,7 @@ glrs is a model, a turn loop, and a set of extensions over a git repository.
 
 ## small core
 
-the core registers no tools and no commands. it discovers, it loads, it runs a
+the core registers no commands and one tool. it discovers, it loads, it runs a
 turn. everything the model can reach arrives through a public seam:
 
 | seam | registers |
@@ -627,8 +676,8 @@ turn. everything the model can reach arrives through a public seam:
 | `g.on` | a handler for a lifecycle event |
 | `g.status`, `g.footer`, `g.activity` | parts of the screen |
 
-the seam is only real if the obvious things are built on it. if `/help` or
-`bash` needed a private door, the claim would be decoration.
+`/help` and `bash` are registered through `g.command` and `g.tool`, the same
+members any extension uses. neither has a private path into the core.
 
 one tool is core: `activate_skill`. skills are a core concept, discovered and
 catalogued by the core and injected into every prompt, and that tool is the
@@ -647,22 +696,44 @@ the core does not quietly keep a copy.
 | extension | provides |
 | --- | --- |
 | `builtins` | the file, search and shell tools, and every slash command |
+| `model-picker` | `/model`, and the picker that opens when no model is set |
 | `ask-user` | the `ask_user` tool and its widget, built on `g.ui.capture` |
 | `web-fetch` | the `web_fetch` tool |
 | `worktree` | the `glrs wt` subcommand and `/wt` |
 
-all four load. asking you to turn one on put a decision in front of you that you
+all five load. asking you to turn one on puts a decision in front of you that you
 had no way to evaluate. disable what you do not want, or shadow it with a file
 of the same name: disk wins over first-party.
+
+## choosing the model is not core either
+
+the core carries a model or a null, and refuses a turn without one. it ships no
+way to pick one, exactly as it ships no way to read a file. `model-picker` reads
+the catalogue through `g.models()`, chooses through `g.setModel()`, and writes
+the choice through `g.rememberModel()`. every one of those is a public member an
+extension you write can call.
+
+that is why the TUI now opens without a model. `/model` is a slash command, and
+slash commands exist only inside a session, so refusing to open a session until
+a model was set meant the only ways in were `--model` and `GLRS_MODEL`. what the
+core owes is the state, not a picker: the status row says `no model`, a turn is
+refused rather than sent, and `ModelInfo.missing` reports what each provider
+wants so whatever fills the gap can say so ([models](reference/models.md)).
 
 ## permissions
 
 there is no permissions system. glrs runs with the permissions of its process:
-any file you can edit, any command you can run. no sandbox, no approval prompt.
+any file you can edit, any command you can run. no sandbox, and nothing asks
+before it acts.
 
-a confirmation prompt is not a boundary once an agent can edit and execute code.
-an extension can refuse a call from the `tool_call` hook, but it runs in the
+one seam exists for building a gate. glrs fires `project_trust` when a session
+opens, and refuses to start if a handler answers anything but `trusted`. no
+extension ships one, so out of the box the event fires and nothing listens
+([events](reference/events.md)). a gate built on it still runs in the
 same process.
+
+an extension can refuse a call from the `tool_call` hook, but it runs in the
+same process as the thing it is refusing.
 
 real boundaries come from outside the process:
 
@@ -672,8 +743,8 @@ real boundaries come from outside the process:
 - **review before merge**, which is the boundary you already have
 
 file tools resolve relative paths against the project root and take absolute
-ones as given. nothing is refused, because `bash` sits unconfined beside them
-and a path check would only send the model the long way round.
+ones as given. nothing is refused. `bash` is unconfined, so a path check on the file tools
+would stop nothing and cost a step.
 
 see also: [a turn](explanation/a-turn.md), [extensions](reference/extensions.md), [tools](reference/tools.md)
 
@@ -721,7 +792,7 @@ extends the cached prefix rather than replacing it.
 | **steering** | the running turn, at its next step | the tokens of what was said |
 | **follow-up** | its own turn, once the agent runs out of work | a new turn |
 
-steering is the deliberate act, so it carries the modifier. steering that
+steering takes a modifier because it interrupts; a follow-up does not. steering that
 arrives too late to join becomes a follow-up, ahead of the ones already waiting.
 
 ## when a stream dies
@@ -754,7 +825,17 @@ reference/cli.md
 
 # cli
 
-`glrs` and `glorious` are the same command: `bin/glrs`, a shell script that follows its own symlinks, then execs `bun packages/glrs-coding-agent/src/index.ts`.
+`glrs` is short for glorious. both names run the same binary, so use whichever
+you prefer.
+
+## project root
+
+everything resolves against the project root: file tools, config discovery,
+[rules](reference/rules.md). it is `git rev-parse --show-toplevel`, or the directory
+you started in when that is not a repository.
+
+glrs works outside a repository. the first run still writes config, and the file
+tools still resolve against where you started.
 
 ## commands
 
@@ -798,7 +879,7 @@ a first bare word glrs does not claim goes to the extensions: [subcommands](refe
 
 ## print mode
 
-assistant text goes to stdout. the tool trail, retries, extension notes and `[config]` diagnostics go to stderr. piped stdin joins the prompt, fenced as `<input>…</input>`. nothing reaches the session store. `g.columns()` reads `COLUMNS`, else 100.
+assistant text goes to stdout. the tool trail, retries, extension notes, `[config]` diagnostics and `[provider]` warnings go to stderr. piped stdin joins the prompt, fenced as `<input>…</input>`. nothing reaches the session store.
 
 | exit | when |
 | --- | --- |
@@ -826,59 +907,39 @@ reference/the-tui.md
 # the tui
 
 the TUI (the full-screen terminal interface) is what `glrs` opens with no
-arguments. it has four parts.
+arguments.
 
 ```text
-┌──────────────────────────────────────────────┐
-│ transcript      what has happened so far     │
-│                                              │
-│ activity row    the running turn, or blank   │
-│ composer        where you type               │
-│ status line     model, context, cost         │
-└──────────────────────────────────────────────┘
+transcript     everything that has happened, oldest first
+progress       running tools, queued messages, a held queue
+completion     commands or paths, while you are typing one
+activity       thinking 4.1s · 2 queued (Alt+↑ dequeue) · Esc interrupt
+composer       where you type
+footer         empty unless an extension draws here
+status         provider/model-id (variant) · ctx 41.2k(32%)
 ```
 
-| part | shows | owned by |
+the status row reads `no model` until one is chosen, and the picker opens over
+the composer on the first paint: [models](reference/models.md).
+
+| row | drawn | replaceable with |
 | --- | --- | --- |
-| transcript | messages, tool calls and notices, oldest first | glrs, or an extension's renderer |
-| activity row | the phase, elapsed time, queued count. blank when idle | glrs, or `g.activity` |
-| composer | what you are typing, with completion and queued messages above it | glrs, or `g.ui.capture` |
-| status line | model, context used, cost | glrs, plus `g.status` segments |
+| transcript | always | a tool renderer, `g.markdown` |
+| progress | while a tool runs, or a message waits | |
+| completion | while a completion is open | `g.autocomplete` adds a source |
+| activity | while busy or compacting | `g.activity` |
+| composer | always | `g.ui.capture` |
+| footer | never, by default | `g.footer` |
+| status | always | `g.status` adds segments |
 
 ## composer
 
-| --- | --- |
-| `enter` | send; while busy, queue a follow-up; on an empty composer, release a held queue |
-| `alt+enter` | steer the running turn at its next step |
-| `shift+enter` | newline |
-| `alt+up` | take the newest queued message back into the composer |
-| `tab` | accept the selected completion |
-| `up` `down` | move in the menu, else history from the first or last line, else the cursor |
-| `ctrl+p` `ctrl+n` | previous and next prompt in history, always |
-| `esc` | close the menu, else interrupt the turn and hold the queue |
-| `ctrl+c` | clear the composer; when empty, interrupt; again within 3s, exit |
+where you type. one line grows to many; `shift+enter` adds a line without
+sending. queued messages are listed above it, and completion opens below.
 
-a `g.key()` binding matches name, ctrl and shift, and runs before every row above.
+every binding: [keys](reference/keys.md).
 
-## completion
-`/` completes commands and `@` completes paths; shell mode offers `/` only. `enter` completes instead of sending while the menu is open. the menu shows at most 10 rows, and never more than the terminal height minus 8, with `↑ n above` and `↓ n more` for the rest. esc keeps it shut until the text changes. paths come from ripgrep, re-listed every 5s, 50 candidates.
-
-## mentions
-`@path` stays in the message and the file rides along fenced. limits: 10 mentions per message, 100,000 characters per file, 200 paths per mentioned directory. a path outside the repository stays plain text; a missing one prints `(no such file: @path, sent as text)`.
-
-## shell
-a leading `!` runs the line in the shell instead of sending it. the caret becomes `<cwd> $ ` and backspace on an empty line leaves. output has ANSI escapes stripped and is capped at 30,000 characters. exit 0 with no output prints `(shell command completed with no output)`; any other code prints `(shell command failed: <last line>)`.
-
-## status line
-```text
-transcript
-progress      running tools, queued messages, held queue
-completion
-activity      thinking 4.1s · 2 queued (Alt+↑ dequeue) · Esc interrupt
-composer
-footer        g.footer() rows
-status        provider/model-id (variant) · ctx 41.2k(32%) · g.status() segments
-```
+## the activity row
 
 the activity row is drawn only while busy or compacting, and `g.activity()` replaces it. the phase is `sending`, `waiting`, `thinking`, `writing`, or `compacting`. tokens and percentage read `unknown` without catalogue metadata. mouse selection copies through OSC 52 (a terminal escape the emulator turns into a clipboard write).
 
@@ -936,13 +997,80 @@ reference/models.md
 
 highest first:
 
-1. `--model provider/model-id`
-2. `GLRS_MODEL`, `GLRS_VARIANT`
-3. Project-User `.glrs/config.local.json`
-4. Project `.glrs/config.json`
-5. User `<user config>`/config.json`
+1. `/model`, for the rest of the session
+2. `--model provider/model-id`
+3. `GLRS_MODEL`, `GLRS_VARIANT`
+4. Project-User `.glrs/config.local.json`
+5. Project `.glrs/config.json`
+6. User `<user config>/config.json`
 
-there is no default. an unset model raises `No model configured.` paths and merge rules: [configuration](reference/configuration.md).
+there is no default. paths and merge rules: [configuration](reference/configuration.md).
+
+## nothing set
+
+the TUI opens anyway, and `/model` picks one:
+
+```
+glrs
+? Choose model  7243/7243
+  search: ▏
+› anthropic/claude-opus-5
+  anthropic/claude-sonnet-5
+```
+
+the picker is the `model-picker` extension, which loads by default. it opens
+itself when nothing is set. `esc` cancels, and the status line then reads
+`no model`; pressing `enter` on a message answers
+`(no model chosen: /model picks one)` and leaves what you typed in the composer.
+
+with `model-picker` disabled the message names the config instead. either way
+nothing is sent to a provider until a model exists.
+
+`-p` is the exception. a pipeline has nowhere to ask, so it still exits with
+`No model configured.` before anything runs:
+
+```bash
+glrs -p "what failed?"     → No model configured. Set GLRS_MODEL="provider/model-id" …
+```
+
+## keeping the choice
+
+`/model` writes `model` and `variant` into `<project root>/.glrs/config.json`
+when `agentConfigAllowlist` names `model`:
+
+```json
+{
+  "agentConfigAllowlist": [
+    "model"
+  ]
+}
+```
+
+without it the choice lasts the session and `/model` prints the line to paste.
+picking the default reasoning effort removes `variant` rather than writing null.
+for every project, put `model` in the User config by hand:
+[configuration](reference/configuration.md).
+
+## a provider with no credentials
+
+choosing one always succeeds. the row says what is absent, the switch happens,
+and the turn is still sent:
+
+```
+› openrouter/~anthropic/claude-opus-latest  needs OPENROUTER_API_KEY
+```
+
+```
+Model switched to openrouter/~anthropic/claude-opus-latest.
+openrouter: glrs cannot see OPENROUTER_API_KEY. Turns are still sent, and the
+provider decides.
+```
+
+glrs reads the environment and config and nothing else, so an empty list is not
+a promise that a call will succeed and a full one is not proof it will fail.
+Bedrock through an SSO profile, Vertex through application default credentials,
+and any provider an extension registers all report a gap and all work. the
+provider's own refusal is the authority, so glrs warns and does not block.
 
 ## the id
 
@@ -967,6 +1095,7 @@ aliases resolve before anything reads the id, so they work in `--model`, `GLRS_M
 | provider | config keys | environment fallback |
 | --- | --- | --- |
 | `amazon-bedrock` | `api`, `region` | `AWS_REGION`, `AWS_DEFAULT_REGION`; region defaults to `us-east-1` |
+| `azure` | `api` | `AZURE_RESOURCE_NAME` is required alongside the key |
 | `google-vertex` | `api`, `project`, `location` | `GOOGLE_CLOUD_PROJECT` or `GOOGLE_VERTEX_PROJECT`, `GOOGLE_CLOUD_LOCATION` or `GOOGLE_VERTEX_LOCATION`; location defaults to `global` |
 | everything else | `api` | |
 
@@ -1024,7 +1153,8 @@ one namespace is emitted per call.
 | `anthropic` | `anthropic`; `google-vertex` when the model id contains `claude` | `thinking.budgetTokens` |
 | `google` | `google`; other `google-vertex` | `thinkingConfig.thinkingBudget` |
 | `bedrock` | `amazon-bedrock` | `reasoningConfig.budgetTokens`, plus `maxReasoningEffort` for `low`, `medium`, `high` |
-| `openai` | `openai`, `azure`, every other provider | `reasoningEffort` |
+| `azure` | `azure` | `reasoningEffort`; DeepSeek deployments route through chat |
+| `openai` | `openai`, and every other provider | `reasoningEffort` |
 
 ## metadata
 
@@ -1034,6 +1164,24 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - configured `metadata` (`name`, `context`, `inputCost`, `outputCost`, `variants`) always wins over the catalogue.
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
+
+## provider warnings
+
+the model answers, but the provider dropped something on the way. reported in
+the transcript as `(provider warning)`, on stderr as `[provider]` under `-p`:
+
+```
+(provider warning) azure.responses/gpt-5.6-luna: topK is not supported
+```
+
+said once per provider, model and first sentence, for the life of the process.
+these arrive once per model call, so the second copy is dropped rather than
+repeated. the text is clipped to 160 characters: the SDK embeds whatever it is
+complaining about, and for `Non-OpenAI reasoning parts are not supported` that
+is the whole reasoning block.
+
+glrs does not act on them. a warning is not a failed turn, and a turn that
+failed says so on its own.
 
 see also: [connect a provider](how-to/connect-a-provider.md), [configuration](reference/configuration.md)
 
@@ -1053,7 +1201,7 @@ prompt history is `prompts.json` beside them.
 ```json
 {
   "schema": 2,
-  "id": "3f9c1a20",
+  "id": "3f9a1c2b",
   "createdAt": "",
   "updatedAt": "",
   "cwd": "",
@@ -1065,9 +1213,16 @@ prompt history is `prompts.json` beside them.
 `.../glorious/sessions/` is read, never written. a session resumed from there is
 saved to the new path.
 
-## events
+## entries
 
-| event | recorded when |
+a session is a log. each record in it is an entry. the extension API calls them
+entries too (`g.appendEntry`, `g.entries`).
+
+these are not [lifecycle events](reference/events.md), which are announcements an
+extension hooks while glrs runs. entries are what is on disk.
+
+
+| entry | recorded when |
 | --- | --- |
 | `user` | you send a message. carries `steer` when it joined a running turn |
 | `assistant` | the model answers |
@@ -1089,7 +1244,7 @@ reaches disk on the next of those.
 | `glrs --resume <id>` | reopen that session |
 | `glrs --resume` | pick from a list, newest first |
 | `/fork` | copy the whole session to a new id |
-| `/fork 42` | copy its first 42 events to a new id |
+| `/fork 42` | copy the session up to entry 42 into a new id |
 
 a fork leaves the original untouched. the copy is on disk immediately, so
 `glrs --resume <new-id>` opens it.
@@ -1128,8 +1283,8 @@ reference/turns.md
 
 # turns
 
-a turn is one exchange: your message, the model works, it answers. a step is one
-model call inside it.
+a turn is one exchange: your message, the model's work, its answer. a step is
+one model call inside it.
 
 ## queues
 
@@ -1179,8 +1334,8 @@ reference/tools.md
 
 every tool but `activate_skill` comes from an extension. that one is core
 because [skills](reference/skills.md) are core; it registers first, so an extension can
-still replace it. `tools.disable` withholds a name. `ask_user` needs the
-[TUI](reference/the-tui.md).
+still replace it. `tools.disable` withholds a name. `ask_user` is registered only when a TUI is present, so under `-p` the model
+never sees it ([the tui](reference/the-tui.md)).
 
 - `read` prefixes each line with `N|`. display only, not part of the file.
 - relative paths resolve against the project root. absolute paths are taken as given.
@@ -1231,8 +1386,8 @@ a command is a prompt you invoke with `/name`. a skill is instructions the model
 
 | kind | roots, in order |
 | --- | --- |
-| commands | `<project root>`/.glrs/commands/*.md`, [`<user config>`](reference/configuration.md)`/commands/*.md` |
-| skills | `<project root>`/.glrs/skills`, `<project root>`/.agents/skills`, `<user config>`/skills`, `~/.config/agents/skills`, then each loaded extension's `skills/` |
+| commands | `<project root>/.glrs/commands/*.md`, [`<user config>`](reference/configuration.md)`/commands/*.md` |
+| skills | `<project root>/.glrs/skills`, `<project root>/.agents/skills`, `<user config>/skills`, `~/.config/agents/skills`, then each loaded extension's `skills/` |
 
 ## what ships
 
@@ -1242,9 +1397,10 @@ a command is a prompt you invoke with `/name`. a skill is instructions the model
 | `/skills` | every skill, its origin, and whether the model is offered it |
 | `/extensions [enable\|disable <name>]` | list loaded extensions, or record the choice in config |
 | `/clear` | drop the conversation the model replays, keep the transcript |
+| `/wt` | the worktree extension: `new`, `list`, `doctor` |
 | `/reload` | re-read extensions, skills and commands |
 | `/compact [instruction]` | summarise the conversation so far |
-| `/fork [n]` | copy the session to a new id, at event `n` or whole |
+| `/fork [n]` | copy the session to a new id, up to entry `n` or whole |
 | `/session` | id, context, tokens, cost, events, file |
 
 ## command files
@@ -1269,7 +1425,7 @@ a skill is instructions the model loads when it judges them relevant. you
 invoke a [command](reference/commands.md); the model activates a skill.
 
 glrs implements the [Agent Skills specification](https://agentskills.io/specification).
-two fields below are extensions to it, marked where they appear.
+two fields below are not in the specification, and are marked.
 
 ## frontmatter
 
@@ -1277,7 +1433,7 @@ two fields below are extensions to it, marked where they appear.
 | --- | --- |
 | `name` | required. the skill's name |
 | `description` | required. what the model reads to decide |
-| `trigger` | renames the command to `/skill:<trigger>` |
+| `trigger` (not in the specification) | renames the command to `/skill:<trigger>` |
 | `allowed-tools` | tools the turn is held to, comma or space separated |
 | `disable-model-invocation` | `true` withholds it from the model, leaving the command. a convention, not part of the Agent Skills standard |
 | `license`, `compatibility`, `metadata` | parsed, offered to extensions by `g.inspect()`, not acted on |
@@ -1286,9 +1442,18 @@ every skill answers to `/skill:<name>` and unknown fields are ignored. `allowed-
 
 ## where they are found
 
-the project's `.glrs/skills/` and `.agents/skills/`, then the same two under your
-home directory, then `~/.config/agents/skills/`, then each loaded extension's
-`skills/`. the first root to claim a name keeps it.
+in order. the first root to claim a name keeps it.
+
+| root | holds |
+| --- | --- |
+| `<project root>/.glrs/skills` | this project's skills |
+| `<project root>/.agents/skills` | this project's, in the shared agent location |
+| `<user config>/skills` | yours, for every project |
+| `~/.config/agents/skills` | yours, in the shared agent location |
+| an extension's `skills/` | shipped with an extension, read last |
+
+a skill is any directory holding a `SKILL.md`, found by a walk four levels deep
+that skips `node_modules`, `.git`, `scripts`, `references` and `assets`.
 
 ## the skill command
 
@@ -1304,31 +1469,59 @@ reference/rules.md
 
 # rules
 
-rules are text that rides in the system prompt on every turn. nothing
-invokes them.
+rules are text that reaches the model without anyone invoking it. they come from
+`AGENTS.md`, and from `AGENT.md` or `CLAUDE.md` when that is absent, so a
+repository written for another agent works unchanged.
 
-## AGENTS.md
+```markdown
+- run `bun check` before calling a change done.
+- match the file you are editing: naming, layout, error handling.
+```
 
-every text found is concatenated, nearest last: `/etc/ampcode/AGENTS.md` and `/etc/glrs/AGENTS.md` (macOS adds `/Library/Application Support/…`, Windows uses `%ProgramData%`), then `~/.config/amp/AGENTS.md`, `~/.config/glrs/AGENTS.md`, `~/.config/AGENTS.md`, then every directory from `$HOME` down to the working directory. in those directories the first of `AGENTS.md`, `AGENT.md`, `CLAUDE.md` is read.
+## two kinds, arriving two ways
 
-## which directories are read
+| kind | read | arrives in |
+| --- | --- | --- |
+| startup rules | once, when glrs opens | the system prompt |
+| a file's own rules | every time a tool reads a file | that read's result |
 
-| when | read from |
+this distinction matters. the system prompt is byte-identical on every turn, so
+that a provider's cache keeps hitting ([a turn](explanation/a-turn.md)).
+rules discovered mid-session cannot go there, so they ride back with the file
+that brought them, under `AGENTS.md guidance:`.
+
+## startup rules
+
+read once, from every directory between your home directory and the project
+root, nearest last:
+
+| location | applies to |
 | --- | --- |
-| startup | every directory from your home directory down to the project root, nearest last |
-| startup | `/etc/glrs/AGENTS.md` and the platform equivalents, plus `~/.config/glrs/AGENTS.md` |
-| every `read` | the directory of the file being read, and its ancestors |
+| `/etc/glrs/AGENTS.md` | every project on the machine |
+| `~/.config/glrs/AGENTS.md` | every project of yours |
+| `~/.config/AGENTS.md` | every agent you run, not only glrs |
+| each directory down to `<project root>` | that directory and below |
 
-that last row is why a rule beside the code it governs applies when the model
-opens that file, without being loaded for every unrelated turn.
+on macOS `/Library/Application Support/glrs/AGENTS.md` is read too; on Windows
+`%ProgramData%\glrs\AGENTS.md`.
 
-`AGENT.md` and `CLAUDE.md` are read when `AGENTS.md` is absent, so a repository
-written for another agent works unchanged.
+glrs also reads amp's machine-wide locations (`/etc/ampcode/AGENTS.md` and
+`~/.config/amp/AGENTS.md`) for the same reason it reads `CLAUDE.md`: a machine
+already set up for another agent works without being set up again.
+
+## a file's own rules
+
+when a tool reads a file, glrs looks for rules in that file's own directory and
+its ancestors, and appends what it finds to the result the model sees.
+
+a rule beside the code it governs therefore applies when the model opens that
+code, and costs nothing on turns that never touch it.
 
 ## when they are re-read
 
-startup only, except the per-`read` lookup above. `/reload` re-reads commands,
-skills and extensions, not rules.
+startup rules are read once. `/reload` re-reads commands, skills and extensions,
+not rules; restart to pick up an edit. a file's own rules are read on every
+`read`, so editing one takes effect immediately.
 
 see also: [commands](reference/commands.md), [set project rules](how-to/set-project-rules.md)
 
@@ -1343,8 +1536,8 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 
 | path | source |
 | --- | --- |
-| `<project root>`/.glrs/extensions/` | disk, Project |
-| `<user config>`/extensions/` | disk, User |
+| `<project root>/.glrs/extensions/` | disk, Project |
+| `<user config>/extensions/` | disk, User |
 | bundled, when on | bundled |
 | absolute paths in `extensions.load` | config |
 
@@ -1355,11 +1548,12 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | name | package | provides |
 | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | the six file and shell tools, and every slash command |
+| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, and the picker that opens when no model is set |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user`, a multiple-choice question answered in the TUI |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch`, a page as markdown, JavaScript rendered when Chrome is installed |
 | `worktree` | `@glrs-dev/glrs-ext-worktree` | git worktrees, and `glrs wt` |
 
-`extensions.load` names one by name or by package, `extensions.disable` wins over it, and a file on disk of the same name replaces it. taking `builtins` leaves the model with no tools unless yours registers them.
+`extensions.load` names one by name or by package, `extensions.disable` wins over it, and a file on disk of the same name replaces it. taking `builtins` leaves the model with no tools unless yours registers them. taking `model-picker` leaves a session that started without a model with no way to choose one in the TUI: [models](reference/models.md).
 
 ## api
 
@@ -1367,10 +1561,26 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | --- | --- |
 | register | `tool` `command` `cli` `key` `flag` `on` |
 | host | `root` `exec` `mode` `hasUI` `settings` `available` `setExtension` `inspect` `reload` `shutdown` `events.emit` `events.on` |
-| turn | `send` `abort` `idle` `pending` `usage` `systemPrompt` `prompt` `clear` `compact` `model` `models` `setModel` `tools` `filterTools` `session` `setSessionName` `appendEntry` `entries` |
+| turn | `send` `abort` `idle` `pending` `usage` `systemPrompt` `prompt` `clear` `compact` `model` `models` `setModel` `rememberModel` `setThinkingLevel` `tools` `filterTools` `session` `setSessionName` `appendEntry` `entries` |
 | draw | `print` `columns` `clip` `status` `footer` `activity` `markdown` `ui.capture` `ui.setInput` |
 
-every signature: the generated **Extension API** page, built from `packages/glrs-coding-agent/src/public-extension-api.ts`. every payload: [events](reference/extensions.md).
+every signature: the generated **Extension API** page, built from `packages/glrs-coding-agent/src/public-extension-api.ts`. every payload: [events](reference/events.md).
+
+`model()` returns null when nothing has been chosen: a session opens before a
+model exists. `setModel` switches for the session, `rememberModel` writes the
+active one into the project config and returns `"not-allowed"` unless
+`agentConfigAllowlist` names `model`. every `ModelInfo`, from `model()` and from
+`models()` alike, carries `missing`: the variables or config keys glrs could not
+find for that provider, empty when it found them all.
+
+```typescript
+const chosen = g.model();
+if (chosen === null) g.print("nothing chosen yet");
+else if (chosen.missing.length > 0) g.print(`set ${chosen.missing.join(", ")}`);
+```
+
+`missing` reads the environment and config and nothing else, so empty is not a
+promise a call will succeed: [models](reference/models.md).
 
 a tool filter narrows what the model may call, from the next model call. every filter has to agree, so they can only narrow; `filterTools` returns `{ lift }`, which removes your own and nobody else's. a handler returning `undefined` changes nothing. a tool name already claimed is refused, and `/extensions` lists it as shadowed.
 
@@ -1394,18 +1604,14 @@ type Line = Span[];
 `g.mode` is `tui`, `print` or `cli`. `hasUI` is true only in the TUI.
 
 - **everywhere**: `root`, `exec`, `columns`, `settings`, `available`, `tool`, `command`, `cli`, `on`.
-- **`-p`**: `ui.capture`, `models` and `setModel` throw. `send`, `ui.setInput`, `reload` and `setExtension` write a notice to stderr and do nothing. `print` goes to stderr. `clear` returns `"empty"`, `compact` returns `"too-short"`. `session`, `setSessionName`, `appendEntry` and `entries` are stubs, a `-p` run having no session file. keys and flags register and never fire.
+- **`-p`**: `ui.capture`, `models` and `setModel` throw. `model()` is never null and `rememberModel` returns `"already"`, a one-shot run taking its model from the environment or the config already on disk. `send`, `ui.setInput`, `reload` and `setExtension` write a notice to stderr and do nothing. `print` goes to stderr. `clear` returns `"empty"`, `compact` returns `"too-short"`. `session`, `setSessionName`, `appendEntry` and `entries` are stubs, a `-p` run having no session file. keys and flags register and never fire.
 - **subcommand**: `print` goes to stdout, undecorated. `inspect` is empty. every member needing a session throws, naming itself.
 
 ## sdk
 
 `@glrs-dev/glrs` exports `createAgentCore`, `createCodingAgent`, `createProviderRegistry` and `jsonSessionRepository` for embedding a session in another host: the generated **SDK** page, built from `packages/glrs-coding-agent/src/sdk.ts`. an extension imports `@glrs-dev/glrs/extension-api` instead.
 
-# events
-
-an extension observes and changes a turn through `g.on`.
-
-see also: [your first extension](tutorials/your-first-extension.md), [events](reference/extensions.md)
+see also: [your first extension](tutorials/your-first-extension.md), [events](reference/events.md)
 
 
 reference/events.md
@@ -1414,6 +1620,9 @@ reference/events.md
 
 an event is something glrs announces while it runs. an extension handles one
 with `g.on`.
+
+these are not the [entries](reference/sessions.md) written to a session file. events
+are announcements; entries are the record.
 
 most handlers only observe. for the events marked below, what the handler
 returns changes what happens next; returning nothing leaves it alone.
@@ -1479,6 +1688,14 @@ export default (g) => {
 - the TUI fires `idle` then `turn_end`. `-p` fires `turn_end` then `idle`.
 - both hosts await `session_end`, so work on the way out finishes. the TUI's screen stops as soon as it resolves, so printing there lands nowhere.
 
+## project_trust
+
+fired when a session opens. if no handler is registered, nothing happens and the
+session starts. if one is, glrs refuses to start unless it answers `trusted`.
+
+nothing ships a handler, so this is a seam for building an approval gate rather
+than a gate glrs provides ([design](explanation/design.md)).
+
 see also: [extensions](reference/extensions.md), [a turn](explanation/a-turn.md)
 
 
@@ -1541,9 +1758,9 @@ JSON files, hand-edited; unknown keys are ignored. every key is in the schema at
 
 | scope | path |
 | --- | --- |
-| Project-User | `<project root>`/.glrs/config.local.json` |
-| Project | `<project root>`/.glrs/config.json` |
-| User | `<user config>`/config.json` |
+| Project-User | `<project root>/.glrs/config.local.json` |
+| Project | `<project root>/.glrs/config.json` |
+| User | `<user config>/config.json` |
 
 a missing file is not an error. the User directory is the first of `$GLRS_CONFIG_HOME`, `$XDG_CONFIG_HOME/glrs`, `%APPDATA%/glrs` on Windows, `~/.config/glrs`. `LOCALAPPDATA` is not used.
 
@@ -1578,12 +1795,20 @@ in a git repository all three files are created, outside one only the User file.
 ```json
 {
   "agentConfigAllowlist": [
-    "extensions"
+    "extensions",
+    "model"
   ]
 }
 ```
 
-`"extensions"` is the only section understood. it lets glrs write `<project root>`/.glrs/config.json`, never `config.local.json`, recording one extension as loaded or disabled. the write is a JSON round trip: comments and formatting do not survive. without the entry the write returns `not-allowed`.
+two sections are understood; anything else in the list does nothing.
+
+| section | what glrs may then write |
+| --- | --- |
+| `extensions` | `extensions.load` and `extensions.disable`, recording one as loaded or disabled |
+| `model` | `model` and `variant`, recording what `/model` chose |
+
+it writes `<project root>/.glrs/config.json`, never `config.local.json`. the write is a JSON round trip: comments and formatting do not survive. without the entry glrs prints the config line for you to add by hand and changes nothing.
 
 ## environment
 
@@ -1603,7 +1828,7 @@ reported in the transcript as `(config)`, on stderr as `[config]` under `-p`, an
 | message | meaning |
 | --- | --- |
 | `<path>: not valid JSON, ignored` | the file was not parsed |
-| `<path>: "model" should be a string like "azure/gpt-5.6-sol", got number, ignored` | wrong type, the key is dropped |
+| `<path>: "model" should be a string like "azure/gpt-5.6", got number, ignored` | wrong type, the key is dropped |
 | `<path>: nothing here is a glrs setting (k1, k2, …), the whole file is ignored` | no known key in the file |
 | `<path>: providers.X.requestOptions.model is owned by glrs, ignored` | glrs sets that call option itself |
 

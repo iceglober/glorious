@@ -58,7 +58,7 @@ a first bare word glrs does not claim goes to the extensions: [subcommands](./13
 
 ## print mode
 
-assistant text goes to stdout. the tool trail, retries, extension notes and `[config]` diagnostics go to stderr. piped stdin joins the prompt, fenced as `<input>…</input>`. nothing reaches the session store.
+assistant text goes to stdout. the tool trail, retries, extension notes, `[config]` diagnostics and `[provider]` warnings go to stderr. piped stdin joins the prompt, fenced as `<input>…</input>`. nothing reaches the session store.
 
 | exit | when |
 | --- | --- |

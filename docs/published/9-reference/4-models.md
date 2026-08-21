@@ -176,4 +176,22 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
 
+## provider warnings
+
+the model answers, but the provider dropped something on the way. reported in
+the transcript as `(provider warning)`, on stderr as `[provider]` under `-p`:
+
+```
+(provider warning) azure.responses/gpt-5.6-luna: topK is not supported
+```
+
+said once per provider, model and first sentence, for the life of the process.
+these arrive once per model call, so the second copy is dropped rather than
+repeated. the text is clipped to 160 characters: the SDK embeds whatever it is
+complaining about, and for `Non-OpenAI reasoning parts are not supported` that
+is the whole reasoning block.
+
+glrs does not act on them. a warning is not a failed turn, and a turn that
+failed says so on its own.
+
 see also: [connect a provider](../2-how-to/2-connect-a-provider.md), [configuration](./14-configuration.md)

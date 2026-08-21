@@ -15,7 +15,8 @@ piped input joins the prompt, fenced as `<input>`.
 
 ## output
 
-the answer goes to stdout. tool trail, retries and diagnostics go to stderr.
+the answer goes to stdout. tool trail, retries, `[config]` diagnostics and
+`[provider]` warnings go to stderr.
 
 ```bash
 glrs -p "count the TODOs" > answer.txt        # answer alone

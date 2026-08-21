@@ -23,3 +23,5 @@ not supported. Skipping reasoning part: {"type":"reasoning","text":"The user…
 Deduplicated per provider, model and first sentence, for the life of the process. Keying on the whole message would not have worked: the offending value sits in the rest of it, so every copy looks new. Under `-p` they go to stderr tagged `[provider]`, and the SDK's own "to turn off warning logging" notice is gone with them.
 
 Same decision as `onError`, which has silenced the SDK's `console.error` since the alternate screen existed. The warning still travels, it just travels through glrs.
+
+Documented in `9-reference/4-models.md` under "provider warnings", with the stderr tag added to `9-reference/1-cli.md` and `2-how-to/9-run-in-a-pipeline.md` beside the `[config]` diagnostics they already listed.
