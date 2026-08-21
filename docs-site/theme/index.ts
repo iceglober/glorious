@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   Application,
   DefaultTheme,
@@ -8,6 +9,7 @@ import {
   type ProjectReflection,
 } from "typedoc";
 import { documentFolderNames } from "../plugins/group-documents.ts";
+import { formatStars, MINIMUM_STARS } from "../scripts/stars.ts";
 
 class GlrsRenderContext extends DefaultThemeRenderContext {
   constructor(...args: ConstructorParameters<typeof DefaultThemeRenderContext>) {
@@ -68,6 +70,39 @@ class GlrsTheme extends DefaultTheme {
   }
 }
 
+/**
+ * Add the star count to the toolbar, as one more navigation link. TypeDoc
+ * renders a link's key as its text, so this needs no template override, and
+ * the badge points at the stargazers list rather than the repository.
+ *
+ * The count comes from generated/stars.json, which build.ts writes. Anything
+ * missing, unreadable, or below MINIMUM_STARS renders no badge, which is why
+ * running TypeDoc directly is still fine.
+ */
+const addStarsLink = (application: Application): void => {
+  let read: { repo?: unknown; stars?: unknown };
+  try {
+    read = JSON.parse(
+      // import.meta.dir is a Bun extension and is undefined under TypeDoc's
+      // loader, so resolve against the module URL instead.
+      readFileSync(new URL("../generated/stars.json", import.meta.url), "utf8"),
+    ) as typeof read;
+  } catch {
+    return;
+  }
+  const { repo, stars } = read;
+  if (typeof repo !== "string" || typeof stars !== "number") return;
+  if (stars < MINIMUM_STARS) return;
+  const links = application.options.getValue("navigationLinks") as Record<string, string>;
+  application.options.setValue("navigationLinks", {
+    ...links,
+    [`★ ${formatStars(stars)}`]: `https://github.com/${repo}/stargazers`,
+  });
+};
+
 export function load(application: Application): void {
   application.renderer.defineTheme("glrs", GlrsTheme);
+  // Not during load: TypeDoc reads typedoc.json after plugins load, so
+  // navigationLinks set here is overwritten by the file's own value.
+  application.on(Application.EVENT_BOOTSTRAP_END, () => addStarsLink(application));
 }

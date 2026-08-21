@@ -1,11 +1,6 @@
-a model, a turn loop, and a set of extensions over a git repository.
+a glorious agentic ecosystem. minimal core with extreme extensibility
 
 ```bash
 curl -fsSL https://glrs.dev/install.sh | bash
 glrs --model anthropic/claude-opus-5
 ```
-
-the core registers no commands and one tool. the file and shell tools, every
-slash command, the question widget and git worktrees all arrive as extensions,
-through the same API anyone can write against.
-
