@@ -31,7 +31,7 @@ and says so at startup.
 
 ## invoke it yourself
 
-every skill answers to a **skill command**:
+every skill answers to a skill command:
 
 ```bash
 /skill:graphify

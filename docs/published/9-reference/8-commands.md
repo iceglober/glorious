@@ -4,14 +4,14 @@ title: commands
 
 # commands
 
-a **command** is a prompt you invoke by typing `/name`. three kinds, named by how
+a command is a prompt you invoke by typing `/name`. three kinds, named by how
 they are defined:
 
 | kind | defined as | example |
 | --- | --- | --- |
 | **native** | code, through `g.command()` | `/help` |
 | **markdown** | a `.md` file you write | `/review` |
-| **skill command** | every [skill](./9-skills.md) answers to one | `/skill:graphify` |
+| skill command | every [skill](./9-skills.md) answers to one | `/skill:graphify` |
 
 native commands ship with glrs or come from any extension. origin is not the
 axis; definition is.

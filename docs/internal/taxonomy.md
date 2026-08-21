@@ -142,9 +142,13 @@ none is a separate concept.
 **Bundled** extensions ship in the box; **disk** extensions are files in
 `.glrs/extensions/`. Both are extensions.
 
-Lifecycle events come in two shapes. Most report. Those named `before_*`, plus
-`input`, `tool_call`, `tool_end`, `context` and `project_trust`, carry a
-**verdict**: what a handler returns changes the outcome.
+Lifecycle events come in two shapes. Most only report. Those named `before_*`,
+plus `input`, `tool_call`, `tool_end`, `context` and `project_trust`, let a
+handler change the outcome by what it returns.
+
+`Verdict` in `glrs-core` is the type mapping each of those events to what a
+handler may return. It is a TypeScript mechanism and does not belong in the
+published docs; say what returning does instead.
 
 ## beside the layers
 

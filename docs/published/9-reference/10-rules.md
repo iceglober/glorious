@@ -4,7 +4,7 @@ title: rules
 
 # rules
 
-**rules** are text that rides in the system prompt on every turn. nothing
+rules are text that rides in the system prompt on every turn. nothing
 invokes them.
 
 ## AGENTS.md

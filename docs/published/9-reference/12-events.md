@@ -4,9 +4,11 @@ title: events
 
 # events
 
-an **event** is something glrs announces while it runs. an extension handles one
-with `g.on`. some events carry a **verdict**: what the handler returns changes
-what happens next.
+an event is something glrs announces while it runs. an extension handles one
+with `g.on`.
+
+most handlers only observe. for the events marked below, what the handler
+returns changes what happens next; returning nothing leaves it alone.
 
 ## handling one
 

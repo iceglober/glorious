@@ -4,8 +4,8 @@ title: a turn
 
 # a turn
 
-a **turn** is one exchange: your message, the model's work, its answer. a
-**step** is one model call inside it. a turn with three tool calls takes several
+a turn is one exchange: your message, the model's work, its answer. a
+step is one model call inside it. a turn with three tool calls takes several
 steps.
 
 send the conversation, read the stream, run the tools the model called, send

@@ -4,7 +4,7 @@ title: skills
 
 # skills
 
-a **skill** is instructions the model loads when it judges them relevant. you
+a skill is instructions the model loads when it judges them relevant. you
 invoke a [command](./8-commands.md); the model activates a skill.
 
 glrs implements the [Agent Skills specification](https://agentskills.io/specification).

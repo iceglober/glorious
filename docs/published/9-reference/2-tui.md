@@ -4,7 +4,7 @@ title: the tui
 
 # the tui
 
-the **TUI** (the full-screen terminal interface) is what `glrs` opens with no
+the TUI (the full-screen terminal interface) is what `glrs` opens with no
 arguments. it has four parts.
 
 ```text
@@ -19,10 +19,10 @@ arguments. it has four parts.
 
 | part | shows | owned by |
 | --- | --- | --- |
-| **transcript** | messages, tool calls and notices, oldest first | glrs, or an extension's renderer |
-| **activity row** | the phase, elapsed time, queued count. blank when idle | glrs, or `g.activity` |
-| **composer** | what you are typing, with completion and queued messages above it | glrs, or `g.ui.capture` |
-| **status line** | model, context used, cost | glrs, plus `g.status` segments |
+| transcript | messages, tool calls and notices, oldest first | glrs, or an extension's renderer |
+| activity row | the phase, elapsed time, queued count. blank when idle | glrs, or `g.activity` |
+| composer | what you are typing, with completion and queued messages above it | glrs, or `g.ui.capture` |
+| status line | model, context used, cost | glrs, plus `g.status` segments |
 
 ## composer
 
