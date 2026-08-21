@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
+import modelPicker from "../../extensions/model-picker/src";
 import webFetch from "../../extensions/web-fetch/src";
 import worktree from "../../extensions/worktree/src";
 import type { FirstPartyExtension } from "../../glrs-core/src";
@@ -83,12 +84,12 @@ const shadowNote: Record<string, string> = {
 // advertised `web-fetch` before anyone had wanted a web page. Disable what you
 // do not want, or shadow it with a file of the same name.
 //
-// `defaultOn` is what separates the extension the agent cannot work without
-// from the ones that add a capability. builtins always loads unless you
-// explicitly disable it; the rest wait to be named in `extensions.load`.
-// `summary` is written for the model rather than for a listing: it is what the
-// agent reads when deciding whether to suggest turning one on, so it says what
-// the extension is for and not what it is called.
+// `defaultOn` is the switch that decides it, and every bundled extension sets
+// it. An extension named in `extensions.load` loads whatever it says, so the
+// field only matters for one that ships turned off, and none does today.
+// `summary` is the line `/extensions` prints beside a first-party extension you
+// have turned off, so it says what the extension is for and not what it is
+// called.
 const bundled = [
   {
     name: "ask-user",
@@ -105,6 +106,14 @@ const bundled = [
     defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "builtins"),
     summary: "the file, search and shell tools, and every slash command",
+  },
+  {
+    name: "model-picker",
+    origin: "@glrs-dev/glrs-ext-model-picker",
+    load: modelPicker,
+    defaultOn: true,
+    dir: join(import.meta.dir, "..", "..", "extensions", "model-picker"),
+    summary: "adds `/model` for choosing the active model and reasoning effort",
   },
   {
     name: "worktree",

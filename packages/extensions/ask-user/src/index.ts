@@ -23,6 +23,43 @@ type Answer = { question: string; option: string | null; note: string };
 const HINT_CHOOSE = "↑↓ move · Enter choose · Tab add a note · Esc cancel";
 const HINT_NOTE = "Enter accept · Esc back to the options";
 
+const graphemes = new Intl.Segmenter("en", { granularity: "grapheme" });
+
+// Extensions get the same display-aware clipper the transcript uses. Comparing
+// its result tells us whether text fits without duplicating terminal-width
+// rules here; splitting by grapheme keeps a single long word from vanishing.
+const wrap = (g: Glrs, text: string, limit: number): string[] => {
+  const fits = (value: string): boolean => g.clip(value, limit) === value;
+  const rows: string[] = [];
+  let row = "";
+  const push = (): void => {
+    if (row !== "") rows.push(row);
+    row = "";
+  };
+  const add = (word: string): void => {
+    const joined = row === "" ? word : `${row} ${word}`;
+    if (fits(joined)) {
+      row = joined;
+      return;
+    }
+    push();
+    let part = "";
+    for (const { segment } of graphemes.segment(word)) {
+      if (part !== "" && !fits(`${part}${segment}`)) {
+        rows.push(part);
+        part = "";
+      }
+      part += segment;
+    }
+    row = part;
+  };
+  for (const paragraph of text.split("\n")) {
+    for (const word of paragraph.trim().split(/\s+/u).filter(Boolean)) add(word);
+    push();
+  }
+  return rows.length === 0 ? [""] : rows;
+};
+
 // The widget, as lines. Everything is `Line[]` — the same span structure the
 // transcript uses — so this survives the renderer being replaced.
 const draw = (
@@ -33,13 +70,22 @@ const draw = (
   const current = state.items[state.at];
   const room = Math.max(20, columns - 4);
   const counter = state.items.length > 1 ? `  (${state.at + 1}/${state.items.length})` : "";
-  const lines: Line[] = [
-    [
-      { text: "? ", tone: "accent", bold: true },
-      { text: g.clip(current.question, room - counter.length), bold: true },
-      ...(counter === "" ? [] : [{ text: counter, tone: "muted" as const }]),
+  const question = wrap(g, current.question, room - 2);
+  const counterFits =
+    g.clip(`${question.at(-1)}${counter}`, room - 2) === `${question.at(-1)}${counter}`;
+  const lines: Line[] = question.map(
+    (text, index): Line => [
+      {
+        text: index === 0 ? "? " : "  ",
+        ...(index === 0 ? { tone: "accent" as const, bold: true } : {}),
+      },
+      { text, bold: true },
+      ...(counter !== "" && index === question.length - 1 && counterFits
+        ? [{ text: counter, tone: "muted" as const }]
+        : []),
     ],
-  ];
+  );
+  if (counter !== "" && !counterFits) lines.push([{ text: `  ${counter.trim()}`, tone: "muted" }]);
   for (const [index, option] of current.options.entries()) {
     const picked = index === state.choice;
     lines.push([

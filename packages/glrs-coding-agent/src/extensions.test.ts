@@ -496,6 +496,7 @@ describe("the extensions that ship with glrs", () => {
     expect(loaded.extensions.map((one) => one.name).sort()).toEqual([
       "ask-user",
       "builtins",
+      "model-picker",
       "web-fetch",
       "worktree",
     ]);
@@ -529,6 +530,7 @@ describe("the extensions that ship with glrs", () => {
       loaded.extensions.find((one) => one.name === name)?.origin;
     expect(origin("ask-user")).toBe("@glrs-dev/glrs-ext-ask-user");
     expect(origin("builtins")).toBe("@glrs-dev/glrs-ext-builtins");
+    expect(origin("model-picker")).toBe("@glrs-dev/glrs-ext-model-picker");
     expect(origin("web-fetch")).toBe("@glrs-dev/glrs-ext-web-fetch");
   });
 });
