@@ -104,7 +104,7 @@ describe("cache metrics", () => {
 
 type CaptureHandle = { close: () => void; repaint: () => void };
 
-const extensionHarness = async (configPath: string) => {
+const extensionHarness = async (configPath: string, modelSelected = true) => {
   const handlers = new Map<EventName, Handler<EventName>>();
   let capture: Capture | undefined;
   let closed = false;
@@ -115,6 +115,10 @@ const extensionHarness = async (configPath: string) => {
   };
   const g = {
     hasUI: true,
+    model: () =>
+      modelSelected
+        ? { label: "azure/test", provider: "azure", modelId: "test", missing: [] }
+        : null,
     on: (name: EventName, handler: Handler<EventName>) => handlers.set(name, handler),
     print: () => {},
     ui: {
@@ -137,10 +141,11 @@ const extensionHarness = async (configPath: string) => {
       capture
         ?.render(80)
         .flatMap((line) => line.map((span) => span.text))
-        .join("\n"),
+        .join("\n") ?? "",
     closed: () => closed,
     recorded,
     usage: async (event: EventPayload["usage"]) => handlers.get("usage")?.(event),
+    modelSelect: async () => handlers.get("model_select")?.({ model: "azure/test" }),
   };
 };
 
@@ -186,11 +191,22 @@ describe("first-run consent", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  test("waits for model selection when the model picker owns first startup", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "glrs-telemetry-after-model-"));
+    const harness = await extensionHarness(join(dir, "config.json"), false);
+    expect(harness.screen()).toBe("");
+    await harness.modelSelect();
+    expect(harness.screen()).toContain("Help improve glrs?");
+    await rm(dir, { recursive: true, force: true });
+  });
+
   test("headless mode neither asks nor enables without existing consent", async () => {
     const dir = await mkdtemp(join(tmpdir(), "glrs-telemetry-headless-"));
     let captured = false;
     const g = {
       hasUI: false,
+      mode: "print",
+      model: () => null,
       on: () => {},
       ui: {
         capture: () => {

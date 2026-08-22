@@ -255,7 +255,7 @@ export const createTelemetryExtension = (
     });
 
     if (consent !== undefined || !g.hasUI) return;
-    g.on("session_start", () => {
+    const ask = (): undefined => {
       if (asked) return;
       asked = true;
       let handle: { close: () => void } | undefined;
@@ -280,7 +280,9 @@ export const createTelemetryExtension = (
         },
       });
       return undefined;
-    });
+    };
+    if (g.model() === null) g.on("model_select", ask);
+    else g.on("session_start", ask);
   };
 };
 
