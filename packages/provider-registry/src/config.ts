@@ -526,7 +526,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   if (raw.telemetry !== undefined) {
     if (!isObject(raw.telemetry)) wrong("telemetry", 'an object with optional "enabled"');
     else if (raw.telemetry.enabled !== undefined && typeof raw.telemetry.enabled !== "boolean")
-      diagnostics.push(`${where}: telemetry.enabled should be true or false — ignored`);
+      diagnostics.push(`${where}: telemetry.enabled should be true or false, ignored`);
     else telemetry = { enabled: raw.telemetry.enabled as boolean | undefined };
   }
 
@@ -621,7 +621,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
       }
       const provider = { ...value } as ProviderSettings;
       if (value.credential !== undefined && value.credential !== "keychain") {
-        diagnostics.push(`${where}: providers.${name}.credential should be "keychain" — ignored`);
+        diagnostics.push(`${where}: providers.${name}.credential should be "keychain", ignored`);
         delete provider.credential;
       }
       const providerRequests = requestOptions(
