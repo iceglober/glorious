@@ -1,6 +1,6 @@
 {
   "name": "@glrs-dev/glrs",
-  "version": "1.0.0-next.55",
+  "version": "1.0.0-next.56",
   "private": false,
   "description": "glrs monorepo: a provider-neutral agent core and the glrs coding-agent product.",
   "license": "MIT",
@@ -55,7 +55,8 @@
     "lint": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "check": "biome check . && bun scripts/check-boundaries.ts",
+    "check": "biome check . && bun scripts/check-boundaries.ts && bun scripts/bundle-docs.ts",
+    "docs:bundle": "bun scripts/bundle-docs.ts --write",
     "changeset": "changeset",
     "version:packages": "changeset version",
     "release:next": "bun publish --access public --tag next"

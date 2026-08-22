@@ -63,11 +63,15 @@ describe("dispatching to a subcommand an extension added", () => {
     expect(cliUsage(outcome.available)).toContain("manage worktrees");
   });
 
-  test("with no extensions at all, nothing is handled and nothing is offered", async () => {
+  test("a word no extension claims is not handled", async () => {
+    // `wt` is handled out of the box now: the worktree extension loads by
+    // default, like every other first-party one.
     const root = await project();
-    const outcome = await runCli("wt", [], { root });
+    expect((await runCli("wt", [], { root })).handled).toBe(true);
+    const outcome = await runCli("nosuchsubcommand", [], { root });
     expect(outcome.handled).toBe(false);
-    expect(cliUsage(outcome.available)).toBe("");
+    // `wt` is in the usage now, because the extension that adds it loads.
+    expect(cliUsage(outcome.available)).toContain("glrs wt");
   });
 
   // The point of the separate host: a subcommand has no session, and the

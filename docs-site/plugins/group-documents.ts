@@ -83,15 +83,26 @@ export function load(application: Application): void {
       // TypeDoc's normal resolve pass sorts reflections after RESOLVE_BEGIN. Move
       // all external documents and directory groups back into path order after
       // that pass, before the renderer builds navigation.
+      const byPath = (left: DocumentReflection, right: DocumentReflection) =>
+        compareDocumentPaths(
+          sortPaths.get(left) ?? folderPaths.get(left) ?? "",
+          sortPaths.get(right) ?? folderPaths.get(right) ?? "",
+        );
       const documentChildren = context.project.documents ?? [];
       const documents = documentChildren
         .filter((child) => sortPaths.has(child) || folderPaths.has(child))
-        .sort((left, right) =>
-          compareDocumentPaths(
-            sortPaths.get(left) ?? folderPaths.get(left) ?? "",
-            sortPaths.get(right) ?? folderPaths.get(right) ?? "",
-          ),
-        );
+        .sort(byPath);
+
+      // RESOLVE_BEGIN moved every document under a folder reflection, so the
+      // sort above only reaches the folders themselves. Sort inside each one
+      // too, or a directory keeps the order the glob expanded in: 1, 10, 11,
+      // 2. Directories of fewer than ten files order the same either way,
+      // which is why this stayed hidden.
+      const sortWithin = (folder: DocumentReflection): void => {
+        folder.children?.sort(byPath);
+        for (const child of folder.children ?? []) sortWithin(child);
+      };
+      for (const document of documents) sortWithin(document);
       documentChildren.splice(0, documentChildren.length, ...documents);
       context.project.childrenIncludingDocuments = [
         ...documents,

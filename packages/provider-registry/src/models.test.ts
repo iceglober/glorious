@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { generateText } from "ai";
 import type { Config } from "./config";
 import {
+  chosenModel,
   configuredModel,
   createModel,
   currentModel,
@@ -114,6 +115,21 @@ describe("model resolution", () => {
     expect(() => currentModel()).toThrow("No model configured");
     expect(() => currentModel({ model: "gpt-5.6" })).toThrow('Model must be "provider/model-id"');
     expect(() => currentModel({ model: "openai/" })).toThrow('Model must be "provider/model-id"');
+  });
+
+  // The TUI opens before a model is chosen, so "nothing is set" is a value it
+  // carries rather than a throw it has to catch. `-p` keeps `currentModel`,
+  // which has nowhere to ask.
+  test("nothing configured is null, not a failure", () => {
+    expect(chosenModel()).toBeNull();
+    expect(chosenModel({ model: "  " })).toBeNull();
+    expect(chosenModel({ model: "anthropic/claude" })).toMatchObject({ provider: "anthropic" });
+  });
+
+  // A model that is set and malformed is still a mistake worth reporting. Only
+  // an absent one is a state.
+  test("a malformed id still throws, whichever way it is asked for", () => {
+    expect(() => chosenModel({ model: "gpt-5.6" })).toThrow('Model must be "provider/model-id"');
   });
 
   test("merges provider defaults with exact model overrides", () => {

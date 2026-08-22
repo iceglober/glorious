@@ -22,11 +22,11 @@ export type Line = Span[];
 const clearer: ReadonlyArray<[RegExp, string]> = [
   [
     /socket connection was closed unexpectedly/iu,
-    'the connection to the model dropped mid-response — send "continue" to pick up where it stopped',
+    'the connection to the model dropped mid-response, send "continue" to pick up where it stopped',
   ],
-  [/^fetch failed$/iu, "could not reach the model — check the network and try again"],
-  [/ECONNREFUSED/u, "the model endpoint refused the connection — check the host and port"],
-  [/EAI_AGAIN|ENOTFOUND/u, "could not resolve the model host — check DNS and the resource name"],
+  [/^fetch failed$/iu, "could not reach the model: check the network and try again"],
+  [/ECONNREFUSED/u, "the model endpoint refused the connection: check the host and port"],
+  [/EAI_AGAIN|ENOTFOUND/u, "could not resolve the model host: check DNS and the resource name"],
 ];
 
 // What was actually thrown, in words. `String(thrown)` was fine for an Error and
@@ -196,7 +196,7 @@ export const noticeBlock = (text: string, tone: Tone = "muted"): Line[] =>
 export const compactedBlock = (summary: string, dropped: number): Line[] => [
   [
     {
-      text: `▣ compacted — ${dropped} messages replaced by this brief`,
+      text: `▣ compacted, ${dropped} messages replaced by this brief`,
       tone: "accent",
       bold: true,
     },
@@ -495,7 +495,7 @@ export const queuedRow = (entry: { kind: "steer" | "follow-up"; text: string }):
 // is waiting; this says why none of it is moving and what makes it move again.
 export const heldRow = (waiting: number): Line => [
   {
-    text: `  ⏸ ${waiting} held — Enter releases · Alt+Up takes the last one back`,
+    text: `  ⏸ ${waiting} held, Enter releases · Alt+Up takes the last one back`,
     tone: "warning",
   },
 ];

@@ -49,6 +49,7 @@ import type {
   SurfacePlacement,
   Ui,
   Verdict,
+  WriteOutcome,
 } from "../../glrs-core/src";
 import type { Activity } from "./render";
 
@@ -76,6 +77,7 @@ export type {
   SurfacePlacement,
   Ui,
   Verdict,
+  WriteOutcome,
 };
 
 export type ToolSpec<Schema extends z.ZodType = z.ZodType> = {
@@ -153,7 +155,7 @@ export type ExtensionHost = {
   reload: () => Promise<void>;
   tools: () => readonly string[];
   setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>) => void;
-  model: () => ModelInfo;
+  model: () => ModelInfo | null;
   models: () => Promise<readonly ModelInfo[]>;
   providers: () => Promise<readonly ProviderInfo[]>;
   connectProvider: (
@@ -162,6 +164,7 @@ export type ExtensionHost = {
     settings?: Readonly<Record<string, string>>,
   ) => Promise<ProviderConnectionResult>;
   setModel: (label: string, variant?: string) => Promise<void>;
+  rememberModel: () => Promise<WriteOutcome>;
   registerProvider: (provider: ExtensionProvider) => { dispose: () => void };
   history: () => readonly import("ai").ModelMessage[];
   forkSession: (at?: number) => Promise<SessionInfo>;
@@ -467,7 +470,13 @@ export const createApi = (
     providers: host.providers,
     connectProvider: host.connectProvider,
     setModel: host.setModel,
-    setThinkingLevel: async (level) => host.setModel(host.model().label, level),
+    rememberModel: host.rememberModel,
+    setThinkingLevel: async (level) => {
+      const current = host.model();
+      if (current === null)
+        throw new Error("No model is selected, so there is no reasoning effort to change.");
+      await host.setModel(current.label, level);
+    },
     history: host.history,
     forkSession: host.forkSession,
     switchSession: host.switchSession,

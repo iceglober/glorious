@@ -6,10 +6,11 @@ import {
   envSetting,
   hydrateModelCredentials,
   loadConfig,
+  missingFor,
   modelMetadata,
   registerExtensionProvider,
 } from "../../provider-registry/src";
-import { createAgent } from "./agent";
+import { createAgent, routeProviderWarnings } from "./agent";
 import { createRegistry, describeContribution, fire, promptContributions } from "./extension-api";
 import {
   firstPartyExtensions,
@@ -128,6 +129,9 @@ export const runPrint = async (
   const note = (message: string): void => {
     process.stderr.write(`${message}\n`);
   };
+  // stderr either way here, but tagged like everything else glrs says, and
+  // without the whole reasoning block the SDK would have printed with it.
+  routeProviderWarnings((message) => note(`[provider] ${message}`));
   const loaded = await loadExtensions(
     where.root,
     registry,
@@ -195,6 +199,8 @@ export const runPrint = async (
       setInput: () => note("[extension] setInput() has no meaning in print mode; ignored"),
       tools: () => agent.toolNames(),
       setToolFilters: (filters) => agent.setToolFilters(filters),
+      // Never null here: a one-shot run has nowhere to ask, so `currentModel`
+      // above has already refused if nothing is set.
       model: () => ({
         label: `${model.provider}/${model.modelId}`,
         provider: model.provider,
@@ -202,6 +208,7 @@ export const runPrint = async (
         variant: model.variant,
         variants: model.variants,
         context: model.context,
+        missing: missingFor(model.provider, loadedConfig.config.providers?.[model.provider]),
       }),
       models: async () => {
         throw new Error("models() needs the catalogue; not loaded in print mode");
@@ -216,6 +223,9 @@ export const runPrint = async (
       setModel: async () => {
         throw new Error("setModel() has no meaning in a one-shot run");
       },
+      // The model came from the environment or the config that is already on
+      // disk, so there is nothing here a write would preserve.
+      rememberModel: async () => "already" as const,
       registerProvider: registerExtensionProvider,
       history: () => [],
       forkSession: async () => {
@@ -310,7 +320,7 @@ export const runPrint = async (
     await fire(registry, "session_start", { root: where.root }, note);
     await fire(registry, "turn_start", { text: prompt }, note);
     const { prompt: asked, missing } = await expandMentions(where.root, prompt);
-    for (const path of missing) note(`(no such file: @${path} — sent as text)`);
+    for (const path of missing) note(`(no such file: @${path}, sent as text)`);
     // The same hook the TUI fires before a request. It was wired through
     // createChat, which print mode does not use, so every context-injecting
     // extension worked interactively and silently did nothing here — including

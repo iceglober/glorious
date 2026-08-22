@@ -44,6 +44,23 @@ body { letter-spacing: -0.01em; }
 .tsd-page-toolbar .title { font-weight: 800; letter-spacing: -0.07em; }
 #tsd-toolbar-links { display: flex; align-items: center; gap: 0.75rem; }
 #tsd-toolbar-links a { text-decoration: none; }
+/* The star count is text rather than a badge image, so it can be withheld
+   below a floor without a request firing for a number we would not show.
+   Sized to sit level with the ci and npm badges beside it. */
+#tsd-toolbar-links a[href$="/stargazers"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  height: 20px;
+  padding: 0 0.5em;
+  border: 1px solid #5a5852;
+  border-radius: 3px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 #tsd-toolbar-links a[href="https://github.com/iceglober/glorious/actions/workflows/ci.yml"],
 #tsd-toolbar-links a[href="https://www.npmjs.com/package/@glrs-dev/glrs"] {
   display: inline-block;
@@ -136,4 +153,11 @@ footer { display: none; }
 @media (max-width: 900px) {
   .col-sidebar { border-right: 0; }
   .col-content { max-width: none; }
+}
+
+/* The index page carries a generated outline of every document. TypeDoc then
+   renders the same set again as a "Documents" member group, so the page ends
+   with a second, flatter copy of its own contents. */
+.tsd-panel-group:has(> summary[data-key="section-Documents"]) {
+  display: none;
 }

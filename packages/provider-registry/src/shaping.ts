@@ -5,30 +5,47 @@ import { type BuiltinProviderId, providerSpec } from "./providers";
 // answer it. Caching is deliberately classified separately from reasoning:
 // the same host can expose endpoint types with different option schemas.
 
-export type Variant = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+// Reasoning effort is not a fixed set. models.dev publishes what each model
+// accepts in `reasoning_options`, and across the catalogue there are over a
+// hundred distinct shapes: ["low","medium","high"], ["minimal","low","medium",
+// "high"], ["low","medium","high","xhigh","max"], ["none","high"], and many
+// models with no effort scale at all. A union here could only be right for a
+// minority, so the value is a string and the model's own list validates it.
+// `ModelOption.variants` carries that list, from the catalogue or from config.
+export type Variant = string;
 
 // The AI SDK carries provider options as JSON, so this is JSON-shaped rather
 // than `unknown` — otherwise it will not satisfy the SDK's own option type.
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type ProviderOptions = Record<string, Record<string, JsonValue>>;
 
-// Token budgets for the providers that want a number rather than a word. These
-// are glrs's reading of what each word should buy, not something a provider
-// publishes — the words are the interface, and this is the one place they turn
-// into budgets, so a provider is never handed a number from nowhere.
-const BUDGET: Record<Variant, number> = {
-  minimal: 1024,
-  low: 4096,
-  medium: 12288,
-  high: 24576,
-  xhigh: 32768,
-  max: 65536,
+// Anthropic, Google and Bedrock want a token budget rather than a word. The
+// budget comes from where the variant sits in the model's own scale, so a model
+// offering three levels spreads over the same range as one offering six. A
+// model with no published scale falls back to the ladder below, which is the
+// only case where guessing is unavoidable.
+const FALLBACK: readonly string[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
+const FLOOR = 1024;
+const CEILING = 65536;
+
+const budgetFor = (variant: string, scale: readonly string[]): number | undefined => {
+  const at = scale.indexOf(variant);
+  if (at < 0 || scale.length === 0) return undefined;
+  if (scale.length === 1) return CEILING;
+  return Math.round(FLOOR + ((CEILING - FLOOR) / (scale.length - 1)) * at);
 };
 
-const asVariant = (value: string | undefined): Variant | undefined => {
+// The variant a caller asked for, if this model accepts it. An unknown value is
+// dropped rather than forwarded: a provider that rejects it fails the whole
+// turn, and one that ignores it bills for effort nobody chose.
+const asVariant = (
+  value: string | undefined,
+  variants: readonly string[] | undefined,
+): string | undefined => {
   if (value === undefined) return undefined;
   const word = value.trim().toLowerCase();
-  return word in BUDGET ? (word as Variant) : undefined;
+  if (word === "") return undefined;
+  return (variants ?? FALLBACK).includes(word) ? word : undefined;
 };
 
 export const azureModelTypeFor = (modelId: string, configured?: AzureModelType): AzureModelType =>
@@ -60,6 +77,8 @@ export type Shape = {
   provider: string;
   modelId?: string;
   modelType?: AzureModelType;
+  /** What this model accepts, from the catalogue. */
+  variants?: readonly string[];
   /** The configured reasoning effort, in glrs's words. */
   variant?: string;
   /** Stable per-conversation key, for endpoints that route on one. */
@@ -175,12 +194,13 @@ export const endpointTypeFor = (shape: Shape, owner: CacheOwner = "glrs"): strin
 // by the caller.
 export const requestOptions = (shape: Shape, cacheOwner: CacheOwner = "glrs"): ProviderOptions => {
   const namespace = namespaceFor(shape.provider, shape.modelId, shape.modelType);
-  const variant = asVariant(shape.variant);
+  const variant = asVariant(shape.variant, shape.variants);
   // The compatible client has no portable cache control, and provider
   // extensions own their protocol. Exact configured providerOptions are merged
   // after this return, so either can still opt into controls it understands.
   if (!providerSpec(shape.provider)) return {};
-  const budget = variant === undefined ? undefined : BUDGET[variant];
+  const scale = shape.variants ?? FALLBACK;
+  const budget = variant === undefined ? undefined : budgetFor(variant, scale);
 
   if (namespace === "anthropic")
     return {
@@ -209,7 +229,9 @@ export const requestOptions = (shape: Shape, cacheOwner: CacheOwner = "glrs"): P
                 budgetTokens: budget,
                 // bedrock takes the word as well as the number, and only these
                 // three — "minimal" has no spelling there.
-                ...(variant === "minimal" ? {} : { maxReasoningEffort: variant }),
+                ...(["low", "medium", "high"].includes(variant)
+                  ? { maxReasoningEffort: variant }
+                  : {}),
               },
             }),
       },

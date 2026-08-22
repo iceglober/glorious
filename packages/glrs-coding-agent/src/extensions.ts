@@ -77,21 +77,26 @@ const failureText = (thrown: unknown): string => {
 // commands and an agent without them cannot do anything at all.
 const shadowNote: Record<string, string> = {
   builtins:
-    "shadows the extension that provides bash, read, write, edit, grep, glob and every slash command — the model has no tools unless yours registers them",
+    "shadows the extension that provides bash, read, write, edit, grep, glob and every slash command, the model has no tools unless yours registers them",
 };
 
-// `defaultOn` separates the product's standard surface from optional
-// capabilities. builtins and model-picker load unless explicitly disabled; the
-// rest wait to be named in `extensions.load`.
-// `summary` is written for the model rather than for a listing: it is what the
-// agent reads when deciding whether to suggest turning one on, so it says what
-// the extension is for and not what it is called.
+// Every first-party extension loads. Making the agent ask to turn one on put a
+// decision in front of the user that they had no way to evaluate: the model
+// advertised `web-fetch` before anyone had wanted a web page. Disable what you
+// do not want, or shadow it with a file of the same name.
+//
+// `defaultOn` is the switch that decides it, and every bundled extension sets
+// it. An extension named in `extensions.load` loads whatever it says, so the
+// field only matters for one that ships turned off, and none does today.
+// `summary` is the line `/extensions` prints beside a first-party extension you
+// have turned off, so it says what the extension is for and not what it is
+// called.
 const bundled = [
   {
     name: "ask-user",
     origin: "@glrs-dev/glrs-ext-ask-user",
     load: askUser,
-    defaultOn: false,
+    defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "ask-user"),
     summary: "asks the user a multiple-choice question and waits for the answer",
   },
@@ -123,7 +128,7 @@ const bundled = [
     name: "worktree",
     origin: "@glrs-dev/glrs-ext-worktree",
     load: worktree,
-    defaultOn: false,
+    defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "worktree"),
     summary:
       "creates git worktrees, and audits which ones still have sessions working in them; adds `glrs wt`",
@@ -132,25 +137,22 @@ const bundled = [
     name: "web-fetch",
     origin: "@glrs-dev/glrs-ext-web-fetch",
     load: webFetch,
-    defaultOn: false,
+    defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "web-fetch"),
     summary:
       "fetches web pages and returns them as markdown, rendering JavaScript when Chrome is installed",
   },
 ];
 
+// Two states, not three. Every first-party extension loads, so `extensions.load`
+// has nothing left to say here and only `disable` moves anything.
 export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyExtension[] => {
-  const on = new Set((settings?.load ?? []).map(key));
   const off = new Set((settings?.disable ?? []).map(key));
-  return bundled.map(({ name, origin, defaultOn, summary }) => {
-    const named = on.has(key(name)) || on.has(key(origin));
-    const banned = off.has(key(name)) || off.has(key(origin));
-    return {
-      name,
-      summary,
-      state: banned ? "off" : named || defaultOn ? "on" : "undecided",
-    };
-  });
+  return bundled.map(({ name, origin, summary }) => ({
+    name,
+    summary,
+    state: off.has(key(name)) || off.has(key(origin)) ? "off" : "on",
+  }));
 };
 
 // What config says about which extensions load. Declared here rather than
@@ -249,7 +251,7 @@ export const resolveExtensions = async (
     if (entry.includes(":")) {
       failures.push({
         origin: entry,
-        message: `"${entry.split(":")[0]}:" packages need an installer glrs does not have yet — name a bundled extension or a path`,
+        message: `"${entry.split(":")[0]}:" packages need an installer glrs does not have yet: name a bundled extension or a path`,
       });
       continue;
     }
@@ -257,7 +259,7 @@ export const resolveExtensions = async (
       const near = bundled.map((one) => one.name).join(", ");
       failures.push({
         origin: entry,
-        message: `no extension by that name is bundled or on disk — glrs ships ${near}`,
+        message: `no extension by that name is bundled or on disk, glrs ships ${near}`,
       });
       continue;
     }
@@ -329,7 +331,7 @@ export const loadExtensions = async (
           options.token === undefined ? specifier : `${specifier}?${options.token}`
         )) as { default?: (glrs: ReturnType<typeof createApi>) => void | Promise<void> };
         if (typeof module.default !== "function")
-          throw new Error("no default export — an extension exports a function taking (glrs)");
+          throw new Error("no default export, an extension exports a function taking (glrs)");
         // Awaited before the session starts, so an extension that fetches or
         // reads on the way up has finished registering before the first turn.
         await module.default(createApi(host, registry, onToolEvent, entry.path));

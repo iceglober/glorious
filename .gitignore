@@ -1,5 +1,9 @@
 # Node / TS
-node_modules/
+# No trailing slash: with one, git matches a directory and not a symlink, and
+# a worktree that links node_modules to a shared install gets it committed by
+# `git add -A`. On a clean runner that link is broken, and bun install reports
+# `ENOENT: could not open the "node_modules" directory`.
+node_modules
 dist/
 /docs-site/generated/
 packages/glorious-coding-agent/docs/

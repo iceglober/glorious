@@ -96,6 +96,7 @@ export const runCli = async (
     providers: () => needsSession("providers"),
     connectProvider: () => needsSession("connectProvider"),
     setModel: () => needsSession("setModel"),
+    rememberModel: () => needsSession("rememberModel"),
     registerProvider: registerExtensionProvider,
     history: () => needsSession("history"),
     forkSession: () => needsSession("forkSession"),

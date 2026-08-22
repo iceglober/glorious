@@ -1,0 +1,6 @@
+a glorious agentic ecosystem. minimal core with extreme extensibility
+
+```bash
+curl -fsSL https://glrs.dev/install.sh | bash
+glrs --model anthropic/claude-opus-5
+```

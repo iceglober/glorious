@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { generateText, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
+import {
+  generateText,
+  type ModelMessage,
+  stepCountIs,
+  streamText,
+  type ToolSet,
+  type Warning,
+} from "ai";
 import {
   type CacheOwner,
   cacheStrategyFor,
@@ -10,15 +17,17 @@ import {
   type JsonObject,
   type ModelOption,
   modelCost,
+  NoModelChosen,
   type ProviderOptions,
   requestOptions,
   withCacheBreakpoints,
 } from "../../provider-registry/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
-import { errorText } from "./render";
+import { clip, errorText } from "./render";
 import type { ToolEvent } from "./toolkit";
 
 const STEP_LIMIT = 100;
+const WARNING_CHARS = 160;
 const DEADLINES_MS = [30 * 60_000, 10 * 60_000, 10 * 60_000];
 const BREATH_MS = 500;
 const RETRY_NAMES = new Set([
@@ -118,10 +127,54 @@ const fetchWithDeadline = async (
   }
 };
 
+// What the warning says, without the thing it is complaining about. The SDK
+// embeds that thing in the message, and for "Non-OpenAI reasoning parts are not
+// supported" it is the entire reasoning block.
+const warningText = (warning: Warning): string => {
+  if (warning.type === "deprecated") return `${warning.setting} is deprecated. ${warning.message}`;
+  if (warning.type === "other") return warning.message;
+  const state = warning.type === "unsupported" ? "is not supported" : "is in compatibility mode";
+  return `${warning.feature} ${state}${warning.details === undefined ? "" : `. ${warning.details}`}`;
+};
+
+// The first sentence, which is the part that repeats. An `other` warning carries
+// the offending value in the rest of the message, so a key made from the whole
+// string is unique every time and dedupes nothing.
+const warningKey = (text: string): string => text.split(". ")[0].slice(0, 120);
+
+// The SDK logs provider warnings with `process.emitWarning`, which writes to
+// stderr at whatever cursor position happens to be current. Over the alternate
+// screen that shreds the display, and some provider and model pairings emit one
+// per model call carrying a whole reasoning block with it. Same decision as
+// `onError` below: the warning still travels, it just travels through glrs.
+//
+// Deduplicated for the life of the process. These repeat once per call, and the
+// second "reasoning parts are not supported" says nothing the first did not.
+export const routeProviderWarnings = (report: (message: string) => void): void => {
+  const seen = new Set<string>();
+  globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
+    for (const warning of warnings) {
+      const text = warningText(warning);
+      const key = `${provider ?? ""} ${model ?? ""} ${warningKey(text)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const scope =
+        provider === undefined
+          ? "provider"
+          : model === undefined
+            ? provider
+            : `${provider}/${model}`;
+      report(`${scope}: ${clip(text, WARNING_CHARS)}`);
+    }
+  };
+};
+
 type Setup = Parameters<typeof systemPrompt>[0] &
   Parameters<typeof environmentPrompt>[0] & {
     root: string;
-    model: ModelOption;
+    // Null until one is chosen. The session opens first and the model arrives
+    // second, so everything that needs one asks for it at the moment it runs.
+    model: ModelOption | null;
     sessionId: string;
     skills: string;
     skillTools: import("./skills").Skills;
@@ -183,7 +236,10 @@ const mergeOptions = (far: JsonObject, near: JsonObject): JsonObject => {
 };
 
 export const providerOptions = (
-  model: Pick<ModelOption, "provider" | "modelId" | "modelType" | "variant" | "providerOptions">,
+  model: Pick<
+    ModelOption,
+    "provider" | "modelId" | "modelType" | "variant" | "variants" | "providerOptions"
+  >,
   cacheKey: string,
   cacheOwner: CacheOwner = "glrs",
 ): ProviderOptions =>
@@ -194,6 +250,7 @@ export const providerOptions = (
         modelId: model.modelId,
         modelType: model.modelType,
         variant: model.variant,
+        variants: model.variants,
         cacheKey,
       },
       cacheOwner,
@@ -207,7 +264,13 @@ export const cacheOwnerFor = (provider: string): CacheOwner =>
 export const requestSettings = (
   model: Pick<
     ModelOption,
-    "provider" | "modelId" | "modelType" | "variant" | "requestOptions" | "providerOptions"
+    | "provider"
+    | "modelId"
+    | "modelType"
+    | "variant"
+    | "variants"
+    | "requestOptions"
+    | "providerOptions"
   >,
   cacheKey: string,
   cacheOwner: CacheOwner = "glrs",
@@ -262,7 +325,16 @@ export const createAgent = (setup: Setup) => {
     return response;
   };
 
-  let model = createModel(setup.model, providerFetch as typeof fetch);
+  let model = setup.model === null ? null : createModel(setup.model, providerFetch as typeof fetch);
+  // Both halves of the answer, or the refusal. A turn is the first thing that
+  // truly needs a model, so this is where its absence is reported rather than
+  // at construction: the session, its tools and its transcript all work without
+  // one, and only the call to a provider cannot.
+  const ready = (): { option: ModelOption; language: NonNullable<typeof model> } => {
+    if (setup.model === null || model === null)
+      throw new NoModelChosen("No model is selected, so there is nothing to send this to.");
+    return { option: setup.model, language: model };
+  };
   const environment = environmentPrompt(setup);
   // the last context size the provider reported, handed back to the model on the
   // next turn so it can see the budget it is spending
@@ -314,12 +386,13 @@ export const createAgent = (setup: Setup) => {
 
   // Extension providers own their protocol, including cache controls. Asked at
   // call time because an extension provider may register after model resolution.
-  const cacheOwner = (): CacheOwner => cacheOwnerFor(setup.model.provider);
+  const cacheOwner = (chosen: ReturnType<typeof ready>): CacheOwner =>
+    cacheOwnerFor(chosen.option.provider);
 
-  const settings = () => ({
+  const settings = (chosen: ReturnType<typeof ready>) => ({
     maxRetries: 5,
-    ...requestSettings(setup.model, cacheKey(setup.sessionId), cacheOwner()),
-    model,
+    ...requestSettings(chosen.option, cacheKey(setup.sessionId), cacheOwner(chosen)),
+    model: chosen.language,
     instructions: setup.systemPromptOverride?.() ?? systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool],
   });
@@ -334,15 +407,16 @@ export const createAgent = (setup: Setup) => {
       instruction: string,
       signal?: AbortSignal,
     ): Promise<string> => {
+      const chosen = ready();
       const result = await generateText({
         maxOutputTokens: 4_000,
         maxRetries: 3,
         ...requestSettings(
-          { ...setup.model, variant: undefined },
+          { ...chosen.option, variant: undefined },
           cacheKey("compact"),
-          cacheOwner(),
+          cacheOwner(chosen),
         ),
-        model,
+        model: chosen.language,
         instructions:
           "You are compacting a coding session so work can continue past the context limit. " +
           "Write a dense brief for the agent that will pick this up with none of the detail " +
@@ -424,6 +498,7 @@ export const createAgent = (setup: Setup) => {
       // system prompt: the system prompt has to stay byte-identical for the
       // cache, and an extension that registers mid-session would otherwise
       // invalidate it. See PREAMBLE_TAGS.
+      const chosen = ready();
       const contributed = setup.extensionPrompt?.() ?? [];
       const sent: ModelMessage[] = [
         ...history,
@@ -488,17 +563,17 @@ export const createAgent = (setup: Setup) => {
         const shown = (await setup.onContext?.(sent, attempt)) ?? sent;
         let modelCallStartedAt = 0;
         const result = streamText({
-          ...settings(),
+          ...settings(chosen),
           tools: toolsFor(turn.onTool),
           // Explicit-cache providers get a moving stable-prefix breakpoint.
           // Automatic/no-control endpoints and extension providers are
           // handed the list unchanged.
           messages: withCacheBreakpoints(
             [...shown],
-            setup.model.provider,
-            setup.model.modelId,
-            setup.model.modelType,
-            cacheOwner(),
+            chosen.option.provider,
+            chosen.option.modelId,
+            chosen.option.modelType,
+            cacheOwner(chosen),
           ),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.
@@ -525,11 +600,11 @@ export const createAgent = (setup: Setup) => {
           },
           onLanguageModelCallEnd: ({ content, usage }) => {
             observed = usage?.inputTokens ?? observed;
-            const owner = cacheOwner();
+            const owner = cacheOwner(chosen);
             const shape = {
-              provider: setup.model.provider,
-              modelId: setup.model.modelId,
-              modelType: setup.model.modelType,
+              provider: chosen.option.provider,
+              modelId: chosen.option.modelId,
+              modelType: chosen.option.modelType,
             };
             turn.onStep({
               text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
@@ -538,13 +613,13 @@ export const createAgent = (setup: Setup) => {
               cacheWriteTokens: usage?.inputTokenDetails?.cacheWriteTokens,
               cacheTelemetry: cacheTelemetryFor(shape, owner),
               cacheStrategy: cacheStrategyFor(shape, owner).kind,
-              provider: setup.model.provider,
-              model: setup.model.modelId,
+              provider: chosen.option.provider,
+              model: chosen.option.modelId,
               endpoint: endpointTypeFor(shape, owner),
               durationMs: Math.max(0, performance.now() - modelCallStartedAt),
               reusablePrefix: shown.length >= 2,
               outputTokens: usage?.outputTokens ?? 0,
-              cost: modelCost(setup.model, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
+              cost: modelCost(chosen.option, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
             });
           },
         });

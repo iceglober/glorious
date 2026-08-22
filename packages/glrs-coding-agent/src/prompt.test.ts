@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { typedText } from "../../glrs-core/src/events";
 import {
+  docsPath,
   environmentPrompt,
   fence,
   PREAMBLE_TAGS,
@@ -164,5 +167,53 @@ describe("preamble blocks and the transcript stripper stay in step", () => {
       expect(tag).toBeDefined();
       expect(PREAMBLE_TAGS as readonly string[]).toContain(tag as string);
     }
+  });
+});
+
+// The agent is pointed at docs/published instead of at source, so a path in the
+// prompt that does not resolve sends it looking for a page that is not there.
+// Renumbering the tree has to fail here rather than fail a reader.
+describe("the documentation the prompt names", () => {
+  const named = (): string[] => [
+    ...new Set([...rendered.matchAll(/\b[\w-]+\/[\w-]+\.md\b/gu)].map((match) => match[0])),
+  ];
+
+  test("the prompt names some pages", () => {
+    expect(named().length).toBeGreaterThan(0);
+  });
+
+  test("every page it names is on disk under docsPath()", () => {
+    expect(named().filter((page) => !existsSync(join(docsPath(), page)))).toEqual([]);
+  });
+
+  test("every Diataxis group is present", () => {
+    const groups = readdirSync(docsPath(), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    expect(groups).toEqual(["1-tutorials", "2-how-to", "3-explanation", "9-reference"]);
+  });
+
+  test("no loose page sits beside the four groups", () => {
+    const files = readdirSync(docsPath(), { withFileTypes: true }).filter((entry) =>
+      entry.isFile(),
+    );
+    expect(files.map((entry) => entry.name)).toEqual([]);
+  });
+
+  // Four links pointed at generated pages that only ever exist under
+  // docs-site/generated, which is gitignored. They resolved for nobody.
+  test("every relative link between pages resolves", () => {
+    const pages = readdirSync(docsPath(), { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+      .map((entry) => join(entry.parentPath, entry.name));
+    expect(pages.length).toBeGreaterThan(0);
+    const dead = pages.flatMap((page) =>
+      [...readFileSync(page, "utf8").matchAll(/\]\((\.[^)]+?\.md)(?:#[^)]*)?\)/gu)]
+        .map((match) => join(dirname(page), match[1]))
+        .filter((target) => !existsSync(target))
+        .map((target) => `${page} -> ${target}`),
+    );
+    expect(dead).toEqual([]);
   });
 });

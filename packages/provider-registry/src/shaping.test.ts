@@ -247,3 +247,89 @@ describe("cache breakpoints", () => {
     );
   });
 });
+
+// Reasoning effort is not a fixed set. models.dev publishes what each model
+// accepts, and the catalogue holds over a hundred distinct shapes, so a union
+// in the code could only be right for a minority of models.
+describe("variant follows the model, not a hardcoded list", () => {
+  const anthropic = (variant: string, variants?: readonly string[]) =>
+    requestOptions({ provider: "anthropic", modelId: "claude", variant, variants });
+
+  test("a value the model does not offer is dropped, not forwarded", () => {
+    // A provider that rejects it fails the turn; one that ignores it bills for
+    // effort nobody chose.
+    expect(anthropic("xhigh", ["low", "medium", "high"]).anthropic).toEqual({});
+    expect(anthropic("medium", ["low", "medium", "high"]).anthropic).toHaveProperty("thinking");
+  });
+
+  test("a scale the code has never seen still works", () => {
+    expect(anthropic("max", ["low", "medium", "high", "xhigh", "max"]).anthropic).toMatchObject({
+      thinking: { type: "enabled" },
+    });
+    expect(anthropic("ludicrous", ["low", "ludicrous"]).anthropic).toMatchObject({
+      thinking: { type: "enabled" },
+    });
+  });
+
+  test("the budget spreads over the model's own scale", () => {
+    const three = anthropic("high", ["low", "medium", "high"]).anthropic as {
+      thinking: { budgetTokens: number };
+    };
+    const five = anthropic("max", ["low", "medium", "high", "xhigh", "max"]).anthropic as {
+      thinking: { budgetTokens: number };
+    };
+    // Both are the top of their own scale, so both reach the ceiling.
+    expect(three.thinking.budgetTokens).toBe(five.thinking.budgetTokens);
+    const middle = anthropic("medium", ["low", "medium", "high"]).anthropic as {
+      thinking: { budgetTokens: number };
+    };
+    expect(middle.thinking.budgetTokens).toBeLessThan(three.thinking.budgetTokens);
+  });
+
+  test("with no published scale it falls back rather than refusing", () => {
+    expect(anthropic("high").anthropic).toHaveProperty("thinking");
+  });
+
+  test("bedrock sends a word only for the three it knows, and a budget always", () => {
+    const wide = requestOptions({
+      provider: "amazon-bedrock",
+      modelId: "m",
+      variant: "max",
+      variants: ["low", "medium", "high", "xhigh", "max"],
+    }).bedrock as { reasoningConfig: Record<string, unknown> };
+    expect(wide.reasoningConfig).not.toHaveProperty("maxReasoningEffort");
+    expect(wide.reasoningConfig).toHaveProperty("budgetTokens");
+  });
+});
+
+// Azure now reads its own namespace and routes DeepSeek through chat (#326,
+// #328). Those land alongside catalogue-driven variants, so this pins that both
+// survive the same call.
+describe("azure keeps its namespace while the variant follows the model", () => {
+  test("azure reads the azure namespace, not openai's", () => {
+    expect(Object.keys(requestOptions({ provider: "azure", modelId: "gpt-5.6" }))).toEqual([
+      "azure",
+    ]);
+  });
+
+  test("a variant azure's model does not publish is still dropped", () => {
+    const wide = requestOptions({
+      provider: "azure",
+      modelId: "gpt-5.6",
+      variant: "max",
+      variants: ["low", "medium", "high"],
+    }).azure;
+    expect(wide).not.toHaveProperty("reasoningEffort");
+  });
+
+  test("and one it does publish is sent", () => {
+    expect(
+      requestOptions({
+        provider: "azure",
+        modelId: "gpt-5.6",
+        variant: "high",
+        variants: ["low", "medium", "high"],
+      }).azure,
+    ).toMatchObject({ reasoningEffort: "high" });
+  });
+});

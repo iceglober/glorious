@@ -22,7 +22,7 @@
  * ```
  *
  * @module Extension API
- * @group Reference
+ * @group API
  */
 
 import type { Glrs } from "./extension-api";

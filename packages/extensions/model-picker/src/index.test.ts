@@ -9,28 +9,35 @@ import type {
   ModelInfo,
   ProviderInfo,
   Tone,
+  WriteOutcome,
 } from "../../../glrs-core/src";
 import modelPicker, { patchReasoningBody } from "./index";
 
 type Command = { run: (args: string) => void | Promise<void> };
 type Hook = (payload: EventPayload["before_provider_request"]) => unknown;
 
-const model = (label: string, variants?: readonly string[]): ModelInfo => {
+const model = (
+  label: string,
+  variants?: readonly string[],
+  missing: readonly string[] = [],
+): ModelInfo => {
   const slash = label.indexOf("/");
   return {
     label,
     provider: label.slice(0, slash),
     modelId: label.slice(slash + 1),
     variants,
+    missing,
   };
 };
 
 const harness = (
   options: {
-    current?: ModelInfo;
+    current?: ModelInfo | null;
     models?: readonly ModelInfo[];
     providers?: readonly ProviderInfo[];
     hasUI?: boolean;
+    remember?: WriteOutcome;
   } = {},
 ) => {
   const commands = new Map<string, Command>();
@@ -44,9 +51,13 @@ const harness = (
   }> = [];
   let capture: Capture | null = null;
   let closed = false;
-  let current = options.current ?? model("anthropic/claude-opus-5", ["low", "high"]);
+  let current: ModelInfo | null =
+    options.current === undefined
+      ? model("anthropic/claude-opus-5", ["low", "high"])
+      : options.current;
+  const remembered: WriteOutcome[] = [];
   const catalogue = options.models ?? [
-    current,
+    current ?? model("anthropic/claude-opus-5", ["low", "high"]),
     model("openai/gpt-5.2", ["minimal", "low", "medium", "high", "xhigh"]),
     model("ollama/qwen3"),
   ];
@@ -86,6 +97,11 @@ const harness = (
       selected.push({ label, variant });
       current = { ...model(label), variant };
     },
+    rememberModel: async () => {
+      const outcome = options.remember ?? "written";
+      remembered.push(outcome);
+      return outcome;
+    },
     print: (text: string, tone?: Tone) => printed.push({ text, tone }),
     clip: (text: string, limit: number) =>
       text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 1))}…`,
@@ -110,8 +126,10 @@ const harness = (
     command: commands.get("model") as Command,
     connected,
     beforeRequest: hooks.get("before_provider_request") as Hook,
+    sessionStart: hooks.get("session_start") as () => Promise<unknown>,
     press,
     printed,
+    remembered,
     screen,
     selected,
     wasClosed: () => closed,
@@ -176,6 +194,30 @@ describe("the model picker", () => {
     expect(picker.printed).toEqual([
       { text: "The model picker requires the TUI.", tone: "warning" },
     ]);
+  });
+});
+
+describe("a session that opened with no model", () => {
+  test("session_start opens the picker when nothing is chosen", async () => {
+    const picker = harness({ current: null });
+    await picker.sessionStart();
+    expect(picker.screen()).toContain("Choose model");
+  });
+
+  test("session_start leaves an already chosen model alone", async () => {
+    const picker = harness();
+    await picker.sessionStart();
+    expect(picker.screen()).toBe("");
+  });
+});
+
+describe("keeping the choice", () => {
+  test("the choice is recorded after the switch", async () => {
+    const picker = harness();
+    await picker.command.run("ollama qwen");
+    picker.press("return");
+    await Bun.sleep(0);
+    expect(picker.remembered).toEqual(["written"]);
   });
 });
 

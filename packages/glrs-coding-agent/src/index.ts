@@ -14,6 +14,7 @@ import {
 } from "../../glrs-core/src/session";
 import { runShell } from "../../glrs-core/src/shell";
 import {
+  chosenModel,
   configuredModel,
   currentModel,
   ensureConfigFiles,
@@ -34,9 +35,8 @@ import {
   registerExtensionProvider,
   storeProviderKey,
 } from "../../provider-registry/src";
-import { createAgent } from "./agent";
+import { createAgent, routeProviderWarnings } from "./agent";
 import { helpText, route } from "./argv";
-import { availableLines } from "./available";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { runCli } from "./cli";
 import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
@@ -80,7 +80,7 @@ import { loadSkills } from "./skills";
 import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
-import { recordExtensionChoice, recordProviderConnection } from "./writeconfig";
+import { recordExtensionChoice, recordModelChoice, recordProviderConnection } from "./writeconfig";
 
 const TICK_MS = 100;
 const SETTLE_MS = 250;
@@ -118,6 +118,16 @@ const probe = () => {
     label: root === home || root.startsWith(`${home}/`) ? `~${root.slice(home.length)}` : root,
   };
 };
+
+// What to say when someone presses Enter before a model has been chosen.
+// `/model` is named only when something registered it: model-picker ships on,
+// but it can be disabled or shadowed, and pointing at a command that does not
+// exist is worse than pointing at the config.
+const noModelYet = (registry: { commands: ReadonlyArray<{ name: string }> }): string =>
+  registry.commands.some((one) => one.name === "model")
+    ? "(no model chosen: /model picks one)"
+    : '(no model chosen: set GLRS_MODEL="provider/model-id", or "model" in .glrs/config.json. ' +
+      "glrs doctor lists the providers)";
 
 const main = async (): Promise<void> => {
   const asked = await route(process.argv.slice(2));
@@ -256,7 +266,15 @@ const main = async (): Promise<void> => {
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
   const config = resolvedConfig;
-  let model = await hydrateModelCredentials(currentModel(config.config));
+  // Null is a state the session carries, not a failure. `/model` is a slash
+  // command and slash commands exist only inside a session, so refusing to open
+  // one until a model was set meant the only ways in were `--model` and
+  // `GLRS_MODEL`. `-p` still refuses: a pipeline has nowhere to ask.
+  const configured = chosenModel(config.config);
+  let model: ModelOption | null =
+    configured === null ? null : await hydrateModelCredentials(configured);
+  const gapsFor = (provider: string): readonly string[] =>
+    missingFor(provider, config.config.providers?.[provider]);
   const envToolTimeout = Number(envSetting("TOOL_TIMEOUT_MS"));
   const toolTimeoutMs =
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
@@ -382,10 +400,13 @@ const main = async (): Promise<void> => {
     screen.setStatus(
       statusLine(
         {
-          model: `${modelLabel(model)}${model.variant ? ` (${model.variant})` : ""}`,
+          model:
+            model === null
+              ? "no model"
+              : `${modelLabel(model)}${model.variant ? ` (${model.variant})` : ""}`,
           tokens,
           percentUsed:
-            model.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
+            model?.context !== undefined && tokens !== null ? (tokens / model.context) * 100 : null,
           segments: registry.statuses
             .map((render) => safely(render))
             .filter((segment): segment is string => typeof segment === "string"),
@@ -414,19 +435,11 @@ const main = async (): Promise<void> => {
     },
     terminatingTools: () => registry.terminatingTools,
     systemPromptOverride: () => systemPromptOverride,
-    // The advertisement rides here, in the per-turn message, and never the
-    // system prompt: that has to stay byte-identical or the provider's cache
-    // misses every turn. `<extensions>` is already a PREAMBLE_TAG, so this is
-    // stripped from a replayed transcript without a new tag.
-    extensionPrompt: () => [
-      ...promptContributions(registry.promptLines),
-      ...availableLines(
-        firstPartyExtensions(config.config.extensions),
-        (config.config.agentConfigAllowlist ?? []).some(
-          (one) => one.trim().toLowerCase() === "extensions",
-        ),
-      ),
-    ],
+    // Contributions ride here, in the per-turn message, and never the system
+    // prompt: that has to stay byte-identical or the provider's cache misses
+    // every turn. `<extensions>` is already a PREAMBLE_TAG, so this is stripped
+    // from a replayed transcript without a new tag.
+    extensionPrompt: () => promptContributions(registry.promptLines),
     onContext: async (messages, step) => {
       const said = await fire(registry, "context", { messages, step }, onExtensionFailure);
       return Array.isArray(said) ? said : undefined;
@@ -443,7 +456,7 @@ const main = async (): Promise<void> => {
   const record = (event: SessionEvent): void => {
     session.events.push(
       event.type === "reasoning" && event.variant === undefined
-        ? { ...event, variant: model.variant }
+        ? { ...event, variant: model?.variant }
         : event,
     );
     session.updatedAt = new Date().toISOString();
@@ -519,7 +532,7 @@ const main = async (): Promise<void> => {
     if (stepped.footer.length > 0) screen.print(stepped.footer, false);
     const showReasoning =
       event.type !== "reasoning" ||
-      reasoningVisible(config.config.reasoningDisplay, event.variant ?? model.variant);
+      reasoningVisible(config.config.reasoningDisplay, event.variant ?? model?.variant);
     const rendered = showReasoning
       ? registry.messageRenderers
           .map((renderer) => safely(() => renderer(event)))
@@ -574,7 +587,7 @@ const main = async (): Promise<void> => {
         void fire(registry, "message", { kind: value.kind, text: value.text }, onExtensionFailure);
         if (
           value.kind === "reasoning" &&
-          !reasoningVisible(config.config.reasoningDisplay, model.variant)
+          !reasoningVisible(config.config.reasoningDisplay, model?.variant)
         )
           break;
         live = value.kind === live.kind ? { ...live, text: live.text + value.text } : value;
@@ -634,6 +647,15 @@ const main = async (): Promise<void> => {
         repaint();
         return;
       }
+      // Refused here rather than by the turn, so what was typed comes back to
+      // the composer instead of becoming a failed turn the next one has to be
+      // told about.
+      if (model === null) {
+        screen.restoreInput(text);
+        render({ type: "notice", text: noModelYet(registry) });
+        repaint();
+        return;
+      }
       void fire(registry, "input", { text }, onExtensionFailure).then(async (said) => {
         if (said === false) {
           repaint();
@@ -643,7 +665,7 @@ const main = async (): Promise<void> => {
         const delivery = typeof said === "object" ? (said.streamingBehavior ?? kind) : kind;
         const { prompt, attached, missing } = await expandMentions(root, typed);
         for (const path of missing)
-          render({ type: "notice", text: `(no such file: @${path} — sent as text)` });
+          render({ type: "notice", text: `(no such file: @${path}, sent as text)` });
         chat.send(prompt, attached.length === 0 ? null : typed, delivery);
         repaint();
       });
@@ -724,7 +746,7 @@ const main = async (): Promise<void> => {
           .catch((thrown) => {
             finish();
             screen.print(
-              noticeBlock(`(shell command failed to run — ${errorText(thrown)})`, "danger"),
+              noticeBlock(`(shell command failed to run: ${errorText(thrown)})`, "danger"),
               false,
             );
             repaint();
@@ -758,7 +780,7 @@ const main = async (): Promise<void> => {
       }
       // Falling off the end silently cleared the composer and produced no turn,
       // which reads as the app being dead.
-      render({ type: "notice", text: `(unknown command: /${name} — /help lists what exists)` });
+      render({ type: "notice", text: `(unknown command: /${name}. /help lists what exists)` });
       repaint();
     },
     onKeyBinding: (event) => {
@@ -821,7 +843,7 @@ const main = async (): Promise<void> => {
       render({
         type: "notice",
         text:
-          `(compacted — ${outcome.dropped} messages summarised, ${outcome.kept} kept` +
+          `(compacted: ${outcome.dropped} messages summarised, ${outcome.kept} kept` +
           `${before === null ? "" : `, from ${before} tokens`})`,
       });
       await fire(
@@ -837,7 +859,7 @@ const main = async (): Promise<void> => {
   };
 
   const maybeCompact = (): void => {
-    if (chat.compacting || model.context === undefined || tokens === null) return;
+    if (chat.compacting || model?.context === undefined || tokens === null) return;
     if (tokens < model.context * COMPACT_AT) return;
     // Only once per growth phase: without this a compaction that frees little
     // would run again on the very next turn.
@@ -849,16 +871,29 @@ const main = async (): Promise<void> => {
     render({ type: "error", text: `(extension) ${message}` });
   };
 
-  // The picker is gone; this is metadata only. Context size and pricing feed
-  // the status line's `ctx 12.3k(6%)` and the cost, and there is no denominator
-  // without it. Silent on failure: offline, the line reads `unknown`.
-  void modelMetadata(model)
-    .then((metadata) => {
-      model = { ...model, ...metadata };
-      agent.setModel(model);
-      repaint();
-    })
-    .catch(() => {});
+  // Into the transcript, where a notice belongs, rather than onto the alternate
+  // screen wherever the cursor happens to be.
+  routeProviderWarnings((message) => {
+    render({ type: "notice", text: `(provider warning) ${message}` });
+  });
+
+  // Metadata only, and only for a model that is already set. Context size and
+  // pricing feed the status line's `ctx 12.3k(6%)` and the cost, and there is no
+  // denominator without it. Silent on failure: offline, the line reads
+  // `unknown`. A model chosen later brings its own, through setModel.
+  if (model !== null) {
+    const asked = model;
+    void modelMetadata(asked)
+      .then((metadata) => {
+        // `/model` can land while this is in flight, and these figures belong to
+        // the model that was asked about. setModel fetches its own.
+        if (model !== asked) return;
+        model = { ...asked, ...metadata };
+        agent.setModel(model);
+        repaint();
+      })
+      .catch(() => {});
+  }
 
   const chat = createChat(agent, {
     onEvent: render,
@@ -974,14 +1009,20 @@ const main = async (): Promise<void> => {
     },
     tools: () => agent.toolNames(),
     setToolFilters: (filters) => agent.setToolFilters(filters),
-    model: () => ({
-      label: modelLabel(model),
-      provider: model.provider,
-      modelId: model.modelId,
-      variant: model.variant,
-      variants: model.variants,
-      context: model.context,
-    }),
+    // Null until one is chosen, which an extension has to handle: a session now
+    // opens without a model and `/model` is how you set one.
+    model: () =>
+      model === null
+        ? null
+        : {
+            label: modelLabel(model),
+            provider: model.provider,
+            modelId: model.modelId,
+            variant: model.variant,
+            variants: model.variants,
+            context: model.context,
+            missing: gapsFor(model.provider),
+          },
     models: async () => {
       const catalogue = await loadCatalogue();
       const available = modelsForConnectedProviders(
@@ -994,6 +1035,7 @@ const main = async (): Promise<void> => {
         modelId: option.modelId,
         variants: option.variants,
         context: option.context,
+        missing: gapsFor(option.provider),
       }));
     },
     providers: () => providerConnections(config.config),
@@ -1058,9 +1100,29 @@ const main = async (): Promise<void> => {
       );
       repaint();
     },
+    // The active model, written down. `setModel` already put it in front of the
+    // agent; this is what makes it survive the session.
+    rememberModel: async () => {
+      // Nothing chosen is nothing to record. Answered rather than thrown: an
+      // extension calling this on a session that opened empty is asking a
+      // reasonable question, and the answer is that no write happened.
+      if (model === null) return "not-allowed";
+      const outcome = await recordModelChoice(
+        root,
+        config.config,
+        modelLabel(model),
+        model.variant,
+      );
+      if (outcome !== "written") return outcome;
+      // The in-memory config has to agree with the file straight away: a reload
+      // reads it, and so does the next thing that asks what is configured.
+      config.config.model = modelLabel(model);
+      config.config.variant = model.variant;
+      return outcome;
+    },
     registerProvider: (provider) => {
       const registration = registerExtensionProvider(provider);
-      if (provider.id === model.provider) agent.setModel(model);
+      if (model !== null && provider.id === model.provider) agent.setModel(model);
       return registration;
     },
     history: () => chat.history,
@@ -1102,7 +1164,7 @@ const main = async (): Promise<void> => {
     abort: () => chat.abort(),
     usage: () => ({
       tokens,
-      context: model.context,
+      context: model?.context,
       last: lastUsage,
       // From the session's own events, so a resumed run reports what the
       // whole session cost rather than what it cost since reopening.
@@ -1249,7 +1311,7 @@ const main = async (): Promise<void> => {
     if (stepped.footer.length > 0) screen.print(stepped.footer, false);
     if (
       event.type === "reasoning" &&
-      !reasoningVisible(config.config.reasoningDisplay, event.variant ?? model.variant)
+      !reasoningVisible(config.config.reasoningDisplay, event.variant ?? model?.variant)
     )
       continue;
     const { lines, gap } = eventBlock(

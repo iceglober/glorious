@@ -93,9 +93,9 @@
     },
     "agentConfigAllowlist": {
       "type": "array",
-      "items": { "type": "string", "enum": ["extensions"] },
+      "items": { "type": "string", "enum": ["extensions", "model"] },
       "uniqueItems": true,
-      "description": "Config sections glrs may update after the user answers."
+      "description": "Config sections glrs may write: extensions.load/disable, and the model and variant /model chose."
     },
     "providers": {
       "type": "object",
