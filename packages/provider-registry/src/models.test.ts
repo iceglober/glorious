@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { generateText } from "ai";
 import type { Config } from "./config";
 import {
   configuredModel,
   createModel,
   currentModel,
+  hydrateModelCredentials,
   modelCost,
   modelMetadata,
+  modelsForConnectedProviders,
   priceMultiplier,
+  providerConnections,
   registerExtensionProvider,
   resolveApiKey,
 } from "./models";
@@ -301,6 +307,79 @@ describe("finding the api key", () => {
   });
 });
 
+describe("configured providers", () => {
+  test("hydrates only a model explicitly marked as keychain-backed", async () => {
+    let reads = 0;
+    const read = async () => {
+      reads += 1;
+      return "stored-key";
+    };
+    const bare = { provider: "anthropic", modelId: "claude", name: "Claude", env: [] };
+    expect(await hydrateModelCredentials(bare, read)).not.toHaveProperty("apiKey");
+    expect(await hydrateModelCredentials({ ...bare, credential: "keychain" }, read)).toHaveProperty(
+      "apiKey",
+      "stored-key",
+    );
+    expect(reads).toBe(1);
+  });
+
+  test("environment variables and keychain markers count without reading secrets", async () => {
+    const connections = await providerConnections(
+      {
+        providers: {
+          anthropic: { credential: "keychain" },
+          azure: { credential: "keychain", factoryOptions: { resourceName: "resource" } },
+        },
+      },
+      { OPENAI_API_KEY: "set" },
+      "/missing-home",
+    );
+    const state = Object.fromEntries(connections.map((provider) => [provider.id, provider]));
+    expect(state.openai).toMatchObject({ configured: true, source: "environment" });
+    expect(state.anthropic).toMatchObject({ configured: true, source: "keychain" });
+    expect(state.azure).toMatchObject({ configured: true, source: "keychain" });
+  });
+
+  test("ambient Vertex ADC and AWS profiles count as cloud credentials", async () => {
+    const home = await mkdtemp(join(tmpdir(), "glrs-provider-home-"));
+    await mkdir(join(home, ".config", "gcloud"), { recursive: true });
+    await writeFile(join(home, ".config", "gcloud", "application_default_credentials.json"), "{}");
+    await mkdir(join(home, ".aws"), { recursive: true });
+    await writeFile(join(home, ".aws", "config"), "[default]");
+    const connections = await providerConnections(
+      { providers: { "google-vertex": { project: "project" } } },
+      {},
+      home,
+    );
+    const state = Object.fromEntries(connections.map((provider) => [provider.id, provider]));
+    expect(state["google-vertex"]).toMatchObject({ configured: true, source: "cloud" });
+    expect(state["amazon-bedrock"]).toMatchObject({ configured: true, source: "cloud" });
+    await rm(home, { recursive: true, force: true });
+  });
+
+  test("the picker receives models only from configured providers", () => {
+    const models = [
+      { provider: "anthropic", modelId: "claude", name: "Claude", env: [] },
+      { provider: "openai", modelId: "gpt", name: "GPT", env: [] },
+    ];
+    expect(
+      modelsForConnectedProviders(models, [
+        { id: "anthropic", label: "Anthropic", configured: true, env: [] },
+        { id: "openai", label: "OpenAI", configured: false, env: [] },
+      ]).map(({ provider }) => provider),
+    ).toEqual(["anthropic"]);
+  });
+
+  test("Azure needs both a credential and a resource or endpoint", async () => {
+    const withoutResource = await providerConnections(
+      { providers: { azure: { credential: "keychain" } } },
+      {},
+      "/missing-home",
+    );
+    expect(withoutResource.find(({ id }) => id === "azure")?.configured).toBe(false);
+  });
+});
+
 describe("extension providers", () => {
   test("a provider may register after the agent has resolved its model", async () => {
     const model = createModel({
@@ -336,6 +415,24 @@ describe("extension providers", () => {
     expect(result.text).toBe("from extension");
     expect(called).toBe(true);
     registration.dispose();
+  });
+});
+
+describe("Vertex model routing", () => {
+  const vertex = (modelId: string) =>
+    createModel({
+      provider: "google-vertex",
+      modelId,
+      name: modelId,
+      env: [],
+      project: "project",
+      location: "global",
+      factoryOptions: { generateAuthToken: async () => "token" } as never,
+    });
+
+  test("Claude uses Vertex's Anthropic adapter and Gemini uses its Google adapter", () => {
+    expect(vertex("claude-opus-4-1").provider).toContain("anthropic");
+    expect(vertex("gemini-2.5-pro").provider).toContain("google");
   });
 });
 

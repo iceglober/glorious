@@ -81,6 +81,8 @@ export type ProviderSettings<FactoryOptions extends JsonObject = JsonObject> = {
   providerOptions?: ProviderCallOptions;
   /** Exact model-id overrides. */
   models?: Record<string, ModelSettings>;
+  /** Non-secret marker that the provider's API key lives in the OS keychain. */
+  credential?: "keychain";
   // Compatibility conveniences. These become provider factory options.
   api?: string;
   region?: string;
@@ -150,6 +152,8 @@ export type ToolSettings = {
   disable?: readonly string[];
 };
 
+export type TelemetrySettings = { enabled?: boolean };
+
 export type Config = {
   // Required at runtime as "provider/model-id"; bare ids are rejected.
   model?: string;
@@ -165,6 +169,7 @@ export type Config = {
   followUpMode?: QueueMode;
   extensions?: ExtensionSettings;
   tools?: ToolSettings;
+  telemetry?: TelemetrySettings;
   // Config is hand-edited by default: nothing glrs does writes it. Listing a
   // section here is how you opt one out of that, so the agent can record an
   // answer you gave it rather than asking you to paste a line every session.
@@ -409,6 +414,7 @@ const KNOWN = [
   "followUpMode",
   "extensions",
   "tools",
+  "telemetry",
   "agentConfigAllowlist",
   "providers",
 ];
@@ -515,6 +521,13 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
   );
   const tools = listBlock<ToolSettings>("tools", ["disable"], 'an object with "disable"');
   const allowlist = names(raw.agentConfigAllowlist, "agentConfigAllowlist", "");
+  let telemetry: TelemetrySettings | undefined;
+  if (raw.telemetry !== undefined) {
+    if (!isObject(raw.telemetry)) wrong("telemetry", 'an object with optional "enabled"');
+    else if (raw.telemetry.enabled !== undefined && typeof raw.telemetry.enabled !== "boolean")
+      diagnostics.push(`${where}: telemetry.enabled should be true or false — ignored`);
+    else telemetry = { enabled: raw.telemetry.enabled as boolean | undefined };
+  }
 
   if (raw.providers !== undefined && !isObject(raw.providers)) wrong("providers", "an object");
 
@@ -606,6 +619,10 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
         continue;
       }
       const provider = { ...value } as ProviderSettings;
+      if (value.credential !== undefined && value.credential !== "keychain") {
+        diagnostics.push(`${where}: providers.${name}.credential should be "keychain" — ignored`);
+        delete provider.credential;
+      }
       const providerRequests = requestOptions(
         value.requestOptions,
         `providers.${name}.requestOptions`,
@@ -701,6 +718,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     followUpMode: queueMode("followUpMode"),
     ...(extensions !== undefined ? { extensions } : {}),
     ...(tools !== undefined ? { tools } : {}),
+    ...(telemetry !== undefined ? { telemetry } : {}),
     ...(allowlist !== undefined ? { agentConfigAllowlist: allowlist } : {}),
     ...(Object.keys(providers).length > 0 ? { providers } : {}),
   };
@@ -750,6 +768,7 @@ const merge = (near: Config, far: Config): Config => ({
   followUpMode: near.followUpMode ?? far.followUpMode,
   extensions: mergedLists<ExtensionSettings>(["load", "disable"], near.extensions, far.extensions),
   tools: mergedLists<ToolSettings>(["disable"], near.tools, far.tools),
+  telemetry: near.telemetry ?? far.telemetry,
   // Nearest wins rather than adding up: permission to write your config is not
   // something a project you cloned should be able to widen.
   agentConfigAllowlist: near.agentConfigAllowlist ?? far.agentConfigAllowlist,

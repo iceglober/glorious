@@ -71,12 +71,14 @@ export type CacheStrategy =
   | { kind: "routing-key"; namespace: "openai" | "azure" }
   | { kind: "message-breakpoint"; namespace: "anthropic" | "bedrock" }
   | { kind: "automatic" }
-  | { kind: "provider-managed" }
+  | { kind: "no-portable-control" }
   | { kind: "extension-managed" };
+
+export type CacheTelemetry = "read-write" | "read" | "conditional" | "none";
 
 type StrategyFor = (shape: Shape) => CacheStrategy;
 const automatic: StrategyFor = () => ({ kind: "automatic" });
-const providerManaged: StrategyFor = () => ({ kind: "provider-managed" });
+const noPortableControl: StrategyFor = () => ({ kind: "no-portable-control" });
 const routingKey =
   (namespace: "openai" | "azure"): StrategyFor =>
   () => ({
@@ -91,7 +93,7 @@ const breakpoint =
   });
 
 // Exhaustive by construction: adding a built-in provider requires choosing its
-// cache contract here. `provider-managed` means its installed SDK exposes no
+// cache contract here. `no-portable-control` means its installed SDK exposes no
 // portable cache control; glrs preserves stable prefixes and sends no invented
 // option. Provider extensions are classified separately below and own caching.
 const BUILTIN_CACHE_STRATEGIES = {
@@ -99,7 +101,7 @@ const BUILTIN_CACHE_STRATEGIES = {
   openai: routingKey("openai"),
   azure: (shape) => {
     const modelType = azureModelTypeFor(shape.modelId ?? "", shape.modelType);
-    if (modelType === "deepseek") return { kind: "provider-managed" };
+    if (modelType === "deepseek") return { kind: "no-portable-control" };
     return { kind: "routing-key", namespace: modelType === "chat" ? "openai" : "azure" };
   },
   google: automatic,
@@ -108,15 +110,15 @@ const BUILTIN_CACHE_STRATEGIES = {
       ? { kind: "message-breakpoint", namespace: "anthropic" }
       : { kind: "automatic" },
   "amazon-bedrock": breakpoint("bedrock"),
-  openrouter: providerManaged,
-  groq: providerManaged,
-  mistral: providerManaged,
-  deepseek: providerManaged,
-  cerebras: providerManaged,
-  cohere: providerManaged,
-  xai: providerManaged,
-  perplexity: providerManaged,
-  togetherai: providerManaged,
+  openrouter: noPortableControl,
+  groq: noPortableControl,
+  mistral: noPortableControl,
+  deepseek: noPortableControl,
+  cerebras: noPortableControl,
+  cohere: noPortableControl,
+  xai: noPortableControl,
+  perplexity: noPortableControl,
+  togetherai: noPortableControl,
 } satisfies Record<BuiltinProviderId, StrategyFor>;
 
 export const cacheStrategyFor = (shape: Shape, owner: CacheOwner = "glrs"): CacheStrategy => {
@@ -126,7 +128,46 @@ export const cacheStrategyFor = (shape: Shape, owner: CacheOwner = "glrs"): Cach
     ? BUILTIN_CACHE_STRATEGIES[provider.id as BuiltinProviderId](shape)
     : // A configured OpenAI-compatible endpoint may cache its own prefixes,
       // but there is no portable request control in the compatible SDK.
-      { kind: "provider-managed" };
+      { kind: "no-portable-control" };
+};
+
+const BUILTIN_CACHE_TELEMETRY = {
+  anthropic: "read-write",
+  openai: "read",
+  azure: "read",
+  google: "read",
+  "google-vertex": "read",
+  "amazon-bedrock": "read-write",
+  openrouter: "read",
+  groq: "read",
+  mistral: "read",
+  deepseek: "read",
+  cerebras: "none",
+  cohere: "none",
+  xai: "read",
+  perplexity: "none",
+  togetherai: "none",
+} satisfies Record<BuiltinProviderId, CacheTelemetry>;
+
+export const cacheTelemetryFor = (shape: Shape, owner: CacheOwner = "glrs"): CacheTelemetry => {
+  if (owner === "extension") return "none";
+  const provider = providerSpec(shape.provider);
+  if (provider?.id === "google-vertex" && shape.modelId?.toLowerCase().includes("claude"))
+    return "read-write";
+  return provider ? BUILTIN_CACHE_TELEMETRY[provider.id as BuiltinProviderId] : "conditional";
+};
+
+export const endpointTypeFor = (shape: Shape, owner: CacheOwner = "glrs"): string => {
+  if (owner === "extension") return "extension";
+  if (shape.provider === "azure")
+    return `azure-${azureModelTypeFor(shape.modelId ?? "", shape.modelType)}`;
+  if (shape.provider === "openai") return "openai-responses";
+  if (shape.provider === "anthropic") return "anthropic-messages";
+  if (shape.provider === "amazon-bedrock") return "bedrock-converse";
+  if (shape.provider === "google-vertex")
+    return shape.modelId?.toLowerCase().includes("claude") ? "vertex-anthropic" : "vertex-gemini";
+  if (shape.provider === "google") return "google-gemini";
+  return providerSpec(shape.provider) ? `${shape.provider}-native` : "openai-compatible-chat";
 };
 
 // The `providerOptions` for one call: exactly one namespace, carrying only what

@@ -60,7 +60,7 @@ session_end
 | `tool_call` | `{ name, input }` | string or `false` blocks |
 | `tool_start` | `{ name, input }` | — |
 | `tool_end` | `{ name, input, ok, result, detail, elapsedMs }` | string replaces model-visible result |
-| `usage` | `{ input, output, cached, cost, contextTokens }` | — |
+| `usage` | token counts, cache read/write telemetry, provider/model/endpoint strategy, duration, and context size | — |
 | `turn_end` | `{ text }` | — |
 | `idle` | `{}` | — |
 | `error` | `{ message }` | — |
@@ -98,7 +98,9 @@ what the model and transcript receive.
 ## usage and completion
 
 `usage` fires once per model call. a turn that runs three rounds of tools may
-fire it four times.
+fire it four times. optional `cacheRead` and `cacheWrite` preserve the difference
+between a reported zero and unavailable provider telemetry; `cacheTelemetry`
+names the adapter's reporting capability.
 
 `agent_start` and `agent_end` bracket one agent run. `turn_end` contains the
 final assistant text; `idle` means the queue drained.

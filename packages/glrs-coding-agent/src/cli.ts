@@ -93,6 +93,8 @@ export const runCli = async (
     setToolFilters: () => needsSession("filterTools"),
     model: () => needsSession("model"),
     models: () => needsSession("models"),
+    providers: () => needsSession("providers"),
+    connectProvider: () => needsSession("connectProvider"),
     setModel: () => needsSession("setModel"),
     registerProvider: registerExtensionProvider,
     history: () => needsSession("history"),

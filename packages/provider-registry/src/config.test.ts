@@ -152,7 +152,24 @@ describe("initializing config files", () => {
   });
 });
 
+describe("telemetry consent", () => {
+  test("accepts an explicit boolean and rejects other values", async () => {
+    const enabled = await project('{"telemetry":{"enabled":true}}');
+    expect((await loadConfig(enabled)).config.telemetry).toEqual({ enabled: true });
+
+    const invalid = await project('{"telemetry":{"enabled":"yes"}}');
+    const loaded = await loadConfig(invalid);
+    expect(loaded.config.telemetry).toBeUndefined();
+    expect(loaded.diagnostics.join("\n")).toContain("telemetry.enabled should be true or false");
+  });
+});
+
 describe("provider and model overrides", () => {
+  test("retains a non-secret keychain credential marker", async () => {
+    const root = await project('{"providers":{"anthropic":{"credential":"keychain"}}}');
+    expect((await loadConfig(root)).config.providers?.anthropic?.credential).toBe("keychain");
+  });
+
   test("an Azure model can select its SDK model type", async () => {
     const root = await project(
       JSON.stringify({

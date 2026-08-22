@@ -7,6 +7,7 @@ import type {
   Handler,
   Key,
   ModelInfo,
+  ProviderInfo,
   Tone,
 } from "../../../glrs-core/src";
 import modelPicker, { patchReasoningBody } from "./index";
@@ -25,12 +26,22 @@ const model = (label: string, variants?: readonly string[]): ModelInfo => {
 };
 
 const harness = (
-  options: { current?: ModelInfo; models?: readonly ModelInfo[]; hasUI?: boolean } = {},
+  options: {
+    current?: ModelInfo;
+    models?: readonly ModelInfo[];
+    providers?: readonly ProviderInfo[];
+    hasUI?: boolean;
+  } = {},
 ) => {
   const commands = new Map<string, Command>();
   const hooks = new Map<EventName, Handler<EventName>>();
   const selected: Array<{ label: string; variant?: string }> = [];
   const printed: Array<{ text: string; tone?: Tone }> = [];
+  const connected: Array<{
+    provider: string;
+    apiKey: string;
+    settings?: Readonly<Record<string, string>>;
+  }> = [];
   let capture: Capture | null = null;
   let closed = false;
   let current = options.current ?? model("anthropic/claude-opus-5", ["low", "high"]);
@@ -39,12 +50,38 @@ const harness = (
     model("openai/gpt-5.2", ["minimal", "low", "medium", "high", "xhigh"]),
     model("ollama/qwen3"),
   ];
+  const providers = options.providers ?? [
+    {
+      id: "anthropic",
+      label: "Anthropic",
+      configured: true,
+      source: "environment",
+      env: ["ANTHROPIC_API_KEY"],
+    },
+    { id: "openai", label: "OpenAI", configured: false, env: ["OPENAI_API_KEY"] },
+    {
+      id: "azure",
+      label: "Azure OpenAI / AI Foundry",
+      configured: true,
+      source: "environment",
+      env: ["AZURE_API_KEY"],
+    },
+  ];
   const g = {
     hasUI: options.hasUI ?? true,
     command: (name: string, spec: Command) => commands.set(name, spec),
     on: (name: EventName, handler: Handler<EventName>) => hooks.set(name, handler),
     model: () => current,
     models: async () => catalogue,
+    providers: async () => providers,
+    connectProvider: async (
+      provider: string,
+      apiKey: string,
+      settings?: Readonly<Record<string, string>>,
+    ) => {
+      connected.push({ provider, apiKey, settings });
+      return { ok: true, message: "connected" };
+    },
     setModel: async (label: string, variant?: string) => {
       selected.push({ label, variant });
       current = { ...model(label), variant };
@@ -65,12 +102,13 @@ const harness = (
     },
   } as unknown as Glrs;
   modelPicker(g);
-  const press = (key: string, text = ""): void =>
-    capture?.onKey({ key, text, ctrl: false, shift: false } as Key);
+  const press = (key: string, text = "", ctrl = false): void =>
+    capture?.onKey({ key, text, ctrl, shift: false } as Key);
   const screen = (): string =>
     (capture?.render(100) ?? []).map((line) => line.map((span) => span.text).join("")).join("\n");
   return {
     command: commands.get("model") as Command,
+    connected,
     beforeRequest: hooks.get("before_provider_request") as Hook,
     press,
     printed,
@@ -85,11 +123,11 @@ afterEach(() => {
 });
 
 describe("the model picker", () => {
-  test("shows catalogue models and the two Azure DeepSeek additions", async () => {
+  test("shows configured catalogue models and the two Azure DeepSeek additions", async () => {
     const picker = harness();
     await picker.command.run("");
     expect(picker.screen()).toContain("anthropic/claude-opus-5");
-    expect(picker.screen()).toContain("azure-deepseek/DeepSeek-V4-Flash");
+    expect(picker.screen()).toContain("azure/DeepSeek-V4-Flash");
   });
 
   test("filters from command arguments and selects a model with no variants", async () => {
@@ -107,13 +145,28 @@ describe("the model picker", () => {
     const picker = harness();
     await picker.command.run("deepseek-v4-pro");
     picker.press("return");
-    expect(picker.screen()).toContain("Reasoning for azure-deepseek/deepseek-v4-pro");
+    expect(picker.screen()).toContain("Reasoning for azure/deepseek-v4-pro");
     picker.press("down");
     picker.press("down");
     picker.press("return");
     await Bun.sleep(0);
-    expect(picker.selected).toEqual([
-      { label: "azure-deepseek/deepseek-v4-pro", variant: "medium" },
+    expect(picker.selected).toEqual([{ label: "azure/deepseek-v4-pro", variant: "medium" }]);
+  });
+
+  test("Ctrl+A opens provider setup and stores an entered key", async () => {
+    const picker = harness();
+    await picker.command.run("");
+    picker.press("a", "", true);
+    expect(picker.screen()).toContain("Add provider");
+    picker.press("down");
+    picker.press("return");
+    for (const character of "secret") picker.press(character, character);
+    expect(picker.screen()).toContain("••••••");
+    expect(picker.screen()).not.toContain("secret");
+    picker.press("return");
+    await Bun.sleep(0);
+    expect(picker.connected).toEqual([
+      { provider: "openai", apiKey: "secret", settings: undefined },
     ]);
   });
 

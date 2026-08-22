@@ -18,17 +18,21 @@ import {
   currentModel,
   ensureConfigFiles,
   envSetting,
+  hydrateModelCredentials,
   loadCatalogue,
   loadConfig,
   type ModelOption,
   missingFor,
   modelLabel,
   modelMetadata,
+  modelsForConnectedProviders,
   NoModelChosen,
   noteFor,
   PROVIDERS,
+  providerConnections,
   providerSpec,
   registerExtensionProvider,
+  storeProviderKey,
 } from "../../provider-registry/src";
 import { createAgent } from "./agent";
 import { helpText, route } from "./argv";
@@ -76,7 +80,7 @@ import { loadSkills } from "./skills";
 import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
-import { recordExtensionChoice } from "./writeconfig";
+import { recordExtensionChoice, recordProviderConnection } from "./writeconfig";
 
 const TICK_MS = 100;
 const SETTLE_MS = 250;
@@ -252,7 +256,7 @@ const main = async (): Promise<void> => {
   const promptHistory = await loadPromptHistory();
   const rules = await loadAgentRules(root);
   const config = resolvedConfig;
-  let model = currentModel(config.config);
+  let model = await hydrateModelCredentials(currentModel(config.config));
   const envToolTimeout = Number(envSetting("TOOL_TIMEOUT_MS"));
   const toolTimeoutMs =
     Number.isFinite(envToolTimeout) && envToolTimeout > 0
@@ -468,7 +472,19 @@ const main = async (): Promise<void> => {
       void fire(
         registry,
         "usage",
-        { ...lastUsage, contextTokens: event.tokens },
+        {
+          ...lastUsage,
+          cacheRead: event.cacheRead,
+          cacheWrite: event.cacheWrite,
+          cacheTelemetry: event.cacheTelemetry,
+          cacheStrategy: event.cacheStrategy,
+          provider: event.provider,
+          model: event.model,
+          endpoint: event.endpoint,
+          durationMs: event.durationMs,
+          reusablePrefix: event.reusablePrefix,
+          contextTokens: event.tokens,
+        },
         onExtensionFailure,
       );
     }
@@ -968,7 +984,11 @@ const main = async (): Promise<void> => {
     }),
     models: async () => {
       const catalogue = await loadCatalogue();
-      return catalogue.map((option) => ({
+      const available = modelsForConnectedProviders(
+        catalogue,
+        await providerConnections(config.config),
+      );
+      return available.map((option) => ({
         label: modelLabel(option),
         provider: option.provider,
         modelId: option.modelId,
@@ -976,8 +996,58 @@ const main = async (): Promise<void> => {
         context: option.context,
       }));
     },
+    providers: () => providerConnections(config.config),
+    connectProvider: async (provider, apiKey, settings = {}) => {
+      const spec = providerSpec(provider);
+      if (!spec) return { ok: false, message: `Unknown provider: ${provider}` };
+      try {
+        if (apiKey) await storeProviderKey(provider, apiKey);
+        const providerSettings = {
+          ...(settings.resourceName
+            ? { factoryOptions: { resourceName: settings.resourceName } }
+            : {}),
+          ...(settings.project ? { project: settings.project } : {}),
+          ...(settings.location ? { location: settings.location } : {}),
+        };
+        const persisted = await recordProviderConnection(
+          provider,
+          providerSettings,
+          undefined,
+          Boolean(apiKey),
+        );
+        if (persisted !== "written" && persisted !== "already")
+          return {
+            ok: false,
+            message: "The key was stored, but its provider marker could not be saved.",
+          };
+        const existing = config.config.providers?.[provider] ?? {};
+        config.config.providers = {
+          ...(config.config.providers ?? {}),
+          [provider]: {
+            ...existing,
+            ...(apiKey ? { credential: "keychain" as const } : {}),
+            ...providerSettings,
+            ...(settings.resourceName
+              ? {
+                  factoryOptions: {
+                    ...(existing.factoryOptions ?? {}),
+                    resourceName: settings.resourceName,
+                  },
+                }
+              : {}),
+          },
+        };
+        return { ok: true, message: `${spec.label} connected.` };
+      } catch {
+        return {
+          ok: false,
+          message:
+            "The operating-system credential store is unavailable. Use an environment variable instead.",
+        };
+      }
+    },
     setModel: async (label, variant) => {
-      const next = configuredModel(label, config.config, variant);
+      const next = await hydrateModelCredentials(configuredModel(label, config.config, variant));
       model = { ...next, ...(await modelMetadata(next).catch(() => ({}))) };
       agent.setModel(model);
       await fire(

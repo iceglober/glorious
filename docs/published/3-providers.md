@@ -57,7 +57,13 @@ glrs --model anthropic/claude-opus-5 doctor
 glrs --model anthropic/claude-opus-5 doctor --json
 ```
 
-credentials stay in the environment. glrs does not use a keychain or print
-secret values. `doctor` recognizes the credential variables listed in the
-table; an SDK credential source outside that list may still work after a
-warning.
+credentials can stay in the environment. in the TUI, `/model` then Ctrl+A stores
+an API key in the operating-system credential store; config records only a
+non-secret `"credential": "keychain"` marker. keys are read lazily for the
+selected provider and cached for the process, so glrs does not enumerate the
+keychain or repeatedly trigger an operating-system prompt. macOS Keychain,
+Windows Credential Manager, and Linux Secret Service are supported; when a
+secure store is unavailable, use an environment variable.
+
+`doctor` recognizes the credential variables listed in the table; an SDK
+credential source outside that list may still work after a warning.

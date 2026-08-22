@@ -68,6 +68,8 @@ const host: ExtensionHost = {
   setToolFilters: () => {},
   model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
   models: async () => [],
+  providers: async () => [],
+  connectProvider: async () => ({ ok: false, message: "not available" }),
   setModel: async () => {},
   registerProvider: () => ({ dispose: () => {} }),
   history: () => [],
@@ -489,11 +491,15 @@ describe("the extensions that ship with glrs", () => {
     };
   };
 
-  // model-picker is part of the default product surface alongside builtins;
+  // model-picker and consent-gated telemetry are part of the default product surface;
   // the rest add optional capabilities and wait to be asked for.
   test("the default-on product extensions load when config says nothing", async () => {
     const loaded = await shipped();
-    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins", "model-picker"]);
+    expect(loaded.extensions.map((one) => one.name)).toEqual([
+      "builtins",
+      "model-picker",
+      "telemetry",
+    ]);
   });
 
   test("naming one in load turns it on", async () => {
@@ -501,6 +507,7 @@ describe("the extensions that ship with glrs", () => {
     expect(loaded.extensions.map((one) => one.name).sort()).toEqual([
       "builtins",
       "model-picker",
+      "telemetry",
       "web-fetch",
     ]);
   });
@@ -513,13 +520,17 @@ describe("the extensions that ship with glrs", () => {
   });
 
   test("disable turns off extensions that are on by default", async () => {
-    const loaded = await shipped({ disable: ["builtins", "model-picker"] });
+    const loaded = await shipped({ disable: ["builtins", "model-picker", "telemetry"] });
     expect(loaded.extensions).toEqual([]);
   });
 
   test("disable beats load", async () => {
     const loaded = await shipped({ load: ["web-fetch"], disable: ["web-fetch"] });
-    expect(loaded.extensions.map((one) => one.name)).toEqual(["builtins", "model-picker"]);
+    expect(loaded.extensions.map((one) => one.name)).toEqual([
+      "builtins",
+      "model-picker",
+      "telemetry",
+    ]);
   });
 
   test("each one says where it came from", async () => {
@@ -529,6 +540,7 @@ describe("the extensions that ship with glrs", () => {
     expect(origin("ask-user")).toBe("@glrs-dev/glrs-ext-ask-user");
     expect(origin("builtins")).toBe("@glrs-dev/glrs-ext-builtins");
     expect(origin("model-picker")).toBe("@glrs-dev/glrs-ext-model-picker");
+    expect(origin("telemetry")).toBe("@glrs-dev/glrs-ext-telemetry");
     expect(origin("web-fetch")).toBe("@glrs-dev/glrs-ext-web-fetch");
   });
 });

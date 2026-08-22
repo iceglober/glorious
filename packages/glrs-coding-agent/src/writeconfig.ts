@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Config } from "../../provider-registry/src";
+import { type Config, type JsonObject, userConfigDirectory } from "../../provider-registry/src";
 
 // The one thing in glrs that writes your configuration, and it does nothing
 // unless you have said it may. `config.ts` opens with "nothing writes config at
@@ -46,6 +47,52 @@ const listOf = (value: unknown): string[] =>
 // key in the file is read and written back untouched — but formatting and
 // comments do not survive a JSON round-trip, which is worth knowing if you
 // hand-format the file.
+export const recordProviderConnection = async (
+  provider: string,
+  settings: JsonObject = {},
+  path: string = join(userConfigDirectory(homedir()), "config.json"),
+  keychain = true,
+): Promise<WriteOutcome> => {
+  const raw = await readRaw(path);
+  const providers =
+    typeof raw.providers === "object" && raw.providers !== null && !Array.isArray(raw.providers)
+      ? { ...(raw.providers as Record<string, unknown>) }
+      : {};
+  const current =
+    typeof providers[provider] === "object" &&
+    providers[provider] !== null &&
+    !Array.isArray(providers[provider])
+      ? { ...(providers[provider] as Record<string, unknown>) }
+      : {};
+  const currentFactory =
+    typeof current.factoryOptions === "object" &&
+    current.factoryOptions !== null &&
+    !Array.isArray(current.factoryOptions)
+      ? current.factoryOptions
+      : {};
+  const addedFactory =
+    typeof settings.factoryOptions === "object" &&
+    settings.factoryOptions !== null &&
+    !Array.isArray(settings.factoryOptions)
+      ? settings.factoryOptions
+      : {};
+  providers[provider] = {
+    ...current,
+    ...settings,
+    ...(Object.keys(addedFactory).length > 0
+      ? { factoryOptions: { ...currentFactory, ...addedFactory } }
+      : {}),
+    ...(keychain ? { credential: "keychain" } : {}),
+  };
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify({ ...raw, providers }, null, 2)}\n`, "utf8");
+    return "written";
+  } catch {
+    return "failed";
+  }
+};
+
 export const recordExtensionChoice = async (
   root: string,
   config: Config,

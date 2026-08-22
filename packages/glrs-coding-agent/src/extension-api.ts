@@ -42,6 +42,8 @@ import type {
   MessageRenderer,
   ModelInfo,
   MountSpec,
+  ProviderConnectionResult,
+  ProviderInfo,
   SessionInfo,
   ShellResult,
   SurfacePlacement,
@@ -67,6 +69,8 @@ export type {
   MessageRenderer,
   ModelInfo,
   MountSpec,
+  ProviderConnectionResult,
+  ProviderInfo,
   SessionInfo,
   ShellResult,
   SurfacePlacement,
@@ -151,6 +155,12 @@ export type ExtensionHost = {
   setToolFilters: (filters: ReadonlyArray<(name: string) => boolean>) => void;
   model: () => ModelInfo;
   models: () => Promise<readonly ModelInfo[]>;
+  providers: () => Promise<readonly ProviderInfo[]>;
+  connectProvider: (
+    provider: string,
+    apiKey?: string,
+    settings?: Readonly<Record<string, string>>,
+  ) => Promise<ProviderConnectionResult>;
   setModel: (label: string, variant?: string) => Promise<void>;
   registerProvider: (provider: ExtensionProvider) => { dispose: () => void };
   history: () => readonly import("ai").ModelMessage[];
@@ -454,6 +464,8 @@ export const createApi = (
     },
     model: host.model,
     models: host.models,
+    providers: host.providers,
+    connectProvider: host.connectProvider,
     setModel: host.setModel,
     setThinkingLevel: async (level) => host.setModel(host.model().label, level),
     history: host.history,

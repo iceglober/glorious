@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
 import modelPicker from "../../extensions/model-picker/src";
+import telemetry from "../../extensions/telemetry/src";
 import webFetch from "../../extensions/web-fetch/src";
 import worktree from "../../extensions/worktree/src";
 import type { FirstPartyExtension } from "../../glrs-core/src";
@@ -109,6 +110,14 @@ const bundled = [
     defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "model-picker"),
     summary: "adds `/model` for choosing the active model and reasoning effort",
+  },
+  {
+    name: "telemetry",
+    origin: "@glrs-dev/glrs-ext-telemetry",
+    load: telemetry,
+    defaultOn: true,
+    dir: join(import.meta.dir, "..", "..", "extensions", "telemetry"),
+    summary: "exports consented anonymous model performance and cache metrics over OTLP",
   },
   {
     name: "worktree",

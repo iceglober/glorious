@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { generateText, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import {
   type CacheOwner,
+  cacheStrategyFor,
+  cacheTelemetryFor,
   createModel,
+  endpointTypeFor,
   isExtensionProvider,
   type JsonObject,
   type ModelOption,
@@ -387,7 +390,15 @@ export const createAgent = (setup: Setup) => {
         onStep: (step: {
           text: string;
           contextTokens: number;
-          cachedTokens: number;
+          cacheReadTokens?: number;
+          cacheWriteTokens?: number;
+          cacheTelemetry: ReturnType<typeof cacheTelemetryFor>;
+          cacheStrategy: ReturnType<typeof cacheStrategyFor>["kind"];
+          provider: string;
+          model: string;
+          endpoint: string;
+          durationMs: number;
+          reusablePrefix: boolean;
           outputTokens: number;
           cost?: number;
         }) => void;
@@ -475,11 +486,12 @@ export const createAgent = (setup: Setup) => {
         // redacted view. `sent` — the real conversation — is what gets stored,
         // so this changes the call and never the history.
         const shown = (await setup.onContext?.(sent, attempt)) ?? sent;
+        let modelCallStartedAt = 0;
         const result = streamText({
           ...settings(),
           tools: toolsFor(turn.onTool),
           // Explicit-cache providers get a moving stable-prefix breakpoint.
-          // Automatic/provider-managed endpoints and extension providers are
+          // Automatic/no-control endpoints and extension providers are
           // handed the list unchanged.
           messages: withCacheBreakpoints(
             [...shown],
@@ -507,13 +519,30 @@ export const createAgent = (setup: Setup) => {
           // part and the loop below throws it.
           onError: () => {},
           // the request is away; nothing has come back yet
-          onLanguageModelCallStart: () => turn.onPhase("waiting"),
+          onLanguageModelCallStart: () => {
+            modelCallStartedAt = performance.now();
+            turn.onPhase("waiting");
+          },
           onLanguageModelCallEnd: ({ content, usage }) => {
             observed = usage?.inputTokens ?? observed;
+            const owner = cacheOwner();
+            const shape = {
+              provider: setup.model.provider,
+              modelId: setup.model.modelId,
+              modelType: setup.model.modelType,
+            };
             turn.onStep({
               text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
               contextTokens: observed,
-              cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
+              cacheReadTokens: usage?.inputTokenDetails?.cacheReadTokens,
+              cacheWriteTokens: usage?.inputTokenDetails?.cacheWriteTokens,
+              cacheTelemetry: cacheTelemetryFor(shape, owner),
+              cacheStrategy: cacheStrategyFor(shape, owner).kind,
+              provider: setup.model.provider,
+              model: setup.model.modelId,
+              endpoint: endpointTypeFor(shape, owner),
+              durationMs: Math.max(0, performance.now() - modelCallStartedAt),
+              reusablePrefix: shown.length >= 2,
               outputTokens: usage?.outputTokens ?? 0,
               cost: modelCost(setup.model, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
             });

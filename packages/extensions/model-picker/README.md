@@ -1,5 +1,5 @@
 # @glrs-dev/glrs-ext-model-picker
 
-Interactive `/model` picker for choosing the active model and reasoning effort through the public glrs extension API.
+Interactive `/model` picker for choosing the active model and reasoning effort through the public glrs extension API. It lists configured providers only; Ctrl+A opens provider setup and stores API keys in the operating-system credential store.
 
-It also retains support for the `azure-deepseek` OpenAI-compatible provider used with Azure Foundry.
+Azure DeepSeek entries use the built-in Azure adapter. The request hook remains for configurations using the legacy `azure-deepseek` OpenAI-compatible prefix.

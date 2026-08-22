@@ -54,7 +54,8 @@ other extensions. `/extensions` shows what loaded and what each registered.
 | name | package | provides | default |
 | --- | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | six machine tools and all first-party slash commands | on |
-| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model` model and reasoning picker | on |
+| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model` model, reasoning, and provider setup | on |
+| `telemetry` | `@glrs-dev/glrs-ext-telemetry` | consented metadata-only OTLP metrics | on, inactive until consent |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch` | off |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user` in the TUI | off |
 
@@ -204,10 +205,16 @@ filter.lift();
 
 g.model();
 await g.models();
+await g.providers();
+await g.connectProvider("anthropic", apiKey);
 await g.setModel("anthropic/claude-opus-5", "high");
 await g.setThinkingLevel("medium");
 g.provider({ id: "company", create: (modelId) => companyModel(modelId) });
 ```
+
+`g.models()` includes only configured providers. `g.connectProvider()` stores a
+key in the operating-system credential store after explicit user interaction;
+it never writes the key to config.
 
 all active tool filters must agree. filters remove tools from the model schema;
 `tool_call` blocks a call the model already made.

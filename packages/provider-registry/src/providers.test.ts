@@ -45,6 +45,16 @@ describe("what doctor reports as missing", () => {
     ).toEqual([]);
   });
 
+  test("a keychain marker satisfies the credential without reading the secret", () => {
+    expect(
+      missingFor(
+        "azure",
+        { credential: "keychain", factoryOptions: { resourceName: "resource" } },
+        {},
+      ),
+    ).toEqual([]);
+  });
+
   test("what a provider needs beyond a key", () => {
     expect(missingFor("azure", undefined, { AZURE_API_KEY: "k" })).toContain("AZURE_RESOURCE_NAME");
   });

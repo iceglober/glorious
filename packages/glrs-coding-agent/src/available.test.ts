@@ -14,6 +14,7 @@ describe("which first-party extensions are still undecided", () => {
   test("with no config, product defaults are on and the rest are undecided", () => {
     expect(state("builtins")).toBe("on");
     expect(state("model-picker")).toBe("on");
+    expect(state("telemetry")).toBe("on");
     expect(state("web-fetch")).toBe("undecided");
     expect(state("ask-user")).toBe("undecided");
   });

@@ -4,6 +4,8 @@ import {
   cacheHint,
   cacheStrategyFor,
   cachesAutomatically,
+  cacheTelemetryFor,
+  endpointTypeFor,
   namespaceFor,
   requestOptions,
   withCacheBreakpoints,
@@ -94,15 +96,15 @@ describe("cache strategy matrix", () => {
     google: "automatic",
     "google-vertex": "automatic",
     "amazon-bedrock": "message-breakpoint",
-    openrouter: "provider-managed",
-    groq: "provider-managed",
-    mistral: "provider-managed",
-    deepseek: "provider-managed",
-    cerebras: "provider-managed",
-    cohere: "provider-managed",
-    xai: "provider-managed",
-    perplexity: "provider-managed",
-    togetherai: "provider-managed",
+    openrouter: "no-portable-control",
+    groq: "no-portable-control",
+    mistral: "no-portable-control",
+    deepseek: "no-portable-control",
+    cerebras: "no-portable-control",
+    cohere: "no-portable-control",
+    xai: "no-portable-control",
+    perplexity: "no-portable-control",
+    togetherai: "no-portable-control",
   } satisfies Record<BuiltinProviderId, ReturnType<typeof cacheStrategyFor>["kind"]>;
 
   test("every built-in provider has an intentional strategy", () => {
@@ -123,7 +125,7 @@ describe("cache strategy matrix", () => {
     });
     expect(
       cacheStrategyFor({ provider: "azure", modelId: "deepseek-v4", modelType: "deepseek" }),
-    ).toEqual({ kind: "provider-managed" });
+    ).toEqual({ kind: "no-portable-control" });
   });
 
   test("vertex strategy follows the served model", () => {
@@ -138,9 +140,43 @@ describe("cache strategy matrix", () => {
 
   test("compatible endpoints use only portable options and own their cache", () => {
     expect(cacheStrategyFor({ provider: "ollama", modelId: "llama" })).toEqual({
-      kind: "provider-managed",
+      kind: "no-portable-control",
     });
     expect(requestOptions({ provider: "ollama", modelId: "llama", cacheKey: "key" })).toEqual({});
+  });
+
+  test("cache telemetry capability is explicit for every built-in", () => {
+    const expected = {
+      anthropic: "read-write",
+      openai: "read",
+      azure: "read",
+      google: "read",
+      "google-vertex": "read",
+      "amazon-bedrock": "read-write",
+      openrouter: "read",
+      groq: "read",
+      mistral: "read",
+      deepseek: "read",
+      cerebras: "none",
+      cohere: "none",
+      xai: "read",
+      perplexity: "none",
+      togetherai: "none",
+    } satisfies Record<BuiltinProviderId, ReturnType<typeof cacheTelemetryFor>>;
+    for (const provider of PROVIDERS)
+      expect(cacheTelemetryFor({ provider: provider.id })).toBe(
+        expected[provider.id as BuiltinProviderId],
+      );
+    expect(cacheTelemetryFor({ provider: "google-vertex", modelId: "claude-opus-4" })).toBe(
+      "read-write",
+    );
+    expect(cacheTelemetryFor({ provider: "ollama" })).toBe("conditional");
+  });
+
+  test("endpoint labels distinguish every routed Azure adapter", () => {
+    expect(endpointTypeFor({ provider: "azure", modelType: "responses" })).toBe("azure-responses");
+    expect(endpointTypeFor({ provider: "azure", modelType: "chat" })).toBe("azure-chat");
+    expect(endpointTypeFor({ provider: "azure", modelType: "deepseek" })).toBe("azure-deepseek");
   });
 
   test("extension providers own caching even when reusing a built-in id", () => {

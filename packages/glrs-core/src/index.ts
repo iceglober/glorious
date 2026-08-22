@@ -187,6 +187,20 @@ export type EventPayload = {
     input: number;
     output: number;
     cached: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    cacheTelemetry?: "read-write" | "read" | "conditional" | "none";
+    cacheStrategy?:
+      | "routing-key"
+      | "message-breakpoint"
+      | "automatic"
+      | "no-portable-control"
+      | "extension-managed";
+    provider?: string;
+    model?: string;
+    endpoint?: string;
+    durationMs?: number;
+    reusablePrefix?: boolean;
     cost?: number;
     contextTokens: number;
   };
@@ -406,6 +420,19 @@ export type ExtensionProvider = {
 export type MessageRenderer = (event: SessionEvent) => Line[] | undefined;
 export type EntryRenderer = (data: unknown) => Line[] | undefined;
 
+export type ProviderInfo = {
+  id: string;
+  label: string;
+  configured: boolean;
+  source?: "environment" | "keychain" | "cloud" | "config";
+  env: readonly string[];
+  needs?: readonly string[];
+  missing?: readonly string[];
+  note?: string;
+};
+
+export type ProviderConnectionResult = { ok: boolean; message: string };
+
 export type ModelInfo = {
   label: string;
   provider: string;
@@ -556,6 +583,14 @@ export type Glrs = {
   model: () => ModelInfo;
   /** Every model the catalogue knows for the providers you have credentials for. */
   models: () => Promise<readonly ModelInfo[]>;
+  /** Built-in providers and whether credentials or cloud authentication are available. */
+  providers: () => Promise<readonly ProviderInfo[]>;
+  /** Store a provider key after explicit user interaction. */
+  connectProvider: (
+    provider: string,
+    apiKey?: string,
+    settings?: Readonly<Record<string, string>>,
+  ) => Promise<ProviderConnectionResult>;
   /** Switch model, as "provider/model-id". Takes effect on the next turn. */
   setModel: (label: string, variant?: string) => Promise<void>;
   /** Change reasoning effort without changing the active model. */

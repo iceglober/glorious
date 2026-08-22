@@ -59,6 +59,7 @@ validation. `$schema` is metadata and does not affect runtime config.
   "followUpMode": "one-at-a-time",
   "extensions": { "load": ["web-fetch"], "disable": [] },
   "tools": { "disable": [] },
+  "telemetry": { "enabled": false },
   "providers": {
     "ollama": { "api": "http://localhost:11434/v1" },
     "amazon-bedrock": { "region": "us-east-1" },
@@ -121,6 +122,19 @@ level.
 
 both queue modes default to `one-at-a-time`.
 
+## telemetry
+
+on the first interactive run, glrs asks whether it may export anonymous model
+performance and prompt-cache metrics. the answer is stored only in User
+`config.json` as `telemetry.enabled`; project config cannot grant consent.
+headless runs never prompt and remain disabled until consent exists.
+
+`DO_NOT_TRACK=1`, `DNT=1`, or `OTEL_SDK_DISABLED=true` always disables telemetry.
+OTLP uses `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, or
+`OTEL_EXPORTER_OTLP_ENDPOINT` with `/v1/metrics`, plus the standard
+`OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_METRIC_EXPORT_INTERVAL` variables. no
+prompts, paths, credentials, request bodies, or session identifiers are sent.
+
 extension and tool lists are sets: they add up across all three files.
 `disable` wins over `load`. every other setting is nearest-wins.
 
@@ -149,6 +163,10 @@ config changes; `/reload` applies extension and tool changes.
 | `XDG_CONFIG_HOME` | config base when the explicit override is absent |
 | `XDG_DATA_HOME` | session data base; default `~/.local/share` |
 | `XDG_CACHE_HOME` | cache base; default `~/.cache` |
+| `DO_NOT_TRACK` / `DNT` | `1` or `true` disables telemetry |
+| `OTEL_SDK_DISABLED` | `true` disables OpenTelemetry |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | base OTLP endpoint |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | metrics-specific OTLP/HTTP endpoint |
 | `NO_COLOR` | disable color |
 | `TERM=dumb` | disable color |
 

@@ -86,6 +86,11 @@ const harness = () => {
     tools: () => ["bash", "read"],
     model: () => ({ label: "azure/test", provider: "azure", modelId: "test" }),
     models: async () => [],
+    providers: async () => [],
+    connectProvider: async (...args: unknown[]) => {
+      calls.push({ method: "connectProvider", args });
+      return { ok: true, message: "connected" };
+    },
     setModel: async (...args: unknown[]) => {
       calls.push({ method: "setModel", args });
     },
@@ -221,8 +226,14 @@ describe("what an extension can reach", () => {
     const { g, calls } = harness();
     expect(g.model().label).toBe("azure/test");
     expect(await g.models()).toEqual([]);
+    expect(await g.providers()).toEqual([]);
+    expect(await g.connectProvider("anthropic", "secret")).toEqual({
+      ok: true,
+      message: "connected",
+    });
     await g.setModel("anthropic/claude-opus-5", "high");
     expect(calls.some((one) => one.method === "setModel")).toBe(true);
+    expect(calls.some((one) => one.method === "connectProvider")).toBe(true);
   });
 
   test("tools can be listed and narrowed, and the filter lifted", () => {
@@ -718,7 +729,14 @@ describe("the extension API is declared once", () => {
 
   test("extensions reach it without importing the coding agent", () => {
     // The boundary check forbids it, which is what forced the copy originally.
-    for (const name of ["builtins", "ask-user", "model-picker", "web-fetch", "worktree"]) {
+    for (const name of [
+      "builtins",
+      "ask-user",
+      "model-picker",
+      "telemetry",
+      "web-fetch",
+      "worktree",
+    ]) {
       const source = readFileSync(
         join(here, "..", "..", "extensions", name, "src", "index.ts"),
         "utf8",

@@ -142,7 +142,13 @@ export const noteFor = (id: string): string | undefined => providerSpec(id)?.not
 // What is missing before this provider can answer, for `doctor`.
 export const missingFor = (
   id: string,
-  settings: { api?: string; factoryOptions?: { baseURL?: unknown } } | undefined,
+  settings:
+    | {
+        api?: string;
+        credential?: "keychain";
+        factoryOptions?: { apiKey?: unknown; baseURL?: unknown; resourceName?: unknown };
+      }
+    | undefined,
   environment: NodeJS.ProcessEnv = process.env,
 ): string[] => {
   const spec = providerSpec(id);
@@ -157,11 +163,21 @@ export const missingFor = (
     ];
   }
   const gaps: string[] = [];
-  if (spec.env.length > 0 && !spec.env.some((name) => environment[name]))
-    gaps.push(spec.env.join(" or "));
+  const hasCredential =
+    settings?.credential === "keychain" ||
+    typeof settings?.factoryOptions?.apiKey === "string" ||
+    spec.env.some((name) => Boolean(environment[name]));
+  if (spec.env.length > 0 && !hasCredential) gaps.push(spec.env.join(" or "));
   for (const need of spec.needs ?? []) {
     const [first] = need.split(" or ");
-    if (!first.includes(".") && !environment[first]) gaps.push(need);
+    const configuredAzureResource =
+      id === "azure" &&
+      Boolean(
+        settings?.api ||
+          settings?.factoryOptions?.baseURL ||
+          settings?.factoryOptions?.resourceName,
+      );
+    if (!first.includes(".") && !environment[first] && !configuredAzureResource) gaps.push(need);
   }
   return gaps;
 };
