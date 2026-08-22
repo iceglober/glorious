@@ -83,6 +83,14 @@
         }
       ]
     },
+    "telemetry": {
+      "type": "object",
+      "description": "Consent for anonymous metadata-only OpenTelemetry metrics. Only the User config is used for consent.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": true
+    },
     "agentConfigAllowlist": {
       "type": "array",
       "items": { "type": "string", "enum": ["extensions", "model"] },
@@ -95,6 +103,11 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
+          "credential": {
+            "type": "string",
+            "enum": ["keychain"],
+            "description": "Non-secret marker that this provider's API key is stored in the OS credential store."
+          },
           "factoryOptions": {
             "$ref": "#/$defs/factoryOptions",
             "description": "JSON-compatible options passed directly to the installed AI SDK provider factory."

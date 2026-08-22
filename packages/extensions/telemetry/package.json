@@ -1,0 +1,9 @@
+{
+  "name": "@glrs-dev/glrs-ext-telemetry",
+  "version": "1.0.0-next.55",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@glrs-dev/glrs": "workspace:*"
+  }
+}

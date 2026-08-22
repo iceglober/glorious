@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, win32 } from "node:path";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createAzure } from "@ai-sdk/azure";
@@ -9,6 +9,7 @@ import { createCohere } from "@ai-sdk/cohere";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogle } from "@ai-sdk/google";
 import { createGoogleVertex } from "@ai-sdk/google-vertex";
+import { createGoogleVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
 import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -26,7 +27,9 @@ import {
   type JsonObject,
   type ModelSettings,
 } from "./config";
-import { canonicalProvider, nearestProvider, providerSpec } from "./providers";
+import { canonicalProvider, nearestProvider, PROVIDERS, providerSpec } from "./providers";
+import { providerKey } from "./secrets";
+import { azureModelTypeFor } from "./shaping";
 
 export { PROVIDER_SETTINGS, settingsFor } from "./providers";
 
@@ -54,6 +57,7 @@ export type ModelOption = ModelRef & {
   project?: string;
   location?: string;
   modelType?: AzureModelType;
+  credential?: "keychain";
   factoryOptions?: JsonObject;
   requestOptions?: JsonObject;
   providerOptions?: Record<string, JsonObject>;
@@ -166,6 +170,7 @@ const providerSettings = (
     | "location"
     | "factoryOptions"
     | "modelType"
+    | "credential"
     | "requestOptions"
     | "providerOptions"
     | "name"
@@ -182,6 +187,7 @@ const providerSettings = (
     api: providerSettings?.api,
     factoryOptions: providerSettings?.factoryOptions,
     modelType: model?.modelType,
+    credential: providerSettings?.credential,
     requestOptions: mergeObjects(providerSettings?.requestOptions, model?.requestOptions),
     providerOptions: mergeObjects(
       providerSettings?.providerOptions as JsonObject | undefined,
@@ -237,6 +243,145 @@ export const configuredModel = (
     env: providerSpec(ref.provider)?.env ?? [],
     npm: ref.provider === "azure" ? "@ai-sdk/azure" : undefined,
   };
+};
+
+export const hydrateModelCredentials = async (
+  model: ModelOption,
+  readKey: (provider: string) => Promise<string | undefined> = providerKey,
+): Promise<ModelOption> => {
+  if (
+    resolveApiKey(model) !== undefined ||
+    typeof model.factoryOptions?.apiKey === "string" ||
+    model.credential !== "keychain"
+  )
+    return model;
+  const apiKey = await readKey(model.provider);
+  return apiKey === undefined ? model : { ...model, apiKey };
+};
+
+export type ProviderConnection = {
+  id: string;
+  label: string;
+  configured: boolean;
+  source?: "environment" | "keychain" | "cloud" | "config";
+  env: readonly string[];
+  needs?: readonly string[];
+  missing?: readonly string[];
+  note?: string;
+};
+
+const exists = async (path: string): Promise<boolean> =>
+  access(path)
+    .then(() => true)
+    .catch(() => false);
+
+export const modelsForConnectedProviders = (
+  models: readonly ModelOption[],
+  providers: readonly ProviderConnection[],
+): readonly ModelOption[] => {
+  const connected = new Set(
+    providers.filter((provider) => provider.configured).map((provider) => provider.id),
+  );
+  return models.filter((model) => connected.has(model.provider));
+};
+
+export const providerConnections = async (
+  config: Config = {},
+  environment: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+  platform: NodeJS.Platform = process.platform,
+): Promise<readonly ProviderConnection[]> => {
+  const paths = platform === "win32" ? win32 : { join };
+  const gcloud =
+    environment.CLOUDSDK_CONFIG ??
+    (platform === "win32"
+      ? paths.join(environment.APPDATA ?? paths.join(home, "AppData", "Roaming"), "gcloud")
+      : paths.join(home, ".config", "gcloud"));
+  const vertexAdc =
+    Boolean(environment.GOOGLE_APPLICATION_CREDENTIALS) ||
+    (await exists(paths.join(gcloud, "application_default_credentials.json")));
+  const awsCredentials =
+    Boolean(
+      environment.AWS_ACCESS_KEY_ID ||
+        environment.AWS_PROFILE ||
+        environment.AWS_BEARER_TOKEN_BEDROCK,
+    ) ||
+    (await exists(
+      environment.AWS_SHARED_CREDENTIALS_FILE ?? paths.join(home, ".aws", "credentials"),
+    )) ||
+    (await exists(environment.AWS_CONFIG_FILE ?? paths.join(home, ".aws", "config")));
+
+  const builtins = PROVIDERS.map((provider) => {
+    const settings = config.providers?.[provider.id];
+    const environmentKey = provider.env.some((name) => Boolean(environment[name]));
+    const keychain = settings?.credential === "keychain";
+    const configuredKey = typeof settings?.factoryOptions?.apiKey === "string";
+    const configuredEndpoint = Boolean(settings?.api || settings?.factoryOptions?.baseURL);
+    const credential = environmentKey || keychain || configuredKey;
+    const azureResource = Boolean(
+      configuredEndpoint ||
+        settings?.factoryOptions?.resourceName ||
+        environment.AZURE_RESOURCE_NAME,
+    );
+    const vertexProject = Boolean(
+      settings?.project ?? environment.GOOGLE_CLOUD_PROJECT ?? environment.GOOGLE_VERTEX_PROJECT,
+    );
+    const configured =
+      provider.id === "google-vertex"
+        ? vertexAdc && vertexProject
+        : provider.id === "amazon-bedrock"
+          ? awsCredentials
+          : provider.id === "azure"
+            ? credential && azureResource
+            : credential;
+    const cloud =
+      (provider.id === "google-vertex" && configured) ||
+      (provider.id === "amazon-bedrock" && configured);
+    return {
+      id: provider.id,
+      label: provider.label,
+      configured,
+      ...(environmentKey
+        ? { source: "environment" as const }
+        : keychain
+          ? { source: "keychain" as const }
+          : configuredKey
+            ? { source: "config" as const }
+            : cloud
+              ? { source: "cloud" as const }
+              : configuredEndpoint
+                ? { source: "config" as const }
+                : {}),
+      env: provider.env,
+      needs: provider.needs,
+      missing:
+        provider.id === "azure"
+          ? [...(!credential ? ["credential"] : []), ...(!azureResource ? ["resource"] : [])]
+          : provider.id === "google-vertex"
+            ? [...(!vertexAdc ? ["credential"] : []), ...(!vertexProject ? ["project"] : [])]
+            : provider.id === "amazon-bedrock"
+              ? cloud
+                ? []
+                : ["credential"]
+              : credential
+                ? []
+                : ["credential"],
+      note: provider.note,
+    };
+  });
+  const compatible = Object.entries(config.providers ?? {}).flatMap(([id, settings]) => {
+    if (providerSpec(id) || !(settings.api || settings.factoryOptions?.baseURL)) return [];
+    return [
+      {
+        id,
+        label: `${id} (OpenAI-compatible)`,
+        configured: true,
+        source: "config" as const,
+        env: [] as readonly string[],
+      },
+    ];
+  });
+  return [...builtins, ...compatible];
 };
 
 // Null, not an exception: a session opens before a model is chosen, so "nothing
@@ -342,6 +487,8 @@ type ProviderFactory = (options?: Record<string, unknown>) => (id: string) => Re
 
 const extensionProviders = new Map<string, ExtensionProvider>();
 
+export const isExtensionProvider = (provider: string): boolean => extensionProviders.has(provider);
+
 export const registerExtensionProvider = (provider: ExtensionProvider): { dispose: () => void } => {
   if (extensionProviders.has(provider.id)) return { dispose: () => {} };
   extensionProviders.set(provider.id, provider);
@@ -427,9 +574,7 @@ export const createModel = (
   };
   if (option.provider === "azure" || option.npm === "@ai-sdk/azure") {
     const provider = createAzure(common as Parameters<typeof createAzure>[0]);
-    const modelType =
-      option.modelType ??
-      (option.modelId.toLowerCase().includes("deepseek") ? "deepseek" : "responses");
+    const modelType = azureModelTypeFor(option.modelId, option.modelType);
     return provider[modelType](option.modelId);
   }
   if (option.provider === "amazon-bedrock")
@@ -439,8 +584,8 @@ export const createModel = (
         ? { region: option.region }
         : {}),
     } as Parameters<typeof createAmazonBedrock>[0])(option.modelId);
-  if (option.provider === "google-vertex")
-    return createGoogleVertex({
+  if (option.provider === "google-vertex") {
+    const vertexOptions = {
       ...common,
       ...(option.project !== undefined && configured.project === undefined
         ? { project: option.project }
@@ -448,7 +593,15 @@ export const createModel = (
       ...(option.location !== undefined && configured.location === undefined
         ? { location: option.location }
         : {}),
-    } as Parameters<typeof createGoogleVertex>[0])(option.modelId);
+    };
+    return option.modelId.toLowerCase().includes("claude")
+      ? createGoogleVertexAnthropic(
+          vertexOptions as Parameters<typeof createGoogleVertexAnthropic>[0],
+        )(option.modelId)
+      : createGoogleVertex(vertexOptions as Parameters<typeof createGoogleVertex>[0])(
+          option.modelId,
+        );
+  }
   const factory = factories[option.provider];
   // Anything without a factory of its own is an OpenAI-compatible endpoint —
   // Ollama, LM Studio, vLLM, a gateway, a company proxy. It only needs a base

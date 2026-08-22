@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../../provider-registry/src";
-import { recordExtensionChoice, recordModelChoice } from "./writeconfig";
+import { recordExtensionChoice, recordModelChoice, recordProviderConnection } from "./writeconfig";
 
 // The one thing in glrs that writes your configuration. config.ts opens with
 // "nothing writes config at runtime any more — you edit the file", and that
@@ -46,6 +46,43 @@ describe("permission to write your config", () => {
     const root = await project("{}");
     expect(await recordExtensionChoice(root, allowed, "web-fetch", true)).toBe("written");
     expect(await read(root)).toMatchObject({ extensions: { load: ["web-fetch"], disable: [] } });
+  });
+});
+
+describe("recording a provider credential", () => {
+  test("writes only a non-secret keychain marker and preserves provider settings", async () => {
+    const root = await project('{"providers":{"azure":{"api":"https://example.test/openai"}}}');
+    const path = join(root, ".glrs", "config.json");
+    expect(
+      await recordProviderConnection(
+        "azure",
+        { factoryOptions: { resourceName: "resource" } },
+        path,
+      ),
+    ).toBe("written");
+    const config = await read(root);
+    expect(config).toMatchObject({
+      providers: {
+        azure: {
+          api: "https://example.test/openai",
+          credential: "keychain",
+          factoryOptions: { resourceName: "resource" },
+        },
+      },
+    });
+    expect(JSON.stringify(config)).not.toContain("api-key-value");
+  });
+
+  test("can record cloud settings without claiming a keychain credential", async () => {
+    const root = await project("{}");
+    const path = join(root, ".glrs", "config.json");
+    expect(
+      await recordProviderConnection("google-vertex", { project: "project" }, path, false),
+    ).toBe("written");
+    expect(await read(root)).toMatchObject({
+      providers: { "google-vertex": { project: "project" } },
+    });
+    expect(JSON.stringify(await read(root))).not.toContain("credential");
   });
 });
 

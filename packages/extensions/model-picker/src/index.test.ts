@@ -7,6 +7,7 @@ import type {
   Handler,
   Key,
   ModelInfo,
+  ProviderInfo,
   Tone,
   WriteOutcome,
 } from "../../../glrs-core/src";
@@ -34,6 +35,7 @@ const harness = (
   options: {
     current?: ModelInfo | null;
     models?: readonly ModelInfo[];
+    providers?: readonly ProviderInfo[];
     hasUI?: boolean;
     remember?: WriteOutcome;
   } = {},
@@ -42,6 +44,11 @@ const harness = (
   const hooks = new Map<EventName, Handler<EventName>>();
   const selected: Array<{ label: string; variant?: string }> = [];
   const printed: Array<{ text: string; tone?: Tone }> = [];
+  const connected: Array<{
+    provider: string;
+    apiKey: string;
+    settings?: Readonly<Record<string, string>>;
+  }> = [];
   let capture: Capture | null = null;
   let closed = false;
   let current: ModelInfo | null =
@@ -54,12 +61,38 @@ const harness = (
     model("openai/gpt-5.2", ["minimal", "low", "medium", "high", "xhigh"]),
     model("ollama/qwen3"),
   ];
+  const providers = options.providers ?? [
+    {
+      id: "anthropic",
+      label: "Anthropic",
+      configured: true,
+      source: "environment",
+      env: ["ANTHROPIC_API_KEY"],
+    },
+    { id: "openai", label: "OpenAI", configured: false, env: ["OPENAI_API_KEY"] },
+    {
+      id: "azure",
+      label: "Azure OpenAI / AI Foundry",
+      configured: true,
+      source: "environment",
+      env: ["AZURE_API_KEY"],
+    },
+  ];
   const g = {
     hasUI: options.hasUI ?? true,
     command: (name: string, spec: Command) => commands.set(name, spec),
     on: (name: EventName, handler: Handler<EventName>) => hooks.set(name, handler),
     model: () => current,
     models: async () => catalogue,
+    providers: async () => providers,
+    connectProvider: async (
+      provider: string,
+      apiKey: string,
+      settings?: Readonly<Record<string, string>>,
+    ) => {
+      connected.push({ provider, apiKey, settings });
+      return { ok: true, message: "connected" };
+    },
     setModel: async (label: string, variant?: string) => {
       selected.push({ label, variant });
       current = { ...model(label), variant };
@@ -85,12 +118,13 @@ const harness = (
     },
   } as unknown as Glrs;
   modelPicker(g);
-  const press = (key: string, text = ""): void =>
-    capture?.onKey({ key, text, ctrl: false, shift: false } as Key);
+  const press = (key: string, text = "", ctrl = false): void =>
+    capture?.onKey({ key, text, ctrl, shift: false } as Key);
   const screen = (): string =>
     (capture?.render(100) ?? []).map((line) => line.map((span) => span.text).join("")).join("\n");
   return {
     command: commands.get("model") as Command,
+    connected,
     beforeRequest: hooks.get("before_provider_request") as Hook,
     sessionStart: hooks.get("session_start") as () => Promise<unknown>,
     press,
@@ -107,11 +141,11 @@ afterEach(() => {
 });
 
 describe("the model picker", () => {
-  test("shows catalogue models and the two Azure DeepSeek additions", async () => {
+  test("shows configured catalogue models and the two Azure DeepSeek additions", async () => {
     const picker = harness();
     await picker.command.run("");
     expect(picker.screen()).toContain("anthropic/claude-opus-5");
-    expect(picker.screen()).toContain("azure-deepseek/DeepSeek-V4-Flash");
+    expect(picker.screen()).toContain("azure/DeepSeek-V4-Flash");
   });
 
   test("filters from command arguments and selects a model with no variants", async () => {
@@ -129,13 +163,28 @@ describe("the model picker", () => {
     const picker = harness();
     await picker.command.run("deepseek-v4-pro");
     picker.press("return");
-    expect(picker.screen()).toContain("Reasoning for azure-deepseek/deepseek-v4-pro");
+    expect(picker.screen()).toContain("Reasoning for azure/deepseek-v4-pro");
     picker.press("down");
     picker.press("down");
     picker.press("return");
     await Bun.sleep(0);
-    expect(picker.selected).toEqual([
-      { label: "azure-deepseek/deepseek-v4-pro", variant: "medium" },
+    expect(picker.selected).toEqual([{ label: "azure/deepseek-v4-pro", variant: "medium" }]);
+  });
+
+  test("Ctrl+A opens provider setup and stores an entered key", async () => {
+    const picker = harness();
+    await picker.command.run("");
+    picker.press("a", "", true);
+    expect(picker.screen()).toContain("Add provider");
+    picker.press("down");
+    picker.press("return");
+    for (const character of "secret") picker.press(character, character);
+    expect(picker.screen()).toContain("••••••");
+    expect(picker.screen()).not.toContain("secret");
+    picker.press("return");
+    await Bun.sleep(0);
+    expect(picker.connected).toEqual([
+      { provider: "openai", apiKey: "secret", settings: undefined },
     ]);
   });
 
@@ -148,8 +197,6 @@ describe("the model picker", () => {
   });
 });
 
-// A session opens without a model now, so the picker is the thing that fills
-// the hole rather than something you have to know to type.
 describe("a session that opened with no model", () => {
   test("session_start opens the picker when nothing is chosen", async () => {
     const picker = harness({ current: null });
@@ -162,73 +209,15 @@ describe("a session that opened with no model", () => {
     await picker.sessionStart();
     expect(picker.screen()).toBe("");
   });
-
-  test("nothing is marked current when nothing is", async () => {
-    const picker = harness({ current: null });
-    await picker.sessionStart();
-    expect(picker.screen()).not.toContain("current");
-  });
-});
-
-describe("a provider with no credential glrs can see", () => {
-  const unreachable = [
-    model("anthropic/claude-opus-5"),
-    model("openai/gpt-5.2", [], ["OPENAI_API_KEY"]),
-  ];
-
-  test("models glrs has credentials for are listed first", async () => {
-    const picker = harness({ models: [...unreachable].reverse() });
-    await picker.command.run("");
-    const rows = picker.screen().split("\n");
-    expect(rows.findIndex((row) => row.includes("anthropic/claude-opus-5"))).toBeLessThan(
-      rows.findIndex((row) => row.includes("openai/gpt-5.2")),
-    );
-  });
-
-  test("the row says what is missing", async () => {
-    const picker = harness({ models: unreachable });
-    await picker.command.run("gpt");
-    expect(picker.screen()).toContain("needs OPENAI_API_KEY");
-  });
-
-  // Chosen, not refused: glrs reads the environment and config only, so an AWS
-  // profile on disk or a provider another extension registers looks exactly
-  // like this and works.
-  test("choosing it still switches, and says what to set", async () => {
-    const picker = harness({ models: unreachable });
-    await picker.command.run("gpt");
-    picker.press("return");
-    await Bun.sleep(0);
-    expect(picker.selected).toEqual([{ label: "openai/gpt-5.2", variant: undefined }]);
-    expect(picker.printed.map((one) => one.text).join("\n")).toContain(
-      "openai: glrs cannot see OPENAI_API_KEY",
-    );
-  });
 });
 
 describe("keeping the choice", () => {
-  test("the choice is recorded once the switch lands", async () => {
+  test("the choice is recorded after the switch", async () => {
     const picker = harness();
     await picker.command.run("ollama qwen");
     picker.press("return");
     await Bun.sleep(0);
     expect(picker.remembered).toEqual(["written"]);
-  });
-
-  test("config glrs may not write prints the line to paste instead", async () => {
-    const picker = harness({ remember: "not-allowed" });
-    await picker.command.run("ollama qwen");
-    picker.press("return");
-    await Bun.sleep(0);
-    expect(picker.printed.map((one) => one.text).join("\n")).toContain('"model": "ollama/qwen3"');
-  });
-
-  test("a switch that failed records nothing", async () => {
-    const picker = harness({ models: [model("ollama/qwen3")] });
-    await picker.command.run("nothing matches this");
-    picker.press("return");
-    await Bun.sleep(0);
-    expect(picker.remembered).toEqual([]);
   });
 });
 

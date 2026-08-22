@@ -4,8 +4,9 @@ title: connect a provider
 
 # connect a provider
 
-each provider reads its credential from the environment. the full list of
-providers, their aliases and the variables each one reads:
+each provider reads environment credentials. `/model`, then Ctrl+A, can store an
+API key in the operating-system credential store. the full list of providers,
+aliases and environment variables:
 [models](../9-reference/4-models.md).
 
 ## api key
@@ -16,7 +17,8 @@ GLRS_MODEL=anthropic/claude-opus-5 glrs doctor
 ```
 
 with the key exported and no model set anywhere, `glrs` still starts: the picker
-opens and every Anthropic model is at the top of the list.
+opens with the Anthropic models. the same models appear after adding Anthropic
+through Ctrl+A.
 
 ## azure
 
@@ -73,11 +75,13 @@ glrs doctor
 a connected provider reports `credentials: found`. anything else prints
 `missing:` and the variable it wants.
 
-`/model` reports the same thing per model, listing the ones glrs has credentials
-for first and marking the rest `needs OPENROUTER_API_KEY`. it does not stop you
-choosing one it cannot see a credential for: Bedrock through an SSO profile and
-Vertex through application default credentials both look unconfigured here and
-both work, so the turn is sent and the provider decides:
-[models](../9-reference/4-models.md).
+`/model` lists only configured providers. environment variables, keychain
+markers, Bedrock profiles, Vertex application default credentials and configured
+OpenAI-compatible endpoints count. Ctrl+A lists every built-in provider and its
+status.
+
+keychain reads happen only for the selected provider and at most once per
+process. glrs supports macOS Keychain, Windows Credential Manager and Linux
+Secret Service. when no secure store is available, use an environment variable.
 
 see also: [models](../9-reference/4-models.md), [configuration](../9-reference/14-configuration.md)

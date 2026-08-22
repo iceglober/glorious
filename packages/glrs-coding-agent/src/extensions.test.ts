@@ -68,6 +68,8 @@ const host: ExtensionHost = {
   setToolFilters: () => {},
   model: () => ({ label: "azure/test", provider: "azure", modelId: "test", missing: [] }),
   models: async () => [],
+  providers: async () => [],
+  connectProvider: async () => ({ ok: false, message: "not available" }),
   setModel: async () => {},
   rememberModel: async () => "not-allowed" as const,
   registerProvider: () => ({ dispose: () => {} }),
@@ -498,6 +500,7 @@ describe("the extensions that ship with glrs", () => {
       "ask-user",
       "builtins",
       "model-picker",
+      "telemetry",
       "web-fetch",
       "worktree",
     ]);
@@ -532,6 +535,7 @@ describe("the extensions that ship with glrs", () => {
     expect(origin("ask-user")).toBe("@glrs-dev/glrs-ext-ask-user");
     expect(origin("builtins")).toBe("@glrs-dev/glrs-ext-builtins");
     expect(origin("model-picker")).toBe("@glrs-dev/glrs-ext-model-picker");
+    expect(origin("telemetry")).toBe("@glrs-dev/glrs-ext-telemetry");
     expect(origin("web-fetch")).toBe("@glrs-dev/glrs-ext-web-fetch");
   });
 });

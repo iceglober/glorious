@@ -4,6 +4,7 @@ import { runShell } from "../../glrs-core/src/shell";
 import {
   currentModel,
   envSetting,
+  hydrateModelCredentials,
   loadConfig,
   missingFor,
   modelMetadata,
@@ -70,7 +71,7 @@ export const runPrint = async (
   // arguments here, so a model set in .glrs/config.json worked in the TUI
   // and was ignored by every headless run — including the ones the agent uses to
   // check its own work.
-  const chosen = currentModel(loadedConfig.config);
+  const chosen = await hydrateModelCredentials(currentModel(loadedConfig.config));
   const model = {
     ...chosen,
     ...(await modelMetadata(chosen).catch(() => ({}))),
@@ -212,6 +213,13 @@ export const runPrint = async (
       models: async () => {
         throw new Error("models() needs the catalogue; not loaded in print mode");
       },
+      providers: async () => {
+        throw new Error("providers() has no meaning in a one-shot run");
+      },
+      connectProvider: async () => ({
+        ok: false,
+        message: "connectProvider() has no meaning in a one-shot run",
+      }),
       setModel: async () => {
         throw new Error("setModel() has no meaning in a one-shot run");
       },
@@ -390,15 +398,32 @@ export const runPrint = async (
         lastUsage = {
           input: step.contextTokens,
           output: step.outputTokens,
-          cached: step.cachedTokens,
+          cached: step.cacheReadTokens ?? 0,
           cost: step.cost,
         };
         totals.input += step.contextTokens;
         totals.output += step.outputTokens;
-        totals.cached += step.cachedTokens;
+        totals.cached += step.cacheReadTokens ?? 0;
         totals.cost += step.cost ?? 0;
         totals.steps += 1;
-        void fire(registry, "usage", { ...lastUsage, contextTokens: step.contextTokens }, note);
+        void fire(
+          registry,
+          "usage",
+          {
+            ...lastUsage,
+            cacheRead: step.cacheReadTokens,
+            cacheWrite: step.cacheWriteTokens,
+            cacheTelemetry: step.cacheTelemetry,
+            cacheStrategy: step.cacheStrategy,
+            provider: step.provider,
+            model: step.model,
+            endpoint: step.endpoint,
+            durationMs: step.durationMs,
+            reusablePrefix: step.reusablePrefix,
+            contextTokens: step.contextTokens,
+          },
+          note,
+        );
       },
       onReasoningEnd: ({ text, elapsedMs }) => {
         void fire(registry, "reasoning", { text, elapsedMs }, note);

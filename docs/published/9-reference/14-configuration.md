@@ -39,6 +39,7 @@ in a git repository all three files are created, outside one only the User file.
 | keys | rule |
 | --- | --- |
 | `model`, `variant`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
+| `telemetry.enabled` | consent is read from User config only |
 | `extensions.load`, `extensions.disable`, `tools.disable` | union of the three scopes, and disabled anywhere stays disabled |
 | `providers` | JSON Merge Patch, deep; `null` deletes a key |
 
@@ -61,6 +62,26 @@ two sections are understood; anything else in the list does nothing.
 | `model` | `model` and `variant`, recording what `/model` chose |
 
 it writes `<project root>/.glrs/config.json`, never `config.local.json`. the write is a JSON round trip: comments and formatting do not survive. without the entry glrs prints the config line for you to add by hand and changes nothing.
+
+## telemetry
+
+```json
+{
+  "telemetry": {
+    "enabled": true
+  }
+}
+```
+
+the first interactive session asks once and writes this User setting. headless
+runs do not ask. `DO_NOT_TRACK=1`, `DNT=1`, `OTEL_SDK_DISABLED=true` and
+`OTEL_METRICS_EXPORTER=none` disable export regardless of config.
+
+OTLP reads `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, or appends `/v1/metrics` to
+`OTEL_EXPORTER_OTLP_ENDPOINT`. headers come from `OTEL_EXPORTER_OTLP_HEADERS`.
+exported values are provider and endpoint labels, cache strategy, duration and
+token counts. prompts, paths, credentials, request bodies and session ids are
+not exported.
 
 ## environment
 

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { type BuiltinProviderId, PROVIDERS } from "./providers";
 import {
   cacheHint,
+  cacheStrategyFor,
   cachesAutomatically,
+  cacheTelemetryFor,
+  endpointTypeFor,
   namespaceFor,
   requestOptions,
   withCacheBreakpoints,
@@ -11,8 +15,10 @@ import {
 // to everyone. These pin that each provider is asked in its own words.
 
 describe("which namespace a provider reads", () => {
-  test("azure uses its own provider-options namespace", () => {
+  test("azure follows the selected endpoint adapter", () => {
     expect(namespaceFor("azure", "gpt-5.6-luna")).toBe("azure");
+    expect(namespaceFor("azure", "private", "responses")).toBe("azure");
+    expect(namespaceFor("azure", "private", "chat")).toBe("openai");
     expect(namespaceFor("azure", "deepseek-v4-flash")).toBe("azure");
   });
 
@@ -21,8 +27,8 @@ describe("which namespace a provider reads", () => {
     expect(namespaceFor("google-vertex", "gemini-3-pro")).toBe("google");
   });
 
-  test("an unknown provider is OpenAI-compatible here as everywhere else", () => {
-    expect(namespaceFor("ollama")).toBe("openai");
+  test("an unknown provider uses the generic compatible namespace", () => {
+    expect(namespaceFor("ollama")).toBe("openaiCompatible");
   });
 });
 
@@ -82,6 +88,108 @@ describe("reasoning effort reaches the provider that answers", () => {
   });
 });
 
+describe("cache strategy matrix", () => {
+  const expected = {
+    anthropic: "message-breakpoint",
+    openai: "routing-key",
+    azure: "routing-key",
+    google: "automatic",
+    "google-vertex": "automatic",
+    "amazon-bedrock": "message-breakpoint",
+    openrouter: "no-portable-control",
+    groq: "no-portable-control",
+    mistral: "no-portable-control",
+    deepseek: "no-portable-control",
+    cerebras: "no-portable-control",
+    cohere: "no-portable-control",
+    xai: "no-portable-control",
+    perplexity: "no-portable-control",
+    togetherai: "no-portable-control",
+  } satisfies Record<BuiltinProviderId, ReturnType<typeof cacheStrategyFor>["kind"]>;
+
+  test("every built-in provider has an intentional strategy", () => {
+    expect(Object.keys(expected).sort()).toEqual(PROVIDERS.map(({ id }) => id).sort());
+    for (const provider of PROVIDERS)
+      expect(cacheStrategyFor({ provider: provider.id, modelId: "model" }).kind).toBe(
+        expected[provider.id as BuiltinProviderId],
+      );
+  });
+
+  test("azure endpoint types select only cache controls their adapter supports", () => {
+    expect(cacheStrategyFor({ provider: "azure", modelId: "gpt", modelType: "responses" })).toEqual(
+      { kind: "routing-key", namespace: "azure" },
+    );
+    expect(cacheStrategyFor({ provider: "azure", modelId: "gpt", modelType: "chat" })).toEqual({
+      kind: "routing-key",
+      namespace: "openai",
+    });
+    expect(
+      cacheStrategyFor({ provider: "azure", modelId: "deepseek-v4", modelType: "deepseek" }),
+    ).toEqual({ kind: "no-portable-control" });
+  });
+
+  test("vertex strategy follows the served model", () => {
+    expect(cacheStrategyFor({ provider: "google-vertex", modelId: "gemini-3-pro" })).toEqual({
+      kind: "automatic",
+    });
+    expect(cacheStrategyFor({ provider: "google-vertex", modelId: "claude-opus-4" })).toEqual({
+      kind: "message-breakpoint",
+      namespace: "anthropic",
+    });
+  });
+
+  test("compatible endpoints use only portable options and own their cache", () => {
+    expect(cacheStrategyFor({ provider: "ollama", modelId: "llama" })).toEqual({
+      kind: "no-portable-control",
+    });
+    expect(requestOptions({ provider: "ollama", modelId: "llama", cacheKey: "key" })).toEqual({});
+  });
+
+  test("cache telemetry capability is explicit for every built-in", () => {
+    const expected = {
+      anthropic: "read-write",
+      openai: "read",
+      azure: "read",
+      google: "read",
+      "google-vertex": "read",
+      "amazon-bedrock": "read-write",
+      openrouter: "read",
+      groq: "read",
+      mistral: "read",
+      deepseek: "read",
+      cerebras: "none",
+      cohere: "none",
+      xai: "read",
+      perplexity: "none",
+      togetherai: "none",
+    } satisfies Record<BuiltinProviderId, ReturnType<typeof cacheTelemetryFor>>;
+    for (const provider of PROVIDERS)
+      expect(cacheTelemetryFor({ provider: provider.id })).toBe(
+        expected[provider.id as BuiltinProviderId],
+      );
+    expect(cacheTelemetryFor({ provider: "google-vertex", modelId: "claude-opus-4" })).toBe(
+      "read-write",
+    );
+    expect(cacheTelemetryFor({ provider: "ollama" })).toBe("conditional");
+  });
+
+  test("endpoint labels distinguish every routed Azure adapter", () => {
+    expect(endpointTypeFor({ provider: "azure", modelType: "responses" })).toBe("azure-responses");
+    expect(endpointTypeFor({ provider: "azure", modelType: "chat" })).toBe("azure-chat");
+    expect(endpointTypeFor({ provider: "azure", modelType: "deepseek" })).toBe("azure-deepseek");
+  });
+
+  test("extension providers own caching even when reusing a built-in id", () => {
+    expect(cacheStrategyFor({ provider: "anthropic" }, "extension")).toEqual({
+      kind: "extension-managed",
+    });
+    expect(cacheHint("anthropic", "model", undefined, "extension")).toBeUndefined();
+    expect(
+      requestOptions({ provider: "openai", modelId: "model", cacheKey: "key" }, "extension"),
+    ).not.toHaveProperty("openai.promptCacheKey");
+  });
+});
+
 describe("cache breakpoints", () => {
   const conversation = (n: number) =>
     Array.from({ length: n }, (_, at) => ({ role: "user", content: `m${at}` }));
@@ -90,6 +198,7 @@ describe("cache breakpoints", () => {
     expect(cachesAutomatically("openai")).toBe(true);
     expect(cachesAutomatically("google")).toBe(true);
     expect(cachesAutomatically("azure", "gpt-5.6-luna")).toBe(true);
+    expect(cachesAutomatically("azure", "private", "chat")).toBe(true);
     expect(cachesAutomatically("azure", "deepseek-v4-flash")).toBe(false);
     expect(cacheHint("openai")).toBeUndefined();
     const messages = conversation(4);
@@ -129,6 +238,13 @@ describe("cache breakpoints", () => {
     const marked = withCacheBreakpoints(messages, "anthropic");
     expect(marked[0]).toHaveProperty("providerOptions.openai.store", false);
     expect(marked[0]).toHaveProperty("providerOptions.anthropic.cacheControl");
+  });
+
+  test("extension providers receive no glrs cache breakpoint", () => {
+    const messages = conversation(3);
+    expect(withCacheBreakpoints(messages, "anthropic", "model", undefined, "extension")).toEqual(
+      messages,
+    );
   });
 });
 

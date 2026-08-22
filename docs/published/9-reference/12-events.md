@@ -44,7 +44,7 @@ export default (g) => {
 | `tool_start` | `{name, input}` | |
 | `tool_end` | `{name, input, ok, result, detail, elapsedMs}` | string replaces what the model is told the tool returned |
 | `model_select` | `{model, variant?}` | |
-| `usage` | `{input, output, cached, cost?, contextTokens}` | |
+| `usage` | input/output/cache read/cache write, provider, model, endpoint, strategy, duration and context size | |
 | `reasoning` | `{text, elapsedMs}` | |
 | `error` | `{message}` | |
 | `compact` | `{dropped, kept, automatic}` | |
@@ -59,6 +59,10 @@ export default (g) => {
 | `session_before_fork` | `{ id, at? }` | `false` cancels the fork |
 | `session_before_switch` | `{ from, to }` | `false` cancels the switch |
 | `session_shutdown` | `{ root }` | nothing, awaited before the process exits |
+
+`cacheRead` and `cacheWrite` are absent when the SDK does not report them. zero
+means the SDK reported no cached tokens. `cacheTelemetry` names the adapter's
+reporting capability.
 
 ## print mode
 

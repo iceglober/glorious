@@ -8,7 +8,12 @@ import {
   type Warning,
 } from "ai";
 import {
+  type CacheOwner,
+  cacheStrategyFor,
+  cacheTelemetryFor,
   createModel,
+  endpointTypeFor,
+  isExtensionProvider,
   type JsonObject,
   type ModelOption,
   modelCost,
@@ -236,28 +241,42 @@ export const providerOptions = (
     "provider" | "modelId" | "modelType" | "variant" | "variants" | "providerOptions"
   >,
   cacheKey: string,
+  cacheOwner: CacheOwner = "glrs",
 ): ProviderOptions =>
   mergeOptions(
-    requestOptions({
-      provider: model.provider,
-      modelId: model.modelId,
-      modelType: model.modelType,
-      variant: model.variant,
-      variants: model.variants,
-      cacheKey,
-    }) as JsonObject,
+    requestOptions(
+      {
+        provider: model.provider,
+        modelId: model.modelId,
+        modelType: model.modelType,
+        variant: model.variant,
+        variants: model.variants,
+        cacheKey,
+      },
+      cacheOwner,
+    ) as JsonObject,
     (model.providerOptions ?? {}) as JsonObject,
   ) as ProviderOptions;
+
+export const cacheOwnerFor = (provider: string): CacheOwner =>
+  isExtensionProvider(provider) ? "extension" : "glrs";
 
 export const requestSettings = (
   model: Pick<
     ModelOption,
-    "provider" | "modelId" | "modelType" | "variant" | "requestOptions" | "providerOptions"
+    | "provider"
+    | "modelId"
+    | "modelType"
+    | "variant"
+    | "variants"
+    | "requestOptions"
+    | "providerOptions"
   >,
   cacheKey: string,
+  cacheOwner: CacheOwner = "glrs",
 ): JsonObject => ({
   ...(model.requestOptions ?? {}),
-  providerOptions: providerOptions(model, cacheKey) as JsonObject,
+  providerOptions: providerOptions(model, cacheKey, cacheOwner) as JsonObject,
 });
 
 export const terminatingToolCalled = (
@@ -365,9 +384,14 @@ export const createAgent = (setup: Setup) => {
       setup.terminatingTools?.() ?? new Set(),
     );
 
+  // Extension providers own their protocol, including cache controls. Asked at
+  // call time because an extension provider may register after model resolution.
+  const cacheOwner = (chosen: ReturnType<typeof ready>): CacheOwner =>
+    cacheOwnerFor(chosen.option.provider);
+
   const settings = (chosen: ReturnType<typeof ready>) => ({
     maxRetries: 5,
-    ...requestSettings(chosen.option, cacheKey(setup.sessionId)),
+    ...requestSettings(chosen.option, cacheKey(setup.sessionId), cacheOwner(chosen)),
     model: chosen.language,
     instructions: setup.systemPromptOverride?.() ?? systemPrompt(setup),
     stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool],
@@ -387,7 +411,11 @@ export const createAgent = (setup: Setup) => {
       const result = await generateText({
         maxOutputTokens: 4_000,
         maxRetries: 3,
-        ...requestSettings({ ...chosen.option, variant: undefined }, cacheKey("compact")),
+        ...requestSettings(
+          { ...chosen.option, variant: undefined },
+          cacheKey("compact"),
+          cacheOwner(chosen),
+        ),
         model: chosen.language,
         instructions:
           "You are compacting a coding session so work can continue past the context limit. " +
@@ -436,7 +464,15 @@ export const createAgent = (setup: Setup) => {
         onStep: (step: {
           text: string;
           contextTokens: number;
-          cachedTokens: number;
+          cacheReadTokens?: number;
+          cacheWriteTokens?: number;
+          cacheTelemetry: ReturnType<typeof cacheTelemetryFor>;
+          cacheStrategy: ReturnType<typeof cacheStrategyFor>["kind"];
+          provider: string;
+          model: string;
+          endpoint: string;
+          durationMs: number;
+          reusablePrefix: boolean;
           outputTokens: number;
           cost?: number;
         }) => void;
@@ -525,17 +561,19 @@ export const createAgent = (setup: Setup) => {
         // redacted view. `sent` — the real conversation — is what gets stored,
         // so this changes the call and never the history.
         const shown = (await setup.onContext?.(sent, attempt)) ?? sent;
+        let modelCallStartedAt = 0;
         const result = streamText({
           ...settings(chosen),
           tools: toolsFor(turn.onTool),
-          // Anthropic and Bedrock cache only what is marked, so the marks go
-          // in here rather than in providerOptions. OpenAI and Google cache a
-          // prefix unasked and are handed the list unchanged.
+          // Explicit-cache providers get a moving stable-prefix breakpoint.
+          // Automatic/no-control endpoints and extension providers are
+          // handed the list unchanged.
           messages: withCacheBreakpoints(
             [...shown],
             chosen.option.provider,
             chosen.option.modelId,
             chosen.option.modelType,
+            cacheOwner(chosen),
           ),
           abortSignal: turn.signal,
           // The one seam where a message can join a turn already in flight.
@@ -556,13 +594,30 @@ export const createAgent = (setup: Setup) => {
           // part and the loop below throws it.
           onError: () => {},
           // the request is away; nothing has come back yet
-          onLanguageModelCallStart: () => turn.onPhase("waiting"),
+          onLanguageModelCallStart: () => {
+            modelCallStartedAt = performance.now();
+            turn.onPhase("waiting");
+          },
           onLanguageModelCallEnd: ({ content, usage }) => {
             observed = usage?.inputTokens ?? observed;
+            const owner = cacheOwner(chosen);
+            const shape = {
+              provider: chosen.option.provider,
+              modelId: chosen.option.modelId,
+              modelType: chosen.option.modelType,
+            };
             turn.onStep({
               text: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""),
               contextTokens: observed,
-              cachedTokens: usage?.inputTokenDetails?.cacheReadTokens ?? 0,
+              cacheReadTokens: usage?.inputTokenDetails?.cacheReadTokens,
+              cacheWriteTokens: usage?.inputTokenDetails?.cacheWriteTokens,
+              cacheTelemetry: cacheTelemetryFor(shape, owner),
+              cacheStrategy: cacheStrategyFor(shape, owner).kind,
+              provider: chosen.option.provider,
+              model: chosen.option.modelId,
+              endpoint: endpointTypeFor(shape, owner),
+              durationMs: Math.max(0, performance.now() - modelCallStartedAt),
+              reusablePrefix: shown.length >= 2,
               outputTokens: usage?.outputTokens ?? 0,
               cost: modelCost(chosen.option, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0),
             });

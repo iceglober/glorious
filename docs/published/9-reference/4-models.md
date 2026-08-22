@@ -62,26 +62,22 @@ picking the default reasoning effort removes `variant` rather than writing null.
 for every project, put `model` in the User config by hand:
 [configuration](./14-configuration.md).
 
-## a provider with no credentials
+## configured providers
 
-choosing one always succeeds. the row says what is absent, the switch happens,
-and the turn is still sent:
+`/model` lists models only for providers glrs can configure: environment or
+keychain credentials, Bedrock profiles, Vertex application default credentials,
+or an OpenAI-compatible base URL. Ctrl+A opens the full provider list.
 
-```
-› openrouter/~anthropic/claude-opus-latest  needs OPENROUTER_API_KEY
-```
-
-```
-Model switched to openrouter/~anthropic/claude-opus-latest.
-openrouter: glrs cannot see OPENROUTER_API_KEY. Turns are still sent, and the
-provider decides.
+```text
+? Add provider
+    Anthropic
+  › OpenAI
+    Azure OpenAI / AI Foundry  ✓ environment
 ```
 
-glrs reads the environment and config and nothing else, so an empty list is not
-a promise that a call will succeed and a full one is not proof it will fail.
-Bedrock through an SSO profile, Vertex through application default credentials,
-and any provider an extension registers all report a gap and all work. the
-provider's own refusal is the authority, so glrs warns and does not block.
+API keys entered there go to the operating-system credential store. config holds
+only `"credential": "keychain"`. cloud credentials remain in the AWS and Google
+credential chains.
 
 ## the id
 
@@ -166,6 +162,20 @@ one namespace is emitted per call.
 | `bedrock` | `amazon-bedrock` | `reasoningConfig.budgetTokens`, plus `maxReasoningEffort` for `low`, `medium`, `high` |
 | `azure` | `azure` | `reasoningEffort`; DeepSeek deployments route through chat |
 | `openai` | `openai`, and every other provider | `reasoningEffort` |
+
+## prompt cache
+
+| route | control |
+| --- | --- |
+| OpenAI and Azure Responses/Chat | stable per-session routing key |
+| Anthropic and Vertex Claude | explicit message breakpoint |
+| Bedrock | explicit cache point |
+| Google and Vertex Gemini | automatic provider cache |
+| no portable SDK control | stable prefix only |
+| extension provider | extension-owned |
+
+cache-read and cache-write counts stay absent when the SDK does not report them.
+reported zero is not treated as unavailable telemetry.
 
 ## metadata
 

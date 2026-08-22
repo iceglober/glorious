@@ -280,8 +280,9 @@ how-to/connect-a-provider.md
 
 # connect a provider
 
-each provider reads its credential from the environment. the full list of
-providers, their aliases and the variables each one reads:
+each provider reads environment credentials. `/model`, then Ctrl+A, can store an
+API key in the operating-system credential store. the full list of providers,
+aliases and environment variables:
 [models](reference/models.md).
 
 ## api key
@@ -292,7 +293,8 @@ GLRS_MODEL=anthropic/claude-opus-5 glrs doctor
 ```
 
 with the key exported and no model set anywhere, `glrs` still starts: the picker
-opens and every Anthropic model is at the top of the list.
+opens with the Anthropic models. the same models appear after adding Anthropic
+through Ctrl+A.
 
 ## azure
 
@@ -349,12 +351,14 @@ glrs doctor
 a connected provider reports `credentials: found`. anything else prints
 `missing:` and the variable it wants.
 
-`/model` reports the same thing per model, listing the ones glrs has credentials
-for first and marking the rest `needs OPENROUTER_API_KEY`. it does not stop you
-choosing one it cannot see a credential for: Bedrock through an SSO profile and
-Vertex through application default credentials both look unconfigured here and
-both work, so the turn is sent and the provider decides:
-[models](reference/models.md).
+`/model` lists only configured providers. environment variables, keychain
+markers, Bedrock profiles, Vertex application default credentials and configured
+OpenAI-compatible endpoints count. Ctrl+A lists every built-in provider and its
+status.
+
+keychain reads happen only for the selected provider and at most once per
+process. glrs supports macOS Keychain, Windows Credential Manager and Linux
+Secret Service. when no secure store is available, use an environment variable.
 
 see also: [models](reference/models.md), [configuration](reference/configuration.md)
 
@@ -1051,26 +1055,22 @@ picking the default reasoning effort removes `variant` rather than writing null.
 for every project, put `model` in the User config by hand:
 [configuration](reference/configuration.md).
 
-## a provider with no credentials
+## configured providers
 
-choosing one always succeeds. the row says what is absent, the switch happens,
-and the turn is still sent:
+`/model` lists models only for providers glrs can configure: environment or
+keychain credentials, Bedrock profiles, Vertex application default credentials,
+or an OpenAI-compatible base URL. Ctrl+A opens the full provider list.
 
-```
-› openrouter/~anthropic/claude-opus-latest  needs OPENROUTER_API_KEY
-```
-
-```
-Model switched to openrouter/~anthropic/claude-opus-latest.
-openrouter: glrs cannot see OPENROUTER_API_KEY. Turns are still sent, and the
-provider decides.
+```text
+? Add provider
+    Anthropic
+  › OpenAI
+    Azure OpenAI / AI Foundry  ✓ environment
 ```
 
-glrs reads the environment and config and nothing else, so an empty list is not
-a promise that a call will succeed and a full one is not proof it will fail.
-Bedrock through an SSO profile, Vertex through application default credentials,
-and any provider an extension registers all report a gap and all work. the
-provider's own refusal is the authority, so glrs warns and does not block.
+API keys entered there go to the operating-system credential store. config holds
+only `"credential": "keychain"`. cloud credentials remain in the AWS and Google
+credential chains.
 
 ## the id
 
@@ -1155,6 +1155,20 @@ one namespace is emitted per call.
 | `bedrock` | `amazon-bedrock` | `reasoningConfig.budgetTokens`, plus `maxReasoningEffort` for `low`, `medium`, `high` |
 | `azure` | `azure` | `reasoningEffort`; DeepSeek deployments route through chat |
 | `openai` | `openai`, and every other provider | `reasoningEffort` |
+
+## prompt cache
+
+| route | control |
+| --- | --- |
+| OpenAI and Azure Responses/Chat | stable per-session routing key |
+| Anthropic and Vertex Claude | explicit message breakpoint |
+| Bedrock | explicit cache point |
+| Google and Vertex Gemini | automatic provider cache |
+| no portable SDK control | stable prefix only |
+| extension provider | extension-owned |
+
+cache-read and cache-write counts stay absent when the SDK does not report them.
+reported zero is not treated as unavailable telemetry.
 
 ## metadata
 
@@ -1548,7 +1562,8 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | name | package | provides |
 | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | the six file and shell tools, and every slash command |
-| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, and the picker that opens when no model is set |
+| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, configured-provider filtering and Ctrl+A provider setup |
+| `telemetry` | `@glrs-dev/glrs-ext-telemetry` | consented model and cache metrics over OTLP |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user`, a multiple-choice question answered in the TUI |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch`, a page as markdown, JavaScript rendered when Chrome is installed |
 | `worktree` | `@glrs-dev/glrs-ext-worktree` | git worktrees, and `glrs wt` |
@@ -1571,7 +1586,9 @@ model exists. `setModel` switches for the session, `rememberModel` writes the
 active one into the project config and returns `"not-allowed"` unless
 `agentConfigAllowlist` names `model`. every `ModelInfo`, from `model()` and from
 `models()` alike, carries `missing`: the variables or config keys glrs could not
-find for that provider, empty when it found them all.
+find for that provider, empty when it found them all. `providers()` reports the
+configured provider list; `connectProvider()` stores a key after explicit user
+interaction and never writes it to config.
 
 ```typescript
 const chosen = g.model();
@@ -1658,7 +1675,7 @@ export default (g) => {
 | `tool_start` | `{name, input}` | |
 | `tool_end` | `{name, input, ok, result, detail, elapsedMs}` | string replaces what the model is told the tool returned |
 | `model_select` | `{model, variant?}` | |
-| `usage` | `{input, output, cached, cost?, contextTokens}` | |
+| `usage` | input/output/cache read/cache write, provider, model, endpoint, strategy, duration and context size | |
 | `reasoning` | `{text, elapsedMs}` | |
 | `error` | `{message}` | |
 | `compact` | `{dropped, kept, automatic}` | |
@@ -1673,6 +1690,10 @@ export default (g) => {
 | `session_before_fork` | `{ id, at? }` | `false` cancels the fork |
 | `session_before_switch` | `{ from, to }` | `false` cancels the switch |
 | `session_shutdown` | `{ root }` | nothing, awaited before the process exits |
+
+`cacheRead` and `cacheWrite` are absent when the SDK does not report them. zero
+means the SDK reported no cached tokens. `cacheTelemetry` names the adapter's
+reporting capability.
 
 ## print mode
 
@@ -1787,6 +1808,7 @@ in a git repository all three files are created, outside one only the User file.
 | keys | rule |
 | --- | --- |
 | `model`, `variant`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
+| `telemetry.enabled` | consent is read from User config only |
 | `extensions.load`, `extensions.disable`, `tools.disable` | union of the three scopes, and disabled anywhere stays disabled |
 | `providers` | JSON Merge Patch, deep; `null` deletes a key |
 
@@ -1809,6 +1831,26 @@ two sections are understood; anything else in the list does nothing.
 | `model` | `model` and `variant`, recording what `/model` chose |
 
 it writes `<project root>/.glrs/config.json`, never `config.local.json`. the write is a JSON round trip: comments and formatting do not survive. without the entry glrs prints the config line for you to add by hand and changes nothing.
+
+## telemetry
+
+```json
+{
+  "telemetry": {
+    "enabled": true
+  }
+}
+```
+
+the first interactive session asks once and writes this User setting. headless
+runs do not ask. `DO_NOT_TRACK=1`, `DNT=1`, `OTEL_SDK_DISABLED=true` and
+`OTEL_METRICS_EXPORTER=none` disable export regardless of config.
+
+OTLP reads `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, or appends `/v1/metrics` to
+`OTEL_EXPORTER_OTLP_ENDPOINT`. headers come from `OTEL_EXPORTER_OTLP_HEADERS`.
+exported values are provider and endpoint labels, cache strategy, duration and
+token counts. prompts, paths, credentials, request bodies and session ids are
+not exported.
 
 ## environment
 

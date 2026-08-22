@@ -19,17 +19,21 @@ import {
   currentModel,
   ensureConfigFiles,
   envSetting,
+  hydrateModelCredentials,
   loadCatalogue,
   loadConfig,
   type ModelOption,
   missingFor,
   modelLabel,
   modelMetadata,
+  modelsForConnectedProviders,
   NoModelChosen,
   noteFor,
   PROVIDERS,
+  providerConnections,
   providerSpec,
   registerExtensionProvider,
+  storeProviderKey,
 } from "../../provider-registry/src";
 import { createAgent, routeProviderWarnings } from "./agent";
 import { helpText, route } from "./argv";
@@ -76,7 +80,7 @@ import { loadSkills } from "./skills";
 import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
 import { loadUserCommands } from "./usercommands";
-import { recordExtensionChoice, recordModelChoice } from "./writeconfig";
+import { recordExtensionChoice, recordModelChoice, recordProviderConnection } from "./writeconfig";
 
 const TICK_MS = 100;
 const SETTLE_MS = 250;
@@ -266,12 +270,9 @@ const main = async (): Promise<void> => {
   // command and slash commands exist only inside a session, so refusing to open
   // one until a model was set meant the only ways in were `--model` and
   // `GLRS_MODEL`. `-p` still refuses: a pipeline has nowhere to ask.
-  let model: ModelOption | null = chosenModel(config.config);
-  // What glrs cannot find for a provider, as `doctor` reports it. Handed to
-  // extensions on every ModelInfo so a picker can say which models it can
-  // actually reach. It reads the environment and config and nothing else, so an
-  // empty list is not a promise that a call will succeed: an AWS profile on
-  // disk and Vertex's application default credentials are both invisible here.
+  const configured = chosenModel(config.config);
+  let model: ModelOption | null =
+    configured === null ? null : await hydrateModelCredentials(configured);
   const gapsFor = (provider: string): readonly string[] =>
     missingFor(provider, config.config.providers?.[provider]);
   const envToolTimeout = Number(envSetting("TOOL_TIMEOUT_MS"));
@@ -484,7 +485,19 @@ const main = async (): Promise<void> => {
       void fire(
         registry,
         "usage",
-        { ...lastUsage, contextTokens: event.tokens },
+        {
+          ...lastUsage,
+          cacheRead: event.cacheRead,
+          cacheWrite: event.cacheWrite,
+          cacheTelemetry: event.cacheTelemetry,
+          cacheStrategy: event.cacheStrategy,
+          provider: event.provider,
+          model: event.model,
+          endpoint: event.endpoint,
+          durationMs: event.durationMs,
+          reusablePrefix: event.reusablePrefix,
+          contextTokens: event.tokens,
+        },
         onExtensionFailure,
       );
     }
@@ -1012,7 +1025,11 @@ const main = async (): Promise<void> => {
           },
     models: async () => {
       const catalogue = await loadCatalogue();
-      return catalogue.map((option) => ({
+      const available = modelsForConnectedProviders(
+        catalogue,
+        await providerConnections(config.config),
+      );
+      return available.map((option) => ({
         label: modelLabel(option),
         provider: option.provider,
         modelId: option.modelId,
@@ -1021,8 +1038,58 @@ const main = async (): Promise<void> => {
         missing: gapsFor(option.provider),
       }));
     },
+    providers: () => providerConnections(config.config),
+    connectProvider: async (provider, apiKey, settings = {}) => {
+      const spec = providerSpec(provider);
+      if (!spec) return { ok: false, message: `Unknown provider: ${provider}` };
+      try {
+        if (apiKey) await storeProviderKey(provider, apiKey);
+        const providerSettings = {
+          ...(settings.resourceName
+            ? { factoryOptions: { resourceName: settings.resourceName } }
+            : {}),
+          ...(settings.project ? { project: settings.project } : {}),
+          ...(settings.location ? { location: settings.location } : {}),
+        };
+        const persisted = await recordProviderConnection(
+          provider,
+          providerSettings,
+          undefined,
+          Boolean(apiKey),
+        );
+        if (persisted !== "written" && persisted !== "already")
+          return {
+            ok: false,
+            message: "The key was stored, but its provider marker could not be saved.",
+          };
+        const existing = config.config.providers?.[provider] ?? {};
+        config.config.providers = {
+          ...(config.config.providers ?? {}),
+          [provider]: {
+            ...existing,
+            ...(apiKey ? { credential: "keychain" as const } : {}),
+            ...providerSettings,
+            ...(settings.resourceName
+              ? {
+                  factoryOptions: {
+                    ...(existing.factoryOptions ?? {}),
+                    resourceName: settings.resourceName,
+                  },
+                }
+              : {}),
+          },
+        };
+        return { ok: true, message: `${spec.label} connected.` };
+      } catch {
+        return {
+          ok: false,
+          message:
+            "The operating-system credential store is unavailable. Use an environment variable instead.",
+        };
+      }
+    },
     setModel: async (label, variant) => {
-      const next = configuredModel(label, config.config, variant);
+      const next = await hydrateModelCredentials(configuredModel(label, config.config, variant));
       model = { ...next, ...(await modelMetadata(next).catch(() => ({}))) };
       agent.setModel(model);
       await fire(

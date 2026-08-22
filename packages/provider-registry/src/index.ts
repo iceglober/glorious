@@ -3,6 +3,7 @@ import type { ModelProvider } from "../../glrs-core/src";
 export * from "./config";
 export * from "./models";
 export * from "./providers";
+export * from "./secrets";
 export * from "./shaping";
 
 export type CredentialSpec = {

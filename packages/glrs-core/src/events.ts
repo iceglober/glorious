@@ -26,7 +26,23 @@ export type SessionEvent =
   | {
       type: "usage";
       tokens: number;
+      // `cached` remains the compatibility total. Optional detail preserves
+      // unavailable telemetry instead of turning it into a measured zero.
       cached: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+      cacheTelemetry?: "read-write" | "read" | "conditional" | "none";
+      cacheStrategy?:
+        | "routing-key"
+        | "message-breakpoint"
+        | "automatic"
+        | "no-portable-control"
+        | "extension-managed";
+      provider?: string;
+      model?: string;
+      endpoint?: string;
+      durationMs?: number;
+      reusablePrefix?: boolean;
       input?: number;
       output?: number;
       cost?: number;

@@ -1,28 +1,9 @@
 import type { AzureModelType } from "./config";
+import { type BuiltinProviderId, providerSpec } from "./providers";
 
-// How a request is shaped for the provider that will answer it.
-//
-// This used to be one object nested under the `openai` namespace, applied to
-// every provider alike:
-//
-//   providerOptions: { openai: { reasoningEffort, textVerbosity, promptCacheKey, store } }
-//
-// The openai SDK also answers to azure, so those two worked. Everything else
-// received an `openai` key it does not read. `{"model":"anthropic/…","variant":
-// "high"}` parsed, passed `doctor`, and had no effect whatever — the config
-// validated a setting that could not reach the model.
-//
-// Reasoning effort is not one setting with one spelling. Each provider models
-// it differently, and the shapes below were read out of the installed SDKs
-// rather than assumed:
-//
-//   openai/azure   reasoningEffort: "low" | "medium" | "high"
-//   anthropic      thinking: { type: "enabled", budgetTokens }
-//   google         thinkingConfig: { thinkingBudget, includeThoughts }
-//   amazon-bedrock reasoningConfig: { type, budgetTokens, maxReasoningEffort }
-//
-// A provider glrs does not know is treated as OpenAI-compatible everywhere
-// else, so it is treated as OpenAI-compatible here too.
+// How a request is shaped for the provider and concrete endpoint that will
+// answer it. Caching is deliberately classified separately from reasoning:
+// the same host can expose endpoint types with different option schemas.
 
 // Reasoning effort is not a fixed set. models.dev publishes what each model
 // accepts in `reasoning_options`, and across the catalogue there are over a
@@ -67,25 +48,29 @@ const asVariant = (
   return (variants ?? FALLBACK).includes(word) ? word : undefined;
 };
 
-// Which provider-options namespace a provider reads. Azure's models all read
-// `azure`, even though the responses and chat implementations come from the
-// OpenAI SDK. Vertex serves both Google's own models and Anthropic's, and the
-// namespace follows the model rather than the host.
+export const azureModelTypeFor = (modelId: string, configured?: AzureModelType): AzureModelType =>
+  configured ?? (modelId.toLowerCase().includes("deepseek") ? "deepseek" : "responses");
+
+// Which provider-options namespace a provider reads. Azure Responses and
+// DeepSeek use `azure`; Azure Chat is implemented by the OpenAI chat adapter,
+// which reads `openai`. Vertex follows the served model rather than the host.
 export const namespaceFor = (
   provider: string,
   modelId = "",
-  _modelType?: AzureModelType,
+  modelType?: AzureModelType,
 ): string => {
-  if (provider === "azure") return "azure";
+  if (provider === "azure")
+    return azureModelTypeFor(modelId, modelType) === "chat" ? "openai" : "azure";
   if (provider === "google-vertex")
     return modelId.toLowerCase().includes("claude") ? "anthropic" : "google";
   if (provider === "amazon-bedrock") return "bedrock";
   if (provider === "google") return "google";
   if (provider === "anthropic") return "anthropic";
   if (provider === "openai") return "openai";
-  // Everything else is reached through the OpenAI-compatible client, so it
-  // reads the same namespace that client writes.
-  return "openai";
+  // Unknown provider ids use the generic OpenAI-compatible client. Its common
+  // options namespace is not `openai`, even though its wire format is similar.
+  if (!providerSpec(provider)) return "openaiCompatible";
+  return provider;
 };
 
 export type Shape = {
@@ -96,15 +81,124 @@ export type Shape = {
   variants?: readonly string[];
   /** The configured reasoning effort, in glrs's words. */
   variant?: string;
-  /** Stable per-conversation key, for providers that route on one. */
+  /** Stable per-conversation key, for endpoints that route on one. */
   cacheKey?: string;
 };
 
+export type CacheOwner = "glrs" | "extension";
+export type CacheStrategy =
+  | { kind: "routing-key"; namespace: "openai" | "azure" }
+  | { kind: "message-breakpoint"; namespace: "anthropic" | "bedrock" }
+  | { kind: "automatic" }
+  | { kind: "no-portable-control" }
+  | { kind: "extension-managed" };
+
+export type CacheTelemetry = "read-write" | "read" | "conditional" | "none";
+
+type StrategyFor = (shape: Shape) => CacheStrategy;
+const automatic: StrategyFor = () => ({ kind: "automatic" });
+const noPortableControl: StrategyFor = () => ({ kind: "no-portable-control" });
+const routingKey =
+  (namespace: "openai" | "azure"): StrategyFor =>
+  () => ({
+    kind: "routing-key",
+    namespace,
+  });
+const breakpoint =
+  (namespace: "anthropic" | "bedrock"): StrategyFor =>
+  () => ({
+    kind: "message-breakpoint",
+    namespace,
+  });
+
+// Exhaustive by construction: adding a built-in provider requires choosing its
+// cache contract here. `no-portable-control` means its installed SDK exposes no
+// portable cache control; glrs preserves stable prefixes and sends no invented
+// option. Provider extensions are classified separately below and own caching.
+const BUILTIN_CACHE_STRATEGIES = {
+  anthropic: breakpoint("anthropic"),
+  openai: routingKey("openai"),
+  azure: (shape) => {
+    const modelType = azureModelTypeFor(shape.modelId ?? "", shape.modelType);
+    if (modelType === "deepseek") return { kind: "no-portable-control" };
+    return { kind: "routing-key", namespace: modelType === "chat" ? "openai" : "azure" };
+  },
+  google: automatic,
+  "google-vertex": (shape) =>
+    shape.modelId?.toLowerCase().includes("claude")
+      ? { kind: "message-breakpoint", namespace: "anthropic" }
+      : { kind: "automatic" },
+  "amazon-bedrock": breakpoint("bedrock"),
+  openrouter: noPortableControl,
+  groq: noPortableControl,
+  mistral: noPortableControl,
+  deepseek: noPortableControl,
+  cerebras: noPortableControl,
+  cohere: noPortableControl,
+  xai: noPortableControl,
+  perplexity: noPortableControl,
+  togetherai: noPortableControl,
+} satisfies Record<BuiltinProviderId, StrategyFor>;
+
+export const cacheStrategyFor = (shape: Shape, owner: CacheOwner = "glrs"): CacheStrategy => {
+  if (owner === "extension") return { kind: "extension-managed" };
+  const provider = providerSpec(shape.provider);
+  return provider
+    ? BUILTIN_CACHE_STRATEGIES[provider.id as BuiltinProviderId](shape)
+    : // A configured OpenAI-compatible endpoint may cache its own prefixes,
+      // but there is no portable request control in the compatible SDK.
+      { kind: "no-portable-control" };
+};
+
+const BUILTIN_CACHE_TELEMETRY = {
+  anthropic: "read-write",
+  openai: "read",
+  azure: "read",
+  google: "read",
+  "google-vertex": "read",
+  "amazon-bedrock": "read-write",
+  openrouter: "read",
+  groq: "read",
+  mistral: "read",
+  deepseek: "read",
+  cerebras: "none",
+  cohere: "none",
+  xai: "read",
+  perplexity: "none",
+  togetherai: "none",
+} satisfies Record<BuiltinProviderId, CacheTelemetry>;
+
+export const cacheTelemetryFor = (shape: Shape, owner: CacheOwner = "glrs"): CacheTelemetry => {
+  if (owner === "extension") return "none";
+  const provider = providerSpec(shape.provider);
+  if (provider?.id === "google-vertex" && shape.modelId?.toLowerCase().includes("claude"))
+    return "read-write";
+  return provider ? BUILTIN_CACHE_TELEMETRY[provider.id as BuiltinProviderId] : "conditional";
+};
+
+export const endpointTypeFor = (shape: Shape, owner: CacheOwner = "glrs"): string => {
+  if (owner === "extension") return "extension";
+  if (shape.provider === "azure")
+    return `azure-${azureModelTypeFor(shape.modelId ?? "", shape.modelType)}`;
+  if (shape.provider === "openai") return "openai-responses";
+  if (shape.provider === "anthropic") return "anthropic-messages";
+  if (shape.provider === "amazon-bedrock") return "bedrock-converse";
+  if (shape.provider === "google-vertex")
+    return shape.modelId?.toLowerCase().includes("claude") ? "vertex-anthropic" : "vertex-gemini";
+  if (shape.provider === "google") return "google-gemini";
+  return providerSpec(shape.provider) ? `${shape.provider}-native` : "openai-compatible-chat";
+};
+
 // The `providerOptions` for one call: exactly one namespace, carrying only what
-// that provider actually reads.
-export const requestOptions = (shape: Shape): ProviderOptions => {
+// that endpoint adapter reads. Configured options are merged over these defaults
+// by the caller.
+export const requestOptions = (shape: Shape, cacheOwner: CacheOwner = "glrs"): ProviderOptions => {
   const namespace = namespaceFor(shape.provider, shape.modelId, shape.modelType);
   const variant = asVariant(shape.variant, shape.variants);
+  // The compatible client has no portable cache control, and provider
+  // extensions own their protocol. Exact configured providerOptions are merged
+  // after this return, so either can still opt into controls it understands.
+  if (!providerSpec(shape.provider)) return {};
   const scale = shape.variants ?? FALLBACK;
   const budget = variant === undefined ? undefined : budgetFor(variant, scale);
 
@@ -143,100 +237,76 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
       },
     };
 
-  if (namespace === "azure") {
-    const deepseek =
-      shape.modelType === "deepseek" ||
-      (shape.modelType === undefined && (shape.modelId ?? "").toLowerCase().includes("deepseek"));
-    if (deepseek)
-      return {
-        azure: {
-          ...(variant === undefined ? {} : { reasoningEffort: variant }),
-        },
-      };
+  const strategy = cacheStrategyFor(shape, cacheOwner);
+  const cacheOptions: Record<string, JsonValue> = {};
+  if (strategy.kind === "routing-key" && shape.cacheKey !== undefined)
+    cacheOptions.promptCacheKey = shape.cacheKey;
+
+  if (
+    shape.provider === "azure" &&
+    azureModelTypeFor(shape.modelId ?? "", shape.modelType) === "deepseek"
+  )
     return {
       azure: {
         ...(variant === undefined ? {} : { reasoningEffort: variant }),
+      },
+    };
+
+  // OpenAI Responses, Azure Responses, and Azure Chat share this option shape.
+  // `store: false` keeps reasoning replayable from the history glrs sends rather
+  // than relying on provider-side response-item state.
+  if (namespace === "openai" || namespace === "azure")
+    return {
+      [namespace]: {
+        ...(variant === undefined ? {} : { reasoningEffort: variant }),
         textVerbosity: "low",
-        ...(shape.cacheKey === undefined ? {} : { promptCacheKey: shape.cacheKey }),
+        ...cacheOptions,
         store: false,
       },
     };
-  }
 
-  // openai and every OpenAI-compatible endpoint.
-  //
-  // `store: false` is deliberate. With it true the provider keeps server-side
-  // reasoning state and answers "Item 'rs_…' not found" whenever that lookup
-  // misses. glrs sends its whole history every turn, so it gains nothing from
-  // server-side state, and false is also what makes the provider return
-  // reasoning.encrypted_content — which is what keeps reasoning replayable.
-  return {
-    openai: {
-      ...(variant === undefined ? {} : { reasoningEffort: variant }),
-      textVerbosity: "low",
-      ...(shape.cacheKey === undefined ? {} : { promptCacheKey: shape.cacheKey }),
-      store: false,
-    },
-  };
+  // The remaining native SDKs have no glrs-managed option beyond the provider
+  // families handled above. User configuration can still supply exact options.
+  return { [namespace]: {} };
 };
 
-// Whether a provider caches a prompt prefix without being asked. The ones that
-// do not need cache breakpoints written into the messages themselves, which is
-// a different seam from `providerOptions` — see `cacheHint`.
+// Kept as the simple capability predicate used by callers that only need to
+// know whether no message breakpoint is required.
 export const cachesAutomatically = (
   provider: string,
   modelId = "",
   modelType?: AzureModelType,
 ): boolean => {
-  if (provider === "azure")
-    return !(
-      modelType === "deepseek" ||
-      (modelType === undefined && modelId.toLowerCase().includes("deepseek"))
-    );
-  return (
-    namespaceFor(provider, modelId, modelType) === "openai" ||
-    namespaceFor(provider, modelId, modelType) === "google"
-  );
+  const strategy = cacheStrategyFor({ provider, modelId, modelType });
+  return strategy.kind === "routing-key" || strategy.kind === "automatic";
 };
 
 // What to mark a message with so the provider caches everything up to it.
-// Anthropic and Bedrock cache only what is explicitly marked; returning
-// undefined means the provider needs no mark and the caller writes nothing.
 export const cacheHint = (
   provider: string,
   modelId = "",
   modelType?: AzureModelType,
+  owner: CacheOwner = "glrs",
 ): ProviderOptions | undefined => {
-  const namespace = namespaceFor(provider, modelId, modelType);
-  if (namespace === "anthropic")
+  const strategy = cacheStrategyFor({ provider, modelId, modelType }, owner);
+  if (strategy.kind !== "message-breakpoint") return undefined;
+  if (strategy.namespace === "anthropic")
     return { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } };
-  if (namespace === "bedrock") return { bedrock: { cachePoint: { type: "default" } } };
-  return undefined;
+  return { bedrock: { cachePoint: { type: "default" } } };
 };
 
-// Where to put cache breakpoints in a conversation.
-//
-// Prompt caching was OpenAI-shaped throughout: a `promptCacheKey` and nothing
-// else. OpenAI and Google cache a prompt prefix without being asked, so that
-// worked for them and did nothing anywhere else — on Anthropic and Bedrock,
-// which cache only what is explicitly marked, every turn re-read the entire
-// conversation at full price.
-//
-// The mark goes on the second-to-last message: everything up to and including
-// it is cached, and it is the newest point that will still be present next
-// turn. The breakpoint therefore advances each turn, which is deliberate —
-// these providers match on prefix, so a longer prefix beginning with the
-// cached one still hits and extends it rather than starting over.
-//
-// A conversation shorter than two messages has no stable prefix to cache, so
-// nothing is marked and nothing is paid for.
+// The mark goes on the second-to-last message: everything through it is the
+// newest prefix guaranteed to survive into the next turn. Providers match on
+// prefixes, so advancing this point extends the existing entry. A shorter
+// conversation has no stable prefix and is left untouched.
 export const withCacheBreakpoints = <Message extends object>(
   messages: readonly Message[],
   provider: string,
   modelId = "",
   modelType?: AzureModelType,
+  owner: CacheOwner = "glrs",
 ): Message[] => {
-  const hint = cacheHint(provider, modelId, modelType);
+  const hint = cacheHint(provider, modelId, modelType, owner);
   if (hint === undefined || messages.length < 2) return [...messages];
   const at = messages.length - 2;
   return messages.map((message, index) => {

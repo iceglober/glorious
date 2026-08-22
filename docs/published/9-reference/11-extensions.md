@@ -22,7 +22,8 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | name | package | provides |
 | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | the six file and shell tools, and every slash command |
-| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, and the picker that opens when no model is set |
+| `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, configured-provider filtering and Ctrl+A provider setup |
+| `telemetry` | `@glrs-dev/glrs-ext-telemetry` | consented model and cache metrics over OTLP |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user`, a multiple-choice question answered in the TUI |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch`, a page as markdown, JavaScript rendered when Chrome is installed |
 | `worktree` | `@glrs-dev/glrs-ext-worktree` | git worktrees, and `glrs wt` |
@@ -45,7 +46,9 @@ model exists. `setModel` switches for the session, `rememberModel` writes the
 active one into the project config and returns `"not-allowed"` unless
 `agentConfigAllowlist` names `model`. every `ModelInfo`, from `model()` and from
 `models()` alike, carries `missing`: the variables or config keys glrs could not
-find for that provider, empty when it found them all.
+find for that provider, empty when it found them all. `providers()` reports the
+configured provider list; `connectProvider()` stores a key after explicit user
+interaction and never writes it to config.
 
 ```typescript
 const chosen = g.model();

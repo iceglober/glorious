@@ -1,21 +1,26 @@
-import type { Glrs, Line, ModelInfo } from "../../../glrs-core/src";
+import type { Glrs, Line, ModelInfo, ProviderInfo } from "../../../glrs-core/src";
 
 const PAGE_SIZE = 9;
-const AZURE_DEEPSEEK_PROVIDER = "azure-deepseek";
+const LEGACY_AZURE_DEEPSEEK_PROVIDER = "azure-deepseek";
 const AZURE_DEEPSEEK_VARIANTS = ["low", "medium", "high", "xhigh", "max"];
-const STANDARD_VARIANTS = new Set(["minimal", "low", "medium", "high"]);
+const STANDARD_VARIANTS = new Set(["minimal", "low", "medium", "high", "xhigh", "max"]);
 const AZURE_DEEPSEEK_MODELS = ["DeepSeek-V4-Flash", "deepseek-v4-pro"];
-// glrs has no table entry for this provider, so the extension that adds it is
-// what knows the variables it reads. Reported as `missing` on the two models
-// below, the same way a built-in provider's are.
-const AZURE_DEEPSEEK_ENV = ["AZURE_FOUNDRY_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_API_KEY"];
+const CLOUD_PROVIDERS = new Set(["amazon-bedrock", "google-vertex"]);
 
+type Stage = "model" | "variant" | "provider" | "key" | "resource" | "project";
 type State = {
-  stage: "model" | "variant";
+  stage: Stage;
   query: string;
   choice: number;
   model: ModelInfo | null;
   variantChoice: number;
+  providers: readonly ProviderInfo[];
+  providerChoice: number;
+  adding: ProviderInfo | null;
+  secret: string;
+  resourceName: string;
+  project: string;
+  notice: string;
 };
 
 type CaptureHandle = { close: () => void; repaint: () => void };
@@ -26,16 +31,17 @@ const matches = (model: ModelInfo, query: string): boolean => {
   return words.every((word) => haystack.includes(word));
 };
 
-// Nothing glrs could not find. Not a promise the call will succeed: it reads the
-// environment and config only, so an AWS profile on disk and Vertex application
-// default credentials both look like this too.
-const reachable = (model: ModelInfo): boolean => model.missing.length === 0;
+const isAzureDeepSeek = (model: ModelInfo): boolean =>
+  model.provider === "azure" && model.modelId.toLowerCase().includes("deepseek");
 
 const variantsFor = (model: ModelInfo): readonly string[] =>
-  model.provider === AZURE_DEEPSEEK_PROVIDER
+  isAzureDeepSeek(model)
     ? AZURE_DEEPSEEK_VARIANTS
     : (model.variants ?? []).filter((variant) => STANDARD_VARIANTS.has(variant));
 
+// Compatibility for configurations written by the short-lived
+// `azure-deepseek/*` provider. New picker entries use the built-in Azure
+// DeepSeek adapter and do not need request patching.
 export const patchReasoningBody = (body: unknown, variant: string | undefined): unknown => {
   if (variant === undefined) return body;
   if (typeof body === "string") {
@@ -54,23 +60,19 @@ export const patchReasoningBody = (body: unknown, variant: string | undefined): 
   return body;
 };
 
+const keyText = (key: { key: string; text: string }): string =>
+  key.text !== "" && !/\p{Cc}/u.test(key.text) ? key.text : "";
+
 export default function modelPicker(g: Glrs): void {
-  // Azure Foundry's OpenAI-compatible endpoint needs its API key under this
-  // header, and DeepSeek accepts reasoning effort in the request body. Keeping
-  // this beside the two explicit catalogue additions makes the custom provider
-  // work exactly like the standard models in the picker.
   g.on("before_provider_request", ({ body }) => {
     const model = g.model();
-    if (model?.provider !== AZURE_DEEPSEEK_PROVIDER) return;
+    if (model?.provider !== LEGACY_AZURE_DEEPSEEK_PROVIDER) return;
     const apiKey =
       process.env.AZURE_FOUNDRY_API_KEY ??
       process.env.AZURE_OPENAI_API_KEY ??
       process.env.AZURE_API_KEY;
     const headers: Record<string, string> = apiKey ? { "api-key": apiKey } : {};
-    return {
-      headers,
-      body: patchReasoningBody(body, model.variant),
-    };
+    return { headers, body: patchReasoningBody(body, model.variant) };
   });
 
   const open = async (args: string): Promise<void> => {
@@ -79,38 +81,43 @@ export default function modelPicker(g: Glrs): void {
       return;
     }
 
+    let providers = await g.providers();
     const catalogue = await g.models();
-    const missing = AZURE_DEEPSEEK_ENV.some((name) => process.env[name])
-      ? []
-      : [AZURE_DEEPSEEK_ENV.join(" or ")];
-    const additions: ModelInfo[] = AZURE_DEEPSEEK_MODELS.map((modelId) => ({
-      label: `${AZURE_DEEPSEEK_PROVIDER}/${modelId}`,
-      provider: AZURE_DEEPSEEK_PROVIDER,
-      modelId,
-      variants: AZURE_DEEPSEEK_VARIANTS,
-      missing,
-    }));
-    // Models glrs has credentials for come first. The catalogue is several
-    // hundred entries across every provider models.dev knows, and on a machine
-    // with one API key set, all but a handful of them are unusable today.
-    const models = [...catalogue, ...additions]
+    const azureReady = providers.some((provider) => provider.id === "azure" && provider.configured);
+    let models = [
+      ...catalogue,
+      ...(azureReady
+        ? AZURE_DEEPSEEK_MODELS.map((modelId) => ({
+            label: `azure/${modelId}`,
+            provider: "azure",
+            modelId,
+            variants: AZURE_DEEPSEEK_VARIANTS,
+            missing: [],
+          }))
+        : []),
+    ]
       .filter((model, index, all) => all.findIndex((item) => item.label === model.label) === index)
-      .sort((left, right) =>
-        reachable(left) === reachable(right)
-          ? left.label.localeCompare(right.label)
-          : reachable(left)
-            ? -1
-            : 1,
-      );
-    // Null on a session that opened without one, which is the case this whole
-    // extension exists to fill.
+      .sort((left, right) => left.label.localeCompare(right.label));
     const current = g.model();
+    if (
+      current !== null &&
+      providers.some((provider) => provider.id === current.provider && provider.configured) &&
+      !models.some((model) => model.label === current.label)
+    )
+      models.unshift(current);
     const state: State = {
       stage: "model",
       query: args.trim(),
       choice: 0,
       model: null,
       variantChoice: 0,
+      providers,
+      providerChoice: 0,
+      adding: null,
+      secret: "",
+      resourceName: "",
+      project: "",
+      notice: "",
     };
     let held: CaptureHandle | null = null;
 
@@ -132,31 +139,73 @@ export default function modelPicker(g: Glrs): void {
           `Model switched to ${model.label}${variant === "default" ? "" : ` (${variant})`}.`,
           "success",
         );
+        const wrote = await g.rememberModel();
+        if (wrote === "not-allowed")
+          g.print(
+            `This session only. To keep it, add "model": "${model.label}" to .glrs/config.json, ` +
+              'or "agentConfigAllowlist": ["model"] and glrs will write it for you.',
+            "muted",
+          );
+        if (wrote === "failed") g.print("Could not write .glrs/config.json.", "warning");
       } catch (error) {
         g.print(
           `Could not switch model: ${error instanceof Error ? error.message : String(error)}`,
           "danger",
         );
+      }
+    };
+
+    const refresh = async (provider: ProviderInfo): Promise<void> => {
+      providers = await g.providers();
+      models = [...(await g.models())];
+      if (provider.id === "azure")
+        models.push(
+          ...AZURE_DEEPSEEK_MODELS.map((modelId) => ({
+            label: `azure/${modelId}`,
+            provider: "azure",
+            modelId,
+            variants: AZURE_DEEPSEEK_VARIANTS,
+            missing: [],
+          })),
+        );
+      models = models
+        .filter(
+          (model, index, all) => all.findIndex((item) => item.label === model.label) === index,
+        )
+        .sort((left, right) => left.label.localeCompare(right.label));
+      state.query = `${provider.id}/`;
+      state.choice = 0;
+      state.stage = "model";
+      state.notice = `${provider.label} connected.`;
+      held?.repaint();
+    };
+
+    const connect = async (): Promise<void> => {
+      const provider = state.adding;
+      if (!provider || (provider.missing?.includes("credential") && state.secret.trim() === ""))
+        return;
+      state.notice = "Saving in the operating-system credential store…";
+      held?.repaint();
+      const settings = {
+        ...(provider.id === "azure" && state.resourceName.trim() !== ""
+          ? { resourceName: state.resourceName.trim() }
+          : {}),
+        ...(provider.id === "google-vertex" && state.project.trim() !== ""
+          ? { project: state.project.trim() }
+          : {}),
+      };
+      const result = await g.connectProvider(
+        provider.id,
+        state.secret.trim() || undefined,
+        Object.keys(settings).length === 0 ? undefined : settings,
+      );
+      state.secret = "";
+      if (!result.ok) {
+        state.notice = result.message;
+        held?.repaint();
         return;
       }
-      // A model glrs cannot see a credential for is still the model you chose.
-      // Said once, here, where you can act on it. Turns are still sent: an AWS
-      // profile, application default credentials and a provider another
-      // extension registers are all invisible to this check and all work.
-      if (!reachable(model))
-        g.print(
-          `${model.provider}: glrs cannot see ${model.missing.join(", ")}. ` +
-            "Turns are still sent, and the provider decides.",
-          "warning",
-        );
-      const wrote = await g.rememberModel();
-      if (wrote === "not-allowed")
-        g.print(
-          `This session only. To keep it, add "model": "${model.label}" to .glrs/config.json, ` +
-            'or "agentConfigAllowlist": ["model"] and glrs will write it for you.',
-          "muted",
-        );
-      if (wrote === "failed") g.print("Could not write .glrs/config.json.", "warning");
+      await refresh(provider);
     };
 
     const drawModels = (columns: number): Line[] => {
@@ -177,23 +226,14 @@ export default function modelPicker(g: Glrs): void {
           { text: "▏", tone: "accent" },
         ],
       ];
-
-      if (visible.length === 0) {
-        lines.push([{ text: "    No matching models", tone: "warning" }]);
-      } else {
+      if (visible.length === 0)
+        lines.push([{ text: "    No matching models. Ctrl+A adds a provider", tone: "warning" }]);
+      else
         for (const [offset, model] of visible.entries()) {
           const index = start + offset;
           const picked = index === state.choice;
-          // One note per row: which one you are on, or what glrs would need
-          // before this one could answer. Clipped to a third of the width so a
-          // long base-URL note cannot squeeze the model name out of the row.
-          const note =
-            model.label === current?.label
-              ? "current"
-              : reachable(model)
-                ? ""
-                : `needs ${model.missing[0]}`;
-          const suffix = note === "" ? "" : `  ${g.clip(note, Math.max(8, Math.floor(room / 3)))}`;
+          const isCurrent = model.label === current?.label;
+          const suffix = isCurrent ? "  current" : "";
           lines.push([
             { text: picked ? "  › " : "    ", tone: "accent" },
             {
@@ -204,9 +244,12 @@ export default function modelPicker(g: Glrs): void {
             ...(suffix === "" ? [] : [{ text: suffix, tone: "muted" as const }]),
           ]);
         }
-      }
+      if (state.notice) lines.push([{ text: `  ${state.notice}`, tone: "success" }]);
       lines.push([
-        { text: "  Type to filter · ↑↓ move · Enter choose · Esc cancel", tone: "muted" },
+        {
+          text: "  Type to filter · ↑↓ move · Enter choose · Ctrl+A add · Esc cancel",
+          tone: "muted",
+        },
       ]);
       return lines;
     };
@@ -215,35 +258,57 @@ export default function modelPicker(g: Glrs): void {
       const choices = variants();
       const room = Math.max(20, columns - 4);
       const label = state.model?.label ?? "model";
-      const lines: Line[] = [
-        [
-          { text: "? ", tone: "accent", bold: true },
-          { text: g.clip(`Reasoning for ${label}`, room), bold: true },
-        ],
-      ];
-      for (const [index, variant] of choices.entries()) {
-        const picked = index === state.variantChoice;
-        lines.push([
-          { text: picked ? "  › " : "    ", tone: "accent" },
+      return [
+        [{ text: `? Reasoning for ${g.clip(label, room)}`, tone: "accent", bold: true }],
+        ...choices.map((variant, index) => [
+          { text: index === state.variantChoice ? "  › " : "    ", tone: "accent" as const },
           {
             text: variant,
-            tone: picked ? "accent" : "highlight",
-            bold: picked,
+            tone: index === state.variantChoice ? ("accent" as const) : ("highlight" as const),
+            bold: index === state.variantChoice,
           },
-        ]);
-      }
-      lines.push([{ text: "  ↑↓ move · Enter choose · Esc back", tone: "muted" }]);
-      return lines;
+        ]),
+        [{ text: "  ↑↓ move · Enter choose · Esc back", tone: "muted" }],
+      ];
     };
 
-    const onKey = (key: { key: string; text: string }): void => {
+    const drawProviders = (): Line[] => [
+      [{ text: "? Add provider", tone: "accent", bold: true }],
+      ...providers.map((provider, index) => [
+        { text: index === state.providerChoice ? "  › " : "    ", tone: "accent" as const },
+        {
+          text: provider.label,
+          tone: index === state.providerChoice ? ("accent" as const) : ("highlight" as const),
+          bold: index === state.providerChoice,
+        },
+        { text: provider.configured ? `  ✓ ${provider.source}` : "", tone: "muted" as const },
+      ]),
+      ...(state.notice ? [[{ text: `  ${state.notice}`, tone: "warning" as const }]] : []),
+      [{ text: "  ↑↓ move · Enter configure · Esc back", tone: "muted" }],
+    ];
+
+    const drawInput = (label: string, value: string, secret: boolean): Line[] => [
+      [{ text: `? ${label}`, tone: "accent", bold: true }],
+      [{ text: `  ${secret ? "•".repeat(value.length) : value}▏` }],
+      ...(state.notice ? [[{ text: `  ${state.notice}`, tone: "warning" as const }]] : []),
+      [{ text: "  Enter save · Esc back", tone: "muted" }],
+    ];
+
+    const draw = (columns: number): Line[] => {
+      if (state.stage === "model") return drawModels(columns);
+      if (state.stage === "variant") return drawVariants(columns);
+      if (state.stage === "provider") return drawProviders();
+      if (state.stage === "resource")
+        return drawInput("Azure resource name", state.resourceName, false);
+      if (state.stage === "project") return drawInput("Google Cloud project", state.project, false);
+      return drawInput(`${state.adding?.label ?? "Provider"} API key`, state.secret, true);
+    };
+
+    const onKey = (key: { key: string; text: string; ctrl: boolean }): void => {
       if (state.stage === "variant") {
         const choices = variants();
-        if (key.key === "escape") {
-          state.stage = "model";
-          return;
-        }
-        if (key.key === "up")
+        if (key.key === "escape") state.stage = "model";
+        else if (key.key === "up")
           state.variantChoice = (state.variantChoice + choices.length - 1) % choices.length;
         else if (key.key === "down")
           state.variantChoice = (state.variantChoice + 1) % choices.length;
@@ -254,12 +319,82 @@ export default function modelPicker(g: Glrs): void {
         return;
       }
 
-      const found = filtered();
-      if (key.key === "escape") {
-        close();
+      if (state.stage === "provider") {
+        if (key.key === "escape") state.stage = "model";
+        else if (key.key === "up" && providers.length > 0)
+          state.providerChoice = (state.providerChoice + providers.length - 1) % providers.length;
+        else if (key.key === "down" && providers.length > 0)
+          state.providerChoice = (state.providerChoice + 1) % providers.length;
+        else if (key.key === "return") {
+          const provider = providers[state.providerChoice];
+          if (!provider) return;
+          if (provider.configured) {
+            state.query = `${provider.id}/`;
+            state.choice = 0;
+            state.stage = "model";
+          } else if (
+            provider.id === "google-vertex" &&
+            !provider.missing?.includes("credential") &&
+            provider.missing?.includes("project")
+          ) {
+            state.adding = provider;
+            state.project = "";
+            state.notice = "";
+            state.stage = "project";
+          } else if (CLOUD_PROVIDERS.has(provider.id)) {
+            state.notice = provider.note ?? `Configure ${provider.env.join(" or ")} and try again.`;
+          } else if (
+            provider.id === "azure" &&
+            !provider.missing?.includes("credential") &&
+            provider.missing?.includes("resource")
+          ) {
+            state.adding = provider;
+            state.resourceName = "";
+            state.notice = "";
+            state.stage = "resource";
+          } else {
+            state.adding = provider;
+            state.secret = "";
+            state.notice = "";
+            state.stage = "key";
+          }
+        }
         return;
       }
-      if (key.key === "up" && found.length > 0)
+
+      if (state.stage === "key" || state.stage === "resource" || state.stage === "project") {
+        if (key.key === "escape") {
+          state.stage = "provider";
+          state.secret = "";
+          state.notice = "";
+          return;
+        }
+        const field =
+          state.stage === "key"
+            ? "secret"
+            : state.stage === "resource"
+              ? "resourceName"
+              : "project";
+        if (key.key === "backspace") state[field] = state[field].slice(0, -1);
+        else if (key.key === "return") {
+          if (
+            state.stage === "key" &&
+            state.adding?.id === "azure" &&
+            state.adding.missing?.includes("resource") &&
+            state.resourceName.trim() === ""
+          )
+            state.stage = "resource";
+          else void connect();
+        } else state[field] += keyText(key);
+        return;
+      }
+
+      const found = filtered();
+      if (key.ctrl && key.key === "a") {
+        state.stage = "provider";
+        state.notice = "";
+      } else if (key.key === "escape") close();
+      else if (key.key === "up" && found.length > 0)
         state.choice = (state.choice + found.length - 1) % found.length;
       else if (key.key === "down" && found.length > 0)
         state.choice = (state.choice + 1) % found.length;
@@ -275,31 +410,21 @@ export default function modelPicker(g: Glrs): void {
           state.stage = "variant";
           state.variantChoice = Math.max(0, variants().indexOf(current?.variant ?? "default"));
         }
-      } else if (key.text !== "" && !/\p{Cc}/u.test(key.text)) {
-        state.query += key.text;
+      } else if (keyText(key) !== "") {
+        state.query += keyText(key);
         state.choice = 0;
       }
     };
 
-    held = g.ui.capture({
-      render: (columns) => (state.stage === "model" ? drawModels(columns) : drawVariants(columns)),
-      onKey,
-    });
+    held = g.ui.capture({ render: draw, onKey });
   };
 
   g.command("model", {
     description: "Choose the model and reasoning effort for the next turn",
     run: open,
   });
-
-  // A session opens without a model when nothing in the environment or the
-  // config named one. The composer works and every tool is loaded, but no turn
-  // can be sent, so the first thing on screen is the one question that has to be
-  // answered. Esc still cancels: choosing nothing is allowed, and the composer
-  // says how to get back here.
   g.on("session_start", async () => {
-    if (g.model() !== null) return;
-    await open("");
+    if (g.model() === null) await open("");
     return undefined;
   });
 }

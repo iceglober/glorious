@@ -36,6 +36,7 @@ describe("hosted config schema", () => {
       "models",
     ])
       expect(providers.additionalProperties.properties).toHaveProperty(key);
+    expect(providers.additionalProperties.properties).toHaveProperty("credential");
     expect(schema.$defs.factoryOptions.properties?.fetch).toBe(false);
     expect(schema.$defs.factoryOptions.properties).toHaveProperty("baseURL");
     expect(schema.$defs.factoryOptions.properties).toHaveProperty("headers");
@@ -65,6 +66,7 @@ describe("hosted config schema", () => {
       "followUpMode",
       "extensions",
       "tools",
+      "telemetry",
       "agentConfigAllowlist",
       "providers",
     ])
