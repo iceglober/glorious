@@ -58,6 +58,7 @@
     "idempotent-release",
     "initial-release",
     "initialize-config-files",
+    "isolate-prior-reasoning",
     "layered-provider-mcp-config",
     "lifecycle-diagram-render",
     "listings-context-mentions",
