@@ -22,6 +22,11 @@ import { clip, errorText } from "./render";
 import type { ToolEvent } from "./toolkit";
 
 const STEP_LIMIT = 100;
+const FINAL_STEP_PROMPT =
+  "The tool step limit has been reached. Answer the current user request now. " +
+  "Summarize completed work, remaining work, and blockers. Do not call tools.";
+
+export const isFinalToolStep = (stepNumber: number): boolean => stepNumber >= STEP_LIMIT - 1;
 const WARNING_CHARS = 160;
 const DEADLINES_MS = [30 * 60_000, 10 * 60_000, 10 * 60_000];
 const BREATH_MS = 500;
@@ -541,8 +546,21 @@ export const createAgent = (setup: Setup) => {
           // The one seam where a message can join a turn already in flight.
           // Appending keeps the cached prefix intact, so steering costs the
           // tokens of what was said and nothing else.
-          prepareStep: ({ messages, responseMessages }) => {
+          prepareStep: ({ messages, responseMessages, stepNumber }) => {
             const steering = turn.onSteer?.() ?? [];
+            if (isFinalToolStep(stepNumber)) {
+              const finalMessages = [...messages];
+              if (steering.length > 0) {
+                const steeringMessage: ModelMessage = {
+                  role: "user",
+                  content: steering.join("\n\n"),
+                };
+                injected.push({ at: responseMessages.length, message: steeringMessage });
+                finalMessages.push(steeringMessage);
+              }
+              finalMessages.push({ role: "user", content: FINAL_STEP_PROMPT });
+              return { messages: finalMessages, toolChoice: "none" as const };
+            }
             if (steering.length === 0) return {};
             const message: ModelMessage = { role: "user", content: steering.join("\n\n") };
             // Recorded against how many response messages exist right now,

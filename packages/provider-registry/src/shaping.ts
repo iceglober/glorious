@@ -57,6 +57,11 @@ const budgetFor = (variant: string, scale: readonly string[]): number | undefine
 // The variant a caller asked for, if this model accepts it. An unknown value is
 // dropped rather than forwarded: a provider that rejects it fails the whole
 // turn, and one that ignores it bills for effort nobody chose.
+const usesCurrentTurnReasoning = (shape: Shape): boolean =>
+  (shape.provider === "openai" ||
+    (shape.provider === "azure" && shape.modelType !== "chat" && shape.modelType !== "deepseek")) &&
+  /gpt-5\.6(?:[-.]|$)/u.test(shape.modelId ?? "");
+
 const asVariant = (
   value: string | undefined,
   variants: readonly string[] | undefined,
@@ -158,6 +163,7 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
         ...(variant === undefined ? {} : { reasoningEffort: variant }),
         textVerbosity: "low",
         ...(shape.cacheKey === undefined ? {} : { promptCacheKey: shape.cacheKey }),
+        ...(usesCurrentTurnReasoning(shape) ? { reasoningContext: "current_turn" } : {}),
         store: false,
       },
     };
@@ -175,6 +181,7 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
       ...(variant === undefined ? {} : { reasoningEffort: variant }),
       textVerbosity: "low",
       ...(shape.cacheKey === undefined ? {} : { promptCacheKey: shape.cacheKey }),
+      ...(usesCurrentTurnReasoning(shape) ? { reasoningContext: "current_turn" } : {}),
       store: false,
     },
   };

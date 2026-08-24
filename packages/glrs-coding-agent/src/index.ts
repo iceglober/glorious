@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
+import type { ModelMessage } from "ai";
 import packageJson from "../../../package.json";
 import { messagesOf, type SessionEvent, usageTotals } from "../../glrs-core/src/events";
 import { loadAgentRules } from "../../glrs-core/src/guidance";
@@ -845,6 +846,9 @@ const main = async (): Promise<void> => {
     return outcome;
   };
 
+  const estimateHistoryTokens = (history: readonly unknown[]): number =>
+    Math.ceil(JSON.stringify(history).length / 4);
+
   const maybeCompact = (): void => {
     if (chat.compacting || model?.context === undefined || tokens === null) return;
     if (tokens < model.context * COMPACT_AT) return;
@@ -852,6 +856,17 @@ const main = async (): Promise<void> => {
     // would run again on the very next turn.
     if (tokens <= compactedAt) return;
     void runCompaction({}, true);
+  };
+
+  const preflightCompact = async (
+    prompt: string,
+    history: readonly ModelMessage[],
+  ): Promise<void> => {
+    if (chat.compacting || model?.context === undefined) return;
+    const known = tokens ?? estimateHistoryTokens(history);
+    const candidate = known + Math.ceil(prompt.length / 4);
+    if (candidate < model.context * COMPACT_AT || candidate <= compactedAt) return;
+    await runCompaction({}, true);
   };
 
   const onExtensionFailure = (message: string): void => {
@@ -885,6 +900,7 @@ const main = async (): Promise<void> => {
   const chat = createChat(agent, {
     onEvent: render,
     onSignal: react,
+    onPreflight: preflightCompact,
     onBeforeRequest: async (prompt, messages) => {
       const beforeAgent = await fire(
         registry,
