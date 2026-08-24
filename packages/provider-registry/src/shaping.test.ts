@@ -75,6 +75,24 @@ describe("reasoning effort reaches the provider that answers", () => {
     );
   });
 
+  test("GPT-5.6 stops re-rendering reasoning from earlier turns", () => {
+    expect(requestOptions({ provider: "openai", modelId: "gpt-5.6-luna" }).openai).toMatchObject({
+      reasoningContext: "current_turn",
+    });
+    expect(
+      requestOptions({ provider: "azure", modelId: "gpt-5.6-luna", modelType: "responses" }).azure,
+    ).toMatchObject({ reasoningContext: "current_turn" });
+    expect(
+      requestOptions({ provider: "azure", modelId: "gpt-5.6-luna", modelType: "chat" }).openai,
+    ).not.toHaveProperty("reasoningContext");
+  });
+
+  test("older reasoning models keep their provider defaults", () => {
+    expect(requestOptions({ provider: "openai", modelId: "gpt-5.5" }).openai).not.toHaveProperty(
+      "reasoningContext",
+    );
+  });
+
   test("a word that is not an effort is ignored rather than forwarded", () => {
     expect(
       requestOptions({ provider: "openai", modelId: "o", variant: "turbo" }).openai,

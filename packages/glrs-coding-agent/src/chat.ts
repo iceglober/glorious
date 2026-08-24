@@ -35,6 +35,7 @@ export const createChat = (
     onSignal: (signal: ChatSignal) => void;
     // Fires before the model is called. A string is appended to this turn's
     // message, which is how an extension injects context for one turn only.
+    onPreflight?: (prompt: string, history: readonly ModelMessage[]) => Promise<void>;
     onBeforeRequest?: (prompt: string, messages: number) => Promise<string | undefined>;
     history?: ModelMessage[];
     // How much of each queue one delivery takes. Both default to one message at
@@ -139,17 +140,18 @@ export const createChat = (
       }
       return taken.map((item) => item.text);
     };
-    if (label === null) {
-      announce({ type: "user", text });
-    } else {
-      announce({ type: "notice", text: label });
-    }
     // The reminder trails what was asked. It led, once, and a model that had
     // just been interrupted answered the reminder instead of the request —
     // replying "Retried successfully" to a page of new instructions. What the
     // user typed is the turn; the reminder is context about the last one.
     let prompt = note === "" ? text : `${text}\n\n${note}`;
     note = "";
+    await wiring.onPreflight?.(prompt, history);
+    if (label === null) {
+      announce({ type: "user", text });
+    } else {
+      announce({ type: "notice", text: label });
+    }
     const added = await wiring.onBeforeRequest?.(prompt, history.length);
     if (added !== undefined && added !== "") prompt = `${prompt}\n\n${added}`;
     const before = history.length;

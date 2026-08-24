@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createModel, type ModelOption } from "../../provider-registry/src";
 import {
   createAgent,
+  isFinalToolStep,
   providerOptions,
   requestSettings,
   routeProviderWarnings,
@@ -14,6 +15,14 @@ import {
   worthRetrying,
 } from "./agent";
 import { errorText } from "./render";
+
+describe("step limit finalization", () => {
+  test("reserves the final allowed step for a text-only answer", () => {
+    expect(isFinalToolStep(98)).toBe(false);
+    expect(isFinalToolStep(99)).toBe(true);
+    expect(isFinalToolStep(100)).toBe(true);
+  });
+});
 
 describe("settleQuietly", () => {
   test("passes a resolved value straight through", async () => {
@@ -201,6 +210,31 @@ describe("what we ask the provider for", () => {
     expect(body.temperature).toBe(0.2);
     expect(body.service_tier).toBe("default");
     expect(body.store).toBe(true);
+  });
+
+  test("GPT-5.6 requests isolate reasoning to the active turn", async () => {
+    let body: Record<string, unknown> = {};
+    const selected: ModelOption = {
+      provider: "openai",
+      modelId: "gpt-5.6-luna",
+      name: "gpt-5.6-luna",
+      env: [],
+      factoryOptions: { apiKey: "test-key" },
+    };
+    const languageModel = createModel(selected, (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      body = JSON.parse(String(init?.body));
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch);
+    await generateText({
+      model: languageModel,
+      prompt: "hi",
+      maxRetries: 0,
+      ...requestSettings(selected, "key"),
+    }).catch(() => {});
+    expect((body.reasoning as Record<string, unknown>).context).toBe("current_turn");
   });
 });
 
