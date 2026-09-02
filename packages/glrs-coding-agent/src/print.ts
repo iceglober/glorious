@@ -8,7 +8,7 @@ import {
   missingFor,
   modelMetadata,
   registerExtensionProvider,
-} from "../../provider-registry/src";
+} from "../../glrs-providers/src";
 import { createAgent, routeProviderWarnings } from "./agent";
 import { createRegistry, describeContribution, fire, promptContributions } from "./extension-api";
 import {
@@ -306,9 +306,6 @@ export const runPrint = async (
         return typeof replaced === "string" ? replaced : undefined;
       },
     });
-    const trust = await fire(registry, "project_trust", { root: where.root }, note);
-    if (registry.handlers.has("project_trust") && trust !== "trusted")
-      throw new Error(`Project trust was ${trust ?? "not decided"} by an extension.`);
     await fire(registry, "session_start", { root: where.root }, note);
     await fire(registry, "turn_start", { text: prompt }, note);
     const { prompt: asked, missing } = await expandMentions(where.root, prompt);

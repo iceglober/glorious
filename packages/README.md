@@ -4,7 +4,7 @@ The package boundaries are defined in `docs/internal/domain-model.md` and
 `docs/internal/monorepo-plan.md`.
 
 - `glrs-core` — provider-neutral domain contracts and extension SDK.
-- `provider-registry` — provider adapters, credentials, and metadata.
+- `glrs-providers` — provider adapters, credentials, and metadata.
 - `glrs-coding-agent` — terminal coding-agent composition boundary.
 
 These internal packages are private implementation boundaries. The root

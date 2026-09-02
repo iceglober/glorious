@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { glrsDirectories } from "../../provider-registry/src";
+import { glrsDirectories } from "../../glrs-providers/src";
 import type { Command } from "./commands";
 
 // Project first, User second. Commands and extensions are glrs-specific, so

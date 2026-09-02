@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { WRITABLE_SECTIONS } from "../../packages/glrs-coding-agent/src/writeconfig";
-import { CONFIG_SCHEMA_URL } from "../../packages/provider-registry/src/config";
+import { CONFIG_SCHEMA_URL } from "../../packages/glrs-providers/src/config";
 
 const schema = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "public", "config.schema.json"), "utf8"),

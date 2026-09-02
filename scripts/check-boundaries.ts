@@ -16,19 +16,19 @@ const rules = [
     root: "packages/glrs-core/src",
     forbidden: [
       "@glrs-dev/glrs-coding-agent",
-      "@glrs-dev/provider-registry",
+      "@glrs-dev/glrs-providers",
       "packages/glrs-coding-agent",
     ],
   },
   {
-    root: "packages/provider-registry/src",
+    root: "packages/glrs-providers/src",
     forbidden: ["@glrs-dev/glrs-coding-agent", "packages/glrs-coding-agent"],
   },
   {
     root: "packages/extensions",
     forbidden: [
       "@glrs-dev/glrs-coding-agent",
-      "@glrs-dev/provider-registry",
+      "@glrs-dev/glrs-providers",
       "packages/glrs-coding-agent",
     ],
   },

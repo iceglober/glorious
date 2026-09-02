@@ -8,7 +8,7 @@ Accuracy is held by the test suite, not by a document beside the docs:
 
 - `prompt.test.ts` asserts every path the system prompt names resolves under
   `docsPath()`.
-- `extension-api.test.ts` counts the event rows in `9-reference/8-events.md`
+- `extension-api.test.ts` counts the event rows in `9-reference/12-events.md`
   against the `EventName` union.
 
 Both exist because this directory is read twice. The docs site builds from it,

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { Config } from "../../provider-registry/src";
+import type { Config } from "../../glrs-providers/src";
 
 // The one thing in glrs that writes your configuration, and it does nothing
 // unless you have said it may. `config.ts` opens with "nothing writes config at

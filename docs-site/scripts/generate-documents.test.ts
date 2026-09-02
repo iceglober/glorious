@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PROVIDER_ALIASES, PROVIDERS } from "../../packages/provider-registry/src/providers";
+import { PROVIDER_ALIASES, PROVIDERS } from "../../packages/glrs-providers/src/providers";
 import schema from "../public/config.schema.json";
 import { configReference, generateDocuments, providerReference } from "./generate-documents";
 

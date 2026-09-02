@@ -722,18 +722,12 @@ wants so whatever fills the gap can say so ([models](reference/models.md)).
 
 ## permissions
 
-there is no permissions system. glrs runs with the permissions of its process:
-any file you can edit, any command you can run. no sandbox, and nothing asks
-before it acts.
+glrs has whatever permissions its calling context has. any file you can edit,
+any command you can run. no sandbox, and nothing asks before it acts.
 
-one seam exists for building a gate. glrs fires `project_trust` when a session
-opens, and refuses to start if a handler answers anything but `trusted`. no
-extension ships one, so out of the box the event fires and nothing listens
-([events](reference/events.md)). a gate built on it still runs in the
-same process.
-
-an extension can refuse a call from the `tool_call` hook, but it runs in the
-same process as the thing it is refusing.
+there is no gate to configure, and no seam pretending to be one. an extension
+can refuse a call from the `tool_call` hook, but it runs in the same process as
+the thing it is refusing, so it is a convenience rather than a boundary.
 
 real boundaries come from outside the process:
 
@@ -1668,7 +1662,6 @@ export default (g) => {
 | `agent_start` | `{ prompt }` | nothing |
 | `agent_end` | `{ text }` | nothing |
 | `before_agent_start` | `{ prompt, systemPrompt }` | a string replaces the prompt, `false` cancels the turn, an object replaces either field |
-| `project_trust` | `{ root }` | `trusted`, `denied` or `deferred` |
 | `session_before_compact` | `{ automatic, instruction? }` | `false` cancels it, an object supplies the summary or the instruction |
 | `session_before_fork` | `{ id, at? }` | `false` cancels the fork |
 | `session_before_switch` | `{ from, to }` | `false` cancels the switch |
@@ -1687,14 +1680,6 @@ export default (g) => {
 - a blocked `tool_call` reaches the model as the tool's result: `ERROR: <your string>`, or `ERROR: an extension blocked <name> for this turn.` for `false`. the turn continues.
 - the TUI fires `idle` then `turn_end`. `-p` fires `turn_end` then `idle`.
 - both hosts await `session_end`, so work on the way out finishes. the TUI's screen stops as soon as it resolves, so printing there lands nowhere.
-
-## project_trust
-
-fired when a session opens. if no handler is registered, nothing happens and the
-session starts. if one is, glrs refuses to start unless it answers `trusted`.
-
-nothing ships a handler, so this is a seam for building an approval gate rather
-than a gate glrs provides ([design](explanation/design.md)).
 
 see also: [extensions](reference/extensions.md), [a turn](explanation/a-turn.md)
 

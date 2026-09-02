@@ -147,7 +147,7 @@ export const firstPartyExtensions = (settings?: ExtensionSettings): FirstPartyEx
 };
 
 // What config says about which extensions load. Declared here rather than
-// imported from provider-registry for the same reason QueueMode is declared
+// imported from glrs-providers for the same reason QueueMode is declared
 // twice: extension loading has no business depending on the model registry,
 // and a structural type costs three lines.
 export type ExtensionSettings = {

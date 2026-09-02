@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
 import type { SkillSummary } from "../../glrs-core/src";
-import { agentSkillsDirectories, userConfigDirectory } from "../../provider-registry/src";
+import { agentSkillsDirectories, userConfigDirectory } from "../../glrs-providers/src";
 import type { Command } from "./commands";
 
 type Skill = {

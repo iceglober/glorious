@@ -31,7 +31,7 @@ import {
   PROVIDERS,
   providerSpec,
   registerExtensionProvider,
-} from "../../provider-registry/src";
+} from "../../glrs-providers/src";
 import { createAgent, routeProviderWarnings } from "./agent";
 import { helpText, route } from "./argv";
 import { type ChatPhase, type ChatSignal, createChat } from "./chat";
@@ -1361,9 +1361,6 @@ const main = async (): Promise<void> => {
     process.on("SIGINT", onSigint);
     process.on("unhandledRejection", onStray);
     process.on("uncaughtException", onStray);
-    const trust = await fire(registry, "project_trust", { root }, onExtensionFailure);
-    if (registry.handlers.has("project_trust") && trust !== "trusted")
-      throw new Error(`Project trust was ${trust ?? "not decided"} by an extension.`);
     await fire(registry, "session_start", { root }, onExtensionFailure);
     await closed;
     process.exitCode = 0;

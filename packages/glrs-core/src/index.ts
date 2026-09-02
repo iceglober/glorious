@@ -148,7 +148,6 @@ export type EventPayload = {
   // it, which is how an extension handles input itself.
   input: { text: string };
   user_bash: { command: string };
-  project_trust: { root: string };
   before_agent_start: { prompt: string; systemPrompt: string };
   agent_start: { prompt: string };
   agent_end: { text: string };
@@ -229,7 +228,6 @@ export type EventPayload = {
 export type Verdict = {
   input: string | false | { text: string; streamingBehavior?: "steer" | "follow-up" };
   user_bash: { command: string } | false;
-  project_trust: "trusted" | "denied" | "deferred";
   before_agent_start: string | false | { prompt?: string; systemPrompt?: string };
   session_before_compact: { summary?: string; instruction?: string } | false;
   session_before_switch: false;
@@ -273,9 +271,9 @@ export type Activity = {
 
 // How a queue hands its messages over: one per opportunity, or all of them at
 // once. Declared here because both the coding agent (which runs the queues) and
-// provider-registry (which validates the setting) need it, and neither may
+// glrs-providers (which validates the setting) need it, and neither may
 // import the other — the same reason the extension API lives here. It was
-// declared in both, with provider-registry keeping a private copy of the list
+// declared in both, with glrs-providers keeping a private copy of the list
 // and the predicate beside it.
 export type QueueMode = "one-at-a-time" | "all";
 export const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
@@ -334,7 +332,6 @@ export type EventName =
   | "session_end"
   | "input"
   | "user_bash"
-  | "project_trust"
   | "before_agent_start"
   | "agent_start"
   | "agent_end"

@@ -5,7 +5,7 @@ import {
   PROVIDER_ALIASES,
   PROVIDERS,
   type ProviderSpec,
-} from "../../packages/provider-registry/src/providers.ts";
+} from "../../packages/glrs-providers/src/providers.ts";
 import { compareDocumentPaths } from "../plugins/group-documents-utils.ts";
 
 type Schema = {

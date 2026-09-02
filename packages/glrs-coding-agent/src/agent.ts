@@ -16,7 +16,7 @@ import {
   type ProviderOptions,
   requestOptions,
   withCacheBreakpoints,
-} from "../../provider-registry/src";
+} from "../../glrs-providers/src";
 import { environmentPrompt, skillsPrompt, systemPrompt } from "./prompt";
 import { clip, errorText } from "./render";
 import type { ToolEvent } from "./toolkit";

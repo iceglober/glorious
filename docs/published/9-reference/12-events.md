@@ -54,7 +54,6 @@ export default (g) => {
 | `agent_start` | `{ prompt }` | nothing |
 | `agent_end` | `{ text }` | nothing |
 | `before_agent_start` | `{ prompt, systemPrompt }` | a string replaces the prompt, `false` cancels the turn, an object replaces either field |
-| `project_trust` | `{ root }` | `trusted`, `denied` or `deferred` |
 | `session_before_compact` | `{ automatic, instruction? }` | `false` cancels it, an object supplies the summary or the instruction |
 | `session_before_fork` | `{ id, at? }` | `false` cancels the fork |
 | `session_before_switch` | `{ from, to }` | `false` cancels the switch |
@@ -73,13 +72,5 @@ export default (g) => {
 - a blocked `tool_call` reaches the model as the tool's result: `ERROR: <your string>`, or `ERROR: an extension blocked <name> for this turn.` for `false`. the turn continues.
 - the TUI fires `idle` then `turn_end`. `-p` fires `turn_end` then `idle`.
 - both hosts await `session_end`, so work on the way out finishes. the TUI's screen stops as soon as it resolves, so printing there lands nowhere.
-
-## project_trust
-
-fired when a session opens. if no handler is registered, nothing happens and the
-session starts. if one is, glrs refuses to start unless it answers `trusted`.
-
-nothing ships a handler, so this is a seam for building an approval gate rather
-than a gate glrs provides ([design](../3-explanation/1-design.md)).
 
 see also: [extensions](./11-extensions.md), [a turn](../3-explanation/2-a-turn.md)

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { generateText, type ModelMessage, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { createModel, type ModelOption } from "../../provider-registry/src";
+import { createModel, type ModelOption } from "../../glrs-providers/src";
 import {
   createAgent,
   isFinalToolStep,

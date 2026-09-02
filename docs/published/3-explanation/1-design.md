@@ -65,18 +65,12 @@ wants so whatever fills the gap can say so ([models](../9-reference/4-models.md)
 
 ## permissions
 
-there is no permissions system. glrs runs with the permissions of its process:
-any file you can edit, any command you can run. no sandbox, and nothing asks
-before it acts.
+glrs has whatever permissions its calling context has. any file you can edit,
+any command you can run. no sandbox, and nothing asks before it acts.
 
-one seam exists for building a gate. glrs fires `project_trust` when a session
-opens, and refuses to start if a handler answers anything but `trusted`. no
-extension ships one, so out of the box the event fires and nothing listens
-([events](../9-reference/12-events.md)). a gate built on it still runs in the
-same process.
-
-an extension can refuse a call from the `tool_call` hook, but it runs in the
-same process as the thing it is refusing.
+there is no gate to configure, and no seam pretending to be one. an extension
+can refuse a call from the `tool_call` hook, but it runs in the same process as
+the thing it is refusing, so it is a convenience rather than a boundary.
 
 real boundaries come from outside the process:
 

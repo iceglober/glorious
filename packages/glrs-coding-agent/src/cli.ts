@@ -1,5 +1,5 @@
 import { runShell } from "../../glrs-core/src/shell";
-import { loadConfig, registerExtensionProvider } from "../../provider-registry/src";
+import { loadConfig, registerExtensionProvider } from "../../glrs-providers/src";
 import { createRegistry, type ExtensionHost, type Line } from "./extension-api";
 import { firstPartyExtensions, loadExtensions } from "./extensions";
 import { clip, width } from "./render";

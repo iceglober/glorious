@@ -50,7 +50,6 @@ const requirements: Requirement[] = [
   { example: "reload-runtime", api: ["command", "reload", "send"] },
   { example: "shutdown-command", api: ["command", "shutdown"] },
   { example: "permission-gate", events: ["tool_call"], ui: ["mount"] },
-  { example: "project-trust", events: ["project_trust"], ui: ["mount"] },
   { example: "protected-paths", events: ["tool_call"] },
   { example: "confirm-destructive", events: ["session_before_switch", "session_before_fork"] },
   {
@@ -126,6 +125,6 @@ describe("extension capability contract", () => {
   }
 
   test("the reference matrix stays complete", () => {
-    expect(requirements).toHaveLength(67);
+    expect(requirements).toHaveLength(66);
   });
 });

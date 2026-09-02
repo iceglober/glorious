@@ -30,7 +30,7 @@
  */
 
 import type { AgentCore, ModelProvider, SessionRepository } from "../../glrs-core/src";
-import type { ProviderRegistry } from "../../provider-registry/src";
+import type { ProviderRegistry } from "../../glrs-providers/src";
 import type { Extension } from "./public-extension-api";
 
 export type {
@@ -48,8 +48,8 @@ export {
 export type {
   ProviderAdapter,
   ProviderRegistry,
-} from "../../provider-registry/src";
-export { createProviderRegistry } from "../../provider-registry/src";
+} from "../../glrs-providers/src";
+export { createProviderRegistry } from "../../glrs-providers/src";
 export type { Extension } from "./public-extension-api";
 
 /** Services required to compose a coding-agent host. */

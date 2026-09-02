@@ -4,7 +4,7 @@ import {
   REASONING_LEVELS,
   type ReasoningDisplay,
   type ReasoningLevel,
-} from "../../provider-registry/src/config";
+} from "../../glrs-providers/src/config";
 import { resultSummary } from "./toolkit";
 
 // Declared in glrs-core, where extensions reach it. Two declarations is how
