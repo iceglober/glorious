@@ -10,16 +10,9 @@ cd $(glrs wt new fix the login redirect)
 
 Two things stopped that working.
 
-**The output is what ran, then where it is.** `wt new` used to print the path, the branch it came from, and a note only if a hook failed. It now logs each hook that ran, with `cd <path>` last:
+**The path is the whole output.** `wt new` printed the path plus the branch it came from, so `$(…)` captured both. The branch line is gone: the directory is named after the branch and the base is the default, so it never said anything you could not see. A `wt_new` hook that failed writes to stderr, where it is visible when you are watching and absent when you are capturing.
 
-```
-ran .glrs/hooks/wt_new
-cd /Users/you/.glrs/worktrees/myrepo/fix-the-login-redirect
-```
-
-A hook that ran silently and a hook that was never there used to look identical, which is the wrong thing to be quiet about when the hook is what installs your dependencies. The branch line is gone: the directory is named after the branch and the base is the default.
-
-**`--cd` opens a shell in the new worktree.** A process cannot change the directory of the shell that started it, so this starts one instead of pretending; `exit` returns you. To move the shell you are already in, run the last line: `eval "$(glrs wt new … | tail -1)"`.
+**`--cd` opens a shell in the new worktree.** A process cannot change the directory of the shell that started it, so this starts one rather than pretending; `exit` returns you.
 
 **A base that only exists locally could not be branched from.** `defaultBranch` falls back to `refs/heads/main` when there is no `origin/main`, but `create` then ran `git fetch origin main` unconditionally, which can only fail for a base git resolved locally. The fallback was unreachable, and `glrs wt new` was impossible in any repository whose remote is empty or that has never pushed:
 

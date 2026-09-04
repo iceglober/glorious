@@ -57,19 +57,12 @@ export default function worktree(g: Glrs): void {
       : found.map((one) => `${one.branch}  ${one.path}`).join("\n");
   };
 
-  // What ran, then where it is. The last line is the command that takes you
-  // there, so it can be read, copied, or run for you with --cd.
-  const describeNew = (built: { path: string; hooks: readonly HookRun[] }): string =>
-    [
-      ...built.hooks.map((one) =>
-        one.ok ? `ran ${one.hook}` : `ran ${one.hook}, failed: ${one.detail}`,
-      ),
-      `cd ${built.path}`,
-    ].join("\n");
-
+  // The path, and nothing else unless something went wrong. A hook that failed
+  // is the one thing worth interrupting for, and it goes to stderr because it
+  // is not the answer.
   const made = async (
     args: readonly string[],
-  ): Promise<{ path: string; said: string; failed: boolean; entry: Tracked }> => {
+  ): Promise<{ path: string; failures: readonly HookRun[]; entry: Tracked }> => {
     const from = args.includes("--from") ? args[args.indexOf("--from") + 1] : undefined;
     const description = args.filter((one) => !one.startsWith("--") && one !== from).join(" ");
     const built = await create(g.root, {
@@ -78,8 +71,7 @@ export default function worktree(g: Glrs): void {
     });
     return {
       path: built.path,
-      said: describeNew(built),
-      failed: built.hooks.some((one) => !one.ok),
+      failures: built.hooks.filter((one) => !one.ok),
       entry: { path: built.path, branch: built.branch, createdAt: new Date().toISOString() },
     };
   };
@@ -91,8 +83,10 @@ export default function worktree(g: Glrs): void {
     async run(args) {
       const [verb = "list", ...rest] = args;
       if (verb === "new" || verb === "create") {
-        const { path, said } = await made(rest);
-        g.print(said);
+        const { path, failures } = await made(rest);
+        g.print(path);
+        for (const one of failures)
+          process.stderr.write(`hook ${one.hook} failed: ${one.detail}\n`);
         // A process cannot change its parent shell's directory, so --cd does the
         // only thing that is actually available: it replaces glrs with an
         // interactive shell rooted in the new worktree. `exit` puts you back
@@ -150,7 +144,7 @@ export default function worktree(g: Glrs): void {
         .filter((one) => one !== "");
       try {
         if (verb === "new" || verb === "create") {
-          const { said, entry } = await made(rest);
+          const { path, failures, entry } = await made(rest);
           // Recorded here and not in the subcommand: a subcommand has no session
           // to record into. `wt doctor` covers that case from the other side, by
           // correlating against every session's directory.
@@ -159,7 +153,8 @@ export default function worktree(g: Glrs): void {
           // what it means at the executable.
           if (rest.includes("--cd"))
             g.print("--cd needs the subcommand: glrs wt new --cd", "warning");
-          return g.print(said);
+          for (const one of failures) g.print(`hook ${one.hook} failed: ${one.detail}`, "warning");
+          return g.print(path);
         }
         if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
         if (verb === "doctor") return g.print(await report());

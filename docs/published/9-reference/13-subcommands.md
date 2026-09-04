@@ -13,37 +13,21 @@ glrs wt list
 
 ## wt new
 
-what ran, then where it is. the last line is the command that takes you there:
+prints the path, and nothing else:
 
-```
-$ glrs wt new fix the login redirect
-ran .glrs/hooks/wt_new
-cd /Users/you/.glrs/worktrees/myrepo/fix-the-login-redirect
+```bash
+cd $(glrs wt new fix the login redirect)
 ```
 
-a hook that failed says so and the worktree still stands:
+a `wt_new` hook that failed writes to stderr, so it is visible when you are
+watching and absent from `$(…)`. the worktree still stands.
 
-```
-ran .glrs/hooks/wt_new, failed: exit 3
-cd /Users/you/.glrs/worktrees/myrepo/fix-the-login-redirect
-```
-
-with no hook the log is empty and `cd …` is the whole output.
-
-### --cd
+`--cd` opens a shell in the new worktree instead. a process cannot change the
+directory of the shell that started it, so this starts one rather than
+pretending: `exit` returns you to where you were.
 
 ```bash
 glrs wt new fix the login redirect --cd
-```
-
-opens a shell in the new worktree. a process cannot change the directory of the
-shell that started it, so this starts one rather than pretending: `exit` returns
-you to where you were. inside a session `--cd` has no shell to open and says so.
-
-to move the shell you are already in, run the last line:
-
-```bash
-eval "$(glrs wt new fix the login redirect | tail -1)"
 ```
 
 ## how one is found
