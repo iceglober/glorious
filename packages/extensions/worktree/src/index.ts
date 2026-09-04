@@ -89,8 +89,11 @@ export default function worktree(g: Glrs): void {
         // stdout is the path and nothing else, so `cd $(glrs wt new)` works.
         // Where it came from is commentary, and commentary goes to stderr: it
         // still reaches a person watching, and never reaches `$(…)`.
-        process.stderr.write(`${detail}\n`);
+        //
+        // Path first, so that a terminal showing both streams reads the way it
+        // did when both were stdout: the path, then what is under it.
         g.print(path);
+        process.stderr.write(`${detail}\n`);
         return;
       }
       if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
