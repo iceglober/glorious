@@ -1,9 +1,9 @@
 import type { ModelMessage } from "ai";
-import { compactedPrompt, type SessionEvent } from "../../glrs-core/src/events";
 import type { Agent, TurnPhase } from "./agent";
-import { reminder } from "./prompt";
+import { errorText } from "./display";
+import { compactedPrompt, type SessionEvent } from "./events";
+import { reminder } from "./preamble";
 import { merge, newest, type Queued, type QueueKind, type QueueMode, take } from "./queue";
-import { errorText } from "./render";
 import type { ToolEvent } from "./toolkit";
 
 // Everything a turn reports, plus the one thing only the chat can be doing.

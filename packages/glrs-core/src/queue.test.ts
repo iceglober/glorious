@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isQueueMode } from "../../glrs-core/src";
+import { isQueueMode } from "./index";
 import { merge, newest, type Queued, take } from "./queue";
 
 const at = (id: number, text: string, kind: Queued["kind"] = "follow-up"): Queued => ({

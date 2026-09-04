@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createApi, createRegistry, type ExtensionHost, fire } from "./extension-api";
+import {
+  createApi,
+  createRegistry,
+  type ExtensionHost,
+  fire,
+} from "../../glrs-core/src/extension-api";
 
 const harness = () => {
   const calls: Array<{ name: string; args: unknown[] }> = [];

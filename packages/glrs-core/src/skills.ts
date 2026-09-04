@@ -3,9 +3,9 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
-import type { SkillSummary } from "../../glrs-core/src";
 import { agentSkillsDirectories, userConfigDirectory } from "../../glrs-providers/src";
 import type { Command } from "./commands";
+import type { SkillSummary } from "./index";
 
 type Skill = {
   name: string;
@@ -27,7 +27,7 @@ type Skill = {
 // Declared in glrs-core, where extensions reach it. This was a second copy of
 // the same shape, which is how `license` and `metadata` came to be parsed here
 // and absent there — the same drift the Glrs type had.
-export type { SkillSummary } from "../../glrs-core/src";
+export type { SkillSummary } from "./index";
 
 export type Skills = {
   catalog: string;

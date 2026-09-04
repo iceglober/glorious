@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runShell } from "../../glrs-core/src/shell";
 import {
   type Capture,
   createApi,
@@ -12,9 +11,10 @@ import {
   fire,
   type Registry,
   resetRegistry,
-} from "./extension-api";
+} from "../../glrs-core/src/extension-api";
+import { runShell } from "../../glrs-core/src/shell";
+import type { ToolEvent } from "../../glrs-core/src/toolkit";
 import { loadExtensions, resolveExtensions, skillRootsFor } from "./extensions";
-import type { ToolEvent } from "./toolkit";
 
 let root = "";
 const captured: Capture[] = [];

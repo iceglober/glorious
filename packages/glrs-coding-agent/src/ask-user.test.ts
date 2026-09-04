@@ -6,7 +6,7 @@ import {
   createRegistry,
   type ExtensionHost,
   type Key,
-} from "./extension-api";
+} from "../../glrs-core/src/extension-api";
 
 // The question widget is an extension, and this drives it exactly as the
 // terminal does: hand it keys, read the lines it draws. If this file needed

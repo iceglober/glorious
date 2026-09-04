@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
-import type { SessionEvent } from "../../glrs-core/src/events";
 import type { Agent } from "./agent";
 import { type ChatSignal, createChat } from "./chat";
-import { REMINDER_CLOSE, REMINDER_OPEN } from "./prompt";
+import type { SessionEvent } from "./events";
+import { REMINDER_CLOSE, REMINDER_OPEN } from "./preamble";
 import type { ToolEvent } from "./toolkit";
 
 type Outcome = Awaited<ReturnType<Agent["run"]>>;

@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import type { z } from "zod";
-import { capText, RESULT_LIMIT } from "../../glrs-core/src/shell";
-import { errorText } from "./render";
+import { errorText } from "./display";
+import { capText, RESULT_LIMIT } from "./shell";
 
 // What every tool call goes through, whichever package defined the tool. The
 // six that touch the machine live in the builtins extension now and register

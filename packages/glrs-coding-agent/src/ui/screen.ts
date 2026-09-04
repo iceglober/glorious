@@ -1,5 +1,11 @@
 import type { KeyEvent, Renderable, TextRenderable } from "@opentui/core";
-import { activeSigil, commandInvocation, matchingCommands } from "../commands";
+import { activeSigil, commandInvocation, matchingCommands } from "../../../glrs-core/src/commands";
+import type {
+  AutocompleteProvider,
+  Capture,
+  MountSpec,
+} from "../../../glrs-core/src/extension-api";
+import type { QueueKind } from "../../../glrs-core/src/queue";
 import {
   atFirstLine,
   atLastLine,
@@ -9,8 +15,6 @@ import {
   enterKeys,
   isAlt,
 } from "../composer";
-import type { AutocompleteProvider, Capture, MountSpec } from "../extension-api";
-import type { QueueKind } from "../queue";
 import type { Line, Tone } from "../render";
 import { createChrome, fillHex, panelHex, tones } from "./chrome";
 

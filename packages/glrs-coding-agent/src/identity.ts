@@ -1,9 +1,10 @@
-export { PREAMBLE_TAGS } from "../../glrs-core/src/events";
+// What glrs is, and nothing about how it runs. The runtime in glrs-core has no
+// identity of its own: it is handed one. That is what makes a different product
+// on the same core a different identity rather than a fork.
 
 import { join } from "node:path";
 
-export const fence = (tag: string, body: string): string =>
-  `<${tag}>\n${body.replaceAll(`</${tag}>`, `<∕${tag}>`)}\n</${tag}>`;
+import { fence } from "../../glrs-core/src/preamble";
 
 // Resolved against this file, so the path is right whether glrs is run from
 // a checkout or from the installed global package. `docs` ships in the npm
@@ -20,15 +21,6 @@ const here = import.meta.dir;
 // root package, which has no prepack. So the branch could not be satisfied and
 // the fallback below was always the live one.
 export const docsPath = (): string => join(here, "..", "..", "..", "docs", "published");
-
-// Every block the agent prepends to a user turn. events.ts strips these when
-// replaying a transcript, so a new preamble block must be named here or it will
-// show up in the session log as if the user typed it.
-export const REMINDER_OPEN = "[system-reminder]";
-export const REMINDER_CLOSE = "[/system-reminder]";
-
-export const reminder = (body: string): string =>
-  `${REMINDER_OPEN}\n${body.replaceAll(REMINDER_CLOSE, "[∕system-reminder]")}\n${REMINDER_CLOSE}`;
 
 // Roughly forty lines, about a thousand tokens with the tool schemas. What was
 // here before (a four-step method, four worked examples, a delegation argument,
@@ -98,24 +90,3 @@ export const systemPrompt = (ctx: { rules: string }): string => `
 
 ${fence("repo-rules", ctx.rules)}
 `;
-
-export const skillsPrompt = (catalog: string): string =>
-  catalog === ""
-    ? ""
-    : `<skills>
-  The following skills provide specialized instructions for specific tasks.
-  When a task matches a skill description, call activate_skill with its name
-  before proceeding. Resolve paths referenced by a skill from its skill directory.
-${catalog}
-</skills>`;
-
-export const environmentPrompt = (ctx: {
-  cwd: string;
-  os: string;
-  date: string;
-  git: string;
-}): string => `<where-you-are>
-${ctx.os} · ${ctx.date}
-dir ${ctx.cwd}
-git ${ctx.git}
-</where-you-are>`;

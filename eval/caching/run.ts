@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, type ModelMessage, stepCountIs } from "ai";
-import { environmentPrompt, systemPrompt } from "../../packages/glrs-coding-agent/src/prompt";
+import { systemPrompt } from "../../packages/glrs-coding-agent/src/identity";
+import { environmentPrompt } from "../../packages/glrs-core/src/preamble";
 
 // Does putting volatile content in the system prompt cost the cache?
 //

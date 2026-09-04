@@ -4,14 +4,21 @@ Three packages. The rule is one-way: the product depends on the core, never the
 reverse. `scripts/check-boundaries.ts` enforces it.
 
 ```text
-glrs-coding-agent        the product: hosts, terminal, coding identity
+glrs-coding-agent   4,202   argv cli composer direct-shell extensions identity
+        │                   index mentions print render writeconfig, and ui/
         │ depends on
         ▼
-     glrs-core           the runtime: turns, sessions, tools, extensions
+     glrs-core      4,276   agent chat commands display events extension-api
+        │                   extensions guidance index preamble public-extension-api
+        │                   queue sdk session shell skills toolkit usercommands
         │ depends on
         ▼
-   glrs-providers        model resolution, credentials, catalogue
+   glrs-providers   1,726   config models providers shaping
 ```
+
+Core reaching providers is deliberate. The runtime resolves a model to call, and
+a provider-neutral port with one implementation would be a layer that costs a
+file and decides nothing.
 
 ## what makes something core
 
@@ -46,6 +53,10 @@ is not, so the hard-coded imports live in the product.
 Core defines `ExtensionHost`. A product implements it. Three do today: the TUI
 (`index.ts`), headless (`print.ts`) and subcommands (`cli.ts`). A port with three
 implementations is why the boundary is worth enforcing.
+
+`sdk.ts` and `public-extension-api.ts` are core's, because they are the published
+surface of the runtime rather than of this product. They are what
+`package.json` `exports` and TypeDoc point at.
 
 ## display primitives are core
 

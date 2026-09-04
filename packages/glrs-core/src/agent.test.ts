@@ -14,7 +14,7 @@ import {
   withInjected,
   worthRetrying,
 } from "./agent";
-import { errorText } from "./render";
+import { errorText } from "./display";
 
 describe("step limit finalization", () => {
   test("reserves the final allowed step for a text-only answer", () => {
@@ -400,8 +400,8 @@ describe("which tools a filter withholds", () => {
     createAgent({
       root: "/tmp",
       model: { name: "test", provider: "azure", modelId: "test", env: [] },
+      instructions: () => "you are a test agent",
       sessionId: "filters",
-      rules: "",
       cwd: "/tmp",
       os: "darwin",
       date: "2026-08-18",
@@ -429,8 +429,8 @@ describe("which tools a filter withholds", () => {
     const bare = createAgent({
       root: "/tmp",
       model: { name: "test", provider: "azure", modelId: "test", env: [] },
+      instructions: () => "you are a test agent",
       sessionId: "bare",
-      rules: "",
       cwd: "/tmp",
       os: "darwin",
       date: "2026-08-18",
@@ -551,8 +551,8 @@ describe("an agent built before a model was chosen", () => {
     createAgent({
       root: "/tmp",
       model: null,
+      instructions: () => "you are a test agent",
       sessionId: "no-model",
-      rules: "",
       cwd: "/tmp",
       os: "darwin",
       date: "2026-08-18",

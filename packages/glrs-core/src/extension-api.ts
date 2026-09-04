@@ -1,11 +1,11 @@
 import type { ToolSet } from "ai";
 import { z } from "zod";
-import type { Settings } from "../../glrs-core/src";
-import { truncateHead } from "../../glrs-core/src/shell";
 import type { Compaction } from "./chat";
 import type { Command } from "./commands";
+import { clip, type Line } from "./display";
 import type { FirstPartyExtension } from "./extensions";
-import { clip, type Line, type Tone } from "./render";
+import type { Settings, Tone } from "./index";
+import { truncateHead } from "./shell";
 import type { ToolEvent } from "./toolkit";
 import { wrapTool } from "./toolkit";
 
@@ -20,12 +20,14 @@ import { wrapTool } from "./toolkit";
 // extension.
 
 export type { Compaction } from "./chat";
-export type { Activity, Line, Span, Tone } from "./render";
+export type { Line } from "./display";
+export type { Activity, Span, Tone } from "./index";
 
 // Declared in glrs-core, because `packages/extensions` may not import this
 // package. Re-exported so everything in the agent keeps importing them from
 // here, while there is only one declaration of each.
 import type {
+  Activity,
   AutocompleteProvider,
   CliSpec,
   EntryRenderer,
@@ -48,8 +50,7 @@ import type {
   Ui,
   Verdict,
   WriteOutcome,
-} from "../../glrs-core/src";
-import type { Activity } from "./render";
+} from "./index";
 
 export type {
   AutocompleteProvider,

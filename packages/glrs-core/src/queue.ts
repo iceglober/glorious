@@ -1,4 +1,4 @@
-import type { QueueMode } from "../../glrs-core/src";
+import type { QueueMode } from "./index";
 // The two ways a message can wait. They differ in when it reaches the model,
 // not in what it says:
 //
@@ -30,7 +30,7 @@ export type Queued = {
 // one-at-a-time is the default for both kinds because it is the one that lets
 // the model answer what you said before it reads what you said next. `all` is
 // for when the messages are one thought split across three Enters.
-export type { QueueMode } from "../../glrs-core/src";
+export type { QueueMode } from "./index";
 
 // What comes off the front of the queue for one delivery, and what is left
 // behind. Returning both halves rather than mutating keeps this testable

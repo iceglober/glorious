@@ -667,4 +667,5 @@ export const createAgentCore = (options: AgentCoreOptions): AgentCore => ({
   reloadExtensions: options.reloadExtensions,
 });
 
+export * from "./display";
 export type { Extension as ExtensionFactory };

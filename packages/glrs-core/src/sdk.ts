@@ -29,10 +29,15 @@
  * @group API
  */
 
-import type { AgentCore, ModelProvider, SessionRepository } from "../../glrs-core/src";
 import type { ProviderRegistry } from "../../glrs-providers/src";
+import type { AgentCore, ModelProvider, SessionRepository } from "./index";
 import type { Extension } from "./public-extension-api";
 
+export type {
+  ProviderAdapter,
+  ProviderRegistry,
+} from "../../glrs-providers/src";
+export { createProviderRegistry } from "../../glrs-providers/src";
 export type {
   AgentCore,
   ModelProvider,
@@ -40,16 +45,11 @@ export type {
   SessionEvent,
   SessionRepository,
   Turn,
-} from "../../glrs-core/src";
+} from "./index";
 export {
   createAgentCore,
   jsonSessionRepository,
-} from "../../glrs-core/src";
-export type {
-  ProviderAdapter,
-  ProviderRegistry,
-} from "../../glrs-providers/src";
-export { createProviderRegistry } from "../../glrs-providers/src";
+} from "./index";
 export type { Extension } from "./public-extension-api";
 
 /** Services required to compose a coding-agent host. */

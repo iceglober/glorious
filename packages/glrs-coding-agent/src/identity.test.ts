@@ -3,14 +3,13 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { typedText } from "../../glrs-core/src/events";
 import {
-  docsPath,
   environmentPrompt,
   fence,
   PREAMBLE_TAGS,
   reminder,
   skillsPrompt,
-  systemPrompt,
-} from "./prompt";
+} from "../../glrs-core/src/preamble";
+import { docsPath, systemPrompt } from "./identity";
 
 const rendered = systemPrompt({ rules: "# Conventions\n- Use bun, never npm." });
 

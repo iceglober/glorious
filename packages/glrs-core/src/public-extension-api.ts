@@ -60,8 +60,8 @@ export type {
   Verdict,
 } from "./extension-api";
 export type { FirstPartyExtension } from "./extensions";
+export type { WriteOutcome } from "./index";
 export type { SkillSummary } from "./skills";
-export type { WriteOutcome } from "./writeconfig";
 
 /**
  * A deployable extension module.

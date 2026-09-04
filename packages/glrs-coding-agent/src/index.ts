@@ -2,8 +2,25 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import type { ModelMessage } from "ai";
 import packageJson from "../../../package.json";
+import { createAgent, routeProviderWarnings } from "../../glrs-core/src/agent";
+import { type ChatPhase, type ChatSignal, createChat } from "../../glrs-core/src/chat";
+import {
+  commandByName,
+  commands,
+  expandCommand,
+  setCustomCommands,
+} from "../../glrs-core/src/commands";
 import { messagesOf, type SessionEvent, usageTotals } from "../../glrs-core/src/events";
+import {
+  createRegistry,
+  describeContribution,
+  type ExtensionHost,
+  fire,
+  promptContributions,
+  resetRegistry,
+} from "../../glrs-core/src/extension-api";
 import { loadAgentRules } from "../../glrs-core/src/guidance";
+import { fence } from "../../glrs-core/src/preamble";
 import {
   createSession,
   forkSession as forkStoredSession,
@@ -14,6 +31,9 @@ import {
   sessionFile,
 } from "../../glrs-core/src/session";
 import { runShell } from "../../glrs-core/src/shell";
+import { loadSkills } from "../../glrs-core/src/skills";
+import { firstDetail, setToolGate, type ToolEvent } from "../../glrs-core/src/toolkit";
+import { loadUserCommands } from "../../glrs-core/src/usercommands";
 import {
   chosenModel,
   configuredModel,
@@ -32,20 +52,9 @@ import {
   providerSpec,
   registerExtensionProvider,
 } from "../../glrs-providers/src";
-import { createAgent, routeProviderWarnings } from "./agent";
 import { helpText, route } from "./argv";
-import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { runCli } from "./cli";
-import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { cleanShellChunk, shellCompletion } from "./direct-shell";
-import {
-  createRegistry,
-  describeContribution,
-  type ExtensionHost,
-  fire,
-  promptContributions,
-  resetRegistry,
-} from "./extension-api";
 import {
   type ExtensionSettings,
   firstPartyExtensions,
@@ -53,9 +62,9 @@ import {
   resolveExtensions,
   skillRootsFor,
 } from "./extensions";
+import { docsPath, systemPrompt } from "./identity";
 import { expandMentions, fileCandidates, forgetListings } from "./mentions";
 import { runPrint } from "./print";
-import { fence } from "./prompt";
 import {
   advanceToolRun,
   assistantBlock,
@@ -73,10 +82,7 @@ import {
   statusRow,
   userBlock,
 } from "./render";
-import { loadSkills } from "./skills";
-import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
-import { loadUserCommands } from "./usercommands";
 import { recordExtensionChoice, recordModelChoice } from "./writeconfig";
 
 const TICK_MS = 100;
@@ -422,7 +428,6 @@ const main = async (): Promise<void> => {
     model,
     toolTimeoutMs,
     sessionId: session.id,
-    rules,
     cwd: root,
     os,
     date: new Date().toISOString().slice(0, 10),
@@ -434,7 +439,7 @@ const main = async (): Promise<void> => {
       return registry.tools;
     },
     terminatingTools: () => registry.terminatingTools,
-    systemPromptOverride: () => systemPromptOverride,
+    instructions: () => systemPromptOverride ?? systemPrompt({ rules }),
     // Contributions ride here, in the per-turn message, and never the system
     // prompt: that has to stay byte-identical or the provider's cache misses
     // every turn. `<extensions>` is already a PREAMBLE_TAG, so this is stripped

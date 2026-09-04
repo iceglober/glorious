@@ -40,8 +40,8 @@
     "glorious": "bin/glrs"
   },
   "exports": {
-    ".": "./packages/glrs-coding-agent/src/sdk.ts",
-    "./extension-api": "./packages/glrs-coding-agent/src/public-extension-api.ts",
+    ".": "./packages/glrs-core/src/sdk.ts",
+    "./extension-api": "./packages/glrs-core/src/public-extension-api.ts",
     "./package.json": "./package.json"
   },
   "packageManager": "bun@1.3.14",
