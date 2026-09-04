@@ -416,8 +416,13 @@ export type ModelInfo = {
    * for, which is not the same as a call that will succeed. An AWS profile on
    * disk, Vertex application default credentials and a provider an extension
    * registers are all reachable and all report nothing here.
+   *
+   * Optional so that a later field on this type is an addition rather than a
+   * break: an extension building its own catalogue entries, as the model picker
+   * does, would otherwise have to be changed every time glrs learns something
+   * new about a model. Absent and empty mean the same thing to a reader.
    */
-  missing: readonly string[];
+  missing?: readonly string[];
 };
 
 export type SessionInfo = {
@@ -490,7 +495,11 @@ export type Glrs = {
   columns: () => number;
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
-  /** Keep the tail of a long value and mark the omitted head. */
+  /**
+   * Keep the tail of a long value and mark the omitted head.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   truncateHead: (text: string, limit: number) => string;
   /**
    * This session's resolved settings, merged from every config file that
@@ -536,9 +545,17 @@ export type Glrs = {
   autocomplete: (provider: AutocompleteProvider) => { dispose: () => void };
   /** Register a model provider, including providers with their own OAuth flow. */
   provider: (provider: ExtensionProvider) => { dispose: () => void };
-  /** Render durable transcript messages before the default renderer. */
+  /**
+   * Render durable transcript messages before the default renderer.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   messageRenderer: (renderer: MessageRenderer) => void;
-  /** Render one kind of extension-owned session entry. */
+  /**
+   * Render one kind of extension-owned session entry.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   entryRenderer: (type: string, renderer: EntryRenderer) => void;
 
   /** The tools the model can currently call. */
@@ -589,13 +606,29 @@ export type Glrs = {
   /** Quit glrs. */
   shutdown: () => void;
 
-  /** Messages currently carried into the next model call. */
+  /**
+   * Messages currently carried into the next model call.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   history: () => readonly ModelMessage[];
-  /** Fork this session after lifecycle gates approve it. */
+  /**
+   * Fork this session after lifecycle gates approve it.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   forkSession: (at?: number) => Promise<SessionInfo>;
-  /** Switch the active session after lifecycle gates approve it. */
+  /**
+   * Switch the active session after lifecycle gates approve it.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   switchSession: (id: string) => Promise<boolean>;
-  /** Label an event for tree/bookmark UIs. */
+  /**
+   * Label an event for tree/bookmark UIs.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   setLabel: (event: number, label: string) => void;
   /** This session: id, file on disk, title, event count. */
   session: () => SessionInfo;

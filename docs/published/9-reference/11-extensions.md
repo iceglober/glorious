@@ -73,6 +73,23 @@ type Span = {
 type Line = Span[];
 ```
 
+## stability
+
+from 1.0.0 every member of the API is covered by semver: a break is a major.
+
+| marking | promise |
+| --- | --- |
+| unmarked | stable. a break is a major |
+| `@beta` | may change in a minor |
+
+the generated **Extension API** page carries the markings. seven members are
+`@beta` today: `forkSession`, `entryRenderer`, `history`, `messageRenderer`,
+`setLabel`, `switchSession`, `truncateHead`.
+
+a field added to a type you can construct is optional, so a new one is an
+addition and not a break. `ModelInfo.missing` is why: it arrived required and
+broke the picker that builds its own catalogue rows.
+
 ## hosts
 
 `g.mode` is `tui`, `print` or `cli`. `hasUI` is true only in the TUI.

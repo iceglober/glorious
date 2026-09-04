@@ -29,7 +29,9 @@ const matches = (model: ModelInfo, query: string): boolean => {
 // Nothing glrs could not find. Not a promise the call will succeed: it reads the
 // environment and config only, so an AWS profile on disk and Vertex application
 // default credentials both look like this too.
-const reachable = (model: ModelInfo): boolean => model.missing.length === 0;
+const gaps = (model: ModelInfo): readonly string[] => model.missing ?? [];
+
+const reachable = (model: ModelInfo): boolean => gaps(model).length === 0;
 
 const variantsFor = (model: ModelInfo): readonly string[] =>
   model.provider === AZURE_DEEPSEEK_PROVIDER
@@ -145,7 +147,7 @@ export default function modelPicker(g: Glrs): void {
       // extension registers are all invisible to this check and all work.
       if (!reachable(model))
         g.print(
-          `${model.provider}: glrs cannot see ${model.missing.join(", ")}. ` +
+          `${model.provider}: glrs cannot see ${gaps(model).join(", ")}. ` +
             "Turns are still sent, and the provider decides.",
           "warning",
         );
@@ -192,7 +194,7 @@ export default function modelPicker(g: Glrs): void {
               ? "current"
               : reachable(model)
                 ? ""
-                : `needs ${model.missing[0]}`;
+                : `needs ${gaps(model)[0]}`;
           const suffix = note === "" ? "" : `  ${g.clip(note, Math.max(8, Math.floor(room / 3)))}`;
           lines.push([
             { text: picked ? "  › " : "    ", tone: "accent" },

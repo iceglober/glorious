@@ -21,6 +21,16 @@
  * export default extension;
  * ```
  *
+ * ## stability
+ *
+ * From 1.0.0 every member here is covered by semver: a break is a major.
+ * Members marked `@beta` are the exception and may change in a minor.
+ *
+ * A field added to a type an extension can construct is declared optional, so
+ * that learning something new about a model or a session is an addition rather
+ * than a break. `ModelInfo.missing` is the worked example: it arrived required,
+ * broke the model picker, and is optional now.
+ *
  * @module Extension API
  * @group API
  */
