@@ -375,6 +375,11 @@ const lateExtensionModel = (option: ModelOption): ResolvedLanguageModel => {
   } as ResolvedLanguageModel;
 };
 
+// `/openai/v1` is the OpenAI-compatible chat surface on a Foundry resource, as
+// distinct from `/openai/deployments/...` which is the Azure OpenAI one.
+export const foundryUrl = (resource: string): string =>
+  `https://${resource}.openai.azure.com/openai/v1`;
+
 const factories: Record<string, ProviderFactory> = {
   "amazon-bedrock": createAmazonBedrock as ProviderFactory,
   anthropic: createAnthropic as ProviderFactory,
@@ -431,6 +436,28 @@ export const createModel = (
       option.modelType ??
       (option.modelId.toLowerCase().includes("deepseek") ? "deepseek" : "responses");
     return provider[modelType](option.modelId);
+  }
+  // A Foundry resource hosts other vendors' models behind an OpenAI-shaped chat
+  // endpoint. Two things stop the generic compatible path reaching one: the base
+  // URL has to be derived from the resource, and Azure authenticates with an
+  // `api-key` header rather than a bearer token. Both are known here, so this
+  // needs no config at all.
+  if (option.provider === "azure-foundry") {
+    const resource = process.env.AZURE_RESOURCE_NAME;
+    const base = option.api ?? (resource === undefined ? undefined : foundryUrl(resource));
+    if (base === undefined)
+      throw new Error(
+        "azure-foundry needs AZURE_RESOURCE_NAME, or providers.azure-foundry.api for a resource glrs cannot name.",
+      );
+    return createOpenAICompatible({
+      ...common,
+      name: "azure-foundry",
+      baseURL: base,
+      headers: {
+        ...(apiKey === undefined ? {} : { "api-key": apiKey }),
+        ...((configured.headers as Record<string, string> | undefined) ?? {}),
+      },
+    } as Parameters<typeof createOpenAICompatible>[0])(option.modelId);
   }
   if (option.provider === "amazon-bedrock")
     return createAmazonBedrock({

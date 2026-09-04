@@ -61,6 +61,15 @@ export const PROVIDERS: readonly ProviderSpec[] = [
     needs: ["AWS_REGION or providers.amazon-bedrock.region"],
     note: "Uses the standard AWS credential chain, so an assumed role or SSO profile works.",
   },
+  {
+    id: "azure-foundry",
+    label: "Azure AI Foundry (deployments that are not OpenAI models)",
+    // The same credential as azure: one resource, one key, whatever is deployed
+    // on it.
+    env: ["AZURE_FOUNDRY_API_KEY", "AZURE_API_KEY", "AZURE_OPENAI_API_KEY"],
+    needs: ["AZURE_RESOURCE_NAME"],
+    note: "For grok, kimi, deepseek, llama and anything else on a Foundry resource. `azure/` is the OpenAI surface; this is the chat one.",
+  },
   { id: "openrouter", label: "OpenRouter", env: ["OPENROUTER_API_KEY"] },
   { id: "groq", label: "Groq", env: ["GROQ_API_KEY"] },
   { id: "mistral", label: "Mistral", env: ["MISTRAL_API_KEY"] },

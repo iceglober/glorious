@@ -21,8 +21,13 @@ describe("which namespace a provider reads", () => {
     expect(namespaceFor("google-vertex", "gemini-3-pro")).toBe("google");
   });
 
-  test("an unknown provider is OpenAI-compatible here as everywhere else", () => {
-    expect(namespaceFor("ollama")).toBe("openai");
+  // The compatible client reads `providerOptions[its own name]`, and glrs builds
+  // it with the provider id. Writing "openai" meant every option glrs shaped
+  // for a compatible endpoint was silently dropped.
+  test("a compatible provider reads its own name, not openai's", () => {
+    expect(namespaceFor("ollama")).toBe("ollama");
+    expect(namespaceFor("azure-foundry")).toBe("azureFoundry");
+    expect(namespaceFor("lm-studio")).toBe("lmStudio");
   });
 });
 
@@ -233,5 +238,40 @@ describe("azure keeps its namespace while the variant follows the model", () => 
         variants: ["low", "medium", "high"],
       }).azure,
     ).toMatchObject({ reasoningEffort: "high" });
+  });
+});
+
+// `textVerbosity` and `store` are OpenAI's own. Sending them to a model that
+// merely speaks the same protocol fails the call: azure/grok-4.6 answered
+// "Unsupported value: 'low'" on a request nobody thought was about verbosity.
+describe("options only OpenAI understands", () => {
+  const of = (shape: Parameters<typeof requestOptions>[0]) =>
+    Object.values(requestOptions(shape))[0] as Record<string, unknown>;
+
+  test("openai and azure's OpenAI deployments get them", () => {
+    expect(of({ provider: "openai", variant: "medium" })).toHaveProperty("textVerbosity");
+    expect(of({ provider: "azure", modelId: "gpt-5.6-sol", variant: "medium" })).toHaveProperty(
+      "textVerbosity",
+    );
+  });
+
+  test("a Foundry deployment that is not an OpenAI model does not", () => {
+    expect(of({ provider: "azure", modelId: "grok-4.6", modelType: "chat" })).not.toHaveProperty(
+      "textVerbosity",
+    );
+    expect(of({ provider: "azure-foundry", modelId: "grok-4.6" })).not.toHaveProperty(
+      "textVerbosity",
+    );
+  });
+
+  test("nor does any other compatible endpoint", () => {
+    const ollama = of({ provider: "ollama", modelId: "qwen3", variant: "medium" });
+    expect(ollama).toEqual({ reasoningEffort: "medium" });
+  });
+
+  test("effort still reaches them, since most of them read it", () => {
+    expect(of({ provider: "azure-foundry", modelId: "grok-4.6", variant: "medium" })).toEqual({
+      reasoningEffort: "medium",
+    });
   });
 });

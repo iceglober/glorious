@@ -1091,6 +1091,7 @@ aliases resolve before anything reads the id, so they work in `--model`, `GLRS_M
 | --- | --- | --- |
 | `amazon-bedrock` | `api`, `region` | `AWS_REGION`, `AWS_DEFAULT_REGION`; region defaults to `us-east-1` |
 | `azure` | `api` | `AZURE_RESOURCE_NAME` is required alongside the key |
+| `azure-foundry` | `api` | `AZURE_RESOURCE_NAME`; the base URL is derived from it |
 | `google-vertex` | `api`, `project`, `location` | `GOOGLE_CLOUD_PROJECT` or `GOOGLE_VERTEX_PROJECT`, `GOOGLE_CLOUD_LOCATION` or `GOOGLE_VERTEX_LOCATION`; location defaults to `global` |
 | everything else | `api` | |
 
@@ -1204,6 +1205,33 @@ pipeline still needs `GLRS_MODEL` or `model` in config.
 a lone string is a tier of one. anything that is not `provider/model-id` is
 dropped rather than guessed at, and a tier left with nothing usable does not
 appear.
+
+## azure, and azure-foundry
+
+one Foundry resource, two surfaces.
+
+| model | provider | why |
+| --- | --- | --- |
+| an OpenAI deployment: `gpt-5.6-sol` | `azure` | the responses API, prompt caching, `textVerbosity` |
+| anything else: `grok`, `kimi`, `deepseek` | `azure-foundry` | the chat API at `/openai/v1`, authenticated with `api-key` |
+
+```bash
+GLRS_MODEL=azure-foundry/grok-4.6 glrs -p "hello"
+```
+
+no config: the base URL comes from `AZURE_RESOURCE_NAME` and the key from the
+same variables `azure` reads. `providers.azure-foundry.api` overrides the URL
+for a resource glrs cannot name.
+
+a non-OpenAI deployment under `azure/` fails on options only OpenAI accepts:
+
+```
+Unsupported value: 'low' is not supported with the 'grok-4.6-1' model.
+```
+
+that is `textVerbosity`, not the reasoning effort the message suggests. set
+`providers.azure.models.<id>.modelType` to `chat` to stay under `azure/`, or use
+`azure-foundry/` and configure nothing.
 
 ## provider warnings
 

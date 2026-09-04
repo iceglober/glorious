@@ -88,10 +88,29 @@ export const namespaceFor = (
   if (provider === "google") return "google";
   if (provider === "anthropic") return "anthropic";
   if (provider === "openai") return "openai";
-  // Everything else is reached through the OpenAI-compatible client, so it
-  // reads the same namespace that client writes.
-  return "openai";
+  // Everything else goes through the OpenAI-compatible client, which reads
+  // `providerOptions[<the name it was built with>]` and glrs builds it with the
+  // provider id. Writing "openai" here meant every option glrs shaped for a
+  // compatible endpoint was dropped on the floor without a word, which is why
+  // reaching one at all needed an extension rewriting the request body.
+  //
+  // camelCase because the client accepts the hyphenated id and deprecates it:
+  // `azure-foundry` works and warns on every call, `azureFoundry` is the name
+  // it wants.
+  return provider.replace(/-([a-z0-9])/gu, (_, char: string) => char.toUpperCase());
 };
+
+// Whether a provider is OpenAI's own, rather than something else behind an
+// OpenAI-shaped API. `textVerbosity` and `store` are OpenAI's; sending them to
+// a model that merely speaks the same protocol is how `azure/grok-4.6` came to
+// fail with "Unsupported value: 'low'" on a request nobody thought was about
+// verbosity.
+const isOpenAI = (provider: string, modelType?: AzureModelType): boolean =>
+  provider === "openai" ||
+  // On azure the deployment id is arbitrary, so the name cannot say what is
+  // behind it. `modelType` can: "responses" is the OpenAI surface, "chat" and
+  // "deepseek" are what a Foundry deployment of somebody else's model uses.
+  (provider === "azure" && (modelType ?? "responses") === "responses");
 
 export type Shape = {
   provider: string;
@@ -152,7 +171,9 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
     const deepseek =
       shape.modelType === "deepseek" ||
       (shape.modelType === undefined && (shape.modelId ?? "").toLowerCase().includes("deepseek"));
-    if (deepseek)
+    // Azure hosts models that are not OpenAI's, and they refuse OpenAI's own
+    // options rather than ignoring them.
+    if (deepseek || !isOpenAI(shape.provider, shape.modelType))
       return {
         azure: {
           ...(variant === undefined ? {} : { reasoningEffort: variant }),
@@ -169,7 +190,13 @@ export const requestOptions = (shape: Shape): ProviderOptions => {
     };
   }
 
-  // openai and every OpenAI-compatible endpoint.
+  // Something else behind an OpenAI-shaped API: a Foundry deployment, Ollama,
+  // vLLM, a gateway. Reasoning effort is the one option worth trying, because
+  // most of them read it; the rest are OpenAI's own and get refused or ignored.
+  if (!isOpenAI(shape.provider, shape.modelType))
+    return { [namespace]: variant === undefined ? {} : { reasoningEffort: variant } };
+
+  // openai itself.
   //
   // `store: false` is deliberate. With it true the provider keeps server-side
   // reasoning state and answers "Item 'rs_…' not found" whenever that lookup
