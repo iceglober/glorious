@@ -62,15 +62,28 @@ const prose = (row: string): Line =>
 
 const fence = /^\s*```/u;
 
-export const assistantBlock = (text: string): Line[] => {
+// Markdown rows: headings, emphasis and code spans everywhere except inside a
+// fence, where the text is kept exactly as written. Shared, so an answer and a
+// thought are shaped the same way and differ only in how they are toned.
+// `code` travels beside the line because whether a row was inside a fence is not
+// recoverable from its spans, and a thought needs to know: fenced text stays
+// upright when everything around it goes italic.
+type Shaped = { line: Line; code: boolean };
+
+const shaped = (text: string): Shaped[] => {
   const rows = clean(text).split("\n");
   const fenced = [...rows.map((row) => fence.test(row)), true];
   let close = -1;
-  const lines = rows.map((row, at): Line => {
-    if (!fenced[at]) return at < close ? [{ text: row }] : prose(row);
+  return rows.map((row, at): Shaped => {
+    if (!fenced[at])
+      return at < close ? { line: [{ text: row }], code: true } : { line: prose(row), code: false };
     if (at > close) close = fenced.indexOf(true, at + 1);
-    return [{ text: row, tone: "muted" }];
+    return { line: [{ text: row, tone: "muted" }], code: true };
   });
+};
+
+export const assistantBlock = (text: string): Line[] => {
+  const lines = shaped(text).map((one) => one.line);
   return lines.with(0, [{ text: "● ", tone: "highlight" }, ...lines[0]]);
 };
 
@@ -251,18 +264,36 @@ export const reasoningVisible = (
 // Provider-supplied reasoning remains in the transcript by default. It is
 // visually quieter than the answer but never discarded merely because the
 // answer began.
-export const reasoningBlock = (text: string, elapsedMs: number): Line[] => {
-  const rows = clean(text)
-    .split("\n")
-    .filter((line) => line.trim() !== "");
-  const content: Line[] = rows.map((line, index) =>
-    index === 0
-      ? [
-          { text: "◐ ", tone: "muted", bold: true },
-          { text: line, tone: "muted", italic: true },
-        ]
-      : [{ text: `  ${line}`, tone: "muted", italic: true }],
+// A thought reads like an answer and must not be mistaken for one. It gets the
+// same shaping, then every span is muted: the structure is what makes it
+// readable, the tone is what keeps the two apart. Code spans stay upright,
+// because italic code is harder to read than it is worth.
+const dimmed = ({ line, code }: Shaped): Line =>
+  line.map((span) => ({
+    ...span,
+    tone: "muted" as const,
+    italic: !code && span.tone !== "highlight",
+  }));
+
+// Blank rows survive, so paragraphs still break, but a run of them collapses to
+// one and the edges are trimmed. Reasoning arrives with far more whitespace
+// than an answer does.
+const collapsed = (rows: Shaped[]): Shaped[] =>
+  rows.filter(
+    (one, at, all) =>
+      one.line.length > 0 || (at > 0 && at < all.length - 1 && all[at - 1].line.length > 0),
   );
+
+export const reasoningBlock = (text: string, elapsedMs: number): Line[] => {
+  const rows = collapsed(shaped(text));
+  const content: Line[] = rows.map((one, index) => {
+    const line = dimmed(one);
+    // A blank row stays blank rather than becoming two spaces of nothing.
+    if (line.length === 0) return [];
+    return index === 0
+      ? [{ text: "◐ ", tone: "muted" as const, bold: true }, ...line]
+      : [{ text: "  " }, ...line];
+  });
   return [
     ...content,
     [{ text: `  thought for ${Math.max(1, Math.round(elapsedMs / 1000))}s`, tone: "muted" }],
@@ -277,11 +308,10 @@ export const reasoningText = (text: string, elapsedMs: number): string =>
 
 // What is painted while reasoning is still arriving, before the collapse.
 export const reasoningDraft = (text: string): Line[] =>
-  clean(text)
-    .split("\n")
-    .filter((line) => line.trim() !== "")
+  collapsed(shaped(text))
+    .filter((one) => one.line.length > 0)
     .slice(-6)
-    .map((line): Line => [{ text: `░ ${line}`, tone: "muted", italic: true }]);
+    .map((one): Line => [{ text: "░ ", tone: "muted" }, ...dimmed(one)]);
 
 // `custom` looks up an extension's renderer by tool name. It is resolved at
 // paint time rather than stored on the event, so a session replays with
