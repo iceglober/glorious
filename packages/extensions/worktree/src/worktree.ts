@@ -180,12 +180,16 @@ export const startPoint = async (repo: string, base: string, exec: Exec): Promis
 // exactly the one the tool this replaces used, so existing hooks keep working:
 // the worktree directory as the single argument, WORKTREE_DIR and REPO_NAME in
 // the environment, and a failure that warns rather than aborting.
+/** One hook that ran, and how it went. */
+export type HookRun = { hook: string; ok: boolean; detail: string };
+
 export const runNewHook = async (
   worktree: string,
   repo: string,
   exec: Exec = shell,
-): Promise<string | null> => {
+): Promise<HookRun[]> => {
   for (const dir of [".glrs", ".glorious"]) {
+    const name = `${dir}/hooks/wt_new`;
     const hook = join(worktree, dir, "hooks", "wt_new");
     const usable = await access(hook, constants.X_OK).then(
       () => true,
@@ -200,14 +204,24 @@ export const runNewHook = async (
       `env WORKTREE_DIR=${JSON.stringify(worktree)} REPO_NAME=${JSON.stringify(repo)} ` +
         `${JSON.stringify(hook)} ${JSON.stringify(worktree)}`,
     );
-    return said.ok
-      ? null
-      : `hook ${dir}/hooks/wt_new failed: ${said.stderr.trim() || `exit ${said.code}`}`;
+    // Reported whether it worked or not. A hook that ran silently and a hook
+    // that was never there used to look identical, which is the wrong thing to
+    // be quiet about when the hook is what installs your dependencies.
+    return [
+      {
+        hook: name,
+        ok: said.ok,
+        detail: said.ok ? "" : said.stderr.trim() || `exit ${said.code}`,
+      },
+    ];
   }
-  return null;
+  // `.glrs` wins over `.glorious` and only the first is run, so this is a list
+  // of at most one today. It is a list because the answer to "what ran" should
+  // not change shape the day a second hook exists.
+  return [];
 };
 
-export type Created = { path: string; branch: string; base: string; note: string | null };
+export type Created = { path: string; branch: string; base: string; hooks: HookRun[] };
 
 export const create = async (
   cwd: string,
@@ -244,8 +258,8 @@ export const create = async (
   // Deliberately no upstream. The tool this replaces set it to origin/<base>, so
   // a fresh branch reported "up to date with origin/main" however far it had
   // diverged. `git push -u` sets the right one when you first push.
-  const note = await runNewHook(path, basename(repo), exec);
-  return { path, branch, base: start, note };
+  const hooks = await runNewHook(path, basename(repo), exec);
+  return { path, branch, base: start, hooks };
 };
 
 // ── auditing ────────────────────────────────────────────────────────────────

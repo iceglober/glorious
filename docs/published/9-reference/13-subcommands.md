@@ -11,17 +11,40 @@ alternate screen.
 glrs wt list
 ```
 
-## streams
+## wt new
 
-a subcommand's stdout is the answer and nothing else, so reading it and
-capturing it give you the same thing. `glrs wt new` prints one line:
+what ran, then where it is. the last line is the command that takes you there:
 
-```bash
-cd $(glrs wt new fix the login redirect)
+```
+$ glrs wt new fix the login redirect
+ran .glrs/hooks/wt_new
+cd /Users/you/.glrs/worktrees/myrepo/fix-the-login-redirect
 ```
 
-anything that is not the answer goes to stderr, and there usually is nothing.
-`wt new` writes there only when a `wt_new` hook failed.
+a hook that failed says so and the worktree still stands:
+
+```
+ran .glrs/hooks/wt_new, failed: exit 3
+cd /Users/you/.glrs/worktrees/myrepo/fix-the-login-redirect
+```
+
+with no hook the log is empty and `cd …` is the whole output.
+
+### --cd
+
+```bash
+glrs wt new fix the login redirect --cd
+```
+
+opens a shell in the new worktree. a process cannot change the directory of the
+shell that started it, so this starts one rather than pretending: `exit` returns
+you to where you were. inside a session `--cd` has no shell to open and says so.
+
+to move the shell you are already in, run the last line:
+
+```bash
+eval "$(glrs wt new fix the login redirect | tail -1)"
+```
 
 ## how one is found
 

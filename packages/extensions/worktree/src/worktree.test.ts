@@ -8,6 +8,7 @@ import {
   autoName,
   create,
   defaultBranch,
+  type HookRun,
   list,
   mainRepo,
   remove,
@@ -171,7 +172,7 @@ describe("creating one", () => {
 });
 
 describe("the wt_new hook", () => {
-  const hooked = async (body: string): Promise<{ path: string; note: string | null }> => {
+  const hooked = async (body: string): Promise<{ path: string; hooks: HookRun[] }> => {
     const { repo, home } = await repository();
     await mkdir(join(repo, ".glrs", "hooks"), { recursive: true });
     await writeFile(join(repo, ".glrs", "hooks", "wt_new"), `#!/bin/sh\n${body}\n`, {
@@ -179,12 +180,13 @@ describe("the wt_new hook", () => {
     });
     await runShell(repo, "git add -A && git commit -q -m hook && git push -q origin main");
     const made = await create(repo, { description: "with a hook", home });
-    return { path: made.path, note: made.note };
+    return { path: made.path, hooks: made.hooks };
   };
 
   test("it runs in the new worktree, and is told where it is", async () => {
-    const { path, note } = await hooked('echo "$WORKTREE_DIR" > ran.txt');
-    expect(note).toBeNull();
+    const { path, hooks } = await hooked('echo "$WORKTREE_DIR" > ran.txt');
+    // Reported as having run, not passed over in silence.
+    expect(hooks).toEqual([{ hook: ".glrs/hooks/wt_new", ok: true, detail: "" }]);
     expect((await Bun.file(join(path, "ran.txt")).text()).trim()).toBe(path);
   });
 
@@ -201,8 +203,9 @@ describe("the wt_new hook", () => {
   // A hook that fails must not cost you the worktree — it is already there, and
   // whatever the hook was doing is usually rerunnable by hand.
   test("one that fails warns and leaves the worktree standing", async () => {
-    const { path, note } = await hooked("exit 3");
-    expect(note).toContain("wt_new failed");
+    const { path, hooks } = await hooked("exit 3");
+    expect(hooks[0].ok).toBe(false);
+    expect(hooks[0].detail).toContain("exit 3");
     expect(await Bun.file(join(path, "README.md")).exists()).toBe(true);
   });
 });
@@ -305,6 +308,6 @@ describe("hook discovery", () => {
   test("no hook at all is not a problem", async () => {
     const { repo, home } = await repository();
     const made = await create(repo, { description: "no hook here", home });
-    expect(await runNewHook(made.path, "repo")).toBeNull();
+    expect(await runNewHook(made.path, "repo")).toEqual([]);
   });
 });

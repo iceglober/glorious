@@ -1,6 +1,7 @@
+import { spawnSync } from "node:child_process";
 import type { Glrs } from "../../../glrs-core/src";
 import { listSessions } from "../../../glrs-core/src/session";
-import { audit, create, list, listAll, remove, type Verdict } from "./worktree";
+import { audit, create, type HookRun, list, listAll, remove, type Verdict } from "./worktree";
 
 // Worktrees, as something you run and something the agent knows how to use.
 //
@@ -56,13 +57,19 @@ export default function worktree(g: Glrs): void {
       : found.map((one) => `${one.branch}  ${one.path}`).join("\n");
   };
 
-  // The path, and a warning only when there is one. `create` returns a note
-  // solely when the wt_new hook failed, so on the ordinary path there is nothing
-  // to say beyond where the worktree is: the branch is the directory's name and
-  // the base is the default.
+  // What ran, then where it is. The last line is the command that takes you
+  // there, so it can be read, copied, or run for you with --cd.
+  const describeNew = (built: { path: string; hooks: readonly HookRun[] }): string =>
+    [
+      ...built.hooks.map((one) =>
+        one.ok ? `ran ${one.hook}` : `ran ${one.hook}, failed: ${one.detail}`,
+      ),
+      `cd ${built.path}`,
+    ].join("\n");
+
   const made = async (
     args: readonly string[],
-  ): Promise<{ path: string; warning: string | null; entry: Tracked }> => {
+  ): Promise<{ path: string; said: string; failed: boolean; entry: Tracked }> => {
     const from = args.includes("--from") ? args[args.indexOf("--from") + 1] : undefined;
     const description = args.filter((one) => !one.startsWith("--") && one !== from).join(" ");
     const built = await create(g.root, {
@@ -71,7 +78,8 @@ export default function worktree(g: Glrs): void {
     });
     return {
       path: built.path,
-      warning: built.note,
+      said: describeNew(built),
+      failed: built.hooks.some((one) => !one.ok),
       entry: { path: built.path, branch: built.branch, createdAt: new Date().toISOString() },
     };
   };
@@ -83,12 +91,16 @@ export default function worktree(g: Glrs): void {
     async run(args) {
       const [verb = "list", ...rest] = args;
       if (verb === "new" || verb === "create") {
-        const { path, warning } = await made(rest);
-        // One line, so `cd $(glrs wt new)` works and so reading it is the same
-        // as capturing it. A failed hook is the only thing that ever interrupts
-        // that, and it goes to stderr because it is not the answer.
-        g.print(path);
-        if (warning !== null) process.stderr.write(`${warning}\n`);
+        const { path, said } = await made(rest);
+        g.print(said);
+        // A process cannot change its parent shell's directory, so --cd does the
+        // only thing that is actually available: it replaces glrs with an
+        // interactive shell rooted in the new worktree. `exit` puts you back
+        // where you were. Without it the last line above is the command to run.
+        if (rest.includes("--cd")) {
+          const shell = process.env.SHELL ?? "/bin/sh";
+          spawnSync(shell, { cwd: path, stdio: "inherit" });
+        }
         return;
       }
       if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
@@ -138,13 +150,16 @@ export default function worktree(g: Glrs): void {
         .filter((one) => one !== "");
       try {
         if (verb === "new" || verb === "create") {
-          const { path, warning, entry } = await made(rest);
+          const { said, entry } = await made(rest);
           // Recorded here and not in the subcommand: a subcommand has no session
           // to record into. `wt doctor` covers that case from the other side, by
           // correlating against every session's directory.
           g.appendEntry(ENTRY, entry);
-          if (warning !== null) g.print(warning, "warning");
-          return g.print(path);
+          // No shell to replace from inside a session, so --cd cannot mean here
+          // what it means at the executable.
+          if (rest.includes("--cd"))
+            g.print("--cd needs the subcommand: glrs wt new --cd", "warning");
+          return g.print(said);
         }
         if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
         if (verb === "doctor") return g.print(await report());
