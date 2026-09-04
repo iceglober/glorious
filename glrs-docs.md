@@ -1723,14 +1723,6 @@ cd $(glrs wt new fix the login redirect)
 a `wt_new` hook that failed writes to stderr, so it is visible when you are
 watching and absent from `$(…)`. the worktree still stands.
 
-`--cd` opens a shell in the new worktree instead. a process cannot change the
-directory of the shell that started it, so this starts one rather than
-pretending: `exit` returns you to where you were.
-
-```bash
-glrs wt new fix the login redirect --cd
-```
-
 ## how one is found
 
 the first bare word glrs does not claim is offered to the extensions, which load

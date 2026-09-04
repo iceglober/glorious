@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import type { Glrs } from "../../../glrs-core/src";
 import { listSessions } from "../../../glrs-core/src/session";
 import { audit, create, type HookRun, list, listAll, remove, type Verdict } from "./worktree";
@@ -87,14 +86,6 @@ export default function worktree(g: Glrs): void {
         g.print(path);
         for (const one of failures)
           process.stderr.write(`hook ${one.hook} failed: ${one.detail}\n`);
-        // A process cannot change its parent shell's directory, so --cd does the
-        // only thing that is actually available: it replaces glrs with an
-        // interactive shell rooted in the new worktree. `exit` puts you back
-        // where you were. Without it the last line above is the command to run.
-        if (rest.includes("--cd")) {
-          const shell = process.env.SHELL ?? "/bin/sh";
-          spawnSync(shell, { cwd: path, stdio: "inherit" });
-        }
         return;
       }
       if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
@@ -149,10 +140,6 @@ export default function worktree(g: Glrs): void {
           // to record into. `wt doctor` covers that case from the other side, by
           // correlating against every session's directory.
           g.appendEntry(ENTRY, entry);
-          // No shell to replace from inside a session, so --cd cannot mean here
-          // what it means at the executable.
-          if (rest.includes("--cd"))
-            g.print("--cd needs the subcommand: glrs wt new --cd", "warning");
           for (const one of failures) g.print(`hook ${one.hook} failed: ${one.detail}`, "warning");
           return g.print(path);
         }
