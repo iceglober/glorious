@@ -708,3 +708,29 @@ describe("which extensions load", () => {
     ]);
   });
 });
+
+// A block that parses perfectly reported "should be an array of names, ignored",
+// because the name check ran over `settings`, which is deliberately anything.
+describe("config belonging to an extension", () => {
+  test("a settings-only extensions block is silent and survives", async () => {
+    const root = await project('{"extensions":{"settings":{"tiers":{"default":"balanced"}}}}');
+    const { config, diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(diagnostics).toEqual([]);
+    expect(config.extensions?.settings).toEqual({ tiers: { default: "balanced" } });
+  });
+
+  test("it sits beside load and disable rather than replacing them", async () => {
+    const root = await project(
+      '{"extensions":{"load":["web-fetch"],"settings":{"tiers":{"fast":"a/b"}}}}',
+    );
+    const { config } = await loadConfig(root, join(root, "nohome"));
+    expect(config.extensions?.load).toEqual(["web-fetch"]);
+    expect(config.extensions?.settings).toEqual({ tiers: { fast: "a/b" } });
+  });
+
+  test("settings that is not an object says so", async () => {
+    const root = await project('{"extensions":{"settings":["tiers"]}}');
+    const { diagnostics } = await loadConfig(root, join(root, "nohome"));
+    expect(diagnostics.join(" ")).toContain("extensions.settings");
+  });
+});

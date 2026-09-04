@@ -482,10 +482,15 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     return kept.length > 0 ? kept : undefined;
   };
 
+  // `keys` are parsed as lists of names. `also` are keys that count as the block
+  // meaning something without being name lists themselves: `extensions.settings`
+  // is arbitrary JSON, and running the name check over it reported a block that
+  // parsed perfectly as "should be an array of names, ignored".
   const listBlock = <T extends Record<string, readonly string[] | undefined>>(
     block: "extensions" | "tools",
     keys: readonly string[],
     wanted: string,
+    also: readonly string[] = [],
   ): T | undefined => {
     const value = raw[block];
     if (value === undefined) return undefined;
@@ -500,7 +505,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     }
     // A block glrs recognises holding nothing it knows will not do what it
     // looks like it does — the same rule the whole-file check below applies.
-    if (!keys.some((key) => key in value)) {
+    if (![...keys, ...also].some((key) => key in value)) {
       const inside = Object.keys(value);
       if (inside.length > 0)
         diagnostics.push(
@@ -518,8 +523,9 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
 
   const extensionLists = listBlock<{ load?: readonly string[]; disable?: readonly string[] }>(
     "extensions",
-    ["load", "disable", "settings"],
+    ["load", "disable"],
     'an object with "load", "disable" and "settings", or an array of names',
+    ["settings"],
   );
   // `settings` is opaque, so it is picked up beside the two name lists rather
   // than through `names`, which would insist on an array of strings.
