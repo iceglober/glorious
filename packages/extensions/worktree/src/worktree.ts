@@ -157,6 +157,22 @@ export const defaultBranch = async (repo: string, exec: Exec = shell): Promise<s
   );
 };
 
+// Where a new branch starts, and whether the remote had anything to say about
+// it. `defaultBranch` above already falls back to a local ref, which was
+// unreachable in practice: a base git resolved locally is a base `git fetch
+// origin <base>` can only fail on. A repository whose remote is empty, or that
+// has never pushed, still has a main to branch from.
+//
+// The remote is tried first even when a local ref exists, because that is also
+// what refreshes it. Only when the remote has nothing does the local one stand.
+export const startPoint = async (repo: string, base: string, exec: Exec): Promise<string> => {
+  const fetched = await exec(repo, `git fetch origin ${base} --quiet`);
+  if (fetched.ok) return `origin/${base}`;
+  const local = await exec(repo, `git show-ref --verify --quiet refs/heads/${base}`);
+  if (local.ok) return base;
+  throw new Error(`no origin/${base} and no local ${base}: ${fetched.stderr.trim()}`);
+};
+
 // ── creating ────────────────────────────────────────────────────────────────
 
 // A project can put an executable at .glrs/hooks/wt_new to do whatever a fresh
@@ -211,8 +227,7 @@ export const create = async (
   const exists = await exec(repo, `git show-ref --verify --quiet refs/heads/${branch}`);
   if (exists.ok) throw new Error(`branch ${branch} already exists, pick another description`);
 
-  const fetched = await exec(repo, `git fetch origin ${base} --quiet`);
-  if (!fetched.ok) throw new Error(`could not fetch origin/${base}: ${fetched.stderr.trim()}`);
+  const start = await startPoint(repo, base, exec);
 
   await mkdir(root, { recursive: true });
   // --no-track is what actually leaves the upstream unset. Branching from a
@@ -222,7 +237,7 @@ export const create = async (
   // reported "up to date with origin/main" however far it had diverged.
   const added = await exec(
     repo,
-    `git worktree add --no-track -b ${branch} ${JSON.stringify(path)} origin/${base} --quiet`,
+    `git worktree add --no-track -b ${branch} ${JSON.stringify(path)} ${start} --quiet`,
   );
   if (!added.ok) throw new Error(`could not create the worktree: ${added.stderr.trim()}`);
 
@@ -230,7 +245,7 @@ export const create = async (
   // a fresh branch reported "up to date with origin/main" however far it had
   // diverged. `git push -u` sets the right one when you first push.
   const note = await runNewHook(path, basename(repo), exec);
-  return { path, branch, base, note };
+  return { path, branch, base: start, note };
 };
 
 // ── auditing ────────────────────────────────────────────────────────────────

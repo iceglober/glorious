@@ -35,6 +35,21 @@ const repository = async (): Promise<{ repo: string; home: string }> => {
   return { repo, home };
 };
 
+// A repo whose origin exists but has nothing in it: cloned before anyone pushed,
+// or pointed at a repository being kept empty on purpose. `main` is local only.
+const unpushed = async (): Promise<{ repo: string; home: string }> => {
+  const home = await mkdtemp(join(tmpdir(), "glrs-wt-"));
+  scratch.push(home);
+  const origin = join(home, "origin.git");
+  const repo = join(home, "repo");
+  await runShell(home, `git init --bare --initial-branch=main ${JSON.stringify(origin)} --quiet`);
+  await runShell(home, `git clone --quiet ${JSON.stringify(origin)} ${JSON.stringify(repo)}`);
+  await runShell(repo, "git config user.email a@b.c && git config user.name Test");
+  await writeFile(join(repo, "README.md"), "hello\n");
+  await runShell(repo, "git add -A && git commit -q -m first");
+  return { repo, home };
+};
+
 afterAll(async () => {
   for (const dir of scratch) await rm(dir, { recursive: true, force: true });
 });
@@ -110,6 +125,30 @@ describe("creating one", () => {
     await runShell(repo, "git add -A && git commit -q -m local-only");
     const made = await create(repo, { description: "from origin", home });
     expect(await Bun.file(join(made.path, "local.txt")).exists()).toBe(false);
+  });
+
+  // `defaultBranch` falls back to a local ref, and that fallback used to be
+  // unreachable: create fetched origin/<base> for a base git had resolved
+  // locally, which can only fail. `glrs wt new` was impossible in any repo whose
+  // remote was empty.
+  test("a base that exists only locally is branched from, not fetched", async () => {
+    const { repo, home } = await unpushed();
+    const made = await create(repo, { description: "works offline", home });
+    expect(made.base).toBe("main");
+    expect(await Bun.file(join(made.path, "README.md")).text()).toBe("hello\n");
+  });
+
+  test("the remote still wins when it has the branch", async () => {
+    const { repo, home } = await repository();
+    const made = await create(repo, { description: "from the remote", home });
+    expect(made.base).toBe("origin/main");
+  });
+
+  test("neither remote nor local names both in the failure", async () => {
+    const { repo, home } = await repository();
+    await expect(create(repo, { description: "nope", from: "nonesuch", home })).rejects.toThrow(
+      /no origin\/nonesuch and no local nonesuch/u,
+    );
   });
 
   // The tool this replaces ran `git branch -D` on a collision, throwing away

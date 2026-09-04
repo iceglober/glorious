@@ -56,17 +56,24 @@ export default function worktree(g: Glrs): void {
       : found.map((one) => `${one.branch}  ${one.path}`).join("\n");
   };
 
-  const made = async (args: readonly string[]): Promise<{ said: string; entry: Tracked }> => {
+  // The path and the commentary are returned apart, because the subcommand puts
+  // them on different streams: `cd $(glrs wt new)` captures stdout, so anything
+  // there that is not the path breaks it. The slash command has one surface and
+  // prints both.
+  const made = async (
+    args: readonly string[],
+  ): Promise<{ path: string; detail: string; entry: Tracked }> => {
     const from = args.includes("--from") ? args[args.indexOf("--from") + 1] : undefined;
     const description = args.filter((one) => !one.startsWith("--") && one !== from).join(" ");
     const built = await create(g.root, {
       description: description === "" ? undefined : description,
       from,
     });
-    const lines = [built.path, `  branch ${built.branch} from origin/${built.base}`];
+    const lines = [`  branch ${built.branch} from ${built.base}`];
     if (built.note !== null) lines.push(`  ${built.note}`);
     return {
-      said: lines.join("\n"),
+      path: built.path,
+      detail: lines.join("\n"),
       entry: { path: built.path, branch: built.branch, createdAt: new Date().toISOString() },
     };
   };
@@ -78,9 +85,12 @@ export default function worktree(g: Glrs): void {
     async run(args) {
       const [verb = "list", ...rest] = args;
       if (verb === "new" || verb === "create") {
-        const { said } = await made(rest);
-        // Printed as the path first, so `cd $(glrs wt new x)` lands you there.
-        g.print(said);
+        const { path, detail } = await made(rest);
+        // stdout is the path and nothing else, so `cd $(glrs wt new)` works.
+        // Where it came from is commentary, and commentary goes to stderr: it
+        // still reaches a person watching, and never reaches `$(…)`.
+        process.stderr.write(`${detail}\n`);
+        g.print(path);
         return;
       }
       if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
@@ -130,12 +140,13 @@ export default function worktree(g: Glrs): void {
         .filter((one) => one !== "");
       try {
         if (verb === "new" || verb === "create") {
-          const { said, entry } = await made(rest);
+          const { path, detail, entry } = await made(rest);
           // Recorded here and not in the subcommand: a subcommand has no session
           // to record into. `wt doctor` covers that case from the other side, by
           // correlating against every session's directory.
           g.appendEntry(ENTRY, entry);
-          return g.print(said);
+          // One surface here, so the path and where it came from print together.
+          return g.print(`${path}\n${detail}`);
         }
         if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
         if (verb === "doctor") return g.print(await report());

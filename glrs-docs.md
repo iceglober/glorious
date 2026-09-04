@@ -1712,6 +1712,18 @@ alternate screen.
 glrs wt list
 ```
 
+## streams
+
+a subcommand's stdout is what you pipe or capture, so anything that is not the
+answer goes to stderr. `glrs wt new` prints the path and nothing else:
+
+```bash
+cd $(glrs wt new fix the login redirect)
+```
+
+the branch it came from is written to stderr, where it is still visible when
+you are watching and absent from `$(…)`.
+
 ## how one is found
 
 the first bare word glrs does not claim is offered to the extensions, which load
