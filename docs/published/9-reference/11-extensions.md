@@ -23,6 +23,7 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | the six file and shell tools, and every slash command |
 | `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, and the picker that opens when no model is set |
+| `tiers` | `@glrs-dev/glrs-ext-tiers` | `/tier`, named tiers of model resolved against your credentials |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user`, a multiple-choice question answered in the TUI |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch`, a page as markdown, JavaScript rendered when Chrome is installed |
 | `worktree` | `@glrs-dev/glrs-ext-worktree` | git worktrees, and `glrs wt` |
@@ -72,6 +73,29 @@ type Span = {
 };
 type Line = Span[];
 ```
+
+## config
+
+an extension reads its own block and no other:
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced"
+      }
+    }
+  }
+}
+```
+
+```ts
+const settings = g.config() as { greeting?: string } | undefined;
+```
+
+keyed by the extension's name, merged across the three scopes as JSON. glrs
+never looks inside, so the shape is yours to define and yours to validate.
 
 ## stability
 

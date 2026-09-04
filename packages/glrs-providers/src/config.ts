@@ -141,6 +141,13 @@ export type ReasoningDisplay = boolean | ReasoningLevel;
 export type ExtensionSettings = {
   load?: readonly string[];
   disable?: readonly string[];
+  /**
+   * Config belonging to individual extensions, keyed by extension name. glrs
+   * never reads inside: an extension is handed its own block and no other, so
+   * two of them cannot argue about what a key means. Merged as JSON across the
+   * three scopes, so a project can deepen what your User config started.
+   */
+  settings?: { [extension: string]: JsonValue };
 };
 
 // Tools are not extensions and the two lists have different lifetimes, so this
@@ -509,11 +516,23 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     return Object.keys(out).length > 0 ? out : undefined;
   };
 
-  const extensions = listBlock<ExtensionSettings>(
+  const extensionLists = listBlock<{ load?: readonly string[]; disable?: readonly string[] }>(
     "extensions",
-    ["load", "disable"],
-    'an object with "load" and "disable", or an array of names',
+    ["load", "disable", "settings"],
+    'an object with "load", "disable" and "settings", or an array of names',
   );
+  // `settings` is opaque, so it is picked up beside the two name lists rather
+  // than through `names`, which would insist on an array of strings.
+  const extensionBlock = isObject(raw.extensions) ? raw.extensions : undefined;
+  const perExtension = isObject(extensionBlock?.settings)
+    ? (extensionBlock.settings as { [extension: string]: JsonValue })
+    : undefined;
+  if (extensionBlock?.settings !== undefined && perExtension === undefined)
+    wrong("extensions.settings", "an object keyed by extension name");
+  const extensions =
+    extensionLists === undefined && perExtension === undefined
+      ? undefined
+      : { ...extensionLists, ...(perExtension === undefined ? {} : { settings: perExtension }) };
   const tools = listBlock<ToolSettings>("tools", ["disable"], 'an object with "disable"');
   const allowlist = names(raw.agentConfigAllowlist, "agentConfigAllowlist", "");
 
@@ -727,6 +746,28 @@ const mergedLists = <T extends Record<string, readonly string[] | undefined>>(
   return Object.keys(out).length > 0 ? out : undefined;
 };
 
+// The two name lists add up across scopes, the settings block merges as JSON.
+// Defined here rather than inline because `mergedLists` insists every value is
+// a list of strings, and `settings` is deliberately anything.
+const mergeExtensions = (
+  near?: ExtensionSettings,
+  far?: ExtensionSettings,
+): ExtensionSettings | undefined => {
+  const lists = mergedLists<{ load?: readonly string[]; disable?: readonly string[] }>(
+    ["load", "disable"],
+    near,
+    far,
+  );
+  const settings = mergeJson(far?.settings ?? {}, near?.settings ?? {}) as
+    | { [extension: string]: JsonValue }
+    | undefined;
+  const merged = {
+    ...lists,
+    ...(settings === undefined || Object.keys(settings).length === 0 ? {} : { settings }),
+  };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+};
+
 const removed = Symbol("removed");
 const mergeJson = (far: unknown, near: unknown): unknown | typeof removed => {
   if (near === null) return removed;
@@ -747,7 +788,7 @@ const merge = (near: Config, far: Config): Config => ({
   toolTimeoutMs: near.toolTimeoutMs ?? far.toolTimeoutMs,
   steeringMode: near.steeringMode ?? far.steeringMode,
   followUpMode: near.followUpMode ?? far.followUpMode,
-  extensions: mergedLists<ExtensionSettings>(["load", "disable"], near.extensions, far.extensions),
+  extensions: mergeExtensions(near.extensions, far.extensions),
   tools: mergedLists<ToolSettings>(["disable"], near.tools, far.tools),
   // Nearest wins rather than adding up: permission to write your config is not
   // something a project you cloned should be able to widen.

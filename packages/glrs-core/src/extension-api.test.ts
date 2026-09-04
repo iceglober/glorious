@@ -36,7 +36,7 @@ const members = (): string[] => {
 
 const touched = new Set<string>();
 
-const harness = () => {
+const harness = (origin = "test-extension") => {
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const registry = createRegistry();
   const record =
@@ -48,6 +48,7 @@ const harness = () => {
   const host = {
     root: "/tmp/project",
     mode: "tui" as const,
+    extensionConfig: (extension: string) => ({ worktree: { hi: 1 } })[extension as "worktree"],
     settings: () => ({ toolTimeoutMs: 4242, steeringMode: "all" as const }),
     available: () => [
       { name: "builtins", summary: "the tools and commands", state: "on" as const },
@@ -114,7 +115,7 @@ const harness = () => {
     entries: () => [{ kept: true }],
   } as unknown as ExtensionHost;
 
-  const api = createApi(host, registry, () => {}, "test-extension");
+  const api = createApi(host, registry, () => {}, origin);
   // Every property read is recorded, so the coverage guard at the bottom
   // measures what these tests genuinely exercise rather than what a list claims.
   const g = new Proxy(api, {
@@ -231,6 +232,14 @@ describe("what an extension can reach", () => {
 
   // Switching for a turn and choosing for good are separate calls, so an
   // extension can offer the first without writing to anyone's config.
+  // Keyed by the extension's own identity, so an extension cannot read another's
+  // config and does not have to know how the three scopes merge.
+  test("an extension is handed its own config block and no other", async () => {
+    const { g } = harness("@glrs-dev/glrs-ext-worktree");
+    expect(g.config()).toEqual({ hi: 1 });
+    expect(harness("@glrs-dev/glrs-ext-web-fetch").g.config()).toBeUndefined();
+  });
+
   test("recording the model is asked for separately from switching to it", async () => {
     const { g, calls } = harness();
     await g.setModel("anthropic/claude-opus-5");

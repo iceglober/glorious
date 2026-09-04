@@ -22,6 +22,7 @@
     "packages/extensions/ask-user/src",
     "packages/extensions/builtins/src",
     "packages/extensions/model-picker/src",
+    "packages/extensions/tiers/src",
     "packages/extensions/web-fetch/src",
     "packages/extensions/worktree/src",
     "packages/extensions/worktree/skills",

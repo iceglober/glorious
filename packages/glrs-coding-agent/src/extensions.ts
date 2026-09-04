@@ -6,6 +6,7 @@ import { join } from "node:path";
 import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
 import modelPicker from "../../extensions/model-picker/src";
+import tiers from "../../extensions/tiers/src";
 import webFetch from "../../extensions/web-fetch/src";
 import worktree from "../../extensions/worktree/src";
 import type { ExtensionHost, Registry } from "../../glrs-core/src/extension-api";
@@ -55,6 +56,17 @@ export const bundled: Roster = [
     defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "builtins"),
     summary: "the file, search and shell tools, and every slash command",
+  },
+  // Ahead of model-picker on purpose: a session that opens with no model gets
+  // one from the default tier first, and the picker then sees a model and stays
+  // shut. Handlers fire in registration order.
+  {
+    name: "tiers",
+    origin: "@glrs-dev/glrs-ext-tiers",
+    load: tiers,
+    defaultOn: true,
+    dir: join(import.meta.dir, "..", "..", "extensions", "tiers"),
+    summary: "named tiers of model, resolved against the providers you have credentials for",
   },
   {
     name: "model-picker",

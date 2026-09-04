@@ -176,6 +176,51 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
 
+## tiers
+
+a tier is a name for the model you want for a kind of work, and a list of
+candidates in preference order. the first one glrs has credentials for wins.
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced",
+        "fast": ["anthropic/claude-haiku-4-5", "openai/gpt-5.6-mini"],
+        "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"],
+        "deep": [{ "model": "anthropic/claude-opus-5", "variant": "high" }]
+      }
+    }
+  }
+}
+```
+
+```
+/tier              list them, and what each resolves to
+/tier deep         switch
+```
+
+```
+  fast                azure/gpt-5.6-luna
+› balanced (default)  azure/gpt-5.6-luna
+  deep                nothing reachable
+```
+
+glrs ships no tiers and no opinion about which model belongs in which. a table
+saying `medium = opus-5` is wrong the month a new model lands. the names are
+yours, so they need not avoid `low`, `medium` and `high`, which mean reasoning
+effort everywhere else ([variant](#variant)).
+
+`default` names the tier used when a session opens with no model. it resolves
+before the picker opens, so the ordinary path is that you never see the picker.
+`-p` is not covered: it resolves its model before extensions load, so a
+pipeline still needs `GLRS_MODEL` or `model` in config.
+
+a lone string is a tier of one. anything that is not `provider/model-id` is
+dropped rather than guessed at, and a tier left with nothing usable does not
+appear.
+
 ## provider warnings
 
 the model answers, but the provider dropped something on the way. reported in

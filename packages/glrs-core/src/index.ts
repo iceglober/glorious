@@ -520,6 +520,18 @@ export type Glrs = {
    * you have said otherwise.
    */
   setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
+  /**
+   * This extension's own config, from `extensions.settings.<name>` in any of
+   * the three scopes, merged. `undefined` when nothing configured it. glrs
+   * never looks inside, so the shape is yours to define and yours to validate.
+   *
+   * ```ts
+   * const settings = g.config() as { greeting?: string } | undefined;
+   * g.print(settings?.greeting ?? "hello");
+   * ```
+   */
+  config: () => unknown;
+
   /** What is loaded: commands, skills, extensions. */
   inspect: () => Loaded;
   /** Drop the conversation the model replays. The transcript is untouched. */

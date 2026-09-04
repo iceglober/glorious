@@ -54,6 +54,7 @@ const host: ExtensionHost = {
   notify: () => {},
   setTheme: () => ({ restore: () => {} }),
   autocomplete: () => ({ dispose: () => {} }),
+  extensionConfig: () => undefined,
   settings: () => ({ toolTimeoutMs: 1000 }),
   available: () => [],
   setExtension: async () => "not-allowed" as const,
@@ -498,6 +499,7 @@ describe("the extensions that ship with glrs", () => {
       "ask-user",
       "builtins",
       "model-picker",
+      "tiers",
       "web-fetch",
       "worktree",
     ]);

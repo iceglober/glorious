@@ -68,6 +68,7 @@ export const runCli = async (
     print: (content) => process.stdout.write(`${flatten(content)}\n`),
     columns: () =>
       process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 100,
+    extensionConfig: (extension) => config.config.extensions?.settings?.[extension],
     settings: () => ({
       toolTimeoutMs: config.config.toolTimeoutMs,
       reasoningDisplay: config.config.reasoningDisplay,

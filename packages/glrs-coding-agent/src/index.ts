@@ -958,6 +958,7 @@ const main = async (): Promise<void> => {
       config.config.extensions = { load: [...load], disable: [...disable] };
       return outcome;
     },
+    extensionConfig: (extension) => config.config.extensions?.settings?.[extension],
     settings: () => ({
       toolTimeoutMs: toolTimeoutMs,
       reasoningDisplay: config.config.reasoningDisplay,

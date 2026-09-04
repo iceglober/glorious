@@ -147,6 +147,7 @@ export const runPrint = async (
     {
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
+      extensionConfig: (extension) => loadedConfig.config.extensions?.settings?.[extension],
       settings: () => ({
         toolTimeoutMs: toolTimeoutMs,
         reasoningDisplay: loadedConfig.config.reasoningDisplay,

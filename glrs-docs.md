@@ -556,8 +556,8 @@ how-to/manage-extensions.md
 /extensions
 ```
 
-all five first-party extensions load, plus anything in `.glrs/extensions/`:
-`builtins`, `model-picker`, `ask-user`, `web-fetch`, `worktree`.
+all six first-party extensions load, plus anything in `.glrs/extensions/`:
+`builtins`, `model-picker`, `tiers`, `ask-user`, `web-fetch`, `worktree`.
 
 ## reload after an edit
 
@@ -697,11 +697,12 @@ the core does not quietly keep a copy.
 | --- | --- |
 | `builtins` | the file, search and shell tools, and every slash command |
 | `model-picker` | `/model`, and the picker that opens when no model is set |
+| `tiers` | `/tier`, and a default model chosen from what you have credentials for |
 | `ask-user` | the `ask_user` tool and its widget, built on `g.ui.capture` |
 | `web-fetch` | the `web_fetch` tool |
 | `worktree` | the `glrs wt` subcommand and `/wt` |
 
-all five load. asking you to turn one on puts a decision in front of you that you
+all six load. asking you to turn one on puts a decision in front of you that you
 had no way to evaluate. disable what you do not want, or shadow it with a file
 of the same name: disk wins over first-party.
 
@@ -1159,6 +1160,51 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
 
+## tiers
+
+a tier is a name for the model you want for a kind of work, and a list of
+candidates in preference order. the first one glrs has credentials for wins.
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced",
+        "fast": ["anthropic/claude-haiku-4-5", "openai/gpt-5.6-mini"],
+        "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"],
+        "deep": [{ "model": "anthropic/claude-opus-5", "variant": "high" }]
+      }
+    }
+  }
+}
+```
+
+```
+/tier              list them, and what each resolves to
+/tier deep         switch
+```
+
+```
+  fast                azure/gpt-5.6-luna
+› balanced (default)  azure/gpt-5.6-luna
+  deep                nothing reachable
+```
+
+glrs ships no tiers and no opinion about which model belongs in which. a table
+saying `medium = opus-5` is wrong the month a new model lands. the names are
+yours, so they need not avoid `low`, `medium` and `high`, which mean reasoning
+effort everywhere else ([variant](#variant)).
+
+`default` names the tier used when a session opens with no model. it resolves
+before the picker opens, so the ordinary path is that you never see the picker.
+`-p` is not covered: it resolves its model before extensions load, so a
+pipeline still needs `GLRS_MODEL` or `model` in config.
+
+a lone string is a tier of one. anything that is not `provider/model-id` is
+dropped rather than guessed at, and a tier left with nothing usable does not
+appear.
+
 ## provider warnings
 
 the model answers, but the provider dropped something on the way. reported in
@@ -1543,6 +1589,7 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | the six file and shell tools, and every slash command |
 | `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, and the picker that opens when no model is set |
+| `tiers` | `@glrs-dev/glrs-ext-tiers` | `/tier`, named tiers of model resolved against your credentials |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user`, a multiple-choice question answered in the TUI |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch`, a page as markdown, JavaScript rendered when Chrome is installed |
 | `worktree` | `@glrs-dev/glrs-ext-worktree` | git worktrees, and `glrs wt` |
@@ -1592,6 +1639,29 @@ type Span = {
 };
 type Line = Span[];
 ```
+
+## config
+
+an extension reads its own block and no other:
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced"
+      }
+    }
+  }
+}
+```
+
+```ts
+const settings = g.config() as { greeting?: string } | undefined;
+```
+
+keyed by the extension's name, merged across the three scopes as JSON. glrs
+never looks inside, so the shape is yours to define and yours to validate.
 
 ## stability
 
@@ -1795,12 +1865,33 @@ in `extensions.load`, `~/` resolves against home and `./` or `../` against the d
 
 in a git repository all three files are created, outside one only the User file. each new file holds `{"$schema": "https://glrs.dev/config.schema.json"}`; an existing file without `$schema` has it inserted in place. `.glrs/.gitignore` is created containing `/config.local.json`.
 
+## extensions.settings
+
+config belonging to individual extensions, keyed by extension name:
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced",
+        "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"]
+      }
+    }
+  }
+}
+```
+
+glrs never reads inside a block. an extension is handed its own and no other,
+so two of them cannot argue about what a key means: [extensions](reference/extensions.md).
+
 ## merge
 
 | keys | rule |
 | --- | --- |
 | `model`, `variant`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
 | `extensions.load`, `extensions.disable`, `tools.disable` | union of the three scopes, and disabled anywhere stays disabled |
+| `extensions.settings` | JSON Merge Patch, deep; `null` deletes a key |
 | `providers` | JSON Merge Patch, deep; `null` deletes a key |
 
 ## agentConfigAllowlist

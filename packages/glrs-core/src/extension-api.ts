@@ -144,6 +144,8 @@ export type ExtensionHost = {
   autocomplete: (provider: AutocompleteProvider) => { dispose: () => void };
   setInput: (text: string) => void;
   settings: () => Readonly<Settings>;
+  /** This extension's own config block, by name. Never another's. */
+  extensionConfig: (extension: string) => unknown;
   available: () => readonly FirstPartyExtension[];
   setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
   inspect: () => Loaded;
@@ -311,6 +313,17 @@ export const describeContribution = (registry: Registry, origin: string): string
 // built-ins use, so it is late-bound: the agent is built before extensions can
 // possibly have run, and this is what lets a tool registered at session_start
 // still reach the live row.
+// `@glrs-dev/glrs-ext-worktree` and `/home/you/.glrs/extensions/worktree.ts`
+// are both the extension called `worktree`, which is the name someone writes in
+// their config.
+export const configName = (origin: string): string => {
+  const tail = origin.split("/").pop() ?? origin;
+  return tail
+    .replace(/^glrs-ext-/u, "")
+    .replace(/\.ts$/u, "")
+    .toLowerCase();
+};
+
 export const createApi = (
   host: ExtensionHost,
   registry: Registry,
@@ -329,6 +342,11 @@ export const createApi = (
   return {
     root: host.root,
     settings: () => host.settings(),
+    // Keyed by the extension's own identity, so it cannot read anyone else's
+    // and does not have to know where config lives or how scopes merge.
+    // `origin` is the package specifier for a bundled extension and the file
+    // path for one on disk; the name is the last meaningful part of either.
+    config: () => host.extensionConfig(configName(origin)),
     available: () => host.available(),
     setExtension: (name, on) => host.setExtension(name, on),
     z,
