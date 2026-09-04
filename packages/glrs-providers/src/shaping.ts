@@ -271,8 +271,12 @@ export const withCacheBreakpoints = <Message extends object>(
   modelType?: AzureModelType,
 ): Message[] => {
   const hint = cacheHint(provider, modelId, modelType);
-  if (hint === undefined || messages.length < 2) return [...messages];
-  const at = messages.length - 2;
+  if (hint === undefined || messages.length === 0) return [...messages];
+  // Second-to-last normally. On the first turn there is no second-to-last, and
+  // marking nothing meant nothing was cached and the second turn re-read the
+  // system prompt, the tools and the first message at full price. Marking the
+  // only message caches exactly the prefix the second turn opens with.
+  const at = Math.max(0, messages.length - 2);
   return messages.map((message, index) => {
     if (index !== at) return message;
     const already = (message as { providerOptions?: Record<string, unknown> }).providerOptions;

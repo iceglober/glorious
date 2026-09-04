@@ -778,7 +778,15 @@ inserted earlier.
 OpenAI and Google cache a prefix without being asked. Anthropic and Bedrock
 cache only what is marked, so glrs marks the second-to-last message: the newest
 point that will still be there next turn. the mark advances every turn, which
-extends the cached prefix rather than replacing it.
+extends the cached prefix rather than replacing it. on the first turn there is
+no second-to-last, so the only message is marked, and the second turn opens on
+a prefix the provider has already seen.
+
+everything else reaches an OpenAI-compatible endpoint, where the only cache
+control the protocol defines is OpenAI's own. glrs sends it to OpenAI and to
+Azure's OpenAI deployments and to nobody else: a field the model behind the
+endpoint does not define is refused rather than ignored, which is how a request
+about verbosity came to fail as though it were about reasoning.
 
 ## steering and follow-up
 

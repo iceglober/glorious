@@ -128,6 +128,17 @@ describe("cache breakpoints", () => {
     expect(marked[0]).not.toHaveProperty("providerOptions");
   });
 
+  // Nothing was marked on the first turn, so the second turn paid full price for
+  // the system prompt, the tools and the first message.
+  test("the first turn is cached, so the second one hits", () => {
+    const marked = withCacheBreakpoints(conversation(1), "anthropic");
+    expect(marked[0]).toHaveProperty("providerOptions.anthropic.cacheControl");
+  });
+
+  test("an empty conversation has no prefix to mark", () => {
+    expect(withCacheBreakpoints([], "anthropic")).toEqual([]);
+  });
+
   test("bedrock gets a cachePoint rather than anthropic's cacheControl", () => {
     const marked = withCacheBreakpoints(conversation(3), "amazon-bedrock");
     expect(marked[1]).toHaveProperty("providerOptions.bedrock.cachePoint");
@@ -136,12 +147,6 @@ describe("cache breakpoints", () => {
   test("a claude model on vertex is marked the anthropic way", () => {
     const marked = withCacheBreakpoints(conversation(3), "google-vertex", "claude-opus-4-1");
     expect(marked[1]).toHaveProperty("providerOptions.anthropic.cacheControl");
-  });
-
-  test("too short to have a stable prefix means nothing is marked", () => {
-    expect(withCacheBreakpoints(conversation(1), "anthropic")[0]).not.toHaveProperty(
-      "providerOptions",
-    );
   });
 
   test("options a message already carried are kept", () => {
