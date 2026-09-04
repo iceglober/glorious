@@ -13,15 +13,15 @@ glrs wt list
 
 ## streams
 
-a subcommand's stdout is what you pipe or capture, so anything that is not the
-answer goes to stderr. `glrs wt new` prints the path and nothing else:
+a subcommand's stdout is the answer and nothing else, so reading it and
+capturing it give you the same thing. `glrs wt new` prints one line:
 
 ```bash
 cd $(glrs wt new fix the login redirect)
 ```
 
-the branch it came from is written to stderr, where it is still visible when
-you are watching and absent from `$(…)`.
+anything that is not the answer goes to stderr, and there usually is nothing.
+`wt new` writes there only when a `wt_new` hook failed.
 
 ## how one is found
 

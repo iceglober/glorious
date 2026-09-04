@@ -56,24 +56,22 @@ export default function worktree(g: Glrs): void {
       : found.map((one) => `${one.branch}  ${one.path}`).join("\n");
   };
 
-  // The path and the commentary are returned apart, because the subcommand puts
-  // them on different streams: `cd $(glrs wt new)` captures stdout, so anything
-  // there that is not the path breaks it. The slash command has one surface and
-  // prints both.
+  // The path, and a warning only when there is one. `create` returns a note
+  // solely when the wt_new hook failed, so on the ordinary path there is nothing
+  // to say beyond where the worktree is: the branch is the directory's name and
+  // the base is the default.
   const made = async (
     args: readonly string[],
-  ): Promise<{ path: string; detail: string; entry: Tracked }> => {
+  ): Promise<{ path: string; warning: string | null; entry: Tracked }> => {
     const from = args.includes("--from") ? args[args.indexOf("--from") + 1] : undefined;
     const description = args.filter((one) => !one.startsWith("--") && one !== from).join(" ");
     const built = await create(g.root, {
       description: description === "" ? undefined : description,
       from,
     });
-    const lines = [`  branch ${built.branch} from ${built.base}`];
-    if (built.note !== null) lines.push(`  ${built.note}`);
     return {
       path: built.path,
-      detail: lines.join("\n"),
+      warning: built.note,
       entry: { path: built.path, branch: built.branch, createdAt: new Date().toISOString() },
     };
   };
@@ -85,15 +83,12 @@ export default function worktree(g: Glrs): void {
     async run(args) {
       const [verb = "list", ...rest] = args;
       if (verb === "new" || verb === "create") {
-        const { path, detail } = await made(rest);
-        // stdout is the path and nothing else, so `cd $(glrs wt new)` works.
-        // Where it came from is commentary, and commentary goes to stderr: it
-        // still reaches a person watching, and never reaches `$(…)`.
-        //
-        // Path first, so that a terminal showing both streams reads the way it
-        // did when both were stdout: the path, then what is under it.
+        const { path, warning } = await made(rest);
+        // One line, so `cd $(glrs wt new)` works and so reading it is the same
+        // as capturing it. A failed hook is the only thing that ever interrupts
+        // that, and it goes to stderr because it is not the answer.
         g.print(path);
-        process.stderr.write(`${detail}\n`);
+        if (warning !== null) process.stderr.write(`${warning}\n`);
         return;
       }
       if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
@@ -143,13 +138,13 @@ export default function worktree(g: Glrs): void {
         .filter((one) => one !== "");
       try {
         if (verb === "new" || verb === "create") {
-          const { path, detail, entry } = await made(rest);
+          const { path, warning, entry } = await made(rest);
           // Recorded here and not in the subcommand: a subcommand has no session
           // to record into. `wt doctor` covers that case from the other side, by
           // correlating against every session's directory.
           g.appendEntry(ENTRY, entry);
-          // One surface here, so the path and where it came from print together.
-          return g.print(`${path}\n${detail}`);
+          if (warning !== null) g.print(warning, "warning");
+          return g.print(path);
         }
         if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
         if (verb === "doctor") return g.print(await report());

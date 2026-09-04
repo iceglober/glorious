@@ -10,7 +10,7 @@ cd $(glrs wt new fix the login redirect)
 
 Two things stopped that working.
 
-**The path was not alone on stdout.** `wt new` printed the path plus the branch it came from and any hook note, so `$(…)` captured all three. The commentary goes to stderr now, where it is still visible when you are watching and absent when you are capturing. `/wt new` in a session is unchanged: one surface, so it prints both.
+**The path was not alone on stdout.** `wt new` printed the path plus the branch it came from and any hook note, so `$(…)` captured all three. It prints one line now. The branch line is gone rather than moved: the directory is named after the branch and the base is the default, so it never said anything you could not see. A `wt_new` hook that fails still writes to stderr, because that is a warning and not the answer.
 
 **A base that only exists locally could not be branched from.** `defaultBranch` falls back to `refs/heads/main` when there is no `origin/main`, but `create` then ran `git fetch origin main` unconditionally, which can only fail for a base git resolved locally. The fallback was unreachable, and `glrs wt new` was impossible in any repository whose remote is empty or that has never pushed:
 
