@@ -29,6 +29,7 @@ import {
   savePromptHistory,
   saveSession,
   sessionFile,
+  writeArtifact,
 } from "../../glrs-core/src/session";
 import { runShell } from "../../glrs-core/src/shell";
 import { loadSkills } from "../../glrs-core/src/skills";
@@ -68,6 +69,7 @@ import { runPrint } from "./print";
 import {
   advanceToolRun,
   assistantBlock,
+  clip,
   errorText,
   eventBlock,
   heldRow,
@@ -432,8 +434,13 @@ const main = async (): Promise<void> => {
     // would take over rather than somewhere else of its own choosing. Unknown
     // window means no ceiling: an unsizable model is left to the provider,
     // which is what happened before this existed at all.
-    contextCeiling: () =>
-      COMPACT_AT === 0 || model?.context === undefined ? undefined : model.context * COMPACT_AT,
+    contextCeiling: () => (COMPACT_AT === 0 ? undefined : window() * COMPACT_AT),
+    // A cheaper model for the brief, when config names one. Resolved per call
+    // so `/model` and a config reload are both seen without rebuilding.
+    summariser: () =>
+      config.config.compactModel === undefined
+        ? null
+        : configuredModel(config.config.compactModel, config.config, undefined),
     cwd: root,
     os,
     date: new Date().toISOString().slice(0, 10),
@@ -487,6 +494,9 @@ const main = async (): Promise<void> => {
     if (event.type === "usage") {
       tokens = event.tokens;
       session.contextTokens = event.tokens;
+      // Every step, not only idle: an agentic turn is where the context grows,
+      // and the brief is written in the background while the turn carries on.
+      maybeCompact();
       lastUsage = {
         input: event.input ?? 0,
         output: event.output ?? 0,
@@ -812,6 +822,14 @@ const main = async (): Promise<void> => {
   // 0.75 of the window unless config says otherwise. On a million-token model
   // that is 787,500 tokens: late, and expensive on every turn that gets there.
   const COMPACT_AT = config.config.compactAt ?? 0.75;
+  // The most window compaction will plan against. A model that advertises a
+  // million tokens is still compacted as if it had this much, because every
+  // turn past here re-sends all of it at full price; and a model whose window
+  // the catalogue does not know is assumed to have this much rather than never
+  // being compacted at all, which was what happened to every OpenAI-compatible
+  // endpoint before this existed.
+  const COMPACT_WINDOW = config.config.compactWindow ?? 256_000;
+  const window = (): number => Math.min(model?.context ?? COMPACT_WINDOW, COMPACT_WINDOW);
   const KEEP_TOKENS = 20_000;
   let compactedAt = 0;
 
@@ -831,9 +849,15 @@ const main = async (): Promise<void> => {
       (typeof gate === "object" ? gate.instruction : undefined) ??
       options.instruction ??
       "Summarise the conversation so far.";
+    // How much recent work survives verbatim. Never more than half of what the
+    // threshold allows, or a small window could not be compacted at all:
+    // `cutPoint` keeps `keep` tokens and declines when the conversation is
+    // shorter than that, so 20k of headroom on an 8k window meant automatic
+    // compaction said nothing and did nothing.
+    const keep = options.keep ?? Math.min(KEEP_TOKENS, Math.floor((window() * COMPACT_AT) / 2));
     const outcome = await chat.compact(
       instruction,
-      options.keep ?? KEEP_TOKENS,
+      keep,
       // Asked for by hand, compact whatever there is rather than declining
       // because the conversation has not yet reached the automatic threshold.
       !automatic,
@@ -866,8 +890,8 @@ const main = async (): Promise<void> => {
     // Zero is off. Without this it would read as "compact above zero tokens",
     // which is every conversation, on every turn.
     if (COMPACT_AT === 0) return;
-    if (chat.compacting || model?.context === undefined || tokens === null) return;
-    if (tokens < model.context * COMPACT_AT) return;
+    if (chat.compacting || tokens === null) return;
+    if (tokens < window() * COMPACT_AT) return;
     // Only once per growth phase: without this a compaction that frees little
     // would run again on the very next turn.
     if (tokens <= compactedAt) return;
@@ -879,10 +903,10 @@ const main = async (): Promise<void> => {
     history: readonly ModelMessage[],
   ): Promise<void> => {
     if (COMPACT_AT === 0) return;
-    if (chat.compacting || model?.context === undefined) return;
+    if (chat.compacting) return;
     const known = tokens ?? estimateHistoryTokens(history);
     const candidate = known + Math.ceil(prompt.length / 4);
-    if (candidate < model.context * COMPACT_AT || candidate <= compactedAt) return;
+    if (candidate < window() * COMPACT_AT || candidate <= compactedAt) return;
     await runCompaction({}, true);
   };
 
@@ -918,6 +942,25 @@ const main = async (): Promise<void> => {
     onEvent: render,
     onSignal: react,
     onPreflight: preflightCompact,
+    // What the brief replaced, kept unchanged beside the session. The first
+    // line of the brief is the label, because it is the sentence a person or
+    // the agent will scan a list of these by.
+    onCompacted: (dropped, summary) => {
+      // The brief is asked to open with a plain title line; this is the guard
+      // for a model that answers with a bullet or bold anyway.
+      const title = (summary.split("\n").find((line) => line.trim() !== "") ?? "")
+        .replace(/^[\s\-*#>]+/u, "")
+        .replaceAll("**", "")
+        .replace(/[.:]\s*$/u, "");
+      void writeArtifact(session.id, { label: clip(title, 120), messages: dropped }).catch(
+        (thrown) => {
+          render({
+            type: "error",
+            text: `(compaction artifact not written: ${errorText(thrown)})`,
+          });
+        },
+      );
+    },
     onBeforeRequest: async (prompt, messages) => {
       const beforeAgent = await fire(
         registry,

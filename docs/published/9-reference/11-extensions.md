@@ -22,6 +22,7 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | name | package | provides |
 | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | the six file and shell tools, and every slash command |
+| `compaction-artifacts` | `@glrs-dev/glrs-ext-compaction-artifacts` | tools to read back the exact messages a compaction replaced |
 | `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, and the picker that opens when no model is set |
 | `tiers` | `@glrs-dev/glrs-ext-tiers` | `/tier`, named tiers of model resolved against your credentials |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user`, a multiple-choice question answered in the TUI |

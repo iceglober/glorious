@@ -170,6 +170,21 @@ export type Config = {
    * still works.
    */
   compactAt?: number;
+  /**
+   * The largest context window compaction will plan against, in tokens.
+   * 256,000 by default. A model that advertises more is still compacted as if
+   * it had this much, because every turn past here re-sends all of it at full
+   * price; a model whose window is unknown is assumed to have this much rather
+   * than never being compacted at all.
+   */
+  compactWindow?: number;
+  /**
+   * The model that writes the compaction brief, as "provider/model-id". The
+   * session's own model when unset. Summarising is a good fit for something
+   * cheaper and faster than the model doing the work, provided its window is
+   * at least `compactWindow`.
+   */
+  compactModel?: string;
   // Show provider-supplied reasoning, optionally only at or above one effort.
   reasoningDisplay?: ReasoningDisplay;
   // Maximum time in milliseconds for a built-in shell/search tool.
@@ -428,6 +443,8 @@ const KNOWN = [
   "model",
   "variant",
   "compactAt",
+  "compactWindow",
+  "compactModel",
   "reasoningDisplay",
   "toolTimeoutMs",
   "steeringMode",
@@ -738,6 +755,8 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     variant: stringOf(raw.variant),
     reasoningDisplay,
     compactAt: fractionOf(raw.compactAt),
+    compactWindow: positiveNumberOf(raw.compactWindow),
+    compactModel: stringOf(raw.compactModel),
     toolTimeoutMs: positiveNumberOf(raw.toolTimeoutMs),
     steeringMode: queueMode("steeringMode"),
     followUpMode: queueMode("followUpMode"),
@@ -809,6 +828,8 @@ const merge = (near: Config, far: Config): Config => ({
   model: near.model ?? far.model,
   variant: near.variant ?? far.variant,
   compactAt: near.compactAt ?? far.compactAt,
+  compactWindow: near.compactWindow ?? far.compactWindow,
+  compactModel: near.compactModel ?? far.compactModel,
   reasoningDisplay: near.reasoningDisplay ?? far.reasoningDisplay,
   toolTimeoutMs: near.toolTimeoutMs ?? far.toolTimeoutMs,
   steeringMode: near.steeringMode ?? far.steeringMode,

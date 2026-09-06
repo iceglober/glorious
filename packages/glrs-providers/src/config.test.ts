@@ -754,3 +754,19 @@ describe("when the conversation is compacted without being asked", () => {
     }
   });
 });
+
+describe("the window compaction plans against, and who writes the brief", () => {
+  test("compactWindow caps the window and compactModel names the summariser", async () => {
+    const root = await project('{"compactWindow":128000,"compactModel":"azure/gpt-5.4-nano"}');
+    const { config } = await loadConfig(root, join(root, "nohome"));
+    expect(config.compactWindow).toBe(128000);
+    expect(config.compactModel).toBe("azure/gpt-5.4-nano");
+  });
+
+  test("a window that is not a positive number is refused", async () => {
+    for (const bad of ["0", "-1", '"big"']) {
+      const root = await project(`{"compactWindow":${bad}}`);
+      expect((await loadConfig(root, join(root, "nohome"))).config.compactWindow).toBeUndefined();
+    }
+  });
+});

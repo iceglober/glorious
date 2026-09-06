@@ -481,6 +481,181 @@ describe("compacting a long conversation", () => {
     });
   });
 
+  // The brief is written in the background while a turn runs, from a snapshot,
+  // and lands when the turn does. Before this `compact` refused with "busy"
+  // whenever a turn was running, so the only compaction a long agentic turn
+  // could get was the one after it, by which time it had usually hit the wall.
+  describe("compacting in the background while a turn runs", () => {
+    const racing = (history: ModelMessage[]) => {
+      let releaseTurn: () => void = () => {};
+      let releaseBrief: (summary: string) => void = () => {};
+      const turnGate = new Promise<void>((resolve) => {
+        releaseTurn = resolve;
+      });
+      const briefGate = new Promise<string>((resolve) => {
+        releaseBrief = resolve;
+      });
+      const events: SessionEvent[] = [];
+      const kept: Array<{ dropped: number; summary: string }> = [];
+      const agent = {
+        summarise: () => briefGate,
+        run: async (prompt: string, replayed: ModelMessage[]) => {
+          await turnGate;
+          return done("answered", {
+            messages: [
+              ...replayed,
+              { role: "user", content: prompt } as ModelMessage,
+              { role: "assistant", content: "answered" } as ModelMessage,
+            ],
+          });
+        },
+      } as unknown as Agent;
+      const chat = createChat(agent, {
+        onEvent: (event) => events.push(event),
+        onSignal: () => {},
+        onCompacted: (dropped, summary) => kept.push({ dropped: dropped.length, summary }),
+        history,
+      });
+      return { chat, events, kept, releaseTurn, releaseBrief };
+    };
+
+    test("a compaction started mid-turn is not refused as busy", async () => {
+      const { chat, releaseTurn, releaseBrief } = racing(conversation(12));
+      chat.send("keep going");
+      await Bun.sleep(0);
+      expect(chat.busy).toBe(true);
+      const running = chat.compact("", 2_000, true);
+      releaseBrief("the brief");
+      const outcome = await running;
+      expect(outcome.outcome).toBe("compacted");
+      releaseTurn();
+      await Bun.sleep(5);
+    });
+
+    test("the brief lands after the turn, and the turn's answer survives", async () => {
+      const { chat, events, releaseTurn, releaseBrief } = racing(conversation(12));
+      chat.send("keep going");
+      await Bun.sleep(0);
+      const running = chat.compact("", 2_000, true);
+      releaseBrief("the brief");
+      await running;
+      // Not yet: the turn is still running and holds the old messages.
+      expect(events.filter((one) => one.type === "compacted")).toHaveLength(0);
+      releaseTurn();
+      await Bun.sleep(5);
+      expect(events.filter((one) => one.type === "compacted")).toHaveLength(1);
+      expect(JSON.stringify(chat.history[0])).toContain("the brief");
+      expect(JSON.stringify(chat.history)).toContain("answered");
+    });
+
+    test("what was replaced is handed over, unchanged, when the brief lands", async () => {
+      const { chat, kept, releaseTurn, releaseBrief } = racing(conversation(12));
+      chat.send("keep going");
+      await Bun.sleep(0);
+      const running = chat.compact("", 2_000, true);
+      releaseBrief("the brief");
+      await running;
+      expect(kept).toEqual([]);
+      releaseTurn();
+      await Bun.sleep(5);
+      expect(kept).toHaveLength(1);
+      expect(kept[0].summary).toBe("the brief");
+      expect(kept[0].dropped).toBeGreaterThan(0);
+    });
+
+    // Esc means the turn, which is what the user is watching. A brief being
+    // written invisibly in the background is left to finish.
+    test("Esc stops the turn, not the background brief", async () => {
+      const { chat, releaseBrief, releaseTurn } = racing(conversation(12));
+      chat.send("keep going");
+      await Bun.sleep(0);
+      const running = chat.compact("", 2_000, true);
+      chat.abort();
+      releaseBrief("the brief");
+      const outcome = await running;
+      expect(outcome.outcome).toBe("compacted");
+      releaseTurn();
+      await Bun.sleep(5);
+    });
+
+    test("a second compaction waits while a finished brief is still held", async () => {
+      const { chat, releaseTurn, releaseBrief } = racing(conversation(12));
+      chat.send("keep going");
+      await Bun.sleep(0);
+      const first = chat.compact("", 2_000, true);
+      releaseBrief("the brief");
+      await first;
+      expect((await chat.compact("", 2_000, true)).outcome).toBe("busy");
+      releaseTurn();
+      await Bun.sleep(5);
+    });
+
+    test("with nothing running, Esc still stops a foreground compaction", async () => {
+      let signal: AbortSignal | undefined;
+      const agent = {
+        summarise: (_m: unknown, _i: unknown, s?: AbortSignal) =>
+          new Promise<string>((_, reject) => {
+            signal = s;
+            s?.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+      } as unknown as Agent;
+      const chat = createChat(agent, {
+        onEvent: () => {},
+        onSignal: () => {},
+        history: conversation(12),
+      });
+      const running = chat.compact("", 2_000, true);
+      await Bun.sleep(0);
+      expect(chat.abort()).toBe(true);
+      expect((await running).outcome).toBe("failed");
+      expect(signal?.aborted).toBe(true);
+    });
+  });
+
+  // One long agentic turn: a user message, then step after step of tool call
+  // and tool result. With only user messages as cut points this could not be
+  // compacted at any size, because the only user message is at index 0.
+  describe("one turn of many tool calls", () => {
+    const oneTurn = (steps: number): ModelMessage[] => [
+      { role: "user", content: "read everything" },
+      ...Array.from({ length: steps }, (_, at) => [
+        {
+          role: "assistant" as const,
+          content: [
+            { type: "tool-call" as const, toolCallId: `c${at}`, toolName: "read", input: {} },
+          ],
+        },
+        {
+          role: "tool" as const,
+          content: [
+            {
+              type: "tool-result" as const,
+              toolCallId: `c${at}`,
+              toolName: "read",
+              output: { type: "text" as const, value: "z".repeat(600) },
+            },
+          ],
+        },
+      ]).flat(),
+    ];
+
+    test("it can be compacted without waiting for the next user message", async () => {
+      const { chat, events } = harnessWith(oneTurn(8));
+      const outcome = await chat.compact("", 800, false);
+      expect(outcome.outcome).toBe("compacted");
+      expect(events.filter((one) => one.type === "compacted")).toHaveLength(1);
+    });
+
+    test("the cut never separates a tool result from its call", async () => {
+      const { chat } = harnessWith(oneTurn(8));
+      await chat.compact("", 800, false);
+      expect(orphans([...chat.history])).toEqual([]);
+      // The first kept message after the brief opens a step: an assistant call,
+      // whose result follows it, never a result whose call was summarised away.
+      expect(chat.history[1]?.role).toBe("assistant");
+    });
+  });
+
   // A tool message whose call was summarised away is an invalid request, and
   // the provider rejects the entire turn — so this is the invariant compaction
   // lives or dies by.
@@ -543,13 +718,6 @@ describe("compacting a long conversation", () => {
     const { chat, events } = harnessWith(conversation(12), "");
     expect((await chat.compact("summarise", 2_000)).outcome).toBe("failed");
     expect(events.some((event) => event.type === "compacted")).toBe(false);
-  });
-
-  test("it refuses while a turn is running", async () => {
-    const { chat } = harnessWith(conversation(12));
-    chat.send("busy");
-    expect((await chat.compact("summarise", 2_000)).outcome).toBe("busy");
-    await settle(chat);
   });
 
   // Reported from a live session: `/compact` on a 900k-token conversation ran

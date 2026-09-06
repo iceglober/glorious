@@ -5,6 +5,7 @@
 import { join } from "node:path";
 import askUser from "../../extensions/ask-user/src";
 import builtins from "../../extensions/builtins/src";
+import compactionArtifacts from "../../extensions/compaction-artifacts/src";
 import modelPicker from "../../extensions/model-picker/src";
 import tiers from "../../extensions/tiers/src";
 import webFetch from "../../extensions/web-fetch/src";
@@ -67,6 +68,14 @@ export const bundled: Roster = [
     defaultOn: true,
     dir: join(import.meta.dir, "..", "..", "extensions", "tiers"),
     summary: "named tiers of model, resolved against the providers you have credentials for",
+  },
+  {
+    name: "compaction-artifacts",
+    origin: "@glrs-dev/glrs-ext-compaction-artifacts",
+    load: compactionArtifacts,
+    defaultOn: true,
+    dir: join(import.meta.dir, "..", "..", "extensions", "compaction-artifacts"),
+    summary: "tools to read back the exact messages an earlier compaction replaced",
   },
   {
     name: "model-picker",

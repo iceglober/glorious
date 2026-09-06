@@ -58,7 +58,7 @@ so two of them cannot argue about what a key means: [extensions](./11-extensions
 
 | keys | rule |
 | --- | --- |
-| `model`, `variant`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
+| `model`, `variant`, `compactAt`, `compactWindow`, `compactModel`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
 | `extensions.load`, `extensions.disable`, `tools.disable` | union of the three scopes, and disabled anywhere stays disabled |
 | `extensions.settings` | JSON Merge Patch, deep; `null` deletes a key |
 | `providers` | JSON Merge Patch, deep; `null` deletes a key |

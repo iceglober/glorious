@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ModelMessage } from "ai";
@@ -218,4 +218,157 @@ export const jsonSessionRepository: SessionRepository = {
 export const savePromptHistory = async (prompts: string[]): Promise<void> => {
   await mkdir(directory(), { recursive: true });
   await writeFile(join(directory(), promptFile), `${JSON.stringify(prompts)}\n`, "utf8");
+};
+
+// ── compaction artifacts ─────────────────────────────────────────────────────
+//
+// What a compaction replaced, kept. The brief that goes into the conversation
+// is lossy by design; the messages it stood in for are written here unchanged,
+// so a session that later needs the exact error text or the path the brief
+// paraphrased can read it back rather than reconstruct it. One file per
+// compaction, beside the session that produced it, named by when it happened.
+
+export type Artifact = {
+  id: string;
+  sessionId: string;
+  createdAt: string;
+  label: string;
+  note: string;
+  messages: number;
+};
+
+const artifactsDir = (sessionId: string): string => join(directory(), "artifacts", sessionId);
+
+// A timestamp that is also a valid filename on every platform, which ISO 8601
+// with its colons is not.
+const artifactId = (at: Date): string => at.toISOString().replace(/[:.]/gu, "-");
+
+const FRONT = "---";
+
+// A message as a person would read it. Tool calls carry their input and tool
+// results their output, because those are exactly the details a brief drops.
+const renderMessage = (message: ModelMessage): string => {
+  const { role, content } = message;
+  if (typeof content === "string") return `[${role}]\n${content}`;
+  const parts = (content as ReadonlyArray<Record<string, unknown>>).map((part) => {
+    switch (part.type) {
+      case "text":
+        return String(part.text ?? "");
+      case "reasoning":
+        return `[reasoning]\n${String(part.text ?? "")}`;
+      case "tool-call":
+        return `[tool-call ${String(part.toolName ?? "")}]\n${JSON.stringify(part.input ?? {}, null, 2)}`;
+      case "tool-result": {
+        const output = part.output as { type?: string; value?: unknown } | undefined;
+        const text =
+          output?.type === "text" || output?.type === "error-text"
+            ? String(output.value ?? "")
+            : JSON.stringify(output?.value ?? output ?? null, null, 2);
+        return `[tool-result ${String(part.toolName ?? "")}]\n${text}`;
+      }
+      default:
+        return `[${String(part.type ?? "part")}]\n${JSON.stringify(part, null, 2)}`;
+    }
+  });
+  return `[${role}]\n${parts.join("\n\n")}`;
+};
+
+const header = (artifact: Omit<Artifact, "sessionId" | "id">): string =>
+  [
+    FRONT,
+    `label: ${artifact.label.replaceAll("\n", " ")}`,
+    `createdAt: ${artifact.createdAt}`,
+    `messages: ${artifact.messages}`,
+    `note: ${artifact.note.replaceAll("\n", " ")}`,
+    FRONT,
+    "",
+  ].join("\n");
+
+const parseHeader = (
+  text: string,
+): { label: string; createdAt: string; messages: number; note: string; body: string } => {
+  const lines = text.split("\n");
+  const fields: Record<string, string> = {};
+  let end = 0;
+  if (lines[0] === FRONT) {
+    for (let at = 1; at < lines.length; at += 1) {
+      if (lines[at] === FRONT) {
+        end = at + 1;
+        break;
+      }
+      const colon = lines[at].indexOf(":");
+      if (colon > 0) fields[lines[at].slice(0, colon).trim()] = lines[at].slice(colon + 1).trim();
+    }
+  }
+  return {
+    label: fields.label ?? "",
+    createdAt: fields.createdAt ?? "",
+    messages: Number(fields.messages ?? 0) || 0,
+    note: fields.note ?? "",
+    body: lines.slice(end).join("\n").replace(/^\n/u, ""),
+  };
+};
+
+export const writeArtifact = async (
+  sessionId: string,
+  input: { label: string; messages: readonly ModelMessage[]; now?: Date },
+): Promise<Artifact> => {
+  const at = input.now ?? new Date();
+  const artifact = {
+    label: input.label.trim() || "compacted conversation",
+    createdAt: at.toISOString(),
+    messages: input.messages.length,
+    note: "",
+  };
+  await mkdir(artifactsDir(sessionId), { recursive: true });
+  const id = artifactId(at);
+  await writeFile(
+    join(artifactsDir(sessionId), `${id}.md`),
+    header(artifact) + input.messages.map(renderMessage).join("\n\n") + "\n",
+    "utf8",
+  );
+  return { id, sessionId, ...artifact };
+};
+
+export const listArtifacts = async (sessionId: string): Promise<Artifact[]> => {
+  const dir = artifactsDir(sessionId);
+  if (!existsSync(dir)) return [];
+  const names = (await readdir(dir)).filter((name) => name.endsWith(".md")).sort();
+  const found: Artifact[] = [];
+  for (const name of names) {
+    const parsed = parseHeader(await readFile(join(dir, name), "utf8"));
+    found.push({ id: name.slice(0, -3), sessionId, ...parsed, body: undefined } as Artifact);
+  }
+  return found;
+};
+
+export const readArtifact = async (sessionId: string, id: string): Promise<string | null> => {
+  const path = join(artifactsDir(sessionId), `${id}.md`);
+  if (!existsSync(path)) return null;
+  return parseHeader(await readFile(path, "utf8")).body;
+};
+
+export const annotateArtifact = async (
+  sessionId: string,
+  id: string,
+  change: { label?: string; note?: string },
+): Promise<boolean> => {
+  const path = join(artifactsDir(sessionId), `${id}.md`);
+  if (!existsSync(path)) return false;
+  const parsed = parseHeader(await readFile(path, "utf8"));
+  const next = {
+    label: change.label?.trim() || parsed.label,
+    createdAt: parsed.createdAt,
+    messages: parsed.messages,
+    note: change.note === undefined ? parsed.note : change.note.trim(),
+  };
+  await writeFile(path, header(next) + parsed.body, "utf8");
+  return true;
+};
+
+export const deleteArtifact = async (sessionId: string, id: string): Promise<boolean> => {
+  const path = join(artifactsDir(sessionId), `${id}.md`);
+  if (!existsSync(path)) return false;
+  await rm(path);
+  return true;
 };

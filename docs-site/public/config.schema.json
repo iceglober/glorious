@@ -211,6 +211,15 @@
       "minimum": 0,
       "exclusiveMaximum": 1,
       "description": "Fraction of the context window at which the conversation is compacted automatically. 0.75 by default; 0 turns it off."
+    },
+    "compactWindow": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The largest context window compaction plans against, in tokens. 256000 by default. A model that advertises more is compacted as if it had this much; one whose window is unknown is assumed to have it."
+    },
+    "compactModel": {
+      "type": "string",
+      "description": "Who writes the compaction brief, as \"provider/model-id\". The session's model when unset."
     }
   },
   "additionalProperties": true,

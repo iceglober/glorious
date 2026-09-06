@@ -498,6 +498,7 @@ describe("the extensions that ship with glrs", () => {
     expect(loaded.extensions.map((one) => one.name).sort()).toEqual([
       "ask-user",
       "builtins",
+      "compaction-artifacts",
       "model-picker",
       "tiers",
       "web-fetch",

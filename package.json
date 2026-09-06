@@ -21,6 +21,7 @@
     "!packages/glrs-providers/src/**/*.test.ts",
     "packages/extensions/ask-user/src",
     "packages/extensions/builtins/src",
+    "packages/extensions/compaction-artifacts/src",
     "packages/extensions/model-picker/src",
     "packages/extensions/tiers/src",
     "packages/extensions/web-fetch/src",

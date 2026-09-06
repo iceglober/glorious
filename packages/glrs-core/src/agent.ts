@@ -180,6 +180,10 @@ type Setup = Parameters<typeof environmentPrompt>[0] & {
   // too late and the pre-send check is too early. Undefined means no ceiling is
   // known, which is every model the catalogue cannot size.
   contextCeiling?: () => number | undefined;
+  // The model that writes compaction briefs, when it is not the session's own.
+  // Summarising suits something cheaper and faster than the model doing the
+  // work. Asked per call, so config can change it without rebuilding the agent.
+  summariser?: () => ModelOption | null;
   sessionId: string;
   skills: string;
   skillTools: import("./skills").Skills;
@@ -383,13 +387,35 @@ export const createAgent = (setup: Setup) => {
     const ceiling = setup.contextCeiling?.();
     return ceiling !== undefined && observed >= ceiling;
   };
+  // As a stop condition it has to read the step the SDK hands it, not
+  // `observed`: that is set in onLanguageModelCallEnd, which fires after
+  // stopWhen has already been asked, so the closure form let one more step
+  // through past the ceiling every time.
+  const stopOverCeiling: import("ai").StopCondition<ToolSet> = ({ steps }) => {
+    const ceiling = setup.contextCeiling?.();
+    const last = steps[steps.length - 1]?.usage?.inputTokens;
+    return ceiling !== undefined && typeof last === "number" && last >= ceiling;
+  };
+
+  // The session's model unless config named another for briefs. Built once and
+  // kept, keyed by its label, so a hundred compactions do not build a hundred
+  // clients and a changed config is noticed on the next call.
+  let summariser: { label: string; language: NonNullable<typeof model> } | null = null;
+  const summariserFor = (): ReturnType<typeof ready> => {
+    const option = setup.summariser?.() ?? null;
+    if (option === null) return ready();
+    const label = `${option.provider}/${option.modelId}`;
+    if (summariser?.label !== label)
+      summariser = { label, language: createModel(option, providerFetch as typeof fetch) };
+    return { option, language: summariser.language };
+  };
 
   const settings = (chosen: ReturnType<typeof ready>) => ({
     maxRetries: 5,
     ...requestSettings(chosen.option, cacheKey(setup.sessionId)),
     model: chosen.language,
     instructions: setup.instructions(),
-    stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool, overCeiling],
+    stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool, stopOverCeiling],
   });
 
   return {
@@ -402,7 +428,7 @@ export const createAgent = (setup: Setup) => {
       instruction: string,
       signal?: AbortSignal,
     ): Promise<string> => {
-      const chosen = ready();
+      const chosen = summariserFor();
       const result = await generateText({
         maxOutputTokens: 4_000,
         maxRetries: 3,
@@ -410,6 +436,9 @@ export const createAgent = (setup: Setup) => {
         model: chosen.language,
         instructions:
           "You are compacting a coding session so work can continue past the context limit. " +
+          "Begin with one plain line, under twelve words, naming what this stretch of work was " +
+          "about: no markdown, no label, no punctuation at the end. It is the title the record " +
+          "of these messages is filed under. Then a blank line, then the brief. " +
           "Write a dense brief for the agent that will pick this up with none of the detail " +
           "below in front of it. Keep: what the user asked for and any constraint they gave, " +
           "decisions taken and why, exact paths and symbols touched, what has been verified and " +

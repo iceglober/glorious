@@ -39,13 +39,14 @@ the core does not quietly keep a copy.
 | extension | provides |
 | --- | --- |
 | `builtins` | the file, search and shell tools, and every slash command |
+| `compaction-artifacts` | reading back what a compaction replaced |
 | `model-picker` | `/model`, and the picker that opens when no model is set |
 | `tiers` | `/tier`, and a default model chosen from what you have credentials for |
 | `ask-user` | the `ask_user` tool and its widget, built on `g.ui.capture` |
 | `web-fetch` | the `web_fetch` tool |
 | `worktree` | the `glrs wt` subcommand and `/wt` |
 
-all six load. asking you to turn one on puts a decision in front of you that you
+all seven load. asking you to turn one on puts a decision in front of you that you
 had no way to evaluate. disable what you do not want, or shadow it with a file
 of the same name: disk wins over first-party.
 

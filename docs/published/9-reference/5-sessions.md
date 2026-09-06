@@ -85,10 +85,19 @@ on a million-token model 75% is 787,500 tokens, which is both late and
 expensive on every turn that reaches it. a smaller fraction is often the better
 trade.
 
-it needs a context window to measure against, and that comes from the
-catalogue. a model the catalogue does not know reports `ctx unknown` and is
-never compacted automatically: set
-`providers.<id>.models.<id>.metadata.context` to give it one.
+the window it plans against is the smaller of the model's and `compactWindow`,
+256,000 by default. a million-token model is compacted as if it had 256k,
+because every turn past there re-sends all of it at full price; a model whose
+window the catalogue does not know is assumed to have 256k rather than never
+being compacted. `providers.<id>.models.<id>.metadata.context` still wins.
+
+`compactModel` names who writes the brief, as `provider/model-id`. the
+session's own model when unset. summarising suits something cheaper and faster,
+provided its window is at least `compactWindow`:
+
+```json
+{ "compactModel": "azure/gpt-5.4-nano" }
+```
 
 a turn that would pass the same line stops at its next step rather than taking
 another, says `(compacting to make room: send "continue" to resume)`, and
@@ -97,9 +106,42 @@ past the window inside itself and be refused outright with `Your input exceeds
 the context window of this model`: idle is too late to look, and the check
 before a new message is too early.
 
-the summary is written while the session sits idle. if you type before it
-finishes, your turn runs on the conversation as it was and the brief is
-applied once that turn lands, rather than being lost to it.
+the brief is written in the background, from a snapshot, while the session is
+idle or while a turn is running: the check runs on every step, because an
+agentic turn is where the context grows. a turn only appends, so the brief
+lands once the turn does and nothing the turn added is lost. `esc` stops the
+turn; a brief being written invisibly is left to finish.
+
+## what a compaction replaced
+
+the brief is lossy by design. the messages it replaced are written beside the
+session, unchanged, one file per compaction:
+
+```text
+<data>/glrs/sessions/artifacts/<session id>/2026-09-06T14-02-11-000Z.md
+```
+
+```text
+---
+label: fixed three failing auth tests
+createdAt: 2026-09-06T14:02:11.000Z
+messages: 244
+note:
+---
+[user]
+the login redirect test is failing
+[tool-call read]
+{ "path": "src/auth/redirect.ts" }
+[tool-result read]
+export const redirect = (url) => url.split('?')[0];
+…
+```
+
+the label is the first line of the brief. the `compaction-artifacts` extension
+gives the agent `compaction_list`, `compaction_read`, `compaction_annotate` and
+`compaction_delete` over them, and `/artifacts` lists them for you. the agent is
+told they exist only once one does. disable the extension and the files still
+land.
 
 
 

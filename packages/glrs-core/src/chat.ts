@@ -38,6 +38,9 @@ export const createChat = (
     onPreflight?: (prompt: string, history: readonly ModelMessage[]) => Promise<void>;
     onBeforeRequest?: (prompt: string, messages: number) => Promise<string | undefined>;
     history?: ModelMessage[];
+    // The messages a compaction replaced, at the moment the brief takes their
+    // place. Chat does not know where they should live; whoever wires it does.
+    onCompacted?: (dropped: readonly ModelMessage[], summary: string) => void;
     // How much of each queue one delivery takes. Both default to one message at
     // a time, which is the setting that lets the model answer what you said
     // before it reads what you said next.
@@ -80,14 +83,19 @@ export const createChat = (
   // `history = done.messages` overwrote the compaction outright, so a
   // compaction the user had waited minutes for was computed, paid for, and
   // thrown away the moment they typed.
-  let heldBrief: { summary: string; cut: number } | null = null;
+  let heldBrief: { summary: string; cut: number; dropped: ModelMessage[] } | null = null;
+  // Compaction's own controller. It used to share `live` with the turn, which
+  // was fine while the two could not overlap: now that a brief is written in
+  // the background while a turn runs, sharing it meant whichever finished first
+  // nulled the other's handle, and Esc stopped one of them at random.
+  let compactStop: AbortController | null = null;
 
   // Splice a held brief into the prefix. Safe because a turn only appends: the
   // messages below `cut` are the same ones the summary was made from, whatever
   // has been added after them.
   const applyHeldBrief = (): void => {
     if (heldBrief === null) return;
-    const { summary, cut } = heldBrief;
+    const { summary, cut, dropped } = heldBrief;
     heldBrief = null;
     // The brief describes `history[0..cut]`. If the history is now shorter than
     // that, it is not the conversation the summary was made from and splicing
@@ -97,6 +105,7 @@ export const createChat = (
     if (history.length < cut) return;
     history = [{ role: "user", content: compactedPrompt(summary) }, ...history.slice(cut)];
     announce({ type: "compacted", summary, dropped: cut });
+    wiring.onCompacted?.(dropped, summary);
   };
 
   const announce = (event: SessionEvent): void => {
@@ -279,12 +288,22 @@ export const createChat = (
   // The cut has to land on a user message. A tool result separated from the
   // call it answers is an invalid request, so cutting anywhere is not an option
   // — this walks back to the nearest boundary that keeps at least `keep` tokens.
-  const cutPoint = (keep: number, force: boolean): number => {
+  // Where a cut may land without orphaning a tool result from its call: on a
+  // user message, or on an assistant message that follows a tool result, which
+  // is the start of a new step. The second is what lets one long agentic turn
+  // be compacted on its own. With only user boundaries, a conversation that was
+  // a single turn of tool calls had no cut point above zero at any size, and
+  // "compact when the window fills" quietly never did.
+  const boundary = (messages: readonly ModelMessage[], at: number): boolean =>
+    messages[at].role === "user" ||
+    (messages[at].role === "assistant" && messages[at - 1]?.role === "tool");
+
+  const cutPoint = (messages: readonly ModelMessage[], keep: number, force: boolean): number => {
     let carried = 0;
     let lastBoundary = 0;
-    for (let at = history.length - 1; at > 0; at -= 1) {
-      carried += weigh(history[at]);
-      if (history[at].role !== "user") continue;
+    for (let at = messages.length - 1; at > 0; at -= 1) {
+      carried += weigh(messages[at]);
+      if (!boundary(messages, at)) continue;
       lastBoundary = at;
       if (carried >= keep) return at;
     }
@@ -301,29 +320,32 @@ export const createChat = (
     force = false,
     suppliedSummary?: string,
   ): Promise<Compaction> => {
-    if (working()) return { outcome: "busy" };
-    const cut = cutPoint(keep, force);
+    // One at a time, and not while a finished brief is still waiting for a
+    // turn to land: a second one would be written against the same prefix and
+    // simply replace the first, which is a wasted summary either way.
+    if (compacting || heldBrief !== null) return { outcome: "busy" };
+    // Whether anyone is watching. Idle, the summary is the only thing happening
+    // and the status row counts it out. Mid-turn it is background work: the
+    // turn keeps the phase row and the brief lands when the turn does.
+    const foreground = !working();
+    // A snapshot, because the summary is written from it while a turn may be
+    // appending to the live one. A turn only appends, so `snapshot[0..cut]`
+    // is still `history[0..cut]` when the brief is ready to go in.
+    const snapshot = history.slice();
+    const cut = cutPoint(snapshot, keep, force);
     if (cut === 0) return { outcome: "too-short" };
     compacting = true;
-    // Summarising a long conversation is a model call that can run for minutes.
-    // It rides the same phase signal a turn does, so the status row counts it
-    // out instead of the screen sitting still — and the same controller, so Esc
-    // stops it like anything else. A turn cannot be running: `busy` above.
     const stop = new AbortController();
-    live = stop;
-    signal({ type: "phase", name: "compacting" });
+    compactStop = stop;
+    if (foreground) signal({ type: "phase", name: "compacting" });
     try {
-      const summary =
-        suppliedSummary ?? (await agent.summarise(history.slice(0, cut), instruction, stop.signal));
+      const dropped = snapshot.slice(0, cut);
+      const summary = suppliedSummary ?? (await agent.summarise(dropped, instruction, stop.signal));
       if (summary === "") return { outcome: "failed", error: "the summary came back empty" };
-      const dropped = cut;
-      // A turn may have started while the summary was being written. It holds
-      // its own copy of the messages and will overwrite `history` when it
-      // lands, so the brief waits for that rather than being lost to it.
-      heldBrief = { summary, cut };
-      if (working()) return { outcome: "compacted", dropped, kept: history.length - cut };
+      heldBrief = { summary, cut, dropped };
+      if (working()) return { outcome: "compacted", dropped: cut, kept: history.length - cut };
       applyHeldBrief();
-      return { outcome: "compacted", dropped, kept: history.length - 1 };
+      return { outcome: "compacted", dropped: cut, kept: history.length - 1 };
     } catch (thrown) {
       return {
         outcome: "failed",
@@ -331,8 +353,8 @@ export const createChat = (
       };
     } finally {
       compacting = false;
-      live = null;
-      signal({ type: "phase", name: null });
+      compactStop = null;
+      if (foreground) signal({ type: "phase", name: null });
     }
   };
 
@@ -433,8 +455,12 @@ export const createChat = (
     // it. This used to pull a queued message into the composer instead of
     // stopping the turn, so Esc during a turn looked like it did nothing.
     abort: (): boolean => {
-      const stopped = live !== null;
-      live?.abort();
+      // The turn is what the user is watching. A brief being written in the
+      // background is invisible and cheap to leave alone; one in the foreground
+      // is the only thing on screen, and Esc means it.
+      const target = live ?? compactStop;
+      const stopped = target !== null;
+      target?.abort();
       held = steering.length > 0 || followUps.length > 0;
       return stopped || held;
     },
