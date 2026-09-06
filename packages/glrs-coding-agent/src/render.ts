@@ -1,137 +1,26 @@
 import type { Activity, Span, Tone } from "../../glrs-core/src";
+import {
+  clean,
+  clip,
+  describeThrown,
+  errorText,
+  flatten,
+  type Line,
+  rightClip,
+  width,
+} from "../../glrs-core/src/display";
 import type { SessionEvent } from "../../glrs-core/src/events";
+import { resultSummary } from "../../glrs-core/src/toolkit";
 import {
   REASONING_LEVELS,
   type ReasoningDisplay,
   type ReasoningLevel,
-} from "../../provider-registry/src/config";
-import { resultSummary } from "./toolkit";
+} from "../../glrs-providers/src/config";
 
-// Declared in glrs-core, where extensions reach it. Two declarations is how
-// the pair came to disagree about which tones exist.
+// Declared in glrs-core, where extensions reach it.
 export type { Span, Tone } from "../../glrs-core/src";
 export type { Activity };
-
-export type Line = Span[];
-
-// Runtime and provider messages that mean something to whoever wrote them and
-// nothing to whoever is using a coding agent. The Bun one tells you to pass
-// `verbose: true` to a fetch you never called; a mid-stream drop is not
-// retryable here (tokens may already be on screen), so the least glrs can
-// do is say what happened.
-const clearer: ReadonlyArray<[RegExp, string]> = [
-  [
-    /socket connection was closed unexpectedly/iu,
-    'the connection to the model dropped mid-response, send "continue" to pick up where it stopped',
-  ],
-  [/^fetch failed$/iu, "could not reach the model: check the network and try again"],
-  [/ECONNREFUSED/u, "the model endpoint refused the connection: check the host and port"],
-  [/EAI_AGAIN|ENOTFOUND/u, "could not resolve the model host: check DNS and the resource name"],
-];
-
-// What was actually thrown, in words. `String(thrown)` was fine for an Error and
-// produced "[object Object]" for everything else — and a provider SDK throws
-// plain objects routinely, so a failed turn could report literally nothing.
-// The shapes below are the ones that turn up: a nested `error`, a response body,
-// an AggregateError's first cause. Anything unrecognised is serialised, because
-// a wall of JSON is worth more than "[object Object]".
-const DESCRIBE_LIMIT = 400;
-
-export const describeThrown = (thrown: unknown): string => {
-  if (typeof thrown === "string") return thrown;
-  if (thrown instanceof Error) {
-    if (thrown.message !== "") return thrown.message;
-    // Some SDK errors carry an empty message and a populated cause.
-    if (thrown.cause !== undefined) return describeThrown(thrown.cause);
-    return thrown.name;
-  }
-  if (thrown === null || thrown === undefined) return "an unknown failure";
-  if (typeof thrown !== "object") return String(thrown);
-  const shape = thrown as Record<string, unknown>;
-  for (const key of ["message", "error_description", "detail", "statusText"]) {
-    const value = shape[key];
-    if (typeof value === "string" && value !== "") return value;
-  }
-  for (const key of ["error", "cause", "data", "body", "responseBody"]) {
-    const value = shape[key];
-    if (value !== undefined && value !== thrown) {
-      const said = describeThrown(value);
-      if (said !== "" && !said.startsWith("{")) return said;
-    }
-  }
-  if (Array.isArray(shape.errors) && shape.errors.length > 0)
-    return describeThrown(shape.errors[0]);
-  try {
-    return clip(JSON.stringify(thrown), DESCRIBE_LIMIT);
-  } catch {
-    return "an unknown failure";
-  }
-};
-
-export const errorText = (thrown: unknown): string => {
-  const raw = describeThrown(thrown);
-  return clearer.find(([pattern]) => pattern.test(raw))?.[1] ?? raw;
-};
-
-const splitter = new Intl.Segmenter("en", { granularity: "grapheme" });
-
-const graphemes = (text: string): string[] =>
-  [...splitter.segment(text)].map((piece) => piece.segment);
-
-const wide = [
-  [0x1100, 0x115f],
-  [0x2e80, 0xa4cf],
-  [0xac00, 0xd7a3],
-  [0xf900, 0xfaff],
-  [0xfe30, 0xfe6f],
-  [0xff00, 0xff60],
-  [0x1f1e6, 0x1f1ff],
-  [0x1f300, 0x1faff],
-  [0x1fc00, 0x10ffff],
-];
-
-const cells = (grapheme: string): number => {
-  const points = [...grapheme].map((char) => char.codePointAt(0) ?? 0);
-  if (points.includes(0xfe0f)) return 2;
-  return wide.some(([low, high]) => points[0] >= low && points[0] <= high) ? 2 : 1;
-};
-
-export const width = (text: string): number =>
-  graphemes(text).reduce((sum, part) => sum + cells(part), 0);
-
-const noise = /[\p{Cc}\p{Bidi_Control}]/gu;
-
-export const clean = (text: string): string =>
-  text.replaceAll("\r", "").replace(noise, (char) => (char === "\n" ? "\n" : " "));
-
-export const flatten = (text: string): string => clean(text).replaceAll("\n", " ").trim();
-
-export const clip = (text: string, limit: number): string => {
-  if (limit <= 0) return "";
-  if (width(text) <= limit) return text;
-  let room = limit - 1;
-  let kept = "";
-  for (const part of graphemes(text)) {
-    room -= cells(part);
-    if (room < 0) break;
-    kept += part;
-  }
-  return `${kept}…`;
-};
-
-export const rightClip = (text: string, limit: number): string => {
-  if (limit <= 0) return "";
-  if (width(text) <= limit) return text;
-  let room = limit - 1;
-  const kept: string[] = [];
-  const parts = graphemes(text);
-  for (let index = parts.length - 1; index >= 0; index -= 1) {
-    room -= cells(parts[index]);
-    if (room < 0) break;
-    kept.unshift(parts[index]);
-  }
-  return `…${kept.join("")}`;
-};
+export { clean, clip, describeThrown, errorText, flatten, type Line, rightClip, width };
 
 export const userBlock = (text: string): Line[] => {
   const [lead, ...rest] = clean(text).split("\n");
@@ -173,15 +62,28 @@ const prose = (row: string): Line =>
 
 const fence = /^\s*```/u;
 
-export const assistantBlock = (text: string): Line[] => {
+// Markdown rows: headings, emphasis and code spans everywhere except inside a
+// fence, where the text is kept exactly as written. Shared, so an answer and a
+// thought are shaped the same way and differ only in how they are toned.
+// `code` travels beside the line because whether a row was inside a fence is not
+// recoverable from its spans, and a thought needs to know: fenced text stays
+// upright when everything around it goes italic.
+type Shaped = { line: Line; code: boolean };
+
+const shaped = (text: string): Shaped[] => {
   const rows = clean(text).split("\n");
   const fenced = [...rows.map((row) => fence.test(row)), true];
   let close = -1;
-  const lines = rows.map((row, at): Line => {
-    if (!fenced[at]) return at < close ? [{ text: row }] : prose(row);
+  return rows.map((row, at): Shaped => {
+    if (!fenced[at])
+      return at < close ? { line: [{ text: row }], code: true } : { line: prose(row), code: false };
     if (at > close) close = fenced.indexOf(true, at + 1);
-    return [{ text: row, tone: "muted" }];
+    return { line: [{ text: row, tone: "muted" }], code: true };
   });
+};
+
+export const assistantBlock = (text: string): Line[] => {
+  const lines = shaped(text).map((one) => one.line);
   return lines.with(0, [{ text: "● ", tone: "highlight" }, ...lines[0]]);
 };
 
@@ -362,18 +264,36 @@ export const reasoningVisible = (
 // Provider-supplied reasoning remains in the transcript by default. It is
 // visually quieter than the answer but never discarded merely because the
 // answer began.
-export const reasoningBlock = (text: string, elapsedMs: number): Line[] => {
-  const rows = clean(text)
-    .split("\n")
-    .filter((line) => line.trim() !== "");
-  const content: Line[] = rows.map((line, index) =>
-    index === 0
-      ? [
-          { text: "◐ ", tone: "muted", bold: true },
-          { text: line, tone: "muted", italic: true },
-        ]
-      : [{ text: `  ${line}`, tone: "muted", italic: true }],
+// A thought reads like an answer and must not be mistaken for one. It gets the
+// same shaping, then every span is muted: the structure is what makes it
+// readable, the tone is what keeps the two apart. Code spans stay upright,
+// because italic code is harder to read than it is worth.
+const dimmed = ({ line, code }: Shaped): Line =>
+  line.map((span) => ({
+    ...span,
+    tone: "muted" as const,
+    italic: !code && span.tone !== "highlight",
+  }));
+
+// Blank rows survive, so paragraphs still break, but a run of them collapses to
+// one and the edges are trimmed. Reasoning arrives with far more whitespace
+// than an answer does.
+const collapsed = (rows: Shaped[]): Shaped[] =>
+  rows.filter(
+    (one, at, all) =>
+      one.line.length > 0 || (at > 0 && at < all.length - 1 && all[at - 1].line.length > 0),
   );
+
+export const reasoningBlock = (text: string, elapsedMs: number): Line[] => {
+  const rows = collapsed(shaped(text));
+  const content: Line[] = rows.map((one, index) => {
+    const line = dimmed(one);
+    // A blank row stays blank rather than becoming two spaces of nothing.
+    if (line.length === 0) return [];
+    return index === 0
+      ? [{ text: "◐ ", tone: "muted" as const, bold: true }, ...line]
+      : [{ text: "  " }, ...line];
+  });
   return [
     ...content,
     [{ text: `  thought for ${Math.max(1, Math.round(elapsedMs / 1000))}s`, tone: "muted" }],
@@ -388,11 +308,10 @@ export const reasoningText = (text: string, elapsedMs: number): string =>
 
 // What is painted while reasoning is still arriving, before the collapse.
 export const reasoningDraft = (text: string): Line[] =>
-  clean(text)
-    .split("\n")
-    .filter((line) => line.trim() !== "")
+  collapsed(shaped(text))
+    .filter((one) => one.line.length > 0)
     .slice(-6)
-    .map((line): Line => [{ text: `░ ${line}`, tone: "muted", italic: true }]);
+    .map((one): Line => [{ text: "░ ", tone: "muted" }, ...dimmed(one)]);
 
 // `custom` looks up an extension's renderer by tool name. It is resolved at
 // paint time rather than stored on the event, so a session replays with

@@ -26,7 +26,7 @@ const events = readCore("events.ts");
 // The event payload types moved to glrs-core, where extensions can reach them
 // without importing the coding agent. Both files are read so this guard pins
 // the declarations wherever they live rather than where they lived.
-const api = read("extension-api.ts") + readCore("index.ts");
+const api = readCore("extension-api.ts") + readCore("index.ts");
 
 describe("what the session records is what an extension can see", () => {
   test("every field on the usage session event reaches the usage payload", () => {
@@ -63,12 +63,12 @@ describe("a tool is timed once", () => {
   // chat.ts used to pair start with end and subtract, so the transcript and
   // anything else reading the same call could report different durations.
   test("the elapsed time is measured at the call and carried on the event", () => {
-    expect(read("toolkit.ts")).toContain("const elapsedMs = Date.now() - began");
-    expect(read("chat.ts")).toContain("elapsedMs: tool.elapsedMs");
+    expect(readCore("toolkit.ts")).toContain("const elapsedMs = Date.now() - began");
+    expect(readCore("chat.ts")).toContain("elapsedMs: tool.elapsedMs");
   });
 
   test("nothing re-derives it by pairing ids", () => {
-    expect(read("chat.ts")).not.toContain("started.set");
+    expect(readCore("chat.ts")).not.toContain("started.set");
   });
 });
 

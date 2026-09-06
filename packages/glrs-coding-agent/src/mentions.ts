@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { rgPath } from "@vscode/ripgrep";
-import { fence } from "./prompt";
+import { fence } from "../../glrs-core/src/preamble";
 
 // `@path` in a message means "and here is that file". The path stays in the
 // text the transcript shows — it is what you typed — and the contents ride

@@ -556,8 +556,9 @@ how-to/manage-extensions.md
 /extensions
 ```
 
-all five first-party extensions load, plus anything in `.glrs/extensions/`:
-`builtins`, `model-picker`, `ask-user`, `web-fetch`, `worktree`.
+all seven first-party extensions load, plus anything in `.glrs/extensions/`:
+`builtins`, `compaction-artifacts`, `model-picker`, `tiers`, `ask-user`,
+`web-fetch`, `worktree`.
 
 ## reload after an edit
 
@@ -696,12 +697,14 @@ the core does not quietly keep a copy.
 | extension | provides |
 | --- | --- |
 | `builtins` | the file, search and shell tools, and every slash command |
+| `compaction-artifacts` | reading back what a compaction replaced |
 | `model-picker` | `/model`, and the picker that opens when no model is set |
+| `tiers` | `/tier`, and a default model chosen from what you have credentials for |
 | `ask-user` | the `ask_user` tool and its widget, built on `g.ui.capture` |
 | `web-fetch` | the `web_fetch` tool |
 | `worktree` | the `glrs wt` subcommand and `/wt` |
 
-all five load. asking you to turn one on puts a decision in front of you that you
+all seven load. asking you to turn one on puts a decision in front of you that you
 had no way to evaluate. disable what you do not want, or shadow it with a file
 of the same name: disk wins over first-party.
 
@@ -722,18 +725,12 @@ wants so whatever fills the gap can say so ([models](reference/models.md)).
 
 ## permissions
 
-there is no permissions system. glrs runs with the permissions of its process:
-any file you can edit, any command you can run. no sandbox, and nothing asks
-before it acts.
+glrs has whatever permissions its calling context has. any file you can edit,
+any command you can run. no sandbox, and nothing asks before it acts.
 
-one seam exists for building a gate. glrs fires `project_trust` when a session
-opens, and refuses to start if a handler answers anything but `trusted`. no
-extension ships one, so out of the box the event fires and nothing listens
-([events](reference/events.md)). a gate built on it still runs in the
-same process.
-
-an extension can refuse a call from the `tool_call` hook, but it runs in the
-same process as the thing it is refusing.
+there is no gate to configure, and no seam pretending to be one. an extension
+can refuse a call from the `tool_call` hook, but it runs in the same process as
+the thing it is refusing, so it is a convenience rather than a boundary.
 
 real boundaries come from outside the process:
 
@@ -783,7 +780,28 @@ inserted earlier.
 OpenAI and Google cache a prefix without being asked. Anthropic and Bedrock
 cache only what is marked, so glrs marks the second-to-last message: the newest
 point that will still be there next turn. the mark advances every turn, which
-extends the cached prefix rather than replacing it.
+extends the cached prefix rather than replacing it. on the first turn there is
+no second-to-last, so the only message is marked, and the second turn opens on
+a prefix the provider has already seen.
+
+everything else reaches an OpenAI-compatible endpoint, and caches or does not
+according to the model behind it. glrs sends no cache control there, because
+there is none to send: `prompt_cache_key` is OpenAI's, and a Foundry deployment
+answers `Unrecognized request argument supplied` rather than ignoring it. the
+same is true of `textVerbosity`, which is how a request about verbosity came to
+fail as though it were about reasoning.
+
+what that leaves is the prefix itself, which is the part glrs controls. measured
+over two turns on one Foundry resource:
+
+| model | reused on the second turn |
+| --- | --- |
+| `azure/gpt-5.6-sol` | 2601 of 2982 |
+| `azure-foundry/DeepSeek-V4-Flash` | 3584 of 4100 |
+| `azure-foundry/kimi-k2.6` | nothing; that model does not cache |
+
+a cold prefix reports nothing cached on its first outing. that is the cache
+being written, not a failure.
 
 ## steering and follow-up
 
@@ -1096,6 +1114,7 @@ aliases resolve before anything reads the id, so they work in `--model`, `GLRS_M
 | --- | --- | --- |
 | `amazon-bedrock` | `api`, `region` | `AWS_REGION`, `AWS_DEFAULT_REGION`; region defaults to `us-east-1` |
 | `azure` | `api` | `AZURE_RESOURCE_NAME` is required alongside the key |
+| `azure-foundry` | `api` | `AZURE_RESOURCE_NAME`; the base URL is derived from it |
 | `google-vertex` | `api`, `project`, `location` | `GOOGLE_CLOUD_PROJECT` or `GOOGLE_VERTEX_PROJECT`, `GOOGLE_CLOUD_LOCATION` or `GOOGLE_VERTEX_LOCATION`; location defaults to `global` |
 | everything else | `api` | |
 
@@ -1164,6 +1183,78 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - configured `metadata` (`name`, `context`, `inputCost`, `outputCost`, `variants`) always wins over the catalogue.
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
+
+## tiers
+
+a tier is a name for the model you want for a kind of work, and a list of
+candidates in preference order. the first one glrs has credentials for wins.
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced",
+        "fast": ["anthropic/claude-haiku-4-5", "openai/gpt-5.6-mini"],
+        "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"],
+        "deep": [{ "model": "anthropic/claude-opus-5", "variant": "high" }]
+      }
+    }
+  }
+}
+```
+
+```
+/tier              list them, and what each resolves to
+/tier deep         switch
+```
+
+```
+  fast                azure/gpt-5.6-luna
+› balanced (default)  azure/gpt-5.6-luna
+  deep                nothing reachable
+```
+
+glrs ships no tiers and no opinion about which model belongs in which. a table
+saying `medium = opus-5` is wrong the month a new model lands. the names are
+yours, so they need not avoid `low`, `medium` and `high`, which mean reasoning
+effort everywhere else ([variant](#variant)).
+
+`default` names the tier used when a session opens with no model. it resolves
+before the picker opens, so the ordinary path is that you never see the picker.
+`-p` is not covered: it resolves its model before extensions load, so a
+pipeline still needs `GLRS_MODEL` or `model` in config.
+
+a lone string is a tier of one. anything that is not `provider/model-id` is
+dropped rather than guessed at, and a tier left with nothing usable does not
+appear.
+
+## azure, and azure-foundry
+
+one Foundry resource, two surfaces.
+
+| model | provider | why |
+| --- | --- | --- |
+| an OpenAI deployment: `gpt-5.6-sol` | `azure` | the responses API, prompt caching, `textVerbosity` |
+| anything else: `grok`, `kimi`, `deepseek` | `azure-foundry` | the chat API at `/openai/v1`, authenticated with `api-key` |
+
+```bash
+GLRS_MODEL=azure-foundry/grok-4.6 glrs -p "hello"
+```
+
+no config: the base URL comes from `AZURE_RESOURCE_NAME` and the key from the
+same variables `azure` reads. `providers.azure-foundry.api` overrides the URL
+for a resource glrs cannot name.
+
+a non-OpenAI deployment under `azure/` fails on options only OpenAI accepts:
+
+```
+Unsupported value: 'low' is not supported with the 'grok-4.6-1' model.
+```
+
+that is `textVerbosity`, not the reasoning effort the message suggests. set
+`providers.azure.models.<id>.modelType` to `chat` to stay under `azure/`, or use
+`azure-foundry/` and configure nothing.
 
 ## provider warnings
 
@@ -1260,7 +1351,83 @@ how much of the model's window it fills.
 ## compaction
 
 past 75% of the window the older part of the conversation is summarised and
-replaced by one message:
+replaced by one message. `compactAt` moves that fraction, and `0` turns it off
+while leaving `/compact` working:
+
+```json
+{ "compactAt": 0.5 }
+```
+
+on a million-token model 75% is 787,500 tokens, which is both late and
+expensive on every turn that reaches it. a smaller fraction is often the better
+trade.
+
+the window it plans against is the smaller of the model's and `compactWindow`,
+256,000 by default. a million-token model is compacted as if it had 256k,
+because every turn past there re-sends all of it at full price; a model whose
+window the catalogue does not know is assumed to have 256k rather than never
+being compacted. `providers.<id>.models.<id>.metadata.context` still wins.
+
+`compactModel` names who writes the brief, as `provider/model-id`. the
+session's own model when unset. summarising suits something cheaper and faster,
+provided its window is at least `compactWindow`:
+
+```json
+{ "compactModel": "azure/gpt-5.4-nano" }
+```
+
+a turn that would pass the same line stops at its next step rather than taking
+another, says `(compacting to make room: send "continue" to resume)`, and
+compaction follows. before that, a turn could go from under the threshold to
+past the window inside itself and be refused outright with `Your input exceeds
+the context window of this model`: idle is too late to look, and the check
+before a new message is too early.
+
+the brief is written from a snapshot, while the session is idle or while a
+turn is running: the check runs on every step, because an agentic turn is
+where the context grows.
+
+started at idle, it holds the queue. anything you type waits, then runs on the
+compacted history, because a turn that started anyway would pay exactly what
+the compaction was there to save. `esc` abandons it; the queue stays held, as
+it does whenever `esc` lands with messages waiting, and sending releases it.
+
+started mid-turn, it holds nothing: the turn is already running. a turn only
+appends, so the brief lands once the turn does and nothing the turn added is
+lost. `esc` stops the turn and leaves the brief to finish.
+
+## what a compaction replaced
+
+the brief is lossy by design. the messages it replaced are written beside the
+session, unchanged, one file per compaction:
+
+```text
+<data>/glrs/sessions/artifacts/<session id>/2026-09-06T14-02-11-000Z.md
+```
+
+```text
+---
+label: fixed three failing auth tests
+createdAt: 2026-09-06T14:02:11.000Z
+messages: 244
+note:
+---
+[user]
+the login redirect test is failing
+[tool-call read]
+{ "path": "src/auth/redirect.ts" }
+[tool-result read]
+export const redirect = (url) => url.split('?')[0];
+…
+```
+
+the label is the first line of the brief. the `compaction-artifacts` extension
+gives the agent `compaction_list`, `compaction_read`, `compaction_annotate` and
+`compaction_delete` over them, and `/artifacts` lists them for you. the agent is
+told they exist only once one does. disable the extension and the files still
+land.
+
+
 
 ```text
 <earlier-conversation>
@@ -1548,7 +1715,9 @@ an extension is a TypeScript file that default-exports a function taking `g`, th
 | name | package | provides |
 | --- | --- | --- |
 | `builtins` | `@glrs-dev/glrs-ext-builtins` | the six file and shell tools, and every slash command |
+| `compaction-artifacts` | `@glrs-dev/glrs-ext-compaction-artifacts` | tools to read back the exact messages a compaction replaced |
 | `model-picker` | `@glrs-dev/glrs-ext-model-picker` | `/model`, and the picker that opens when no model is set |
+| `tiers` | `@glrs-dev/glrs-ext-tiers` | `/tier`, named tiers of model resolved against your credentials |
 | `ask-user` | `@glrs-dev/glrs-ext-ask-user` | `ask_user`, a multiple-choice question answered in the TUI |
 | `web-fetch` | `@glrs-dev/glrs-ext-web-fetch` | `web_fetch`, a page as markdown, JavaScript rendered when Chrome is installed |
 | `worktree` | `@glrs-dev/glrs-ext-worktree` | git worktrees, and `glrs wt` |
@@ -1598,6 +1767,46 @@ type Span = {
 };
 type Line = Span[];
 ```
+
+## config
+
+an extension reads its own block and no other:
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced"
+      }
+    }
+  }
+}
+```
+
+```ts
+const settings = g.config() as { greeting?: string } | undefined;
+```
+
+keyed by the extension's name, merged across the three scopes as JSON. glrs
+never looks inside, so the shape is yours to define and yours to validate.
+
+## stability
+
+from 1.0.0 every member of the API is covered by semver: a break is a major.
+
+| marking | promise |
+| --- | --- |
+| unmarked | stable. a break is a major |
+| `@beta` | may change in a minor |
+
+the generated **Extension API** page carries the markings. seven members are
+`@beta` today: `forkSession`, `entryRenderer`, `history`, `messageRenderer`,
+`setLabel`, `switchSession`, `truncateHead`.
+
+a field added to a type you can construct is optional, so a new one is an
+addition and not a break. `ModelInfo.missing` is why: it arrived required and
+broke the picker that builds its own catalogue rows.
 
 ## hosts
 
@@ -1668,7 +1877,6 @@ export default (g) => {
 | `agent_start` | `{ prompt }` | nothing |
 | `agent_end` | `{ text }` | nothing |
 | `before_agent_start` | `{ prompt, systemPrompt }` | a string replaces the prompt, `false` cancels the turn, an object replaces either field |
-| `project_trust` | `{ root }` | `trusted`, `denied` or `deferred` |
 | `session_before_compact` | `{ automatic, instruction? }` | `false` cancels it, an object supplies the summary or the instruction |
 | `session_before_fork` | `{ id, at? }` | `false` cancels the fork |
 | `session_before_switch` | `{ from, to }` | `false` cancels the switch |
@@ -1688,14 +1896,6 @@ export default (g) => {
 - the TUI fires `idle` then `turn_end`. `-p` fires `turn_end` then `idle`.
 - both hosts await `session_end`, so work on the way out finishes. the TUI's screen stops as soon as it resolves, so printing there lands nowhere.
 
-## project_trust
-
-fired when a session opens. if no handler is registered, nothing happens and the
-session starts. if one is, glrs refuses to start unless it answers `trusted`.
-
-nothing ships a handler, so this is a seam for building an approval gate rather
-than a gate glrs provides ([design](explanation/design.md)).
-
 see also: [extensions](reference/extensions.md), [a turn](explanation/a-turn.md)
 
 
@@ -1709,6 +1909,17 @@ alternate screen.
 ```bash
 glrs wt list
 ```
+
+## wt new
+
+prints the path, and nothing else:
+
+```bash
+cd $(glrs wt new fix the login redirect)
+```
+
+a `wt_new` hook that failed writes to stderr, so it is visible when you are
+watching and absent from `$(…)`. the worktree still stands.
 
 ## how one is found
 
@@ -1782,12 +1993,33 @@ in `extensions.load`, `~/` resolves against home and `./` or `../` against the d
 
 in a git repository all three files are created, outside one only the User file. each new file holds `{"$schema": "https://glrs.dev/config.schema.json"}`; an existing file without `$schema` has it inserted in place. `.glrs/.gitignore` is created containing `/config.local.json`.
 
+## extensions.settings
+
+config belonging to individual extensions, keyed by extension name:
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced",
+        "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"]
+      }
+    }
+  }
+}
+```
+
+glrs never reads inside a block. an extension is handed its own and no other,
+so two of them cannot argue about what a key means: [extensions](reference/extensions.md).
+
 ## merge
 
 | keys | rule |
 | --- | --- |
-| `model`, `variant`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
+| `model`, `variant`, `compactAt`, `compactWindow`, `compactModel`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
 | `extensions.load`, `extensions.disable`, `tools.disable` | union of the three scopes, and disabled anywhere stays disabled |
+| `extensions.settings` | JSON Merge Patch, deep; `null` deletes a key |
 | `providers` | JSON Merge Patch, deep; `null` deletes a key |
 
 ## agentConfigAllowlist

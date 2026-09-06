@@ -11,24 +11,25 @@ const files = async (dir: string): Promise<string[]> => {
   return found;
 };
 
+// One direction: glrs-coding-agent -> glrs-core -> glrs-providers. The product
+// may reach anything below it, core may reach providers, and nothing reaches
+// back up. Core reaching providers is deliberate: the runtime resolves a model
+// to call, and a provider-neutral port with one implementation would be a
+// layer that costs a file and decides nothing.
 const rules = [
   {
     root: "packages/glrs-core/src",
-    forbidden: [
-      "@glrs-dev/glrs-coding-agent",
-      "@glrs-dev/provider-registry",
-      "packages/glrs-coding-agent",
-    ],
+    forbidden: ["@glrs-dev/glrs-coding-agent", "packages/glrs-coding-agent"],
   },
   {
-    root: "packages/provider-registry/src",
+    root: "packages/glrs-providers/src",
     forbidden: ["@glrs-dev/glrs-coding-agent", "packages/glrs-coding-agent"],
   },
   {
     root: "packages/extensions",
     forbidden: [
       "@glrs-dev/glrs-coding-agent",
-      "@glrs-dev/provider-registry",
+      "@glrs-dev/glrs-providers",
       "packages/glrs-coding-agent",
     ],
   },

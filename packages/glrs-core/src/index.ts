@@ -148,7 +148,6 @@ export type EventPayload = {
   // it, which is how an extension handles input itself.
   input: { text: string };
   user_bash: { command: string };
-  project_trust: { root: string };
   before_agent_start: { prompt: string; systemPrompt: string };
   agent_start: { prompt: string };
   agent_end: { text: string };
@@ -229,7 +228,6 @@ export type EventPayload = {
 export type Verdict = {
   input: string | false | { text: string; streamingBehavior?: "steer" | "follow-up" };
   user_bash: { command: string } | false;
-  project_trust: "trusted" | "denied" | "deferred";
   before_agent_start: string | false | { prompt?: string; systemPrompt?: string };
   session_before_compact: { summary?: string; instruction?: string } | false;
   session_before_switch: false;
@@ -273,9 +271,9 @@ export type Activity = {
 
 // How a queue hands its messages over: one per opportunity, or all of them at
 // once. Declared here because both the coding agent (which runs the queues) and
-// provider-registry (which validates the setting) need it, and neither may
+// glrs-providers (which validates the setting) need it, and neither may
 // import the other — the same reason the extension API lives here. It was
-// declared in both, with provider-registry keeping a private copy of the list
+// declared in both, with glrs-providers keeping a private copy of the list
 // and the predicate beside it.
 export type QueueMode = "one-at-a-time" | "all";
 export const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
@@ -334,7 +332,6 @@ export type EventName =
   | "session_end"
   | "input"
   | "user_bash"
-  | "project_trust"
   | "before_agent_start"
   | "agent_start"
   | "agent_end"
@@ -419,8 +416,13 @@ export type ModelInfo = {
    * for, which is not the same as a call that will succeed. An AWS profile on
    * disk, Vertex application default credentials and a provider an extension
    * registers are all reachable and all report nothing here.
+   *
+   * Optional so that a later field on this type is an addition rather than a
+   * break: an extension building its own catalogue entries, as the model picker
+   * does, would otherwise have to be changed every time glrs learns something
+   * new about a model. Absent and empty mean the same thing to a reader.
    */
-  missing: readonly string[];
+  missing?: readonly string[];
 };
 
 export type SessionInfo = {
@@ -493,7 +495,11 @@ export type Glrs = {
   columns: () => number;
   /** Clip to a width, counting what the terminal counts: graphemes, not chars. */
   clip: (text: string, limit: number) => string;
-  /** Keep the tail of a long value and mark the omitted head. */
+  /**
+   * Keep the tail of a long value and mark the omitted head.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   truncateHead: (text: string, limit: number) => string;
   /**
    * This session's resolved settings, merged from every config file that
@@ -514,6 +520,18 @@ export type Glrs = {
    * you have said otherwise.
    */
   setExtension: (name: string, on: boolean) => Promise<ExtensionChoice>;
+  /**
+   * This extension's own config, from `extensions.settings.<name>` in any of
+   * the three scopes, merged. `undefined` when nothing configured it. glrs
+   * never looks inside, so the shape is yours to define and yours to validate.
+   *
+   * ```ts
+   * const settings = g.config() as { greeting?: string } | undefined;
+   * g.print(settings?.greeting ?? "hello");
+   * ```
+   */
+  config: () => unknown;
+
   /** What is loaded: commands, skills, extensions. */
   inspect: () => Loaded;
   /** Drop the conversation the model replays. The transcript is untouched. */
@@ -539,9 +557,17 @@ export type Glrs = {
   autocomplete: (provider: AutocompleteProvider) => { dispose: () => void };
   /** Register a model provider, including providers with their own OAuth flow. */
   provider: (provider: ExtensionProvider) => { dispose: () => void };
-  /** Render durable transcript messages before the default renderer. */
+  /**
+   * Render durable transcript messages before the default renderer.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   messageRenderer: (renderer: MessageRenderer) => void;
-  /** Render one kind of extension-owned session entry. */
+  /**
+   * Render one kind of extension-owned session entry.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   entryRenderer: (type: string, renderer: EntryRenderer) => void;
 
   /** The tools the model can currently call. */
@@ -592,13 +618,29 @@ export type Glrs = {
   /** Quit glrs. */
   shutdown: () => void;
 
-  /** Messages currently carried into the next model call. */
+  /**
+   * Messages currently carried into the next model call.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   history: () => readonly ModelMessage[];
-  /** Fork this session after lifecycle gates approve it. */
+  /**
+   * Fork this session after lifecycle gates approve it.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   forkSession: (at?: number) => Promise<SessionInfo>;
-  /** Switch the active session after lifecycle gates approve it. */
+  /**
+   * Switch the active session after lifecycle gates approve it.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   switchSession: (id: string) => Promise<boolean>;
-  /** Label an event for tree/bookmark UIs. */
+  /**
+   * Label an event for tree/bookmark UIs.
+   *
+   * @beta Not covered by the 1.0.0 stability promise: may change in a minor.
+   */
   setLabel: (event: number, label: string) => void;
   /** This session: id, file on disk, title, event count. */
   session: () => SessionInfo;
@@ -670,4 +712,5 @@ export const createAgentCore = (options: AgentCoreOptions): AgentCore => ({
   reloadExtensions: options.reloadExtensions,
 });
 
+export * from "./display";
 export type { Extension as ExtensionFactory };

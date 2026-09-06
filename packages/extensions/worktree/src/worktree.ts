@@ -157,6 +157,22 @@ export const defaultBranch = async (repo: string, exec: Exec = shell): Promise<s
   );
 };
 
+// Where a new branch starts, and whether the remote had anything to say about
+// it. `defaultBranch` above already falls back to a local ref, which was
+// unreachable in practice: a base git resolved locally is a base `git fetch
+// origin <base>` can only fail on. A repository whose remote is empty, or that
+// has never pushed, still has a main to branch from.
+//
+// The remote is tried first even when a local ref exists, because that is also
+// what refreshes it. Only when the remote has nothing does the local one stand.
+export const startPoint = async (repo: string, base: string, exec: Exec): Promise<string> => {
+  const fetched = await exec(repo, `git fetch origin ${base} --quiet`);
+  if (fetched.ok) return `origin/${base}`;
+  const local = await exec(repo, `git show-ref --verify --quiet refs/heads/${base}`);
+  if (local.ok) return base;
+  throw new Error(`no origin/${base} and no local ${base}: ${fetched.stderr.trim()}`);
+};
+
 // ── creating ────────────────────────────────────────────────────────────────
 
 // A project can put an executable at .glrs/hooks/wt_new to do whatever a fresh
@@ -164,12 +180,16 @@ export const defaultBranch = async (repo: string, exec: Exec = shell): Promise<s
 // exactly the one the tool this replaces used, so existing hooks keep working:
 // the worktree directory as the single argument, WORKTREE_DIR and REPO_NAME in
 // the environment, and a failure that warns rather than aborting.
+/** One hook that ran, and how it went. */
+export type HookRun = { hook: string; ok: boolean; detail: string };
+
 export const runNewHook = async (
   worktree: string,
   repo: string,
   exec: Exec = shell,
-): Promise<string | null> => {
+): Promise<HookRun[]> => {
   for (const dir of [".glrs", ".glorious"]) {
+    const name = `${dir}/hooks/wt_new`;
     const hook = join(worktree, dir, "hooks", "wt_new");
     const usable = await access(hook, constants.X_OK).then(
       () => true,
@@ -184,14 +204,24 @@ export const runNewHook = async (
       `env WORKTREE_DIR=${JSON.stringify(worktree)} REPO_NAME=${JSON.stringify(repo)} ` +
         `${JSON.stringify(hook)} ${JSON.stringify(worktree)}`,
     );
-    return said.ok
-      ? null
-      : `hook ${dir}/hooks/wt_new failed: ${said.stderr.trim() || `exit ${said.code}`}`;
+    // Reported whether it worked or not. A hook that ran silently and a hook
+    // that was never there used to look identical, which is the wrong thing to
+    // be quiet about when the hook is what installs your dependencies.
+    return [
+      {
+        hook: name,
+        ok: said.ok,
+        detail: said.ok ? "" : said.stderr.trim() || `exit ${said.code}`,
+      },
+    ];
   }
-  return null;
+  // `.glrs` wins over `.glorious` and only the first is run, so this is a list
+  // of at most one today. It is a list because the answer to "what ran" should
+  // not change shape the day a second hook exists.
+  return [];
 };
 
-export type Created = { path: string; branch: string; base: string; note: string | null };
+export type Created = { path: string; branch: string; base: string; hooks: HookRun[] };
 
 export const create = async (
   cwd: string,
@@ -211,8 +241,7 @@ export const create = async (
   const exists = await exec(repo, `git show-ref --verify --quiet refs/heads/${branch}`);
   if (exists.ok) throw new Error(`branch ${branch} already exists, pick another description`);
 
-  const fetched = await exec(repo, `git fetch origin ${base} --quiet`);
-  if (!fetched.ok) throw new Error(`could not fetch origin/${base}: ${fetched.stderr.trim()}`);
+  const start = await startPoint(repo, base, exec);
 
   await mkdir(root, { recursive: true });
   // --no-track is what actually leaves the upstream unset. Branching from a
@@ -222,15 +251,15 @@ export const create = async (
   // reported "up to date with origin/main" however far it had diverged.
   const added = await exec(
     repo,
-    `git worktree add --no-track -b ${branch} ${JSON.stringify(path)} origin/${base} --quiet`,
+    `git worktree add --no-track -b ${branch} ${JSON.stringify(path)} ${start} --quiet`,
   );
   if (!added.ok) throw new Error(`could not create the worktree: ${added.stderr.trim()}`);
 
   // Deliberately no upstream. The tool this replaces set it to origin/<base>, so
   // a fresh branch reported "up to date with origin/main" however far it had
   // diverged. `git push -u` sets the right one when you first push.
-  const note = await runNewHook(path, basename(repo), exec);
-  return { path, branch, base, note };
+  const hooks = await runNewHook(path, basename(repo), exec);
+  return { path, branch, base: start, hooks };
 };
 
 // ── auditing ────────────────────────────────────────────────────────────────

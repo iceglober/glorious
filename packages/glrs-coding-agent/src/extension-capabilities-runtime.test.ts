@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createApi, createRegistry, type ExtensionHost, fire } from "./extension-api";
+import {
+  createApi,
+  createRegistry,
+  type ExtensionHost,
+  fire,
+} from "../../glrs-core/src/extension-api";
 
 const harness = () => {
   const calls: Array<{ name: string; args: unknown[] }> = [];
@@ -123,12 +128,10 @@ describe("new extension primitives", () => {
     expect(registry.entryRenderers.has("todo")).toBe(true);
   });
 
-  test("lifecycle gates can require trust, block session changes and rewrite shell commands", async () => {
+  test("lifecycle gates can block session changes and rewrite shell commands", async () => {
     const { g, registry } = harness();
-    g.on("project_trust", () => "trusted");
     g.on("session_before_fork", () => false);
     g.on("user_bash", ({ command }) => ({ command: `ssh host ${command}` }));
-    expect(await fire(registry, "project_trust", { root: "/project" }, () => {})).toBe("trusted");
     expect(await fire(registry, "session_before_fork", { id: "s", at: 2 }, () => {})).toBe(false);
     expect(await fire(registry, "user_bash", { command: "pwd" }, () => {})).toEqual({
       command: "ssh host pwd",

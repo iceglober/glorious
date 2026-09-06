@@ -11,6 +11,17 @@ alternate screen.
 glrs wt list
 ```
 
+## wt new
+
+prints the path, and nothing else:
+
+```bash
+cd $(glrs wt new fix the login redirect)
+```
+
+a `wt_new` hook that failed writes to stderr, so it is visible when you are
+watching and absent from `$(…)`. the worktree still stands.
+
 ## how one is found
 
 the first bare word glrs does not claim is offered to the extensions, which load

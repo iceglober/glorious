@@ -2,8 +2,25 @@ import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import type { ModelMessage } from "ai";
 import packageJson from "../../../package.json";
+import { createAgent, routeProviderWarnings } from "../../glrs-core/src/agent";
+import { type ChatPhase, type ChatSignal, createChat } from "../../glrs-core/src/chat";
+import {
+  commandByName,
+  commands,
+  expandCommand,
+  setCustomCommands,
+} from "../../glrs-core/src/commands";
 import { messagesOf, type SessionEvent, usageTotals } from "../../glrs-core/src/events";
+import {
+  createRegistry,
+  describeContribution,
+  type ExtensionHost,
+  fire,
+  promptContributions,
+  resetRegistry,
+} from "../../glrs-core/src/extension-api";
 import { loadAgentRules } from "../../glrs-core/src/guidance";
+import { fence } from "../../glrs-core/src/preamble";
 import {
   createSession,
   forkSession as forkStoredSession,
@@ -12,8 +29,12 @@ import {
   savePromptHistory,
   saveSession,
   sessionFile,
+  writeArtifact,
 } from "../../glrs-core/src/session";
 import { runShell } from "../../glrs-core/src/shell";
+import { loadSkills } from "../../glrs-core/src/skills";
+import { firstDetail, setToolGate, type ToolEvent } from "../../glrs-core/src/toolkit";
+import { loadUserCommands } from "../../glrs-core/src/usercommands";
 import {
   chosenModel,
   configuredModel,
@@ -31,21 +52,10 @@ import {
   PROVIDERS,
   providerSpec,
   registerExtensionProvider,
-} from "../../provider-registry/src";
-import { createAgent, routeProviderWarnings } from "./agent";
+} from "../../glrs-providers/src";
 import { helpText, route } from "./argv";
-import { type ChatPhase, type ChatSignal, createChat } from "./chat";
 import { runCli } from "./cli";
-import { commandByName, commands, expandCommand, setCustomCommands } from "./commands";
 import { cleanShellChunk, shellCompletion } from "./direct-shell";
-import {
-  createRegistry,
-  describeContribution,
-  type ExtensionHost,
-  fire,
-  promptContributions,
-  resetRegistry,
-} from "./extension-api";
 import {
   type ExtensionSettings,
   firstPartyExtensions,
@@ -53,12 +63,13 @@ import {
   resolveExtensions,
   skillRootsFor,
 } from "./extensions";
+import { docsPath, systemPrompt } from "./identity";
 import { expandMentions, fileCandidates, forgetListings } from "./mentions";
 import { runPrint } from "./print";
-import { fence } from "./prompt";
 import {
   advanceToolRun,
   assistantBlock,
+  clip,
   errorText,
   eventBlock,
   heldRow,
@@ -73,10 +84,7 @@ import {
   statusRow,
   userBlock,
 } from "./render";
-import { loadSkills } from "./skills";
-import { firstDetail, setToolGate, type ToolEvent } from "./toolkit";
 import { createScreen, pickSession } from "./ui";
-import { loadUserCommands } from "./usercommands";
 import { recordExtensionChoice, recordModelChoice } from "./writeconfig";
 
 const TICK_MS = 100;
@@ -422,7 +430,17 @@ const main = async (): Promise<void> => {
     model,
     toolTimeoutMs,
     sessionId: session.id,
-    rules,
+    // The same line compaction uses, so a turn stops exactly where compaction
+    // would take over rather than somewhere else of its own choosing. Unknown
+    // window means no ceiling: an unsizable model is left to the provider,
+    // which is what happened before this existed at all.
+    contextCeiling: () => (COMPACT_AT === 0 ? undefined : window() * COMPACT_AT),
+    // A cheaper model for the brief, when config names one. Resolved per call
+    // so `/model` and a config reload are both seen without rebuilding.
+    summariser: () =>
+      config.config.compactModel === undefined
+        ? null
+        : configuredModel(config.config.compactModel, config.config, undefined),
     cwd: root,
     os,
     date: new Date().toISOString().slice(0, 10),
@@ -434,7 +452,7 @@ const main = async (): Promise<void> => {
       return registry.tools;
     },
     terminatingTools: () => registry.terminatingTools,
-    systemPromptOverride: () => systemPromptOverride,
+    instructions: () => systemPromptOverride ?? systemPrompt({ rules }),
     // Contributions ride here, in the per-turn message, and never the system
     // prompt: that has to stay byte-identical or the provider's cache misses
     // every turn. `<extensions>` is already a PREAMBLE_TAG, so this is stripped
@@ -476,6 +494,9 @@ const main = async (): Promise<void> => {
     if (event.type === "usage") {
       tokens = event.tokens;
       session.contextTokens = event.tokens;
+      // Every step, not only idle: an agentic turn is where the context grows,
+      // and the brief is written in the background while the turn carries on.
+      maybeCompact();
       lastUsage = {
         input: event.input ?? 0,
         output: event.output ?? 0,
@@ -798,7 +819,17 @@ const main = async (): Promise<void> => {
   // Compaction is the answer to a full context that is not "throw it away".
   // Automatic once the provider says the conversation is past COMPACT_AT of the
   // window, which is early enough that the summarising call still fits.
-  const COMPACT_AT = 0.75;
+  // 0.75 of the window unless config says otherwise. On a million-token model
+  // that is 787,500 tokens: late, and expensive on every turn that gets there.
+  const COMPACT_AT = config.config.compactAt ?? 0.75;
+  // The most window compaction will plan against. A model that advertises a
+  // million tokens is still compacted as if it had this much, because every
+  // turn past here re-sends all of it at full price; and a model whose window
+  // the catalogue does not know is assumed to have this much rather than never
+  // being compacted at all, which was what happened to every OpenAI-compatible
+  // endpoint before this existed.
+  const COMPACT_WINDOW = config.config.compactWindow ?? 256_000;
+  const window = (): number => Math.min(model?.context ?? COMPACT_WINDOW, COMPACT_WINDOW);
   const KEEP_TOKENS = 20_000;
   let compactedAt = 0;
 
@@ -818,9 +849,15 @@ const main = async (): Promise<void> => {
       (typeof gate === "object" ? gate.instruction : undefined) ??
       options.instruction ??
       "Summarise the conversation so far.";
+    // How much recent work survives verbatim. Never more than half of what the
+    // threshold allows, or a small window could not be compacted at all:
+    // `cutPoint` keeps `keep` tokens and declines when the conversation is
+    // shorter than that, so 20k of headroom on an 8k window meant automatic
+    // compaction said nothing and did nothing.
+    const keep = options.keep ?? Math.min(KEEP_TOKENS, Math.floor((window() * COMPACT_AT) / 2));
     const outcome = await chat.compact(
       instruction,
-      options.keep ?? KEEP_TOKENS,
+      keep,
       // Asked for by hand, compact whatever there is rather than declining
       // because the conversation has not yet reached the automatic threshold.
       !automatic,
@@ -850,8 +887,11 @@ const main = async (): Promise<void> => {
     Math.ceil(JSON.stringify(history).length / 4);
 
   const maybeCompact = (): void => {
-    if (chat.compacting || model?.context === undefined || tokens === null) return;
-    if (tokens < model.context * COMPACT_AT) return;
+    // Zero is off. Without this it would read as "compact above zero tokens",
+    // which is every conversation, on every turn.
+    if (COMPACT_AT === 0) return;
+    if (chat.compacting || tokens === null) return;
+    if (tokens < window() * COMPACT_AT) return;
     // Only once per growth phase: without this a compaction that frees little
     // would run again on the very next turn.
     if (tokens <= compactedAt) return;
@@ -862,10 +902,11 @@ const main = async (): Promise<void> => {
     prompt: string,
     history: readonly ModelMessage[],
   ): Promise<void> => {
-    if (chat.compacting || model?.context === undefined) return;
+    if (COMPACT_AT === 0) return;
+    if (chat.compacting) return;
     const known = tokens ?? estimateHistoryTokens(history);
     const candidate = known + Math.ceil(prompt.length / 4);
-    if (candidate < model.context * COMPACT_AT || candidate <= compactedAt) return;
+    if (candidate < window() * COMPACT_AT || candidate <= compactedAt) return;
     await runCompaction({}, true);
   };
 
@@ -901,6 +942,25 @@ const main = async (): Promise<void> => {
     onEvent: render,
     onSignal: react,
     onPreflight: preflightCompact,
+    // What the brief replaced, kept unchanged beside the session. The first
+    // line of the brief is the label, because it is the sentence a person or
+    // the agent will scan a list of these by.
+    onCompacted: (dropped, summary) => {
+      // The brief is asked to open with a plain title line; this is the guard
+      // for a model that answers with a bullet or bold anyway.
+      const title = (summary.split("\n").find((line) => line.trim() !== "") ?? "")
+        .replace(/^[\s\-*#>]+/u, "")
+        .replaceAll("**", "")
+        .replace(/[.:]\s*$/u, "");
+      void writeArtifact(session.id, { label: clip(title, 120), messages: dropped }).catch(
+        (thrown) => {
+          render({
+            type: "error",
+            text: `(compaction artifact not written: ${errorText(thrown)})`,
+          });
+        },
+      );
+    },
     onBeforeRequest: async (prompt, messages) => {
       const beforeAgent = await fire(
         registry,
@@ -953,6 +1013,7 @@ const main = async (): Promise<void> => {
       config.config.extensions = { load: [...load], disable: [...disable] };
       return outcome;
     },
+    extensionConfig: (extension) => config.config.extensions?.settings?.[extension],
     settings: () => ({
       toolTimeoutMs: toolTimeoutMs,
       reasoningDisplay: config.config.reasoningDisplay,
@@ -1361,9 +1422,6 @@ const main = async (): Promise<void> => {
     process.on("SIGINT", onSigint);
     process.on("unhandledRejection", onStray);
     process.on("uncaughtException", onStray);
-    const trust = await fire(registry, "project_trust", { root }, onExtensionFailure);
-    if (registry.handlers.has("project_trust") && trust !== "trusted")
-      throw new Error(`Project trust was ${trust ?? "not decided"} by an extension.`);
     await fire(registry, "session_start", { root }, onExtensionFailure);
     await closed;
     process.exitCode = 0;

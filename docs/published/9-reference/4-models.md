@@ -107,6 +107,7 @@ aliases resolve before anything reads the id, so they work in `--model`, `GLRS_M
 | --- | --- | --- |
 | `amazon-bedrock` | `api`, `region` | `AWS_REGION`, `AWS_DEFAULT_REGION`; region defaults to `us-east-1` |
 | `azure` | `api` | `AZURE_RESOURCE_NAME` is required alongside the key |
+| `azure-foundry` | `api` | `AZURE_RESOURCE_NAME`; the base URL is derived from it |
 | `google-vertex` | `api`, `project`, `location` | `GOOGLE_CLOUD_PROJECT` or `GOOGLE_VERTEX_PROJECT`, `GOOGLE_CLOUD_LOCATION` or `GOOGLE_VERTEX_LOCATION`; location defaults to `global` |
 | everything else | `api` | |
 
@@ -175,6 +176,78 @@ context window and prices come from the models.dev catalogue (`https://models.de
 - configured `metadata` (`name`, `context`, `inputCost`, `outputCost`, `variants`) always wins over the catalogue.
 - `GLRS_PRICE_MULTIPLIERS="provider=1.5,other=2"` scales catalogue prices. non-finite or negative is `1`.
 - prices are per million tokens. failure is silent: the status line reads `unknown`.
+
+## tiers
+
+a tier is a name for the model you want for a kind of work, and a list of
+candidates in preference order. the first one glrs has credentials for wins.
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced",
+        "fast": ["anthropic/claude-haiku-4-5", "openai/gpt-5.6-mini"],
+        "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"],
+        "deep": [{ "model": "anthropic/claude-opus-5", "variant": "high" }]
+      }
+    }
+  }
+}
+```
+
+```
+/tier              list them, and what each resolves to
+/tier deep         switch
+```
+
+```
+  fast                azure/gpt-5.6-luna
+› balanced (default)  azure/gpt-5.6-luna
+  deep                nothing reachable
+```
+
+glrs ships no tiers and no opinion about which model belongs in which. a table
+saying `medium = opus-5` is wrong the month a new model lands. the names are
+yours, so they need not avoid `low`, `medium` and `high`, which mean reasoning
+effort everywhere else ([variant](#variant)).
+
+`default` names the tier used when a session opens with no model. it resolves
+before the picker opens, so the ordinary path is that you never see the picker.
+`-p` is not covered: it resolves its model before extensions load, so a
+pipeline still needs `GLRS_MODEL` or `model` in config.
+
+a lone string is a tier of one. anything that is not `provider/model-id` is
+dropped rather than guessed at, and a tier left with nothing usable does not
+appear.
+
+## azure, and azure-foundry
+
+one Foundry resource, two surfaces.
+
+| model | provider | why |
+| --- | --- | --- |
+| an OpenAI deployment: `gpt-5.6-sol` | `azure` | the responses API, prompt caching, `textVerbosity` |
+| anything else: `grok`, `kimi`, `deepseek` | `azure-foundry` | the chat API at `/openai/v1`, authenticated with `api-key` |
+
+```bash
+GLRS_MODEL=azure-foundry/grok-4.6 glrs -p "hello"
+```
+
+no config: the base URL comes from `AZURE_RESOURCE_NAME` and the key from the
+same variables `azure` reads. `providers.azure-foundry.api` overrides the URL
+for a resource glrs cannot name.
+
+a non-OpenAI deployment under `azure/` fails on options only OpenAI accepts:
+
+```
+Unsupported value: 'low' is not supported with the 'grok-4.6-1' model.
+```
+
+that is `textVerbosity`, not the reasoning effort the message suggests. set
+`providers.azure.models.<id>.modelType` to `chat` to stay under `azure/`, or use
+`azure-foundry/` and configure nothing.
 
 ## provider warnings
 

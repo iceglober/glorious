@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText, stepCountIs, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { systemPrompt } from "../../packages/glrs-coding-agent/src/prompt";
+import { systemPrompt } from "../../packages/glrs-coding-agent/src/identity";
 
 // The subagent instructions as of adbd6fa, the commit whose numbers the README
 // reports. They used to be the coding agent prompt's craftRules export; run_subagent and

@@ -1,6 +1,6 @@
 import type { Glrs } from "../../../glrs-core/src";
 import { listSessions } from "../../../glrs-core/src/session";
-import { audit, create, list, listAll, remove, type Verdict } from "./worktree";
+import { audit, create, type HookRun, list, listAll, remove, type Verdict } from "./worktree";
 
 // Worktrees, as something you run and something the agent knows how to use.
 //
@@ -56,17 +56,21 @@ export default function worktree(g: Glrs): void {
       : found.map((one) => `${one.branch}  ${one.path}`).join("\n");
   };
 
-  const made = async (args: readonly string[]): Promise<{ said: string; entry: Tracked }> => {
+  // The path, and nothing else unless something went wrong. A hook that failed
+  // is the one thing worth interrupting for, and it goes to stderr because it
+  // is not the answer.
+  const made = async (
+    args: readonly string[],
+  ): Promise<{ path: string; failures: readonly HookRun[]; entry: Tracked }> => {
     const from = args.includes("--from") ? args[args.indexOf("--from") + 1] : undefined;
     const description = args.filter((one) => !one.startsWith("--") && one !== from).join(" ");
     const built = await create(g.root, {
       description: description === "" ? undefined : description,
       from,
     });
-    const lines = [built.path, `  branch ${built.branch} from origin/${built.base}`];
-    if (built.note !== null) lines.push(`  ${built.note}`);
     return {
-      said: lines.join("\n"),
+      path: built.path,
+      failures: built.hooks.filter((one) => !one.ok),
       entry: { path: built.path, branch: built.branch, createdAt: new Date().toISOString() },
     };
   };
@@ -78,9 +82,10 @@ export default function worktree(g: Glrs): void {
     async run(args) {
       const [verb = "list", ...rest] = args;
       if (verb === "new" || verb === "create") {
-        const { said } = await made(rest);
-        // Printed as the path first, so `cd $(glrs wt new x)` lands you there.
-        g.print(said);
+        const { path, failures } = await made(rest);
+        g.print(path);
+        for (const one of failures)
+          process.stderr.write(`hook ${one.hook} failed: ${one.detail}\n`);
         return;
       }
       if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
@@ -130,12 +135,13 @@ export default function worktree(g: Glrs): void {
         .filter((one) => one !== "");
       try {
         if (verb === "new" || verb === "create") {
-          const { said, entry } = await made(rest);
+          const { path, failures, entry } = await made(rest);
           // Recorded here and not in the subcommand: a subcommand has no session
           // to record into. `wt doctor` covers that case from the other side, by
           // correlating against every session's directory.
           g.appendEntry(ENTRY, entry);
-          return g.print(said);
+          for (const one of failures) g.print(`hook ${one.hook} failed: ${one.detail}`, "warning");
+          return g.print(path);
         }
         if (verb === "list" || verb === "ls") return g.print(await listing(rest.includes("--all")));
         if (verb === "doctor") return g.print(await report());

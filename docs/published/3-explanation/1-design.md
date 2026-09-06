@@ -39,12 +39,14 @@ the core does not quietly keep a copy.
 | extension | provides |
 | --- | --- |
 | `builtins` | the file, search and shell tools, and every slash command |
+| `compaction-artifacts` | reading back what a compaction replaced |
 | `model-picker` | `/model`, and the picker that opens when no model is set |
+| `tiers` | `/tier`, and a default model chosen from what you have credentials for |
 | `ask-user` | the `ask_user` tool and its widget, built on `g.ui.capture` |
 | `web-fetch` | the `web_fetch` tool |
 | `worktree` | the `glrs wt` subcommand and `/wt` |
 
-all five load. asking you to turn one on puts a decision in front of you that you
+all seven load. asking you to turn one on puts a decision in front of you that you
 had no way to evaluate. disable what you do not want, or shadow it with a file
 of the same name: disk wins over first-party.
 
@@ -65,18 +67,12 @@ wants so whatever fills the gap can say so ([models](../9-reference/4-models.md)
 
 ## permissions
 
-there is no permissions system. glrs runs with the permissions of its process:
-any file you can edit, any command you can run. no sandbox, and nothing asks
-before it acts.
+glrs has whatever permissions its calling context has. any file you can edit,
+any command you can run. no sandbox, and nothing asks before it acts.
 
-one seam exists for building a gate. glrs fires `project_trust` when a session
-opens, and refuses to start if a handler answers anything but `trusted`. no
-extension ships one, so out of the box the event fires and nothing listens
-([events](../9-reference/12-events.md)). a gate built on it still runs in the
-same process.
-
-an extension can refuse a call from the `tool_call` hook, but it runs in the
-same process as the thing it is refusing.
+there is no gate to configure, and no seam pretending to be one. an extension
+can refuse a call from the `tool_call` hook, but it runs in the same process as
+the thing it is refusing, so it is a convenience rather than a boundary.
 
 real boundaries come from outside the process:
 

@@ -34,12 +34,33 @@ in `extensions.load`, `~/` resolves against home and `./` or `../` against the d
 
 in a git repository all three files are created, outside one only the User file. each new file holds `{"$schema": "https://glrs.dev/config.schema.json"}`; an existing file without `$schema` has it inserted in place. `.glrs/.gitignore` is created containing `/config.local.json`.
 
+## extensions.settings
+
+config belonging to individual extensions, keyed by extension name:
+
+```json
+{
+  "extensions": {
+    "settings": {
+      "tiers": {
+        "default": "balanced",
+        "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"]
+      }
+    }
+  }
+}
+```
+
+glrs never reads inside a block. an extension is handed its own and no other,
+so two of them cannot argue about what a key means: [extensions](./11-extensions.md).
+
 ## merge
 
 | keys | rule |
 | --- | --- |
-| `model`, `variant`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
+| `model`, `variant`, `compactAt`, `compactWindow`, `compactModel`, `toolTimeoutMs`, `steeringMode`, `followUpMode`, `agentConfigAllowlist` | nearest wins: Project-User, then Project, then User |
 | `extensions.load`, `extensions.disable`, `tools.disable` | union of the three scopes, and disabled anywhere stays disabled |
+| `extensions.settings` | JSON Merge Patch, deep; `null` deletes a key |
 | `providers` | JSON Merge Patch, deep; `null` deletes a key |
 
 ## agentConfigAllowlist

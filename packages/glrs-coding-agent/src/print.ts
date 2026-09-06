@@ -1,6 +1,20 @@
 import { randomUUID } from "node:crypto";
+import { createAgent, routeProviderWarnings } from "../../glrs-core/src/agent";
+import {
+  createRegistry,
+  describeContribution,
+  fire,
+  promptContributions,
+} from "../../glrs-core/src/extension-api";
 import { loadAgentRules } from "../../glrs-core/src/guidance";
 import { runShell } from "../../glrs-core/src/shell";
+import { loadSkills } from "../../glrs-core/src/skills";
+import {
+  firstDetail,
+  resultSummary,
+  setToolGate,
+  type ToolEvent,
+} from "../../glrs-core/src/toolkit";
 import {
   currentModel,
   envSetting,
@@ -8,15 +22,14 @@ import {
   missingFor,
   modelMetadata,
   registerExtensionProvider,
-} from "../../provider-registry/src";
-import { createAgent, routeProviderWarnings } from "./agent";
-import { createRegistry, describeContribution, fire, promptContributions } from "./extension-api";
+} from "../../glrs-providers/src";
 import {
   firstPartyExtensions,
   loadExtensions,
   resolveExtensions,
   skillRootsFor,
 } from "./extensions";
+import { systemPrompt } from "./identity";
 import { expandMentions } from "./mentions";
 import {
   advanceToolRun,
@@ -26,8 +39,6 @@ import {
   reasoningVisible,
   toolRow,
 } from "./render";
-import { loadSkills } from "./skills";
-import { firstDetail, resultSummary, setToolGate, type ToolEvent } from "./toolkit";
 
 // Headless. One turn, no TUI, no session file, and nobody to ask — so ask_user
 // is withheld rather than left to hang on an answer that cannot arrive.
@@ -92,7 +103,6 @@ export const runPrint = async (
     // left behind and fails the turn with "Item with id 'rs_…' not found".
     // The TUI passes its session uuid here for the same reason.
     sessionId: `print-${randomUUID().slice(0, 8)}`,
-    rules,
     cwd: where.root,
     os: where.os,
     date: new Date().toISOString().slice(0, 10),
@@ -104,7 +114,7 @@ export const runPrint = async (
       return registry.tools;
     },
     extensionPrompt: () => promptContributions(registry.promptLines),
-    systemPromptOverride: () => systemPromptOverride,
+    instructions: () => systemPromptOverride ?? systemPrompt({ rules }),
     onContext: async (messages, step) => {
       const said = await fire(registry, "context", { messages, step }, note);
       return Array.isArray(said) ? said : undefined;
@@ -137,6 +147,7 @@ export const runPrint = async (
     {
       root: where.root,
       exec: (command, args) => runShell(where.root, command, args),
+      extensionConfig: (extension) => loadedConfig.config.extensions?.settings?.[extension],
       settings: () => ({
         toolTimeoutMs: toolTimeoutMs,
         reasoningDisplay: loadedConfig.config.reasoningDisplay,
@@ -306,9 +317,6 @@ export const runPrint = async (
         return typeof replaced === "string" ? replaced : undefined;
       },
     });
-    const trust = await fire(registry, "project_trust", { root: where.root }, note);
-    if (registry.handlers.has("project_trust") && trust !== "trusted")
-      throw new Error(`Project trust was ${trust ?? "not decided"} by an extension.`);
     await fire(registry, "session_start", { root: where.root }, note);
     await fire(registry, "turn_start", { text: prompt }, note);
     const { prompt: asked, missing } = await expandMentions(where.root, prompt);

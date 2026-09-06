@@ -1,8 +1,8 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": [
-    "../packages/glrs-coding-agent/src/public-extension-api.ts",
-    "../packages/glrs-coding-agent/src/sdk.ts"
+    "../packages/glrs-core/src/public-extension-api.ts",
+    "../packages/glrs-core/src/sdk.ts"
   ],
   "entryPointStrategy": "resolve",
   "alwaysCreateEntryPointModule": true,
@@ -57,7 +57,9 @@
     "typescript",
     "yaml"
   ],
-  "ignoredHighlightLanguages": ["mermaid"],
+  "ignoredHighlightLanguages": [
+    "mermaid"
+  ],
   "mermaidSource": "local",
   "headings": {
     "readme": true,

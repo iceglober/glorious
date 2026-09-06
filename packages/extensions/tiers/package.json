@@ -1,0 +1,15 @@
+{
+  "name": "@glrs-dev/glrs-ext-tiers",
+  "version": "1.0.0-next.57",
+  "private": true,
+  "description": "Named tiers of model, resolved against what glrs has credentials for.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ]
+}

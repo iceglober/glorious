@@ -10,8 +10,9 @@ title: manage extensions
 /extensions
 ```
 
-all five first-party extensions load, plus anything in `.glrs/extensions/`:
-`builtins`, `model-picker`, `ask-user`, `web-fetch`, `worktree`.
+all seven first-party extensions load, plus anything in `.glrs/extensions/`:
+`builtins`, `compaction-artifacts`, `model-picker`, `tiers`, `ask-user`,
+`web-fetch`, `worktree`.
 
 ## reload after an edit
 

@@ -34,7 +34,28 @@ inserted earlier.
 OpenAI and Google cache a prefix without being asked. Anthropic and Bedrock
 cache only what is marked, so glrs marks the second-to-last message: the newest
 point that will still be there next turn. the mark advances every turn, which
-extends the cached prefix rather than replacing it.
+extends the cached prefix rather than replacing it. on the first turn there is
+no second-to-last, so the only message is marked, and the second turn opens on
+a prefix the provider has already seen.
+
+everything else reaches an OpenAI-compatible endpoint, and caches or does not
+according to the model behind it. glrs sends no cache control there, because
+there is none to send: `prompt_cache_key` is OpenAI's, and a Foundry deployment
+answers `Unrecognized request argument supplied` rather than ignoring it. the
+same is true of `textVerbosity`, which is how a request about verbosity came to
+fail as though it were about reasoning.
+
+what that leaves is the prefix itself, which is the part glrs controls. measured
+over two turns on one Foundry resource:
+
+| model | reused on the second turn |
+| --- | --- |
+| `azure/gpt-5.6-sol` | 2601 of 2982 |
+| `azure-foundry/DeepSeek-V4-Flash` | 3584 of 4100 |
+| `azure-foundry/kimi-k2.6` | nothing; that model does not cache |
+
+a cold prefix reports nothing cached on its first outing. that is the cache
+being written, not a failure.
 
 ## steering and follow-up
 

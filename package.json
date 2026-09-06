@@ -17,11 +17,13 @@
     "!packages/glrs-coding-agent/src/**/*.test.ts",
     "packages/glrs-core/src",
     "!packages/glrs-core/src/**/*.test.ts",
-    "packages/provider-registry/src",
-    "!packages/provider-registry/src/**/*.test.ts",
+    "packages/glrs-providers/src",
+    "!packages/glrs-providers/src/**/*.test.ts",
     "packages/extensions/ask-user/src",
     "packages/extensions/builtins/src",
+    "packages/extensions/compaction-artifacts/src",
     "packages/extensions/model-picker/src",
+    "packages/extensions/tiers/src",
     "packages/extensions/web-fetch/src",
     "packages/extensions/worktree/src",
     "packages/extensions/worktree/skills",
@@ -40,8 +42,8 @@
     "glorious": "bin/glrs"
   },
   "exports": {
-    ".": "./packages/glrs-coding-agent/src/sdk.ts",
-    "./extension-api": "./packages/glrs-coding-agent/src/public-extension-api.ts",
+    ".": "./packages/glrs-core/src/sdk.ts",
+    "./extension-api": "./packages/glrs-core/src/public-extension-api.ts",
     "./package.json": "./package.json"
   },
   "packageManager": "bun@1.3.14",

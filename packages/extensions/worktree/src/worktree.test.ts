@@ -8,6 +8,7 @@ import {
   autoName,
   create,
   defaultBranch,
+  type HookRun,
   list,
   mainRepo,
   remove,
@@ -32,6 +33,21 @@ const repository = async (): Promise<{ repo: string; home: string }> => {
   await runShell(repo, "git config user.email a@b.c && git config user.name Test");
   await writeFile(join(repo, "README.md"), "hello\n");
   await runShell(repo, "git add -A && git commit -q -m first && git push -q -u origin main");
+  return { repo, home };
+};
+
+// A repo whose origin exists but has nothing in it: cloned before anyone pushed,
+// or pointed at a repository being kept empty on purpose. `main` is local only.
+const unpushed = async (): Promise<{ repo: string; home: string }> => {
+  const home = await mkdtemp(join(tmpdir(), "glrs-wt-"));
+  scratch.push(home);
+  const origin = join(home, "origin.git");
+  const repo = join(home, "repo");
+  await runShell(home, `git init --bare --initial-branch=main ${JSON.stringify(origin)} --quiet`);
+  await runShell(home, `git clone --quiet ${JSON.stringify(origin)} ${JSON.stringify(repo)}`);
+  await runShell(repo, "git config user.email a@b.c && git config user.name Test");
+  await writeFile(join(repo, "README.md"), "hello\n");
+  await runShell(repo, "git add -A && git commit -q -m first");
   return { repo, home };
 };
 
@@ -112,6 +128,30 @@ describe("creating one", () => {
     expect(await Bun.file(join(made.path, "local.txt")).exists()).toBe(false);
   });
 
+  // `defaultBranch` falls back to a local ref, and that fallback used to be
+  // unreachable: create fetched origin/<base> for a base git had resolved
+  // locally, which can only fail. `glrs wt new` was impossible in any repo whose
+  // remote was empty.
+  test("a base that exists only locally is branched from, not fetched", async () => {
+    const { repo, home } = await unpushed();
+    const made = await create(repo, { description: "works offline", home });
+    expect(made.base).toBe("main");
+    expect(await Bun.file(join(made.path, "README.md")).text()).toBe("hello\n");
+  });
+
+  test("the remote still wins when it has the branch", async () => {
+    const { repo, home } = await repository();
+    const made = await create(repo, { description: "from the remote", home });
+    expect(made.base).toBe("origin/main");
+  });
+
+  test("neither remote nor local names both in the failure", async () => {
+    const { repo, home } = await repository();
+    await expect(create(repo, { description: "nope", from: "nonesuch", home })).rejects.toThrow(
+      /no origin\/nonesuch and no local nonesuch/u,
+    );
+  });
+
   // The tool this replaces ran `git branch -D` on a collision, throwing away
   // whatever was on that branch.
   test("a name already taken is refused rather than overwritten", async () => {
@@ -132,7 +172,7 @@ describe("creating one", () => {
 });
 
 describe("the wt_new hook", () => {
-  const hooked = async (body: string): Promise<{ path: string; note: string | null }> => {
+  const hooked = async (body: string): Promise<{ path: string; hooks: HookRun[] }> => {
     const { repo, home } = await repository();
     await mkdir(join(repo, ".glrs", "hooks"), { recursive: true });
     await writeFile(join(repo, ".glrs", "hooks", "wt_new"), `#!/bin/sh\n${body}\n`, {
@@ -140,12 +180,13 @@ describe("the wt_new hook", () => {
     });
     await runShell(repo, "git add -A && git commit -q -m hook && git push -q origin main");
     const made = await create(repo, { description: "with a hook", home });
-    return { path: made.path, note: made.note };
+    return { path: made.path, hooks: made.hooks };
   };
 
   test("it runs in the new worktree, and is told where it is", async () => {
-    const { path, note } = await hooked('echo "$WORKTREE_DIR" > ran.txt');
-    expect(note).toBeNull();
+    const { path, hooks } = await hooked('echo "$WORKTREE_DIR" > ran.txt');
+    // Reported as having run, not passed over in silence.
+    expect(hooks).toEqual([{ hook: ".glrs/hooks/wt_new", ok: true, detail: "" }]);
     expect((await Bun.file(join(path, "ran.txt")).text()).trim()).toBe(path);
   });
 
@@ -162,8 +203,9 @@ describe("the wt_new hook", () => {
   // A hook that fails must not cost you the worktree — it is already there, and
   // whatever the hook was doing is usually rerunnable by hand.
   test("one that fails warns and leaves the worktree standing", async () => {
-    const { path, note } = await hooked("exit 3");
-    expect(note).toContain("wt_new failed");
+    const { path, hooks } = await hooked("exit 3");
+    expect(hooks[0].ok).toBe(false);
+    expect(hooks[0].detail).toContain("exit 3");
     expect(await Bun.file(join(path, "README.md")).exists()).toBe(true);
   });
 });
@@ -266,6 +308,6 @@ describe("hook discovery", () => {
   test("no hook at all is not a problem", async () => {
     const { repo, home } = await repository();
     const made = await create(repo, { description: "no hook here", home });
-    expect(await runNewHook(made.path, "repo")).toBeNull();
+    expect(await runNewHook(made.path, "repo")).toEqual([]);
   });
 });

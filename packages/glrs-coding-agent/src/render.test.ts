@@ -86,6 +86,40 @@ describe("reasoning in the transcript", () => {
     expect(assistantBlock("considering")[0][0].text).toBe("● ");
   });
 
+  // A thought is shaped like an answer and toned so it cannot be mistaken for
+  // one. Before this it was neither: every blank line was dropped and no
+  // markdown was applied at all.
+  test("it carries the same markdown an answer would", () => {
+    const block = reasoningBlock("## Weighing it\nthe **second** option", 1000);
+    expect(block[0]).toContainEqual(
+      expect.objectContaining({ text: "Weighing it", bold: true, underline: true }),
+    );
+    expect(block[1]).toContainEqual(expect.objectContaining({ text: "second", bold: true }));
+  });
+
+  test("paragraphs survive, and a run of blank lines becomes one", () => {
+    expect(text(reasoningBlock("one\n\n\n\ntwo", 1000))).toBe("◐ one\n\n  two\n  thought for 1s");
+  });
+
+  test("a blank line is blank, not an indent with nothing after it", () => {
+    expect(reasoningBlock("one\n\ntwo", 1000)[1]).toEqual([]);
+  });
+
+  // Italic code is harder to read than it is worth, and a fence is the one place
+  // the exact characters matter.
+  test("fenced code stays upright while the prose around it is italic", () => {
+    const block = reasoningBlock("thinking\n```ts\nconst x = 1;\n```", 1000);
+    const code = block.find((line) => line.some((span) => span.text.includes("const x = 1;")));
+    expect(code?.every((span) => span.italic !== true)).toBe(true);
+    expect(block[0][1]).toMatchObject({ italic: true });
+  });
+
+  test("every span is muted, whatever the markdown made of it", () => {
+    const block = reasoningBlock("## H\n**bold** and `code`", 1000);
+    for (const line of block)
+      for (const span of line) if (span.text.trim() !== "") expect(span.tone).toBe("muted");
+  });
+
   test("the durable event includes the reasoning text", () => {
     const block = eventBlock({
       type: "reasoning",

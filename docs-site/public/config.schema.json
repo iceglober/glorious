@@ -13,22 +13,35 @@
     "model": {
       "type": "string",
       "pattern": "^[^/\\s]+/.+$",
-      "examples": ["anthropic/claude-opus-5"],
+      "examples": [
+        "anthropic/claude-opus-5"
+      ],
       "description": "Required at runtime as provider/model-id. There is no default provider or model."
     },
     "variant": {
       "type": "string",
       "minLength": 1,
-      "examples": ["high"],
+      "examples": [
+        "high"
+      ],
       "description": "Reasoning effort when supported by the selected model."
     },
     "reasoningDisplay": {
       "description": "Show provider-supplied reasoning. A level shows it only when the active model's configured effort is at least that level.",
       "oneOf": [
-        { "type": "boolean" },
+        {
+          "type": "boolean"
+        },
         {
           "type": "string",
-          "enum": ["minimal", "low", "medium", "high", "xhigh", "max"]
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
         }
       ],
       "default": true
@@ -50,7 +63,9 @@
     "extensions": {
       "description": "First-party extension names or extension paths to load, plus names to disable.",
       "oneOf": [
-        { "$ref": "#/$defs/nameList" },
+        {
+          "$ref": "#/$defs/nameList"
+        },
         {
           "type": "object",
           "properties": {
@@ -70,7 +85,9 @@
     "tools": {
       "description": "Tool names to withhold from the model.",
       "oneOf": [
-        { "$ref": "#/$defs/nameList" },
+        {
+          "$ref": "#/$defs/nameList"
+        },
         {
           "type": "object",
           "properties": {
@@ -85,7 +102,13 @@
     },
     "agentConfigAllowlist": {
       "type": "array",
-      "items": { "type": "string", "enum": ["extensions", "model"] },
+      "items": {
+        "type": "string",
+        "enum": [
+          "extensions",
+          "model"
+        ]
+      },
       "uniqueItems": true,
       "description": "Config sections glrs may write: extensions.load/disable, and the model and variant /model chose."
     },
@@ -115,21 +138,43 @@
               "properties": {
                 "modelType": {
                   "type": "string",
-                  "enum": ["responses", "chat", "deepseek"],
+                  "enum": [
+                    "responses",
+                    "chat",
+                    "deepseek"
+                  ],
                   "description": "Azure SDK language-model constructor for this deployment."
                 },
                 "requestOptions": {
                   "$ref": "#/$defs/requestOptions"
                 },
-                "providerOptions": { "$ref": "#/$defs/providerOptions" },
+                "providerOptions": {
+                  "$ref": "#/$defs/providerOptions"
+                },
                 "metadata": {
                   "type": "object",
                   "properties": {
-                    "name": { "type": "string" },
-                    "context": { "type": "number", "exclusiveMinimum": 0 },
-                    "inputCost": { "type": "number", "minimum": 0 },
-                    "outputCost": { "type": "number", "minimum": 0 },
-                    "variants": { "type": "array", "items": { "type": "string" } }
+                    "name": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "inputCost": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "outputCost": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
                   },
                   "additionalProperties": true
                 }
@@ -160,30 +205,67 @@
         },
         "additionalProperties": true
       }
+    },
+    "compactAt": {
+      "type": "number",
+      "minimum": 0,
+      "exclusiveMaximum": 1,
+      "description": "Fraction of the context window at which the conversation is compacted automatically. 0.75 by default; 0 turns it off."
+    },
+    "compactWindow": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The largest context window compaction plans against, in tokens. 256000 by default. A model that advertises more is compacted as if it had this much; one whose window is unknown is assumed to have it."
+    },
+    "compactModel": {
+      "type": "string",
+      "description": "Who writes the compaction brief, as \"provider/model-id\". The session's model when unset."
     }
   },
   "additionalProperties": true,
   "$defs": {
     "queueMode": {
       "type": "string",
-      "enum": ["one-at-a-time", "all"],
+      "enum": [
+        "one-at-a-time",
+        "all"
+      ],
       "default": "one-at-a-time"
     },
     "factoryOptions": {
       "type": "object",
       "properties": {
-        "apiKey": { "type": "string" },
-        "baseURL": { "type": "string", "format": "uri" },
+        "apiKey": {
+          "type": "string"
+        },
+        "baseURL": {
+          "type": "string",
+          "format": "uri"
+        },
         "headers": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
-        "organization": { "type": "string" },
-        "region": { "type": "string" },
-        "project": { "type": "string" },
-        "location": { "type": "string" },
-        "resourceName": { "type": "string" },
-        "apiVersion": { "type": "string" },
+        "organization": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "resourceName": {
+          "type": "string"
+        },
+        "apiVersion": {
+          "type": "string"
+        },
         "fetch": false
       },
       "additionalProperties": true
@@ -191,19 +273,47 @@
     "requestOptions": {
       "type": "object",
       "properties": {
-        "maxOutputTokens": { "type": "number", "exclusiveMinimum": 0 },
-        "temperature": { "type": "number" },
-        "topP": { "type": "number" },
-        "topK": { "type": "number" },
-        "presencePenalty": { "type": "number" },
-        "frequencyPenalty": { "type": "number" },
-        "stopSequences": { "type": "array", "items": { "type": "string" } },
-        "seed": { "type": "integer" },
-        "maxRetries": { "type": "integer", "minimum": 0 },
-        "timeout": { "type": "number", "exclusiveMinimum": 0 },
+        "maxOutputTokens": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "temperature": {
+          "type": "number"
+        },
+        "topP": {
+          "type": "number"
+        },
+        "topK": {
+          "type": "number"
+        },
+        "presencePenalty": {
+          "type": "number"
+        },
+        "frequencyPenalty": {
+          "type": "number"
+        },
+        "stopSequences": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "headers": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "model": false,
         "instructions": false,
@@ -259,23 +369,47 @@
         "openai": {
           "type": "object",
           "properties": {
-            "reasoningEffort": { "type": "string" },
-            "textVerbosity": { "type": "string", "enum": ["low", "medium", "high"] },
-            "promptCacheKey": { "type": "string" },
-            "store": { "type": "boolean" },
+            "reasoningEffort": {
+              "type": "string"
+            },
+            "textVerbosity": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "promptCacheKey": {
+              "type": "string"
+            },
+            "store": {
+              "type": "boolean"
+            },
             "serviceTier": {
               "type": "string",
-              "enum": ["default", "auto", "flex", "priority"]
+              "enum": [
+                "default",
+                "auto",
+                "flex",
+                "priority"
+              ]
             }
           },
           "additionalProperties": true
         }
       },
-      "additionalProperties": { "type": "object", "additionalProperties": true }
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
+      }
     },
     "nameList": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     }
   }

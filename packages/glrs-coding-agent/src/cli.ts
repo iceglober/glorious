@@ -1,6 +1,6 @@
+import { createRegistry, type ExtensionHost, type Line } from "../../glrs-core/src/extension-api";
 import { runShell } from "../../glrs-core/src/shell";
-import { loadConfig, registerExtensionProvider } from "../../provider-registry/src";
-import { createRegistry, type ExtensionHost, type Line } from "./extension-api";
+import { loadConfig, registerExtensionProvider } from "../../glrs-providers/src";
 import { firstPartyExtensions, loadExtensions } from "./extensions";
 import { clip, width } from "./render";
 
@@ -68,6 +68,7 @@ export const runCli = async (
     print: (content) => process.stdout.write(`${flatten(content)}\n`),
     columns: () =>
       process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 100,
+    extensionConfig: (extension) => config.config.extensions?.settings?.[extension],
     settings: () => ({
       toolTimeoutMs: config.config.toolTimeoutMs,
       reasoningDisplay: config.config.reasoningDisplay,
