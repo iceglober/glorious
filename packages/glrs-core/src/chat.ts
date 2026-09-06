@@ -74,6 +74,30 @@ export const createChat = (
   let live: AbortController | null = null;
   let note = "";
   let compacting = false;
+  // A brief that finished while a turn was running. `compact` rewrites the
+  // prefix, a turn only appends, so the two do not conflict: the brief is held
+  // and spliced in once the turn has landed. Before this the turn's
+  // `history = done.messages` overwrote the compaction outright, so a
+  // compaction the user had waited minutes for was computed, paid for, and
+  // thrown away the moment they typed.
+  let heldBrief: { summary: string; cut: number } | null = null;
+
+  // Splice a held brief into the prefix. Safe because a turn only appends: the
+  // messages below `cut` are the same ones the summary was made from, whatever
+  // has been added after them.
+  const applyHeldBrief = (): void => {
+    if (heldBrief === null) return;
+    const { summary, cut } = heldBrief;
+    heldBrief = null;
+    // The brief describes `history[0..cut]`. If the history is now shorter than
+    // that, it is not the conversation the summary was made from and splicing
+    // would delete everything after the cut rather than replace what came
+    // before it. Dropping the brief costs one summary; the alternative costs
+    // the conversation.
+    if (history.length < cut) return;
+    history = [{ role: "user", content: compactedPrompt(summary) }, ...history.slice(cut)];
+    announce({ type: "compacted", summary, dropped: cut });
+  };
 
   const announce = (event: SessionEvent): void => {
     try {
@@ -217,6 +241,7 @@ export const createChat = (
     } else {
       history = done.messages;
       announce({ type: "turn", messages: done.messages.slice(before) });
+      applyHeldBrief();
       if (done.text.trim() !== "" && done.text !== spoken) {
         spoken = done.text;
         announce({ type: "assistant", text: spoken });
@@ -281,8 +306,12 @@ export const createChat = (
         suppliedSummary ?? (await agent.summarise(history.slice(0, cut), instruction, stop.signal));
       if (summary === "") return { outcome: "failed", error: "the summary came back empty" };
       const dropped = cut;
-      history = [{ role: "user", content: compactedPrompt(summary) }, ...history.slice(cut)];
-      announce({ type: "compacted", summary, dropped });
+      // A turn may have started while the summary was being written. It holds
+      // its own copy of the messages and will overwrite `history` when it
+      // lands, so the brief waits for that rather than being lost to it.
+      heldBrief = { summary, cut };
+      if (working()) return { outcome: "compacted", dropped, kept: history.length - cut };
+      applyHeldBrief();
       return { outcome: "compacted", dropped, kept: history.length - 1 };
     } catch (thrown) {
       return {

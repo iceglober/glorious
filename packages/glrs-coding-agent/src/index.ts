@@ -803,7 +803,9 @@ const main = async (): Promise<void> => {
   // Compaction is the answer to a full context that is not "throw it away".
   // Automatic once the provider says the conversation is past COMPACT_AT of the
   // window, which is early enough that the summarising call still fits.
-  const COMPACT_AT = 0.75;
+  // 0.75 of the window unless config says otherwise. On a million-token model
+  // that is 787,500 tokens: late, and expensive on every turn that gets there.
+  const COMPACT_AT = config.config.compactAt ?? 0.75;
   const KEEP_TOKENS = 20_000;
   let compactedAt = 0;
 
@@ -855,6 +857,9 @@ const main = async (): Promise<void> => {
     Math.ceil(JSON.stringify(history).length / 4);
 
   const maybeCompact = (): void => {
+    // Zero is off. Without this it would read as "compact above zero tokens",
+    // which is every conversation, on every turn.
+    if (COMPACT_AT === 0) return;
     if (chat.compacting || model?.context === undefined || tokens === null) return;
     if (tokens < model.context * COMPACT_AT) return;
     // Only once per growth phase: without this a compaction that frees little
@@ -867,6 +872,7 @@ const main = async (): Promise<void> => {
     prompt: string,
     history: readonly ModelMessage[],
   ): Promise<void> => {
+    if (COMPACT_AT === 0) return;
     if (chat.compacting || model?.context === undefined) return;
     const known = tokens ?? estimateHistoryTokens(history);
     const candidate = known + Math.ceil(prompt.length / 4);

@@ -734,3 +734,23 @@ describe("config belonging to an extension", () => {
     expect(diagnostics.join(" ")).toContain("extensions.settings");
   });
 });
+
+describe("when the conversation is compacted without being asked", () => {
+  test("a fraction of the window is read", async () => {
+    const root = await project('{"compactAt":0.5}');
+    expect((await loadConfig(root, join(root, "nohome"))).config.compactAt).toBe(0.5);
+  });
+
+  // Zero is meaningful, unlike a timeout: it turns automatic compaction off.
+  test("zero survives rather than being read as unset", async () => {
+    const root = await project('{"compactAt":0}');
+    expect((await loadConfig(root, join(root, "nohome"))).config.compactAt).toBe(0);
+  });
+
+  test("a fraction at or above one would never fire, so it is refused", async () => {
+    for (const bad of ["1", "1.5", "-0.1", '"half"']) {
+      const root = await project(`{"compactAt":${bad}}`);
+      expect((await loadConfig(root, join(root, "nohome"))).config.compactAt).toBeUndefined();
+    }
+  });
+});

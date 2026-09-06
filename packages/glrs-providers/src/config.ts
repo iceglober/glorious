@@ -162,6 +162,14 @@ export type Config = {
   model?: string;
   // Reasoning effort, when the model advertises one.
   variant?: string;
+  /**
+   * Fraction of the context window at which the conversation is compacted
+   * without being asked. 0.75 by default. On a million-token model that is
+   * 787,500 tokens, which is late and expensive per turn, so a smaller number
+   * is often the better trade. 0 turns automatic compaction off; `/compact`
+   * still works.
+   */
+  compactAt?: number;
   // Show provider-supplied reasoning, optionally only at or above one effort.
   reasoningDisplay?: ReasoningDisplay;
   // Maximum time in milliseconds for a built-in shell/search tool.
@@ -350,6 +358,14 @@ const stringOf = (value: unknown): string | undefined =>
 const positiveNumberOf = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 
+// A fraction of the context window. 0 is meaningful here, unlike a timeout: it
+// turns automatic compaction off. Anything at or above 1 would compact only
+// after the window was already exceeded, which is never.
+const fractionOf = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value < 1
+    ? value
+    : undefined;
+
 const QUEUE_MODES: readonly QueueMode[] = ["one-at-a-time", "all"];
 
 const AGENT_OWNED_REQUEST_OPTIONS = new Set([
@@ -411,6 +427,7 @@ const KNOWN = [
   "$schema",
   "model",
   "variant",
+  "compactAt",
   "reasoningDisplay",
   "toolTimeoutMs",
   "steeringMode",
@@ -720,6 +737,7 @@ const shapeOf = (raw: unknown, where: string, diagnostics: string[]): Config => 
     model: stringOf(raw.model),
     variant: stringOf(raw.variant),
     reasoningDisplay,
+    compactAt: fractionOf(raw.compactAt),
     toolTimeoutMs: positiveNumberOf(raw.toolTimeoutMs),
     steeringMode: queueMode("steeringMode"),
     followUpMode: queueMode("followUpMode"),
@@ -790,6 +808,7 @@ const mergeJson = (far: unknown, near: unknown): unknown | typeof removed => {
 const merge = (near: Config, far: Config): Config => ({
   model: near.model ?? far.model,
   variant: near.variant ?? far.variant,
+  compactAt: near.compactAt ?? far.compactAt,
   reasoningDisplay: near.reasoningDisplay ?? far.reasoningDisplay,
   toolTimeoutMs: near.toolTimeoutMs ?? far.toolTimeoutMs,
   steeringMode: near.steeringMode ?? far.steeringMode,

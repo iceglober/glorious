@@ -1349,7 +1349,27 @@ how much of the model's window it fills.
 ## compaction
 
 past 75% of the window the older part of the conversation is summarised and
-replaced by one message:
+replaced by one message. `compactAt` moves that fraction, and `0` turns it off
+while leaving `/compact` working:
+
+```json
+{ "compactAt": 0.5 }
+```
+
+on a million-token model 75% is 787,500 tokens, which is both late and
+expensive on every turn that reaches it. a smaller fraction is often the better
+trade.
+
+it needs a context window to measure against, and that comes from the
+catalogue. a model the catalogue does not know reports `ctx unknown` and is
+never compacted automatically: set
+`providers.<id>.models.<id>.metadata.context` to give it one.
+
+the summary is written while the session sits idle. if you type before it
+finishes, your turn runs on the conversation as it was and the brief is
+applied once that turn lands, rather than being lost to it.
+
+
 
 ```text
 <earlier-conversation>

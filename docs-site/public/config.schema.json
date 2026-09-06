@@ -205,6 +205,12 @@
         },
         "additionalProperties": true
       }
+    },
+    "compactAt": {
+      "type": "number",
+      "minimum": 0,
+      "exclusiveMaximum": 1,
+      "description": "Fraction of the context window at which the conversation is compacted automatically. 0.75 by default; 0 turns it off."
     }
   },
   "additionalProperties": true,

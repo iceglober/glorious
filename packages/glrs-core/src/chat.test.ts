@@ -374,6 +374,73 @@ describe("compacting a long conversation", () => {
     return { chat, events, signals, sent: () => sent };
   };
 
+  // Background compaction and a turn used to race, and the turn always won:
+  // `history = done.messages` overwrote the compacted prefix, so a compaction
+  // the user had waited minutes for was computed, paid for and thrown away the
+  // moment they typed. A turn only appends, so the brief can wait for it.
+  describe("a turn that starts while a compaction is running", () => {
+    const racing = (history: ModelMessage[]) => {
+      let release: (value: string) => void = () => {};
+      const summarising = new Promise<string>((resolve) => {
+        release = resolve;
+      });
+      const events: SessionEvent[] = [];
+      let sent: ModelMessage[] = [];
+      const agent = {
+        summarise: () => summarising,
+        // As the real agent does: the whole conversation back, not just the new
+        // part. A turn appends, which is what makes a held brief spliceable.
+        run: async (prompt: string, replayed: ModelMessage[]) => {
+          sent = replayed;
+          return done("answered", {
+            messages: [
+              ...replayed,
+              { role: "user", content: prompt } as ModelMessage,
+              { role: "assistant", content: "answered" } as ModelMessage,
+            ],
+          });
+        },
+      } as unknown as Agent;
+      const chat = createChat(agent, {
+        onEvent: (event) => events.push(event),
+        onSignal: () => {},
+        history,
+      });
+      return { chat, events, release, sent: () => sent };
+    };
+
+    test("the brief survives the turn rather than being overwritten by it", async () => {
+      const { chat, events, release } = racing(conversation(12));
+      const running = chat.compact("", 2_000, true);
+      chat.send("something the user typed mid-compaction");
+      await Bun.sleep(0);
+      release("the brief");
+      await running;
+      await Bun.sleep(5);
+      expect(events.filter((one) => one.type === "compacted")).toHaveLength(1);
+      expect(chat.history[0]).toMatchObject({ role: "user" });
+      expect(JSON.stringify(chat.history[0])).toContain("the brief");
+    });
+
+    test("the turn's own answer is still there afterwards", async () => {
+      const { chat, release } = racing(conversation(12));
+      const running = chat.compact("", 2_000, true);
+      chat.send("a question");
+      await Bun.sleep(0);
+      release("the brief");
+      await running;
+      await Bun.sleep(5);
+      expect(JSON.stringify(chat.history)).toContain("answered");
+    });
+
+    test("with nothing running it lands immediately, as before", async () => {
+      const { chat, events } = harnessWith(conversation(12));
+      await chat.compact("", 2_000, true);
+      expect(events.filter((one) => one.type === "compacted")).toHaveLength(1);
+      expect(JSON.stringify(chat.history[0])).toContain("the brief");
+    });
+  });
+
   // A tool message whose call was summarised away is an invalid request, and
   // the provider rejects the entire turn — so this is the invariant compaction
   // lives or dies by.
