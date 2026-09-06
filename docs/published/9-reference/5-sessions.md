@@ -106,11 +106,18 @@ past the window inside itself and be refused outright with `Your input exceeds
 the context window of this model`: idle is too late to look, and the check
 before a new message is too early.
 
-the brief is written in the background, from a snapshot, while the session is
-idle or while a turn is running: the check runs on every step, because an
-agentic turn is where the context grows. a turn only appends, so the brief
-lands once the turn does and nothing the turn added is lost. `esc` stops the
-turn; a brief being written invisibly is left to finish.
+the brief is written from a snapshot, while the session is idle or while a
+turn is running: the check runs on every step, because an agentic turn is
+where the context grows.
+
+started at idle, it holds the queue. anything you type waits, then runs on the
+compacted history, because a turn that started anyway would pay exactly what
+the compaction was there to save. `esc` abandons it; the queue stays held, as
+it does whenever `esc` lands with messages waiting, and sending releases it.
+
+started mid-turn, it holds nothing: the turn is already running. a turn only
+appends, so the brief lands once the turn does and nothing the turn added is
+lost. `esc` stops the turn and leaves the brief to finish.
 
 ## what a compaction replaced
 

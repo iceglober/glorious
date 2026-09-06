@@ -656,6 +656,124 @@ describe("compacting a long conversation", () => {
     });
   });
 
+  // A compaction that starts at idle is there to shrink the context before the
+  // next turn. A turn that started anyway ran on the full history and paid
+  // exactly what the compaction was saving.
+  describe("a compaction that started at idle", () => {
+    const gated = (history: ModelMessage[]) => {
+      let releaseBrief: (summary: string) => void = () => {};
+      let rejectBrief: (why: Error) => void = () => {};
+      const briefGate = new Promise<string>((resolve, reject) => {
+        releaseBrief = resolve;
+        rejectBrief = reject;
+      });
+      const runs: number[] = [];
+      const agent = {
+        // Honours the abort signal, as the real summariser does: without this
+        // an Esc leaves the fake hanging and the test times out.
+        summarise: (_m: unknown, _i: unknown, signal?: AbortSignal) => {
+          signal?.addEventListener("abort", () => rejectBrief(new Error("aborted")));
+          return briefGate;
+        },
+        run: async (prompt: string, replayed: ModelMessage[]) => {
+          runs.push(replayed.length);
+          return done("answered", {
+            messages: [
+              ...replayed,
+              { role: "user", content: prompt } as ModelMessage,
+              { role: "assistant", content: "answered" } as ModelMessage,
+            ],
+          });
+        },
+      } as unknown as Agent;
+      const chat = createChat(agent, { onEvent: () => {}, onSignal: () => {}, history });
+      return { chat, runs, releaseBrief };
+    };
+
+    test("a message typed meanwhile queues and does not send", async () => {
+      const { chat, runs, releaseBrief } = gated(conversation(12));
+      const running = chat.compact("", 2_000, true);
+      await Bun.sleep(0);
+      chat.send("typed during compaction");
+      await Bun.sleep(5);
+      expect(runs).toEqual([]);
+      expect(chat.queued).toHaveLength(1);
+      releaseBrief("the brief");
+      await running;
+      await Bun.sleep(5);
+      expect(runs).toHaveLength(1);
+    });
+
+    test("when it lands, the queued turn runs on the compacted history", async () => {
+      const { chat, runs, releaseBrief } = gated(conversation(12));
+      const before = chat.history.length;
+      const running = chat.compact("", 2_000, true);
+      await Bun.sleep(0);
+      chat.send("after");
+      releaseBrief("the brief");
+      await running;
+      await Bun.sleep(5);
+      expect(runs[0]).toBeLessThan(before);
+      expect(JSON.stringify(chat.history[0])).toContain("the brief");
+    });
+
+    // Esc means stop, everywhere: the compaction is abandoned and the queue is
+    // held, as it is when Esc lands on a turn. Sending is how you say go.
+    test("Esc abandons the compaction and holds the queue for you to release", async () => {
+      const { chat, runs } = gated(conversation(12));
+      const running = chat.compact("", 2_000, true);
+      await Bun.sleep(0);
+      chat.send("waiting");
+      chat.abort();
+      expect((await running).outcome).toBe("failed");
+      await Bun.sleep(5);
+      expect(runs).toEqual([]);
+      expect(chat.held).toBe(true);
+      chat.release();
+      await Bun.sleep(5);
+      expect(runs).toHaveLength(1);
+    });
+
+    // The distinction that matters: a brief written in the background while a
+    // turn runs holds nothing, because the turn is already running.
+    test("a compaction that started mid-turn holds nothing", async () => {
+      let releaseBrief: (summary: string) => void = () => {};
+      let releaseTurn: () => void = () => {};
+      const briefGate = new Promise<string>((r) => {
+        releaseBrief = r;
+      });
+      const turnGate = new Promise<void>((r) => {
+        releaseTurn = r;
+      });
+      const runs: string[] = [];
+      const agent = {
+        summarise: () => briefGate,
+        run: async (prompt: string, replayed: ModelMessage[]) => {
+          runs.push(prompt);
+          if (runs.length === 1) await turnGate;
+          return done("ok", {
+            messages: [...replayed, { role: "user", content: prompt } as ModelMessage],
+          });
+        },
+      } as unknown as Agent;
+      const chat = createChat(agent, {
+        onEvent: () => {},
+        onSignal: () => {},
+        history: conversation(12),
+      });
+      chat.send("first");
+      await Bun.sleep(0);
+      const running = chat.compact("", 2_000, true);
+      chat.send("second");
+      releaseTurn();
+      await Bun.sleep(5);
+      // The second turn ran without waiting for the brief.
+      expect(runs).toEqual(["first", "second"]);
+      releaseBrief("the brief");
+      await running;
+    });
+  });
+
   // A tool message whose call was summarised away is an invalid request, and
   // the provider rejects the entire turn — so this is the invariant compaction
   // lives or dies by.

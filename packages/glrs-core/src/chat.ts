@@ -89,6 +89,12 @@ export const createChat = (
   // the background while a turn runs, sharing it meant whichever finished first
   // nulled the other's handle, and Esc stopped one of them at random.
   let compactStop: AbortController | null = null;
+  // A compaction that started at idle holds the queue until it lands. It is
+  // running to shrink the context before the next turn; a turn that started
+  // anyway would run on the full history and pay exactly what the compaction
+  // was there to save. One that started mid-turn does not hold anything: the
+  // turn was already running, and what is queued behind it queues as usual.
+  let blocking = false;
 
   // Splice a held brief into the prefix. Safe because a turn only appends: the
   // messages below `cut` are the same ones the summary was made from, whatever
@@ -335,6 +341,7 @@ export const createChat = (
     const cut = cutPoint(snapshot, keep, force);
     if (cut === 0) return { outcome: "too-short" };
     compacting = true;
+    blocking = foreground;
     const stop = new AbortController();
     compactStop = stop;
     if (foreground) signal({ type: "phase", name: "compacting" });
@@ -343,7 +350,12 @@ export const createChat = (
       const summary = suppliedSummary ?? (await agent.summarise(dropped, instruction, stop.signal));
       if (summary === "") return { outcome: "failed", error: "the summary came back empty" };
       heldBrief = { summary, cut, dropped };
-      if (working()) return { outcome: "compacted", dropped: cut, kept: history.length - cut };
+      // Held only for a turn that is actually running. `working()` would also
+      // count messages queued behind an idle compaction, and treating those as
+      // a running turn deferred the brief, released the queue, and started the
+      // turn on the history the brief was about to replace.
+      if (running !== null)
+        return { outcome: "compacted", dropped: cut, kept: history.length - cut };
       applyHeldBrief();
       return { outcome: "compacted", dropped: cut, kept: history.length - 1 };
     } catch (thrown) {
@@ -354,7 +366,15 @@ export const createChat = (
     } finally {
       compacting = false;
       compactStop = null;
-      if (foreground) signal({ type: "phase", name: null });
+      if (foreground) {
+        signal({ type: "phase", name: null });
+        // Whatever was typed while the brief was being written goes now, on
+        // the compacted history. After an Esc the queue is held instead, as
+        // it is whenever Esc lands on something with messages behind it:
+        // `pump` sees `held` and waits for you to send.
+        blocking = false;
+        pump();
+      }
     }
   };
 
@@ -374,7 +394,7 @@ export const createChat = (
   // drain when the queue went from empty to one, which only worked because the
   // running item stayed in the queue.
   const pump = (): void => {
-    if (draining || held) return;
+    if (draining || held || blocking) return;
     draining = true;
     void drain().finally(() => {
       draining = false;

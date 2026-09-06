@@ -4,7 +4,7 @@
 
 Compact in the background, plan against a 256k window, brief with a cheaper model, and keep what was replaced.
 
-**In the background.** The brief is written from a snapshot while a turn runs, and the check runs on every step rather than only at idle: an agentic turn is where the context grows, and idle was too late to look. A turn only appends, so the brief lands once the turn does. Compaction has its own abort handle now; it used to share the turn's, which could not have worked once the two overlap. Esc stops the turn and leaves a background brief to finish.
+**In the background.** The brief is written from a snapshot while a turn runs, and the check runs on every step rather than only at idle: an agentic turn is where the context grows, and idle was too late to look. A turn only appends, so the brief lands once the turn does. Started at idle, it holds the queue: anything typed meanwhile waits and then runs on the compacted history, since a turn that started anyway would pay exactly what the compaction was saving. Started mid-turn, it holds nothing. Compaction has its own abort handle now; it used to share the turn's, which could not have worked once the two overlap. Esc stops the turn and leaves a background brief to finish, or abandons an idle one and holds the queue, as Esc does whenever messages are waiting.
 
 **Against a 256k window.** `compactWindow` caps what compaction plans against, 256,000 by default. A million-token model is compacted as if it had 256k, because every turn past there re-sends all of it at full price. A model whose window the catalogue does not know is assumed to have 256k rather than never being compacted, which was the case for every OpenAI-compatible endpoint.
 
