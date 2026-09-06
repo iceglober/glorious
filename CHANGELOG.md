@@ -1,5 +1,165 @@
 # @glrs-dev/glrs
 
+## 1.0.0-next.58
+
+### Minor Changes
+
+- 6104514: Decide what 1.0.0 promises about the extension API.
+
+  Every member of `Glrs` is covered by semver from 1.0.0: a break is a major. Seven are marked `@beta` and may change in a minor — `forkSession`, `entryRenderer`, `history`, `messageRenderer`, `setLabel`, `switchSession`, `truncateHead`. They are the seven that appear on the generated API page and nowhere in the written docs: the ones advertised least and exercised least. TypeDoc renders the badge, so the promise is visible where the member is.
+
+  **`ModelInfo.missing` is optional now.** It arrived required and broke the model picker, which builds its own catalogue rows and suddenly had to supply a field glrs computes. A field added to a type an extension can construct is declared optional from here, so that learning something new about a model is an addition rather than a break. Absent and empty mean the same thing to a reader.
+
+  `ModelInfo` turned out to be the only public type an extension actually constructs. `Key` and `Verdict` are received and annotated, never built.
+
+- ae93f4f: Reach any Azure Foundry deployment, not only the OpenAI ones.
+
+  ```bash
+  GLRS_MODEL=azure-foundry/grok-4.6 glrs -p "hello"
+  ```
+
+  No config. The base URL comes from `AZURE_RESOURCE_NAME` and the key from the same variables `azure` reads, sent as the `api-key` header Azure wants rather than a bearer token. Verified end to end against grok, kimi and deepseek deployments.
+
+  Three defects were in the way, and the first two affect every OpenAI-compatible endpoint, not just Azure.
+
+  **Provider options were written under a key nothing reads.** The compatible client reads `providerOptions[<the name it was built with>]` and glrs builds it with the provider id, but glrs always wrote `providerOptions.openai`. So every option shaped for Ollama, vLLM, a gateway or a Foundry deployment was dropped without a word. The namespace is now the provider id, camelCased, which is the spelling the client wants: `azure-foundry` works and is deprecated, `azureFoundry` is not.
+
+  **Options only OpenAI understands were sent to models that are not OpenAI.** `textVerbosity` and `store` went to everything. `azure/grok-4.6` answered
+
+  ```
+  Unsupported value: 'low' is not supported with the 'grok-4.6-1' model.
+  ```
+
+  which reads like a reasoning-effort problem and is `textVerbosity`. Now only `openai` and Azure deployments whose `modelType` is the OpenAI surface get them; everything else gets reasoning effort, which most of them read.
+
+  **Azure authenticates with a header the generic path does not send.** An unknown provider resolves no credential at all, which is why reaching a non-OpenAI Foundry deployment previously needed an extension injecting `api-key` on every request.
+
+- 001ef8b: Compact in the background, plan against a 256k window, brief with a cheaper model, and keep what was replaced.
+
+  **In the background.** The brief is written from a snapshot while a turn runs, and the check runs on every step rather than only at idle: an agentic turn is where the context grows, and idle was too late to look. A turn only appends, so the brief lands once the turn does. Started at idle, it holds the queue: anything typed meanwhile waits and then runs on the compacted history, since a turn that started anyway would pay exactly what the compaction was saving. Started mid-turn, it holds nothing. Compaction has its own abort handle now; it used to share the turn's, which could not have worked once the two overlap. Esc stops the turn and leaves a background brief to finish, or abandons an idle one and holds the queue, as Esc does whenever messages are waiting.
+
+  **Against a 256k window.** `compactWindow` caps what compaction plans against, 256,000 by default. A million-token model is compacted as if it had 256k, because every turn past there re-sends all of it at full price. A model whose window the catalogue does not know is assumed to have 256k rather than never being compacted, which was the case for every OpenAI-compatible endpoint.
+
+  **With a cheaper model.** `compactModel` names who writes the brief. Summarising suits something faster and cheaper than the model doing the work, provided its window is at least `compactWindow`.
+
+  **Keeping what it replaced.** The brief is lossy by design; the messages it stood in for are written beside the session unchanged, one file per compaction, labelled with the brief's first line. The new `compaction-artifacts` extension gives the agent `compaction_list`, `compaction_read`, `compaction_annotate` and `compaction_delete`, and tells it they exist only once one does. `/artifacts` lists them for you. Disable the extension and the files still land.
+
+- 8ca50a5: Stop a turn from throwing away the compaction it raced, and let the threshold move.
+
+  Automatic compaction runs while the session is idle, and `pump()` did not know about it. Type while a summary is being written and a turn starts alongside it; the compaction lands first and rewrites the prefix, then the turn lands and overwrites `history` with the full uncompacted set. The summary was computed, paid for, and discarded. A real session shows it: two compactions recorded and context still peaking at 915,852 of 1,050,000.
+
+  A turn only appends, so the brief now waits for it and is spliced into the prefix once the turn has landed. If the history has somehow become shorter than the cut it was made from, the brief is dropped instead: that costs one summary, where splicing would cost the conversation.
+
+  **`compactAt` is configurable.** It defaults to the same `0.75`, but on a million-token model that is 787,500 tokens, which is late and expensive on every turn that reaches it:
+
+  ```json
+  { "compactAt": 0.5 }
+  ```
+
+  `0` turns automatic compaction off and leaves `/compact` working. A value at or above `1` would only fire once the window was already exceeded, so it is refused.
+
+  Automatic compaction still needs a context window to measure against, and a model the catalogue does not know has none: every OpenAI-compatible endpoint, including `azure-foundry`, reports `ctx unknown` and is never compacted automatically unless `providers.<id>.models.<id>.metadata.context` supplies the number. Now documented rather than silent.
+
+  **A turn now stops before it exceeds the window.** `maybeCompact` runs at idle and `preflightCompact` before a new message; neither looks between the steps of a turn. An agentic turn reading several large files can go from under the trigger to past the window inside itself, and be refused with `Your input exceeds the context window of this model` having never been offered a compaction. The turn now stops at its next step boundary once the provider reports input past the same threshold compaction uses, says `(compacting to make room: send "continue" to resume)`, and compaction follows at idle. A model with no known window has no ceiling and is left to the provider, as before.
+
+- 4052e99: Make `glrs-core` the core the coding agent runs on.
+
+  `glrs-core` was 1,235 lines, 310 of them type declarations and two exported functions, while the turn loop, tool contracts and extension registry it claimed to own all lived in `glrs-coding-agent`. The boundary was real as a rule and guarded almost nothing.
+
+  The runtime moved: `agent`, `chat`, `extension-api`, `toolkit`, `skills`, `commands`, `usercommands` and `queue`, plus the published entry points `sdk.ts` and `public-extension-api.ts`. **4,276 / 4,202** now, against 1,235 / 7,122.
+
+  **Core has no identity.** `You are glrs, a coding agent` is `identity.ts` in the product, and `createAgent` takes `instructions: () => string` rather than reaching for a system prompt. A different product on the same core is a different identity, not a fork. `environmentPrompt` and `skillsPrompt` stayed in core: they say where the agent is, not what it is for.
+
+  **The extension roster is a product decision.** Discovery, shadowing and failure isolation are core and take the roster as data. The five bundled imports stay in the product, which binds them and re-exports, so no call site changed.
+
+  **Display primitives are core.** `Line`, `clip`, `width`, `clean`, `errorText`, `describeThrown` — none touch a terminal, and the runtime needs them to describe output without knowing how it is drawn. The escape sequences were always in `ui/screen.ts`. The block builders that assemble a transcript stayed in the product.
+
+  `check-boundaries.ts` now allows core to import `glrs-providers` and still forbids it importing the product. The runtime resolves a model to call, and a provider-neutral port with one implementation would be a layer that costs a file and decides nothing.
+
+  No behaviour changes. 786 tests pass.
+
+- 038011d: Remove `project_trust`, and say what the permission model actually is.
+
+  `project_trust` fired when a session opened and refused to start unless a handler answered `"trusted"`. Nothing shipped a handler, so the event fired and nothing listened. It was a seam for a gate that does not exist, and a seam nobody asked for.
+
+  The model, stated plainly in `3-explanation/1-design.md`:
+
+  > glrs has whatever permissions its calling context has.
+
+  There is no gate to configure and no longer a seam pretending to be one. `tool_call` can still refuse a call, but it runs in the same process as the thing it is refusing, so it is a convenience rather than a boundary. Real boundaries come from outside the process, which that page already said.
+
+- 7002d61: Named tiers of model, resolved against the providers you have credentials for.
+
+  A tier is a name for the model you want for a kind of work, and a list of candidates in preference order. The first one glrs has credentials for wins:
+
+  ```json
+  {
+    "extensions": {
+      "settings": {
+        "tiers": {
+          "default": "balanced",
+          "fast": ["anthropic/claude-haiku-4-5", "openai/gpt-5.6-mini"],
+          "balanced": ["anthropic/claude-opus-5", "azure/gpt-5.6-sol"],
+          "deep": [{ "model": "anthropic/claude-opus-5", "variant": "high" }]
+        }
+      }
+    }
+  }
+  ```
+
+  ```
+  /tier              list them, and what each resolves to
+  /tier deep         switch
+  ```
+
+  **glrs ships no tiers and no opinion about which model belongs in which.** A table saying `medium = opus-5` is wrong the month a new model lands. Because the names are yours, they need not avoid `low`, `medium` and `high`, which already mean reasoning effort everywhere else.
+
+  `default` names the tier used when a session opens with no model. It resolves before the picker opens, so the ordinary path is that you never see the picker. `-p` is not covered: it resolves its model before extensions load.
+
+  **Extensions can have config now.** `extensions.settings` is a block keyed by extension name, merged across the three scopes as JSON, and `g.config()` hands an extension its own and no other. glrs never reads inside, so the shape belongs to whoever wrote the extension. `tiers` is the first user of it.
+
+### Patch Changes
+
+- ffe2fe3: Cache the first turn, so the second one does not pay for it.
+
+  Anthropic and Bedrock cache only what is marked, and glrs marks the second-to-last message. On the first turn there is no second-to-last, so nothing was marked, nothing was cached, and the second turn re-read the system prompt, the tool schemas and the first message at full price.
+
+  The only message is marked instead, which is exactly the prefix the second turn opens with. Verified on the wire: the first request now carries `cache_control` on message 0.
+
+  Every other path was audited and is unchanged. OpenAI, Azure's OpenAI deployments, Google and Vertex-Gemini cache a prefix without being asked, and keep their `promptCacheKey`. Vertex-Claude marks like Anthropic. An OpenAI-compatible endpoint has no cache control the protocol defines beyond OpenAI's own, which is not sent to models that are not OpenAI's: a field the backend does not define is refused rather than ignored.
+
+- fa5c313: Shape reasoning the way an answer is shaped, and tone it so the two cannot be confused.
+
+  `reasoningBlock` dropped every blank line and applied no markdown at all, so a thought arrived as one undifferentiated wall while the answer below it had headings, emphasis and code. The shaping is shared now:
+
+  - headings, bold, italic and code spans render, as they do in an answer
+  - paragraphs survive; a run of blank lines collapses to one, because reasoning arrives with far more whitespace than an answer does
+  - fenced code stays upright and verbatim, since italic code is harder to read than it is worth
+
+  What keeps it distinct is unchanged and now carries the whole job: every span is muted, prose is italic, the marker is `◐` against the answer's `●`, the body is indented, and it still closes with `thought for Ns`. The streaming draft gets the same treatment behind its `░`.
+
+- 038011d: Rename the `provider-registry` package to `glrs-providers`.
+
+  Internal only: no published entry point moves, and the package is bundled rather than published. The three packages now read `glrs-core`, `glrs-providers`, `glrs-coding-agent` instead of two prefixed names and one that was not.
+
+- e2352b1: `glrs wt new` prints the path and nothing else, and works when the remote is empty.
+
+  ```bash
+  cd $(glrs wt new fix the login redirect)
+  ```
+
+  Two things stopped that working.
+
+  **The path is the whole output.** `wt new` printed the path plus the branch it came from, so `$(…)` captured both. The branch line is gone: the directory is named after the branch and the base is the default, so it never said anything you could not see. A `wt_new` hook that failed writes to stderr, where it is visible when you are watching and absent when you are capturing.
+
+  **A base that only exists locally could not be branched from.** `defaultBranch` falls back to `refs/heads/main` when there is no `origin/main`, but `create` then ran `git fetch origin main` unconditionally, which can only fail for a base git resolved locally. The fallback was unreachable, and `glrs wt new` was impossible in any repository whose remote is empty or that has never pushed:
+
+  ```
+  could not fetch origin/main: fatal: couldn't find remote ref main
+  ```
+
+  `startPoint` now tries the remote first, because that is also what refreshes it, and stands on the local ref only when the remote has nothing. When neither exists the failure names both: `no origin/x and no local x`.
+
 ## 1.0.0-next.57
 
 ### Patch Changes
