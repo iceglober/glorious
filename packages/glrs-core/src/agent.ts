@@ -174,6 +174,12 @@ type Setup = Parameters<typeof environmentPrompt>[0] & {
   // Null until one is chosen. The session opens first and the model arrives
   // second, so everything that needs one asks for it at the moment it runs.
   model: ModelOption | null;
+  // Input tokens past which the turn stops rather than taking another step. A
+  // turn that reads several large files can go from comfortable to over the
+  // window between two steps, and nothing outside the turn is looking: idle is
+  // too late and the pre-send check is too early. Undefined means no ceiling is
+  // known, which is every model the catalogue cannot size.
+  contextCeiling?: () => number | undefined;
   sessionId: string;
   skills: string;
   skillTools: import("./skills").Skills;
@@ -369,12 +375,21 @@ export const createAgent = (setup: Setup) => {
       setup.terminatingTools?.() ?? new Set(),
     );
 
+  // What the provider said the last call carried. The only honest reading of how
+  // full the window is mid-turn: an estimate from the messages ignores the tool
+  // schemas, the system prompt and the provider's own framing, and at this size
+  // those are most of the difference.
+  const overCeiling = (): boolean => {
+    const ceiling = setup.contextCeiling?.();
+    return ceiling !== undefined && observed >= ceiling;
+  };
+
   const settings = (chosen: ReturnType<typeof ready>) => ({
     maxRetries: 5,
     ...requestSettings(chosen.option, cacheKey(setup.sessionId)),
     model: chosen.language,
     instructions: setup.instructions(),
-    stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool],
+    stopWhen: [stepCountIs(STEP_LIMIT), stopAfterTerminatingTool, overCeiling],
   });
 
   return {
@@ -642,6 +657,7 @@ export const createAgent = (setup: Setup) => {
           // was asked.
           messages: [...sent, ...withInjected(responseMessages, injected)],
           stoppedAtStepLimit: !text.trim() && steps.length >= STEP_LIMIT,
+          stoppedForContext: overCeiling(),
         };
       }
     },

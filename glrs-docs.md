@@ -1365,6 +1365,13 @@ catalogue. a model the catalogue does not know reports `ctx unknown` and is
 never compacted automatically: set
 `providers.<id>.models.<id>.metadata.context` to give it one.
 
+a turn that would pass the same line stops at its next step rather than taking
+another, says `(compacting to make room: send "continue" to resume)`, and
+compaction follows. before that, a turn could go from under the threshold to
+past the window inside itself and be refused outright with `Your input exceeds
+the context window of this model`: idle is too late to look, and the check
+before a new message is too early.
+
 the summary is written while the session sits idle. if you type before it
 finishes, your turn runs on the conversation as it was and the brief is
 applied once that turn lands, rather than being lost to it.

@@ -247,6 +247,17 @@ export const createChat = (
         announce({ type: "assistant", text: spoken });
       }
       if (spoken === "") signal({ type: "empty" });
+      // The turn stopped short of the window rather than being refused by it.
+      // Saying so and compacting here is the difference between a pause and
+      // "Your input exceeds the context window of this model", which is what a
+      // turn that grew past the window inside itself used to get.
+      if (done.stoppedForContext) {
+        note = reminder("Your last turn stopped early to make room in the context window.");
+        announce({
+          type: "notice",
+          text: '(compacting to make room: send "continue" to resume)',
+        });
+      }
       if (done.stoppedAtStepLimit) {
         note = reminder("Your last turn ran out of steps and stopped before finishing.");
         announce({ type: "notice", text: '(step limit reached: send "continue" to resume)' });

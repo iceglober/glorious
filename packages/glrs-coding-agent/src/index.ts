@@ -428,6 +428,12 @@ const main = async (): Promise<void> => {
     model,
     toolTimeoutMs,
     sessionId: session.id,
+    // The same line compaction uses, so a turn stops exactly where compaction
+    // would take over rather than somewhere else of its own choosing. Unknown
+    // window means no ceiling: an unsizable model is left to the provider,
+    // which is what happened before this existed at all.
+    contextCeiling: () =>
+      COMPACT_AT === 0 || model?.context === undefined ? undefined : model.context * COMPACT_AT,
     cwd: root,
     os,
     date: new Date().toISOString().slice(0, 10),

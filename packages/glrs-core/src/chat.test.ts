@@ -12,6 +12,7 @@ const done = (text: string, extra: Partial<Outcome> = {}): Outcome => ({
   text,
   messages: [{ role: "assistant", content: text } as ModelMessage],
   stoppedAtStepLimit: false,
+  stoppedForContext: false,
   ...extra,
 });
 
@@ -438,6 +439,45 @@ describe("compacting a long conversation", () => {
       await chat.compact("", 2_000, true);
       expect(events.filter((one) => one.type === "compacted")).toHaveLength(1);
       expect(JSON.stringify(chat.history[0])).toContain("the brief");
+    });
+  });
+
+  // The failure this is here to prevent, from a real session: context went from
+  // under the trigger to past the window inside one turn, the turn was refused
+  // with "Your input exceeds the context window of this model", and nothing had
+  // compacted because idle is too late and the pre-send check is too early.
+  describe("a turn that stopped to make room", () => {
+    test("it says so, rather than the next turn being refused", async () => {
+      const events: SessionEvent[] = [];
+      const agent = {
+        summarise: async () => "the brief",
+        run: async () => done("", { stoppedForContext: true }),
+      } as unknown as Agent;
+      const chat = createChat(agent, {
+        onEvent: (event) => events.push(event),
+        onSignal: () => {},
+        history: conversation(4),
+      });
+      chat.send("a question");
+      await Bun.sleep(5);
+      const said = events.filter((one) => one.type === "notice").map((one) => one.text);
+      expect(said.join(" ")).toContain("compacting to make room");
+    });
+
+    test("an ordinary turn says nothing of the sort", async () => {
+      const events: SessionEvent[] = [];
+      const agent = {
+        summarise: async () => "the brief",
+        run: async () => done("answered"),
+      } as unknown as Agent;
+      const chat = createChat(agent, {
+        onEvent: (event) => events.push(event),
+        onSignal: () => {},
+        history: conversation(4),
+      });
+      chat.send("a question");
+      await Bun.sleep(5);
+      expect(events.filter((one) => one.type === "notice")).toEqual([]);
     });
   });
 
